@@ -1,17 +1,12 @@
-limit = 4000000
-
-#while n<limit
-
-def fib(n)
-   a = 0
-   b = 1
-
-  n.times do|i|
-    a, b = b, a+b
-  end
-
-  return a
+def fib 
+  a, b,sum = 1,2,0
+ while b < 4000000
+ sum += b if b.even? 
+ a, b = b, a+b
+end
+puts sum
 end
 
-puts fib(100)
+fib
+
 
