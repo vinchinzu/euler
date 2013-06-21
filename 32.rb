@@ -22,8 +22,8 @@ end
 #what are the limits? 
 
 #brute force is a little slow
-a = (1..500).to_a
-b = (1..2000).to_a
+a = (3..485).to_a
+b = (10..1970).to_a
 d= []
 a.each do |x|
  b.each do |y|
@@ -34,5 +34,7 @@ end
 third = d.map{|x| x[2]}.uniq.inject(:+)
 puts third
 
+
+#17 s; first run
 
 
