@@ -7,6 +7,6 @@ end
 puts sum
 end
 
-fib
+puts fib
 
 

@@ -1,6 +1,3 @@
-
-My Progress on Project Euler in Ruby
-
 1.rb 	 Time: 4.001 ms  
 13.rb 	 Time: 1.0 ms  
 14.rb 	 Time: 1.0 ms  
@@ -22,4 +19,3 @@ My Progress on Project Euler in Ruby
 39.rb 	 Time: 330.019 ms  
 4.rb 	 Time: 707.041 ms  
 48.rb 	 Time: 39.002 ms  
-

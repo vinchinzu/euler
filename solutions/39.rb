@@ -14,8 +14,8 @@ counts.default = 0
   (x..p/2).each do |y|
     break if x + y > (p/2)
 	c = Math.sqrt(x**2 + y**2)
-	next unless c%1==0
-    counts[x + y + c] +=1
+	next unless c % 1 == 0
+    counts[x + y + c] += 1
    end
 end
    
@@ -48,7 +48,7 @@ puts sort.last[0]
 
 # elements = {}
 # r= (1..1000).each {|i| elements[i] = test(i)}
-first test of brute force seems to be slow...
+# first test of brute force seems to be slow...
 
 # max = 0
 # set = []
