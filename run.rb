@@ -1,13 +1,19 @@
 #write block of code to loop through and for each one. 
 
+# require 'benchmark'
+
 
 timer_start = Time.now
-require File.expand_path(File.dirname(__FILE__) + '36.rb')
-puts "Elapsed Time: #{(Time.now - timer_start)*1000} milliseconds"
+
+path = File.expand_path(File.dirname(__FILE__))
+require  path + '/5.rb'
+
+puts "Time: #{(Time.now - timer_start)*1000} ms"
 
 
-#require File.expand_path(File.dirname(__FILE__) + '/32.rb')
 
-#puts "Elapsed Time: #{(Time.now - timer_start)*1000} milliseconds"
-
-
+# Benchmark.bm do |x|
+ # x.report("Solution: ") {
+   # require  path + '/4.rb'
+ # }
+ # end

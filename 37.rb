@@ -8,7 +8,6 @@
 
 require 'Prime'
 
-
 def test(p)
  arr = p.to_s.split(//)
  ntimes= arr.count
@@ -30,8 +29,8 @@ end
 end
 
 d.delete_if{|x| x == ""}
-d.all?{|p| p.to_i.prime?}
-
+result = d.all?{|p| p.to_i.prime?}
+result
 end
 
 arr = Prime.take_while{|x| x < 1_000_000}
