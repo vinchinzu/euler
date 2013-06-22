@@ -3,17 +3,13 @@
 # require 'benchmark'
 
 
-timer_start = Time.now
 
 path = File.expand_path(File.dirname(__FILE__))
-require  path + '/5.rb'
 
+Dir.glob("solutions/*.rb").each do |x|
+
+timer_start = Time.now
+require  path + '/' + x 
 puts "Time: #{(Time.now - timer_start)*1000} ms"
 
-
-
-# Benchmark.bm do |x|
- # x.report("Solution: ") {
-   # require  path + '/4.rb'
- # }
- # end
+end
