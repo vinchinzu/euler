@@ -12,11 +12,11 @@
 
 irr = "0.123456789"
 
-s = (0..9).to_a
-
+s = (1..9).to_a
+st = (0..9).to_a
 while irr.length < 1_000
  s.each do |d|
-  s.each do |y|
+  st.each do |y|
  irr = irr + d.to_s + y.to_s
  end
 end
