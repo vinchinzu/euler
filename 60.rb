@@ -14,7 +14,7 @@
 
 require 'Prime'
 
-set = Prime.first(120)
+set = Prime.first(10000)
 
 test = [3,7,109,673]
 
@@ -30,36 +30,57 @@ end
 base
 
 
-base.each do |a| 
-  base.each do |b|
-    x = (a.to_s + b.to_s).to_i
-	if x.prime?
-	 puts x
-	end
-	end
-end
-
-
-test = [3,7,109,673]
-test << 43
-test
-
-cheq_set(test)
-
-def check_array_primes(arr)
-  arry{is.prime
-  arr.all?{|x| x.isprime?}
-end
-
-def cheq_set(arr)
+def mk_per(arr)
  c_arr = []
- arr.each do |a|
-   arr.each do |b|
-     x = (a.to_s + b.to_s).to_i
-	if x.prime?
+ per = arr.permutation(2).to_a
+ per.each do |a,b|
+   x = (a.to_s + b.to_s).to_i
 	 c_arr << x
-    end
    end
+  c_arr
  end
+ 
+
+
+def m(arr)
+arr.all? {|x| x.prime?}
 end
 
+base.each do |x|
+test = [3,7,109,673]
+test << x
+
+if m(mk_per(test))
+puts test
+puts m(mk_per(test))
+end
+end
+
+
+
+
+
+
+# def mk_ar(arr)
+ # c_arr = []
+ # arr.each do |a|
+   # arr.each do |b|
+     # x = (a.to_s + b.to_s).to_i
+	 # c_arr << x
+   # end
+ # end
+ # c_arr
+# end
+
+
+#base.each do |a| 
+ # base.each do |b|
+  #  x = (a.to_s + b.to_s).to_i
+	#if x.prime?
+	# puts x
+	#end
+	#end
+#end
+
+
+#cheq_set(test)
