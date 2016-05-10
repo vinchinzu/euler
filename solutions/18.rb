@@ -28,7 +28,7 @@
 # 63 66 04 68 89 53 67 30 73 16 69 87 40 31
 # 04 62 98 27 23 09 70 98 73 93 38 53 60 04 23
 	
-set = []
+# set = []
 # f = File.open("18.txt", "r")
  
  
@@ -140,11 +140,8 @@ data = \
 63 66 04 68 89 53 67 30 73 16 69 87 40 31
 04 62 98 27 23 09 70 98 73 93 38 53 60 04 23"
 
+rows = data.split("\n")
 
-
-(triangle.length - 1).downto(0) {|x|
- puts a[x][1]
-}
 
 
 
@@ -154,6 +151,11 @@ triangle = rows.map { |x| x.split(" ") \
 
 base  = rows.map { |x| x.split(" ") \
   .map { |x| x.to_i } }  
+  
+# (triangle.length - 1).downto(0) {|x|
+ # puts a[x][1]
+# }
+
   
 (triangle.length - 1).downto(0) { |a|
   0.upto(a-1) { |b|  
