@@ -8,7 +8,7 @@ end
  
 p eratosthenes(100)
 
-
+ 
 def eratosthenes2(n)
   # For odd i, if i is prime, nums[i >> 1] is true.
   # Set false for all multiples of 3.
