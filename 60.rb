@@ -12,7 +12,7 @@
 
 
 
-require 'Prime'
+require 'prime'
 
 set = Prime.first(10000)
 

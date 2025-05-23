@@ -25,7 +25,7 @@ end
 #a = (1..100).map{|x| x.divisor_count}
 #b = (1..100).map{|x| fibonacci(x)}
 
-require 'mathn'
+require 'prime'
  
 
 # http://mathschallenge.net/index.php?section=faq

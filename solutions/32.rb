@@ -8,33 +8,21 @@
 
 # HINT: Some products can be obtained in more than one way so be sure to only include it once in your sum.
 
+require 'set'
 
-#Test to see if inputs are pandigital
-def pan?(a,b,c)
-test = (1..9).map{|x| x.to_s}
-arr = [a,b,c]
-arr = arr.to_s.gsub(/[^0-9]/,'').split('').to_a.sort
-arr==test
+s = Set.new
+(1..9).to_a.permutation.each do |perm|
+  # Split 1: a (1 digit), b (4 digits), c (4 digits)
+  a = perm[0]
+  b = perm[1..4].map(&:to_s).join.to_i
+  c = perm[5..8].map(&:to_s).join.to_i
+  s.add(c) if a * b == c
 
+  # Split 2: a (2 digits), b (3 digits), c (4 digits)
+  a = perm[0..1].map(&:to_s).join.to_i
+  b = perm[2..4].map(&:to_s).join.to_i
+  c = perm[5..8].map(&:to_s).join.to_i
+  s.add(c) if a * b == c
 end
 
-#loop thorugh everything.. find set of a, b, c
-#what are the limits? 
-
-#brute force is a little slow
-a = (3..485).to_a
-b = (10..1970).to_a
-d= []
-a.each do |x|
- b.each do |y|
- d << [x,y,x*y] if pan?(x,y,x*y)
- end
-end
- 
-third = d.map{|x| x[2]}.uniq.inject(:+)
-puts third
-
-
-#17 s; first run
-
-
+puts s.inject(0, :+)

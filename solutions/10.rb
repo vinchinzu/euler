@@ -4,7 +4,7 @@
 
 # Find the sum of all the primes below two million.
 
-require 'mathn'
+require 'prime'
 
 i = 148933
 max = Prime.first(i).last

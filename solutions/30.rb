@@ -27,9 +27,6 @@ puts d.inject(:+)
 
 #1523 ms
 
-n.
-
-
 def digits(n)
     return [0] if(n == 0)
     if(n < 0)

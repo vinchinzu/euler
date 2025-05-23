@@ -16,42 +16,38 @@
 
 # NOTE: Once the chain starts the terms are allowed to go above one million.
 
-#gensequence
-
-
-def col(test)
-  if test%2==0 
-  out = test/2
-  else 
- out = test*3 + 1
- end
-out
-end
-
-max = 1
-top = 1
-start  = 750000
-
-while (start < 1_000_000)
- set = []
- set << start
- nex = col (start)
-  while (nex != 1) 
-   nex = col(nex)
-   set << nex
+def collatz_length(n, memo)
+  # If already computed, return the stored length
+  return memo[n] if memo[n] != 0
+  
+  # Base case
+  if n == 1
+    memo[n] = 1
+  # Even case
+  elsif n.even?
+    memo[n] = 1 + collatz_length(n / 2, memo)
+  # Odd case
+  else
+    memo[n] = 1 + collatz_length(3 * n + 1, memo)
   end
- 
-if set.count > max then 
-  max = set.count
-  top = start
+  memo[n]
 end
 
-start +=1
+def longest_collatz_under(limit)
+  memo = Hash.new(0)  # Use a hash for memoization to handle large n
+  max_length = 0
+  starting_number = 1
 
+  (1...limit).each do |i|
+    length = collatz_length(i, memo)
+    if length > max_length
+      max_length = length
+      starting_number = i
+    end
+  end
 
-#puts start,max, set.count
+  starting_number
 end
 
-puts top
-
-
+limit = 1_000_000
+puts longest_collatz_under(limit)

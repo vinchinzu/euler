@@ -15,8 +15,6 @@
 # 1. spiral_sum_formula(n): A direct mathematical formula.
 # 2. spiral(n): An iterative approach that simulates the spiral generation.
 
-require 'benchmark'
-
 # Calculates the sum of the numbers on the diagonals of an n x n spiral
 # using a direct mathematical formula.
 # n must be an odd number.
@@ -52,35 +50,5 @@ def spiral_sum_formula(n)
   total_sum
 end
 
-# Iterative solution that simulates the spiral generation to sum diagonal numbers.
-def spiral(n)
-  i = 1     # Represents the current number being considered on a diagonal. Starts at the center '1'.
-  sum = 1   # Accumulator for the sum of diagonal numbers. Initialized with the center '1'.
-  j = 2     # Represents the increment to get to the next diagonal number in the current layer.
-            # For the first layer (3x3 around the '1'), numbers are 3,5,7,9 (increment is 2).
-            # For the second layer (5x5 around the 3x3), numbers are 13,17,21,25 (increment is 4).
-            # So, j increases by 2 for each new layer.
- 
-  # Loop continues as long as 'i' (current diagonal number) is less than the maximum number in an n x n spiral (n^2).
-  # Effectively, this means we are still generating layers.
-  while i < n**2 
-    # Each layer adds 4 diagonal numbers.
-    1.upto(4) do |x|
-      i += j    # Move to the next diagonal number.
-      sum += i  # Add it to the sum.
-    end
-    j += 2 # For the next layer, the increment between diagonal numbers increases by 2.
-  end
-  sum
-end
-
-# Benchmark section to compare the performance and output of both methods.
-Benchmark.bm do |x|
- x.report("Iterative: ") {
-   puts spiral(1001)
- }
- x.report("Formula:   ") { # Added extra spaces for alignment if desired
-   puts spiral_sum_formula(1001)
- }
-end
+puts spiral_sum_formula(1001)
 
