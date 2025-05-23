@@ -7,10 +7,6 @@
 # (Please note that the palindromic number, in either base, may not include leading zeros.)
 
 
-
-
-
-
 def palindrome?(str)
   str == str.reverse
 end

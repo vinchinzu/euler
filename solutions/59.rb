@@ -19,8 +19,9 @@ max_sum = 0
       text = decrypted.map(&:chr).join
       if text.include?(" the ") && text.include?(" and ")
         puts decrypted.sum
-        exit
+        return
       end
     end
   end
 end
+
