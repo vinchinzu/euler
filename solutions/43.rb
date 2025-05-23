@@ -13,21 +13,26 @@
 # d8d9d10=289 is divisible by 17
 # Find the sum of all 0 to 9 pandigital numbers with this property.
 
-pan = (0..9).to_a
+require 'set'
 
-first = []
-first = pan.permutation(5).to_a
+DIVISORS = [2, 3, 5, 7, 11, 13, 17]
 
-list = []
-first.each do |x|
-  if x[3]%2 !=0 then 
-  list << x
+sum = 0
+(0..9).to_a.permutation(10) do |perm|
+  next if perm[0] == 0 # skip numbers starting with 0
+  valid = true
+  DIVISORS.each_with_index do |div, i|
+    # d2d3d4 is perm[1..3], d3d4d5 is perm[2..4], etc.
+    num = perm[i+1]*100 + perm[i+2]*10 + perm[i+3]
+    unless num % div == 0
+      valid = false
+      break
+    end
   end
+  sum += perm.join.to_i if valid
 end
 
-list.delete_if{|x| x[0]==0}
-
-list.delete_if{|x| x[2..4].join.to_i % 3 ==0 }
+puts sum
 
 
 

@@ -7,7 +7,7 @@
 # What 12-digit number do you form by concatenating the three terms in this sequence?
 
 
-require 'Prime'
+require 'prime'
 
 set = Prime.first(1200)
 set = set.delete_if{|i| i < 1000 or i >9999}

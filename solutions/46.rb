@@ -13,7 +13,7 @@
 
 # What is the smallest odd composite that cannot be written as the sum of a prime and twice a square?
 
-require 'Prime'
+require 'prime'
 
 pri = Prime.first(750)
 squares = (1..200).map{|x| x**2}

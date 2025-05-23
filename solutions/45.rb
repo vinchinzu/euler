@@ -9,23 +9,23 @@
 
 # Find the next triangle number that is also pentagonal and hexagonal.
 
+# Helper functions to check if a number is pentagonal or hexagonal
+def is_pentagonal?(x)
+  n = (Math.sqrt(24 * x + 1) + 1) / 6
+  n == n.to_i
+end
 
-tri = []
-pen = []
-hex = []
+def is_hexagonal?(x)
+  n = (Math.sqrt(8 * x + 1) + 1) / 4
+  n == n.to_i
+end
 
-(1..100000).each do |x| 
-  tri << x*(x+1)/2
- end
- 
- (1..100000).each do |x| 
-  pen << x*(3*x-1)/2
- end
- 
- (1..100000).each do |x| 
-  hex << x*(2*x-1)
- end
- 
- solution = hex & pen & tri - [1]
- 
-#1533776805
+n = 286 # Start after T285 = 40755
+loop do
+  t = n * (n + 1) / 2
+  if is_pentagonal?(t) && is_hexagonal?(t)
+    puts t
+    break
+  end
+  n += 1
+end
