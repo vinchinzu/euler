@@ -12,3 +12,43 @@
 # \end{align}
 # <p>What is $f(10^{25})$?</p>
 
+class SumsOfPowersOfTwo
+  def initialize
+    @memo = {}
+  end
+
+  def count_ways(n)
+    bits = []
+    x = n
+    while x > 0
+      bits << x % 2
+      x /= 2
+    end
+    dp(0, 0, bits)
+  end
+
+  private
+
+  def dp(pos, carry, bits)
+    return 1 if pos == bits.size && carry == 0
+    return 0 if pos == bits.size
+    key = [pos, carry]
+    return @memo[key] if @memo.key?(key)
+    total = 0
+    3.times do |use|
+      val = use + carry
+      if val % 2 == bits[pos]
+        total += dp(pos + 1, val / 2, bits)
+      end
+    end
+    @memo[key] = total
+    total
+  end
+end
+
+if __FILE__ == $0
+  n = 10**25
+  solver = SumsOfPowersOfTwo.new
+  puts solver.count_ways(n)
+end
+

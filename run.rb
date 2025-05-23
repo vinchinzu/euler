@@ -8,6 +8,7 @@ results = []
 total_time = 0.0
 
 Dir.glob("solutions/*.rb").each do |x|
+  puts x
   timer_start = Time.now
   load File.join(path, x)
   timer = ((Time.now - timer_start)) * 1000
@@ -18,7 +19,7 @@ Dir.glob("solutions/*.rb").each do |x|
   results_txt_path = File.join(path, "results.txt")
   begin
     File.open(results_txt_path, "a") do |f|
-      f.puts "#{File.basename(x)}\tTime: %10.3f ms" % timer
+      f.puts "#{File.basename(x)}\t %10.3f ms" % timer
     end
   rescue => e
     puts "Failed to write results.txt: #{e.message}"
@@ -36,7 +37,7 @@ puts "Appending to README.md at #{readme_path}"
 begin
   File.open(readme_path, "a") do |f|
     results.each do |filename, time|
-      f.puts "#{filename}\tTime: %10.3f ms" % time
+      f.puts "#{filename}\t %10.3f ms" % time
     end
   end
 rescue => e

@@ -73,7 +73,7 @@ limit = 1000
     # Calculate next a_i for the continued fraction
     m_next = d_i * a_i - m_i
     d_next = (d - m_next * m_next) / d_i
-    a_next = (a_0 + m_next) / d_next
+    a_next = (a_0 + m_next).div(d_next)
 
     # Update m_i, d_i, a_i for next iteration
     m_i = m_next
@@ -83,4 +83,4 @@ limit = 1000
 end
 
 puts "The value of D <= #{limit} for which the largest x is obtained is: #{result_d}"
-puts "This largest x is: #{max_x}" # For verification, not required by problem
+#puts "This largest x is: #{max_x}" # For verification, not required by problem
