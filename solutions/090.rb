@@ -33,3 +33,73 @@
 # 
 # <p>How many distinct arrangements of the two cubes allow for all of the square n
 # umbers to be displayed?</p>
+
+# Solution for Project Euler Problem 90
+require 'set' # Not strictly necessary, but good for semantic clarity with sets of digits
+
+# Step 2: Generate all possible distinct sets of 6 digits for a single cube.
+# The digits available are 0 through 9.
+all_digits = (0..9).to_a
+# Ruby's `combination` method generates sorted arrays, which is ideal for representing
+# distinct sets of digits on a cube. C(10,6) = 210 combinations.
+all_cube_configurations = all_digits.combination(6).to_a
+
+# Step 3: Define a helper function `can_display_digit`
+def can_display_digit(cube_digits_array, digit_needed)
+  # cube_digits_array is a sorted array of 6 digits on a cube's faces.
+  # digit_needed is an integer (0-9).
+  if digit_needed == 6 || digit_needed == 9
+    # Can display a 6 or 9 if the cube physically has a 6 or a 9.
+    return cube_digits_array.include?(6) || cube_digits_array.include?(9)
+  else
+    return cube_digits_array.include?(digit_needed)
+  end
+end
+
+# Step 4: Define the target two-digit numbers (squares)
+# These are 01, 04, 09, 16, 25, 36, 49, 64, 81.
+target_squares = [
+  [0, 1], [0, 4], [0, 9], # Note: 09 requires a 9
+  [1, 6],                 # Note: 16 requires a 6
+  [2, 5],
+  [3, 6],                 # Note: 36 requires a 6
+  [4, 9],                 # Note: 49 requires a 9
+  [6, 4],                 # Note: 64 requires a 6 (or 9 as 6) and a 4
+  [8, 1]
+].freeze # Freeze to make it an immutable constant
+
+# Step 5: Initialize valid_pair_count
+valid_pair_count = 0
+
+# Step 6: Iterate through all distinct pairs of cube configurations (CubeA, CubeB)
+all_cube_configurations.each_with_index do |cube_a_digits, i|
+  # Loop for CubeB, starting from i to ensure each pair {A,B} is considered once.
+  # This correctly handles pairs where A=B and where A!=B without double counting.
+  (i...all_cube_configurations.length).each do |j|
+    cube_b_digits = all_cube_configurations[j]
+
+    # Step 7a: Assume it's a valid pair
+    current_pair_is_valid = true
+
+    # Step 7b: For each target square [d1, d2]
+    target_squares.each do |d1, d2|
+      # Step 7b.i: Check if this square can be formed
+      can_form_square = (can_display_digit(cube_a_digits, d1) && can_display_digit(cube_b_digits, d2)) || \
+                        (can_display_digit(cube_a_digits, d2) && can_display_digit(cube_b_digits, d1))
+      
+      # Step 7b.ii: If not, this pair of cubes is not valid
+      unless can_form_square
+        current_pair_is_valid = false
+        break # Break from the loop over target_squares
+      end
+    end
+
+    # Step 7c: If, after checking all target squares, current_pair_is_valid is still true
+    if current_pair_is_valid
+      valid_pair_count += 1
+    end
+  end
+end
+
+# Step 8: Print valid_pair_count
+puts "Number of distinct arrangements: #{valid_pair_count}"

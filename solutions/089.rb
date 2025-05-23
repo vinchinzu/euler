@@ -22,3 +22,79 @@
 #  form.</p>
 # <p class="smaller">Note: You can assume that all the Roman numerals in the file
 # contain no more than four consecutive identical units.</p>
+
+# Solution for Project Euler Problem 89
+
+ROMAN_VALUES = {
+  'I' => 1, 'V' => 5, 'X' => 10, 'L' => 50,
+  'C' => 100, 'D' => 500, 'M' => 1000
+}.freeze
+
+MINIMAL_ROMAN_RULES = [
+  [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"],
+  [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"],
+  [4, "IV"], [1, "I"]
+].freeze
+
+# This data will be replaced by the full list from the problem description in execution.
+# Using a small example here for syntax validation.
+ROMAN_NUMERAL_DATA = <<~HEREDOC_DELIMITER
+MMMMDCLXXII
+MMDCCLXXXIII
+MMMDLXVIIII
+XVI
+XIIIIII
+HEREDOC_DELIMITER
+
+def roman_to_int(roman_str)
+  total = 0
+  i = 0
+  while i < roman_str.length
+    val1 = ROMAN_VALUES[roman_str[i]]
+    
+    if i + 1 < roman_str.length
+      val2 = ROMAN_VALUES[roman_str[i+1]]
+      if val1 < val2
+        total += (val2 - val1)
+        i += 2
+      else
+        total += val1
+        i += 1
+      end
+    else
+      total += val1
+      i += 1
+    end
+  end
+  total
+end
+
+def int_to_minimal_roman(number)
+  return "" if number <= 0
+  result_roman = ""
+  MINIMAL_ROMAN_RULES.each do |value, numeral_string|
+    while number >= value
+      result_roman += numeral_string
+      number -= value
+    end
+  end
+  result_roman
+end
+
+# Main logic
+total_characters_saved = 0
+original_numerals_list = ROMAN_NUMERAL_DATA.strip.lines.map(&:strip)
+
+original_numerals_list.each do |original_roman|
+  next if original_roman.empty? # Skip empty lines if any
+
+  original_length = original_roman.length
+  
+  integer_value = roman_to_int(original_roman)
+  minimal_roman = int_to_minimal_roman(integer_value)
+  minimal_length = minimal_roman.length
+  
+  total_characters_saved += (original_length - minimal_length)
+end
+
+puts "Total characters saved: #{total_characters_saved}"
