@@ -37,17 +37,8 @@ puts "Appending to README.md at #{readme_path}"
 begin
   File.open(readme_path, "a") do |f|
     if results.any?
-      # Ensure the new block of results starts on a new line.
-      # This is particularly for the case where README.md might not end with a newline.
-      if f.pos > 0 # Check if the file is not empty (f.pos is current position, which is EOF for 'a' mode)
-        f.seek(-1, IO::SEEK_END) # Go to the last character
-        last_char = f.getc
-        f.seek(0, IO::SEEK_END) # Return to the end of the file for appending
-        f.puts if last_char != "\n" # Add a newline if the last character wasn't one
-      end
-
+      f.puts # Always add a newline before the new block
       results.each do |filename, time|
-        # This f.puts ensures that each specific result line ends with a newline.
         f.puts "#{filename}\t %10.3f ms" % time
       end
     end
