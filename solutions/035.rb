@@ -33,8 +33,12 @@ primes.each do |p|
   end
 end
 
-# Add 2 and 5 manually (the only even/5-ending circular primes)
-circular_primes += [2, 5] if 2 < LIMIT && 5 < LIMIT
+# 2 and 5 are handled correctly by the main loop as has_invalid_digits?
+# only applies its logic to numbers with more than one digit.
+# rotations(2) is [2], rotations(5) is [5]. Both are in prime_set.
+# So, they are added to circular_primes if they are in the initial primes list.
+# The explicit addition below was redundant.
+# circular_primes += [2, 5] if 2 < LIMIT && 5 < LIMIT # This line is removed.
 
 puts circular_primes.uniq.count
 

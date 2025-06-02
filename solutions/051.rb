@@ -16,14 +16,15 @@ def solve_problem_51
     num_digits = s_p.length
     next if num_digits < 2
 
-    (1...num_digits).each do |num_to_replace|
-      (0...num_digits).to_a.combination(num_to_replace) do |indices_to_replace|
-        # All digits at the chosen indices must be the same
-        digits_at_indices = indices_to_replace.map { |idx| s_p[idx] }
-        next unless digits_at_indices.uniq.length == 1
+    (1...num_digits).each do |num_to_replace| # This is the number of digits to be replaced, e.g., 1, 2, or 3 asterisks
+      (0...num_digits).to_a.combination(num_to_replace) do |indices_to_replace| # Choose which specific digit positions to replace
+        # The original digits at indices_to_replace do NOT need to be the same.
+        # For example, in 56xx3, the 'xx' can be different original digits.
+        # The line `next unless digits_at_indices.uniq.length == 1` was an incorrect interpretation.
+        # It has been removed.
 
         prime_family = []
-        ('0'..'9').each do |replacement_char|
+        ('0'..'9').each do |replacement_char| # Try replacing with '0' through '9'
           # Skip leading zero for multi-digit numbers
           if indices_to_replace.include?(0) && replacement_char == '0' && num_digits > 1
             next

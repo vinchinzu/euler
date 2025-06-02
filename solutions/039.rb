@@ -15,12 +15,17 @@ counts.default = 0
     break if x + y > (p/2)
 	c = Math.sqrt(x**2 + y**2)
 	next unless c % 1 == 0
-    counts[x + y + c] += 1
+    current_perimeter = x + y + c.to_i # c is already an integer if c % 1 == 0
+    if current_perimeter <= p # Ensure perimeter is within the specified limit (1000)
+      counts[current_perimeter] += 1
+    end
    end
 end
    
-  
-sort = counts.sort {|a,b| a[1] <=> b[1]}
+# Filter out any perimeters that might have been inadvertently processed if logic allowed > p
+# (though the above check should handle it)
+valid_counts = counts.select { |perimeter, _| perimeter <= p }
+sort = valid_counts.sort {|a,b| a[1] <=> b[1]}
 
 puts sort.last[0]
   

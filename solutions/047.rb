@@ -27,12 +27,21 @@ end
 arr = list.map{|x| x.count}
 
 #select the array locatiosn where equal to 4
-check = arr.each_index.select{|i| arr[i] == 4}
+check = arr.each_index.select{|i| arr[i] == 4} # These are 0-based indices
 
 # find the sequential values 
+# check contains indices i such that number (i+1) has 4 distinct prime factors.
+# We need to find four consecutive numbers, so their indices in 'arr' must also be consecutive.
+first_num_in_sequence = nil
+check.each_cons(4) do |idx1, idx2, idx3, idx4|
+  if idx1 + 1 == idx2 && idx1 + 2 == idx3 && idx1 + 3 == idx4
+    # Found four consecutive indices in 'check', which means
+    # idx1, idx1+1, idx1+2, idx1+3 are consecutive indices in 'arr'
+    # for numbers that each have 4 distinct prime factors.
+    # The first number of this sequence is (idx1 + 1).
+    first_num_in_sequence = idx1 + 1 
+    break # Found the first sequence, so we can stop.
+  end
+end
 
-solutions = check.each_cons(4){|i,j,k,l| p i if i==( j-1) and i == (k-2) and i == (l-3)}
-
-# find fol
-
-puts solutions[0]
+puts first_num_in_sequence

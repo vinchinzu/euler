@@ -45,7 +45,4 @@ def solve_coin_sums
   ways[target_amount]
 end
 
-# To run the solution and print the result:
-# result = solve_coin_sums
-# puts "Number of ways to make 200p: #{result}"
-# Expected output: 73682
+puts solve_coin_sums
