@@ -74,4 +74,3 @@ end
 # --- Main execution ---
 solver = DiophantineReciprocalsI.new
 solver.solve
-```

@@ -38,13 +38,23 @@ MINIMAL_ROMAN_RULES = [
 
 # This data will be replaced by the full list from the problem description in execution.
 # Using a small example here for syntax validation.
-ROMAN_NUMERAL_DATA = <<~HEREDOC_DELIMITER
-MMMMDCLXXII
-MMDCCLXXXIII
-MMMDLXVIIII
-XVI
-XIIIIII
-HEREDOC_DELIMITER
+# ROMAN_NUMERAL_DATA = <<~HEREDOC_DELIMITER
+# MMMMDCLXXII
+# MMDCCLXXXIII
+# MMMDLXVIIII
+# XVI
+# XIIIIII
+# HEREDOC_DELIMITER
+
+# need to split lines
+# MMMMDCLXXII
+# MMDCCCLXXXIII
+# MMMDLXVIIII
+# MMMMDXCV
+# DCCCLXXII
+# MMCCCVI
+
+ROMAN_NUMERAL_DATA = File.read("0089_roman.txt").split("\n")
 
 def roman_to_int(roman_str)
   total = 0
@@ -83,7 +93,7 @@ end
 
 # Main logic
 total_characters_saved = 0
-original_numerals_list = ROMAN_NUMERAL_DATA.strip.lines.map(&:strip)
+original_numerals_list = ROMAN_NUMERAL_DATA.map(&:strip)
 
 original_numerals_list.each do |original_roman|
   next if original_roman.empty? # Skip empty lines if any

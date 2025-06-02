@@ -117,4 +117,3 @@ end
 
 # Call the main solving function
 solve_problem_107
-```

@@ -55,4 +55,3 @@ end
 
 # Calculate and print the result for n=12
 puts count_equality_tests(12)
-```

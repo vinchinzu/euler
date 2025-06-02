@@ -35,12 +35,9 @@ total_time = results.map { |r| r[1] }.sum
 readme_path = File.join(path, "README.md")
 puts "Appending to README.md at #{readme_path}"
 begin
-  File.open(readme_path, "a") do |f|
-    if results.any?
-      f.puts # Always add a newline before the new block
-      results.each do |filename, time|
-        f.puts "#{filename}\t %10.3f ms" % time
-      end
+  File.open(readme_path, "w") do |f|
+    results.each do |filename, time|
+      f.puts "#{filename}\t %10.3f ms" % time + "\n"
     end
   end
 rescue => e

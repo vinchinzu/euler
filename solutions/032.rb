@@ -1,28 +1,35 @@
-# Pandigital products
-# Problem 32
-# We shall say that an n-digit number is pandigital if it makes use of all the digits 1 to n exactly once; for example, the 5-digit number, 15234, is 1 through 5 pandigital.
-
-# The product 7254 is unusual, as the identity, 39  186 = 7254, containing multiplicand, multiplier, and product is 1 through 9 pandigital.
-
-# Find the sum of all products whose multiplicand/multiplier/product identity can be written as a 1 through 9 pandigital.
-
-# HINT: Some products can be obtained in more than one way so be sure to only include it once in your sum.
-
+# File: solutions/032.rb
 require 'set'
 
-s = Set.new
-(1..9).to_a.permutation.each do |perm|
-  # Split 1: a (1 digit), b (4 digits), c (4 digits)
-  a = perm[0]
-  b = perm[1..4].map(&:to_s).join.to_i
-  c = perm[5..8].map(&:to_s).join.to_i
-  s.add(c) if a * b == c
+def solve_problem_032
+  products = Set.new
+  digits = (1..9).to_a
 
-  # Split 2: a (2 digits), b (3 digits), c (4 digits)
-  a = perm[0..1].map(&:to_s).join.to_i
-  b = perm[2..4].map(&:to_s).join.to_i
-  c = perm[5..8].map(&:to_s).join.to_i
-  s.add(c) if a * b == c
+  digits.permutation.each do |p|
+    # p is an array of 9 digits, e.g., [d1, d2, d3, d4, d5, d6, d7, d8, d9]
+
+    # Split 1: a (1 digit), b (4 digits), product (4 digits)
+    # a = p[0], b = p[1..4], c = p[5..8]
+    # Last digits: a_ld = p[0], b_ld = p[4], c_ld = p[8]
+    if (p[0] * p[4]) % 10 == p[8]
+      a = p[0]
+      b = p[1..4].map(&:to_s).join.to_i
+      c = p[5..8].map(&:to_s).join.to_i
+      products.add(c) if a * b == c
+    end
+
+    # Split 2: a (2 digits), b (3 digits), product (4 digits)
+    # a = p[0..1], b = p[2..4], c = p[5..8]
+    # Last digits: a_ld = p[1], b_ld = p[4], c_ld = p[8]
+    if (p[1] * p[4]) % 10 == p[8]
+      a = p[0..1].map(&:to_s).join.to_i
+      b = p[2..4].map(&:to_s).join.to_i
+      c = p[5..8].map(&:to_s).join.to_i # Structure of c is the same
+      products.add(c) if a * b == c
+    end
+  end
+
+  return products.inject(0, :+) # Using inject for compatibility as in original
 end
 
-puts s.inject(0, :+)
+puts solve_problem_032
