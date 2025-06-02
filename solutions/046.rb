@@ -36,4 +36,6 @@ cc = (2..10000).to_a.delete_if{|x| x.even?}.delete_if{|x| x.prime?}
 
 
 sol = cc - set
-puts sol
+# We need the smallest odd composite, so the first element if sorted, or min.
+# cc is sorted initially. 'set' is sorted. Array subtraction does not guarantee order.
+puts sol.min

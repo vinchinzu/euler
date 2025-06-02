@@ -35,9 +35,13 @@ end
  
  
  d = []
- (3..41000).each{|x| d << x if curious(x)}.inject(:+)
-   puts d.inject(:+)
- 
+ # Determine the upper limit for the search.
+ # The maximum sum for a 7-digit number is 7 * 9! = 7 * 362880 = 2540160.
+ # An 8-digit number starts at 10,000,000, while 8 * 9! = 2903040.
+ # So, any number with 8 or more digits will be larger than the max possible sum of digit factorials.
+ # The uplim function calculates this limit (2540160).
+ (3..uplim).each{|x| d << x if curious(x)}
+ puts d.inject(:+)
  
  #439 ms 6/21/2013
  # trial two with upper limite down to 30s

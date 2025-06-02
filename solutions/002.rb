@@ -4,7 +4,7 @@ def fib
  sum += b if b.even? 
  a, b = b, a+b
 end
-puts sum
+sum
 end
 
 puts fib

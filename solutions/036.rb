@@ -13,7 +13,7 @@ end
 
 list = Array.new
 
-1.upto(1_000_000).each do |x|
+(1...1_000_000).each do |x| # Numbers less than one million
 s= x.to_s(2)
 if palindrome?(s) && palindrome?(x.to_s) 
  list << x

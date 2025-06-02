@@ -9,22 +9,30 @@
 
 require 'prime'
 
-set = Prime.first(1200)
-set = set.delete_if{|i| i < 1000 or i >9999}
+# Generate all 4-digit primes
+primes_4_digit = Prime.each(9999).select { |p| p >= 1000 }
+prime_set_4_digit = primes_4_digit.to_set # For quick lookups
 
-i=0
-(0..500).each do |i|
-try = [set[i], set[i] + 3330, set[i] +6660]
+primes_4_digit.each do |p1|
+  # Calculate the next two terms in the arithmetic sequence
+  p2 = p1 + 3330
+  p3 = p1 + 2 * 3330
 
-  if try.all?{|i| i.prime?}
-	a = try[0].to_s.split(//).sort
-	b = try[1].to_s.split(//).sort
-	c = try[2].to_s.split(//).sort
+  # Check if p2 and p3 are also 4-digit primes
+  next unless p3 < 10000 # Ensure p3 is still a 4-digit number
+  next unless prime_set_4_digit.include?(p2) && prime_set_4_digit.include?(p3)
 
-	 if a==b and b==c
-     puts try
-	 end
+  # Check if they are permutations of each other
+  s1_sorted = p1.to_s.chars.sort
+  s2_sorted = p2.to_s.chars.sort
+  s3_sorted = p3.to_s.chars.sort
+
+  if s1_sorted == s2_sorted && s2_sorted == s3_sorted
+    # Skip the example sequence 1487, 4817, 8147
+    next if p1 == 1487
+
+    # Found the other sequence, print the concatenated 12-digit number
+    puts "#{p1}#{p2}#{p3}"
+    break # Assuming there's only one other such sequence as implied by "one other"
   end
 end
-
-#set to print

@@ -20,7 +20,7 @@ numerator_product, denominator_product = 1, 1
 
     # Non-trivial check
 
-    next if n % 10 == 0 && d & 10 == 0
+    next if n % 10 == 0 && d % 10 == 0
 
  
 
@@ -57,7 +57,9 @@ numerator_product, denominator_product = 1, 1
   end
 
 end
-puts denominator_product / numerator_product
+
+common_divisor = numerator_product.gcd(denominator_product)
+puts denominator_product / common_divisor
 
 
 
