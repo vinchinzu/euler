@@ -1,6 +1,6 @@
 #write block of code to loop through and for each one. 
 
-require 'benchmark'
+require 'open3'
 
 path = File.expand_path(File.dirname(__FILE__))
 
@@ -10,8 +10,10 @@ total_time = 0.0
 Dir.glob("solutions/*.rb").each do |x|
   puts x
   timer_start = Time.now
-  load File.join(path, x)
+  stdout, stderr, status = Open3.capture3('ruby', File.join(path, x))
   timer = ((Time.now - timer_start)) * 1000
+  puts stdout unless stdout.empty?
+  warn stderr unless stderr.empty?
   results << [File.basename(x), timer]
   puts "Time: #{timer} ms"
 
