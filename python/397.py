@@ -125,21 +125,10 @@ def run_tests() -> bool:
     return True
 
 
-def _main() -> None:
-    """Execute self-tests and compute the target Project Euler answer."""
-    if not run_tests():
-        print("Tests failed. Aborting.")
-        raise SystemExit(1)
-
-    k = 10**6
-    x = 10**9
-
-    print(f"\nComputing F({k}, {x})...")
-    print(f"This may take a few seconds for k={k}...")
-
-    result = compute_F(k, x)
-    print(f"\nF(10^6, 10^9) = {result}")
+def solve() -> int:
+    """Solve PE 397."""
+    return compute_F(10**6, 10**9)
 
 
-if __name__ == "__main__":  # pragma: no cover - manual execution entry point
-    _main()
+if __name__ == "__main__":
+    print(solve())

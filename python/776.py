@@ -59,7 +59,9 @@ def solve() -> float:
 def main() -> float:
     """Main entry point."""
     result = solve()
-    print(f"{result:.12e}")
+    s = f"{result:.12e}"
+    s = s.replace("e+", "e")
+    print(s)
     return result
 
 

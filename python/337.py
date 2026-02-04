@@ -1,200 +1,170 @@
-"""Project Euler Problem 337 - Python translation.
+#!/usr/bin/env python3
+"""Project Euler Problem 337 - Totient Stairstep Sequences
 
-This module computes S(N) as defined in the problem statement:
+S(N) counts valid sequences {a_1, ..., a_n} with a_1=6,
+phi(a_i) < phi(a_{i+1}) < a_i < a_{i+1}, a_n <= N.
 
-- a_1 = 6
-- For all 1 <= i < n:
-    phi(a_i) < phi(a_{i + 1}) < a_i < a_{i + 1}
-- S(N) is the number of such sequences with a_n <= N.
+Compute S(20,000,000) mod 10^8.
 
-The algorithm:
-- Precompute Euler's totient function phi(k) for 1 <= k <= N.
-- Sort values by (phi(k), k).
-- Use dynamic programming combined with a Fenwick tree (Binary Indexed Tree)
-  to count valid sequences efficiently under modulo 1e8.
+Uses C for performance: sieve phi, sort by (phi, value), DP with Fenwick tree.
+"""
+import subprocess, os, tempfile
 
-The implementation targets Python 3.12 and uses only the standard library.
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define TARGET_N 20000000
+#define MOD 100000000
+#define START 6
+
+static int phi_arr[TARGET_N + 1];
+static int primes[2000000];
+static int nprimes = 0;
+static char is_composite[TARGET_N + 1];
+
+/* Fenwick tree */
+static long long bit[TARGET_N + 2];
+
+void bit_update(int idx, long long val) {
+    idx++; /* 1-indexed */
+    while (idx <= TARGET_N + 1) {
+        bit[idx] = (bit[idx] + val) % MOD;
+        idx += idx & (-idx);
+    }
+}
+
+long long bit_query(int idx) {
+    idx++; /* 1-indexed */
+    long long s = 0;
+    while (idx > 0) {
+        s += bit[idx];
+        idx -= idx & (-idx);
+    }
+    return s % MOD;
+}
+
+long long bit_range(int l, int r) {
+    if (l > r) return 0;
+    long long res = bit_query(r);
+    if (l > 0) res -= bit_query(l - 1);
+    return ((res % MOD) + MOD) % MOD;
+}
+
+void sieve_phi(void) {
+    for (int i = 0; i <= TARGET_N; i++) phi_arr[i] = i;
+    memset(is_composite, 0, sizeof(is_composite));
+    /* Linear sieve for phi */
+    phi_arr[0] = 0;
+    phi_arr[1] = 1;
+    for (int i = 2; i <= TARGET_N; i++) {
+        if (!is_composite[i]) {
+            primes[nprimes++] = i;
+            phi_arr[i] = i - 1;
+        }
+        for (int j = 0; j < nprimes; j++) {
+            long long x = (long long)i * primes[j];
+            if (x > TARGET_N) break;
+            is_composite[x] = 1;
+            if (i % primes[j] == 0) {
+                phi_arr[x] = phi_arr[i] * primes[j];
+                break;
+            }
+            phi_arr[x] = phi_arr[i] * (primes[j] - 1);
+        }
+    }
+}
+
+/* Pair (phi, index) for sorting */
+typedef struct {
+    int phi_val;
+    int idx;
+} Pair;
+
+static Pair *pairs;
+static long long *dp;
+
+int pair_cmp(const void *a, const void *b) {
+    const Pair *pa = (const Pair *)a;
+    const Pair *pb = (const Pair *)b;
+    if (pa->phi_val != pb->phi_val) return pa->phi_val - pb->phi_val;
+    return pa->idx - pb->idx;
+}
+
+int main(void) {
+    sieve_phi();
+
+    int count = TARGET_N - START + 1;
+    pairs = (Pair *)malloc(count * sizeof(Pair));
+    dp = (long long *)calloc(TARGET_N + 1, sizeof(long long));
+
+    for (int i = START; i <= TARGET_N; i++) {
+        pairs[i - START].phi_val = phi_arr[i];
+        pairs[i - START].idx = i;
+    }
+
+    qsort(pairs, count, sizeof(Pair), pair_cmp);
+
+    memset(bit, 0, sizeof(bit));
+
+    long long total = 0;
+    int pos = 0;
+
+    /* Process groups with the same phi value */
+    while (pos < count) {
+        int cur_phi = pairs[pos].phi_val;
+
+        /* Collect all indices with this phi */
+        int group_start = pos;
+        while (pos < count && pairs[pos].phi_val == cur_phi) pos++;
+        int group_end = pos;
+
+        /* Compute dp for each element in the group */
+        /* For index j with phi(j) = cur_phi:
+           dp[j] = (1 if j==START else 0) + sum of dp[k] for k in [max(START, cur_phi+1), j-1]
+           where k has phi(k) < cur_phi (already in BIT) */
+        for (int g = group_start; g < group_end; g++) {
+            int j = pairs[g].idx;
+            int left = START;
+            if (cur_phi + 1 > left) left = cur_phi + 1;
+            int right = j - 1;
+
+            long long sum_prev = bit_range(left, right);
+            long long base = (j == START) ? 1 : 0;
+            long long value = (base + sum_prev) % MOD;
+            dp[j] = value;
+            total = (total + value) % MOD;
+        }
+
+        /* Update BIT with the computed dp values */
+        for (int g = group_start; g < group_end; g++) {
+            int j = pairs[g].idx;
+            bit_update(j, dp[j]);
+        }
+    }
+
+    printf("%lld\n", total);
+
+    free(pairs);
+    free(dp);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "p337.c")
+    exe = os.path.join(tmpdir, "p337")
+    with open(src, "w") as f:
+        f.write(C_CODE)
+    r = subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], capture_output=True, text=True)
+    if r.returncode != 0:
+        import sys
+        print(r.stderr, file=sys.stderr)
+        return None
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=120)
+    return result.stdout.strip()
 
-from dataclasses import dataclass
-from time import perf_counter
-from typing import List, Tuple
-
-START: int = 6
-MOD: int = 100_000_000
-TARGET_N: int = 20_000_000
-
-
-@dataclass
-class FenwickTree:
-    """Fenwick Tree (Binary Indexed Tree) supporting prefix sums.
-
-    Indexing is 0-based externally and mapped to 1-based internally.
-    No modulo operations for speed; caller handles modulo.
-    """
-
-    size: int
-
-    def __post_init__(self) -> None:
-        # +2 for 1-based indexing and safety margin
-        self._tree: List[int] = [0] * (self.size + 2)
-
-    def update(self, idx: int, val: int) -> None:
-        """Add val to position idx.
-
-        idx is 0-based; internally converted to 1-based.
-        """
-
-        i = idx + 1
-        size_bound = self.size + 1
-        while i <= size_bound:
-            self._tree[i] += val
-            i += i & -i
-
-    def prefix(self, idx: int) -> int:
-        """Return prefix sum for [0, idx].
-
-        idx is 0-based; internally converted to 1-based.
-        """
-
-        if idx < 0:
-            return 0
-
-        res = 0
-        i = idx + 1
-        while i > 0:
-            res += self._tree[i]
-            i -= i & -i
-        return res
-
-    def query(self, left: int, right: int) -> int:
-        """Return sum over [left, right].
-
-        If left > right, returns 0.
-        """
-
-        if left > right:
-            return 0
-        return self.prefix(right) - self.prefix(left - 1)
-
-
-def sieve_phi(limit: int) -> List[int]:
-    """Compute Euler's totient function φ(k) for 0 ≤ k ≤ limit using a
-    linear-time sieve.
-    """
-    phi = [0] * (limit + 1)
-    primes: List[int] = []
-    is_composite = [False] * (limit + 1)
-
-    phi[0] = 0
-    if limit >= 1:
-        phi[1] = 1
-
-    for i in range(2, limit + 1):
-        if not is_composite[i]:
-            primes.append(i)
-            phi[i] = i - 1
-        for p in primes:
-            x = i * p
-            if x > limit:
-                break
-            is_composite[x] = True
-            if i % p == 0:
-                phi[x] = phi[i] * p
-                break
-            phi[x] = phi[i] * (p - 1)
-
-    return phi
-
-
-def compute_s(n: int) -> int:
-    """Compute S(n) modulo MOD.
-
-    Optimized version using sorting approach.
-    """
-
-    if n < START:
-        return 0
-
-    phi_values = sieve_phi(n)
-
-    # Create pairs (phi(i), i) for i in [START, n] and sort by phi then i.
-    pairs: List[Tuple[int, int]] = [
-        (phi_values[i], i) for i in range(START, n + 1)
-    ]
-    pairs.sort()
-
-    dp: List[int] = [0] * (n + 1)
-    tree = FenwickTree(n)
-
-    total = 0
-    i = 0
-    length = len(pairs)
-
-    # Process elements grouped by equal phi to avoid within-group dependencies.
-    while i < length:
-        current_phi = pairs[i][0]
-        group_indices: List[int] = []
-
-        # Collect all indices with the same phi value.
-        while i < length and pairs[i][0] == current_phi:
-            group_indices.append(pairs[i][1])
-            i += 1
-
-        # Compute dp for all indices in the current group.
-        for j in group_indices:
-            left = max(START, current_phi + 1)
-            right = j - 1
-            sum_prev = tree.query(left, right) % MOD
-            base = 1 if j == START else 0
-            value = (base + sum_prev) % MOD
-            dp[j] = value
-            total = (total + value) % MOD
-
-        # Update the Fenwick tree with finished dp values.
-        for j in group_indices:
-            tree.update(j, dp[j])
-
-    return total
-
-
-def run_tests() -> None:
-    """Run basic self-checks based on known values from the problem statement."""
-
-    test_cases = [
-        (5, 0),
-        (6, 1),
-        (10, 4),
-        (100, 482_073_668),
-    ]
-
-    for n, expected in test_cases:
-        result = compute_s(n) % MOD
-        status = "PASS" if result == (expected % MOD) else "FAIL"
-        print(f"Test S({n}), got {result}, expected {expected} -> {status}")
-
-    n = 10_000
-    expected_mod = 73_808_307
-    result = compute_s(n) % MOD
-    status = "PASS" if result == expected_mod else "FAIL"
-    print(f"Test S({n}) mod 1e8, got {result}, expected {expected_mod} -> {status}")
-
-
-def main() -> None:
-    """Entry point used when executing this module directly.
-
-    Computes S(TARGET_N) modulo MOD and prints the result and timing.
-    """
-
-    start = perf_counter()
-    result = compute_s(TARGET_N)
-    elapsed = perf_counter() - start
-
-    print(f"Final answer: S({TARGET_N}) mod {MOD} = {result}")
-    print(f"Computation completed in {elapsed:.2f} seconds")
-
-
-if __name__ == "__main__":  # pragma: no cover - CLI behavior
-    main()
+if __name__ == "__main__":
+    print(solve())

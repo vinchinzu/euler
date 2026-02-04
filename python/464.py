@@ -1,62 +1,17 @@
-"""Project Euler Problem 464: Möbius function and balanced pairs.
+"""Project Euler Problem 464: Mobius function and balanced pairs.
 
-Find the number of pairs 1 ≤ a ≤ b ≤ n such that the P(a, b), the number of
-integers n in [a, b] where μ(n) = 1, and N(a, b), the number of integers where
-μ(n) = -1, satisfy 99 N(a,b) ≤ 100 P(a,b) and 99 P(a,b) ≤ 100 N(a,b).
+Find the number of pairs 1 <= a <= b <= n such that the P(a, b), the number of
+integers n in [a, b] where mu(n) = 1, and N(a, b), the number of integers where
+mu(n) = -1, satisfy 99 N(a,b) <= 100 P(a,b) and 99 P(a,b) <= 100 N(a,b).
 """
 
 from __future__ import annotations
 
+import ctypes
+import os
+import subprocess
+import tempfile
 from math import isqrt
-from typing import List
-
-
-class BIT:
-    """Fenwick tree."""
-
-    def __init__(self, size: int, max_val: int) -> None:
-        """Initialize BIT."""
-        self.size = size
-        self.tree = [0] * (size + 1)
-        self.max_val = max_val
-
-    def add(self, idx: int, val: int) -> None:
-        """Add value at index."""
-        idx += 1
-        while idx <= self.size:
-            self.tree[idx] += val
-            idx += idx & -idx
-
-    def sum(self, idx: int) -> int:
-        """Prefix sum up to index."""
-        idx += 1
-        result = 0
-        while idx > 0:
-            result += self.tree[idx]
-            idx -= idx & -idx
-        return result
-
-
-def pre_mobius(limit: int) -> List[int]:
-    """Precompute Möbius function."""
-    mu = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                if j % (i * i) == 0:
-                    mu[j] = 0
-                else:
-                    mu[j] = -mu[j]
-    return mu
-
-
-def tr(n: int) -> int:
-    """Triangular number."""
-    return n * (n + 1) // 2
 
 
 def solve() -> int:
@@ -64,21 +19,108 @@ def solve() -> int:
     N = 20_000_000
     K = 100
     L = K * isqrt(N)
-    mobius = pre_mobius(N)
 
-    ans = tr(N)
-    for sign in [1, -1]:
-        f = 0
-        bit = BIT(N + L, 2**63 - 1)
-        for b in range(1, N + 1):
-            bit.add(f + L, 1)
-            if mobius[b] == sign:
-                f += K
-            elif mobius[b] == -sign:
-                f -= K - 1
-            ans -= bit.sum(N + L) - bit.sum(f + L)
+    c_code = r"""
+#include <stdlib.h>
+#include <string.h>
 
-    return ans
+static void pre_mobius(int limit, signed char *mu) {
+    char *is_prime = (char *)calloc(limit + 1, 1);
+    for (int i = 0; i <= limit; i++) {
+        is_prime[i] = (i >= 2) ? 1 : 0;
+        mu[i] = 1;
+    }
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int j = i; j <= limit; j += i) {
+                if (j != i) is_prime[j] = 0;
+                if ((long long)j % ((long long)i * i) == 0)
+                    mu[j] = 0;
+                else
+                    mu[j] = -mu[j];
+            }
+        }
+    }
+    free(is_prime);
+}
+
+/* BIT (Fenwick tree) */
+static long long *bit_tree;
+static int bit_size;
+
+static void bit_init(int size) {
+    bit_size = size + 2;
+    bit_tree = (long long *)calloc(bit_size + 1, sizeof(long long));
+}
+
+static void bit_free(void) {
+    free(bit_tree);
+}
+
+static void bit_add(int idx, long long val) {
+    idx++;
+    while (idx <= bit_size) {
+        bit_tree[idx] += val;
+        idx += idx & (-idx);
+    }
+}
+
+static long long bit_sum(int idx) {
+    idx++;
+    long long result = 0;
+    while (idx > 0) {
+        result += bit_tree[idx];
+        idx -= idx & (-idx);
+    }
+    return result;
+}
+
+long long solve(int N, int K, int L) {
+    signed char *mu = (signed char *)calloc(N + 1, 1);
+    pre_mobius(N, mu);
+
+    long long ans = (long long)N * (N + 1) / 2;
+
+    for (int sign = 1; sign >= -1; sign -= 2) {
+        int f = 0;
+        bit_init(N + L);
+        memset(bit_tree, 0, (bit_size + 1) * sizeof(long long));
+        for (int b = 1; b <= N; b++) {
+            bit_add(f + L, 1);
+            if (mu[b] == sign)
+                f += K;
+            else if (mu[b] == -sign)
+                f -= K - 1;
+            ans -= bit_sum(N + L) - bit_sum(f + L);
+        }
+        bit_free();
+    }
+
+    free(mu);
+    return ans;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    c_path = os.path.join(tmpdir, "p464.c")
+    so_path = os.path.join(tmpdir, "p464.so")
+    with open(c_path, "w") as f:
+        f.write(c_code)
+    subprocess.run(
+        ["gcc", "-O2", "-shared", "-fPIC", "-o", so_path, c_path],
+        check=True,
+        capture_output=True,
+    )
+    lib = ctypes.CDLL(so_path)
+    lib.solve.restype = ctypes.c_longlong
+    lib.solve.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+
+    result = lib.solve(N, K, L)
+
+    os.unlink(c_path)
+    os.unlink(so_path)
+    os.rmdir(tmpdir)
+
+    return result
 
 
 def main() -> int:

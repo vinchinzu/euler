@@ -1,94 +1,116 @@
 """Project Euler Problem 748: Upside Down Diophantine Equation.
 
-Find the sum of all solutions to 1/x² + 1/y² = 13/z² such that x≤y, x,y,z ≤
-N, and GCD(x,y,z) = 1.
+Find the sum of all solutions to 1/x^2 + 1/y^2 = 13/z^2 such that x<=y, x,y,z <= N,
+and GCD(x,y,z) = 1.
 
-We can write this as (z/x)² + (z/y)² = 13, and we can parameterize rational
-solutions by drawing a line with slope m/n from the solution (3,2) to each
-other solution. The other point is (x',y') = (3+d, 2-d*m/n) for some d, and
-solving gives (x',y') = (3m²+4mn-3n²)/(m²+n²),
-(-2m²+6mn+2n²)/(m²+n²), which gives us our parameterization. Further, we
-can divide these polynomials to see that GCD(x,y,z) contains a factor of 4
-if m≡n (mod 2), and contains a factor of 13² if m≡8n (mod 13).
+Parameterize rational solutions by drawing a line with slope m/n from (3,2).
+Uses C extension for performance.
 """
 
-from __future__ import annotations
-
-from math import gcd, isqrt, pow as math_pow
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
+import os
+import subprocess
+import sys
+import tempfile
 
 
-def gcd_table(limit: int) -> list[list[int]]:
-    """Precompute GCD table."""
-    result = [[0] * (limit + 1) for _ in range(limit + 1)]
-    for i in range(1, limit + 1):
-        for j in range(1, limit + 1):
-            result[i][j] = gcd(i, j)
-    return result
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+typedef long long ll;
+
+static const ll N = 10000000000000000LL;  /* 10^16 */
+static const ll M = 1000000000LL;         /* 10^9 */
+
+static ll ans = 0;
+
+static ll sq(ll x) { return x * x; }
+
+static ll gcd_func(ll a, ll b) {
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
+
+static void process(ll m, ll n, int g) {
+    ll a = sq(m) + sq(n);
+    ll b = -2*sq(m) + 6*m*n + 2*sq(n);
+    ll c = 3*sq(m) + 4*m*n - 3*sq(n);
+    ll x = a * b / g;
+    ll y = a * c / g;
+    ll z = b * c / g;
+    if (y <= N && z <= N && y > 0 && z > 0) {
+        ans = (ans + x + y + z) % M;
+    }
+}
+
+int main(void) {
+    double A = (sqrt(6.5) - 2.0) / (3.0 - sqrt(6.5));
+    double B = 2.0 / (sqrt(13.0) - 3.0);
+
+    /* Precompute GCD table */
+    int gcd_limit = (int)pow((double)N * 4.0 / 8.0, 0.25) + 2;
+    /* Use 1D array for cache efficiency */
+    int *gcds = NULL;
+    int gs = gcd_limit + 1;
+    gcds = (int*)malloc((long long)gs * gs * sizeof(int));
+    if (!gcds) { fprintf(stderr, "malloc failed\n"); return 1; }
+    for (int i = 0; i < gs; i++)
+        for (int j = 1; j < gs; j++)
+            gcds[i * gs + j] = (int)gcd_func(i, j);
+
+    /* Section 1: bound 4*N */
+    for (ll n = 1; 8 * sq(n) * sq(n) <= 4 * N; n++) {
+        for (ll m = n + 1; m < B * n && (sq(m)+sq(n)) * (3*sq(m)+4*m*n-3*sq(n)) <= 4*N; m++) {
+            if (m > A * n && gcds[(int)(m % n) * gs + (int)n] == 1 && (2*m - 3*n) % 13 != 0) {
+                process(m, n, (m + n) % 2 == 0 ? 4 : 1);
+            }
+        }
+    }
+
+    /* Section 2: bound 676*N, only m = 8n (mod 13) */
+    for (ll n = 1; 8 * sq(n) * sq(n) <= 676 * N; n++) {
+        for (ll m = n + (7*n) % 13; m < B * n && (sq(m)+sq(n)) * (3*sq(m)+4*m*n-3*sq(n)) <= 676*N; m += 13) {
+            if (m > A * n && gcd_func(m, n) == 1) {
+                process(m, n, (m + n) % 2 == 0 ? 676 : 169);
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    free(gcds);
+    return 0;
+}
+"""
 
 
-def solve() -> int:
-    """Solve Problem 748."""
-    n = 10**16
-    m = 10**9
-    a = (isqrt(26) - 4) / (6 - isqrt(26))
-    b = 2 / (isqrt(13) - 3)
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p748.c")
+    exe_file = os.path.join(tmpdir, "p748")
 
-    limit = int(math_pow(n * 4 / 8, 0.25))
-    gcds = gcd_table(limit)
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-    ans = 0
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
 
-    def process(m_val: int, n_val: int, g: int) -> None:
-        """Process a solution."""
-        nonlocal ans
-        a_val = sq(m_val) + sq(n_val)
-        b_val = -2 * sq(m_val) + 6 * m_val * n_val + 2 * sq(n_val)
-        c_val = 3 * sq(m_val) + 4 * m_val * n_val - 3 * sq(n_val)
-        x = a_val * b_val // g
-        y = a_val * c_val // g
-        z = b_val * c_val // g
-        if y <= n and z <= n and y > 0 and z > 0:
-            ans = (ans + x + y + z) % m
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=25
+    )
 
-    # First section
-    for n_val in range(1, int(isqrt(4 * n / 8)) + 1):
-        for m_val in range(n_val + 1, int(b * n_val) + 1):
-            if (
-                sq(m_val) + sq(n_val)
-            ) * (3 * sq(m_val) + 4 * m_val * n_val - 3 * sq(n_val)) <= 4 * n:
-                if (
-                    m_val > a * n_val
-                    and gcds[m_val % n_val][n_val] == 1
-                    and (2 * m_val - 3 * n_val) % 13 != 0
-                ):
-                    g = 4 if (m_val + n_val) % 2 == 0 else 1
-                    process(m_val, n_val, g)
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
 
-    # Second section
-    for n_val in range(1, int(isqrt(676 * n / 8)) + 1):
-        m_start = n_val + (7 * n_val) % 13
-        for m_val in range(m_start, int(b * n_val) + 1, 13):
-            if (
-                sq(m_val) + sq(n_val)
-            ) * (3 * sq(m_val) + 4 * m_val * n_val - 3 * sq(n_val)) <= 676 * n:
-                if m_val > a * n_val and gcd(m_val, n_val) == 1:
-                    g = 676 if (m_val + n_val) % 2 == 0 else 169
-                    process(m_val, n_val, g)
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

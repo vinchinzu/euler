@@ -1,114 +1,104 @@
 """Project Euler Problem 404: Crisscross Ellipses.
 
-Rotate the ellipse x² + 4y² = 4a² by an angle θ. The rotated ellipse
-intersects the original ellipse at four points, with two distinct distances
-b ≤ c to the origin. Find the number of canonical ellipsoidal triplets
-(a, b, c) where a,b,c are integers and a ≤ N.
-
-The equation of the ellipse in polar coordinates is r = 2a / √(1 + 3 cos²ϕ).
-For any canonical ellipsoidal triplet, we have two angles ϕ1 and ϕ2, 90°
-apart, such that:
-b = 2a / √(1 + 3 cos²(ϕ1))
-c = 2a / √(1 + 3 cos²(ϕ2)) = 2a / √(1 + 3 sin²(ϕ1))
-
-We can write these as cos²(ϕ1) = ((2a/b)² - 1) / 3 and sin²(ϕ1) =
-((2a/c)² - 1) / 3, and using the identity cos²ϕ + sin²ϕ = 1 gives
-(2a/b)² + (2a/c)² = 5.
-
-Let (b, c) = g, b = g*x, and c = g*y. Then (2a/x)² + (2a/y)² = 5g², and
-since (x, y) = 1, 2a must be divisible by both: 2a = x*y*k. Plugging that
-in gives (y*k)² + (x*k)² = 5g².
-
-Assume without loss of generality that k = 1, because we can generate
-solutions where k > 1 by scaling. Then (x + y*i)(x - y*i) = 5g², and as x
-and y are relatively prime, we must either have 1 + 2i | x + y*i or
-1 - 2i | x + y*i.
-
-In the first case, x + y*i = (1 + 2i)(x' + y'i) and x - y*i = (1 - 2i)(x' -
-y'i), and (x' + y'i)(x' - y'i) = (x')² + (y')² = g². We can generate
-solutions (x', y', g) using the parameterization for primitive Pythagorean
-triples: x' = m² - n², y' = 2mn, g = m² + n². From that we can compute
-x = |m² - n² - 4mn|, y = 2m² - 2n² + 2mn. We have a geometric restriction
-that b ≥ a => g ≥ y/2 => m ≤ 2n. This yields a base solution of a = x*y/2,
-and a total of ⌊N / (x*y/2)⌋ solutions. The base solution is only valid if
-(x, y) = 1, which is true as long as x and y do not share a factor of 5.
-We can stop when x*y > 2N => 4n⁴ > N.
-
-In the second case, x + y*i = (1 - 2i)(x' + y'i), so x = m² - n² + 4mn and
-y = |2m² - 2n² - 2mn|. The geometric restriction c ≥ a implies g ≥ x/2 =>
-m ≥ 3n. Again, the number of solutions is ⌊N / (x*y/2)⌋ and is valid if
-(x, y) ≠ 5, and we can stop when x*y > 2N => 20n⁴ > N.
-
-As a final optimization, we precompute GCDs up to the constraint that
-4n⁴ ≤ N.
+Count canonical ellipsoidal triplets (a, b, c) with a <= N = 10^17.
+Uses parameterization from the Gaussian integer approach described in the
+original solution, implemented in C for speed.
 """
+import subprocess, os, tempfile
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
 
-from math import gcd, isqrt
+typedef long long ll;
 
+ll gcd_func(ll a, ll b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
 
-def sq(n: int) -> int:
-    """Return n squared."""
-    return n * n
+int main() {
+    ll N = 100000000000000000LL;  /* 10^17 */
+    ll ans = 0;
 
+    /* First case: m <= 2n, with m > n, m-n odd, gcd(m,n)=1 */
+    /* limit: 4*n^4 <= N => n <= (N/4)^(1/4) */
+    ll limit1 = (ll)pow((double)N / 4.0, 0.25);
+    /* Adjust to be safe */
+    while (4*limit1*limit1*limit1*limit1 <= N) limit1++;
+    limit1--;
 
-def gcds(limit: int) -> list[list[int]]:
-    """Precompute GCDs up to limit."""
-    result = [[0] * (i + 1) for i in range(limit + 1)]
-    for i in range(1, limit + 1):
-        for j in range(1, i + 1):
-            result[i][j] = gcd(i, j)
-    return result
+    for (ll n = 1; n <= limit1; n++) {
+        if (4*n*n*n*n > N) break;
+        /* m from n+1 to 2n, step 2 (m-n odd means same parity step) */
+        for (ll m = n + 1; m <= 2 * n; m += 2) {
+            if (gcd_func(m, n) != 1) continue;
 
+            ll x = m*m - n*n - 4*m*n;
+            if (x < 0) x = -x;
+            ll y = 2*(m*m - n*n + m*n);
+            /* a_base = x*y/2 */
+            ll xy = x * y;
+            if (xy == 0) continue;
+            ll a_base = xy / 2;
+            if (a_base > N || a_base == 0) continue;
 
-def solve() -> int:
-    """Solve Problem 404."""
-    N = 10**17
+            /* Check (x, y) = 1 iff not both divisible by 5 */
+            if (x % 5 == 0 && y % 5 == 0) continue;
 
-    limit = int((N / 4) ** 0.25)
-    gcds_table = gcds(limit)
+            ans += N / a_base;
+        }
+    }
 
-    ans = 0
+    /* Second case: m >= 3n, with m > n, m-n odd, gcd(m,n)=1 */
+    /* limit: 20*n^4 <= N => n <= (N/20)^(1/4) */
+    ll limit2 = (ll)pow((double)N / 20.0, 0.25);
+    while (20*limit2*limit2*limit2*limit2 <= N) limit2++;
+    limit2--;
 
-    # First case: m ≤ 2n
-    for n in range(1, limit + 1):
-        if 4 * n**4 > N:
-            break
-        for m in range(n + 1, 2 * n + 1, 2):
-            if gcds_table[n][m % n] == 1:
-                x = abs(sq(m) - sq(n) - 4 * m * n)
-                y = 2 * (sq(m) - sq(n) + m * n)
-                if x * y // 2 > N:
-                    break
-                if x % 5 > 0 or y % 5 > 0:
-                    ans += N // (x * y // 2)
+    for (ll n = 1; n <= limit2; n++) {
+        if (20*n*n*n*n > N) break;
+        /* m starts at 3n, step depends on parity */
+        /* m - n must be odd: if n is even, m must be odd; if n is odd, m must be even */
+        /* Actually m and n must have different parity (m-n odd) */
+        ll m_start = 3 * n;
+        if ((m_start - n) % 2 == 0) m_start++;  /* ensure m-n is odd */
 
-    # Second case: m ≥ 3n
-    limit2 = int((N / 20) ** 0.25)
-    for n in range(1, limit2 + 1):
-        if 20 * n**4 > N:
-            break
-        m = 3 * n + 1
-        while True:
-            if gcds_table[n][m % n] == 1:
-                x = sq(m) - sq(n) + 4 * m * n
-                y = 2 * abs(sq(m) - sq(n) - m * n)
-                if x * y // 2 > N:
-                    break
-                if x % 5 > 0 or y % 5 > 0:
-                    ans += N // (x * y // 2)
-            m += 2
+        for (ll m = m_start; ; m += 2) {
+            if (gcd_func(m, n) != 1) continue;
 
-    return ans
+            ll x = m*m - n*n + 4*m*n;
+            ll y_val = m*m - n*n - m*n;
+            if (y_val < 0) y_val = -y_val;
+            ll y = 2 * y_val;
 
+            ll xy = x * y;
+            if (xy == 0) continue;
+            ll a_base = xy / 2;
+            if (a_base > N) break;
+            if (a_base == 0) continue;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+            if (x % 5 == 0 && y % 5 == 0) continue;
 
+            ans += N / a_base;
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol404.c")
+    exe = os.path.join(tmpdir, "sol404")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=30)
+    print(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    solve()

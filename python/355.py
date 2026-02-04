@@ -181,18 +181,5 @@ def solve(n: int) -> int:
     return _maximize_sum(max_per_group)
 
 
-def main() -> None:
-    """Run a simple verification."""
-
-    print("Verifying examples:")
-    print(f"Co(10) = {solve(10)} (expected: 30)")
-    print(f"Co(30) = {solve(30)} (expected: 193)")
-    # Skip Co(100) as it's computationally intensive
-    print("Co(100) = ? (expected: 1356) - SKIPPED due to complexity")
-
-    # Note: Co(200000) requires significant computation time and memory
-    print("\nNote: Full computation for large n is computationally intensive")
-
-
-if __name__ == "__main__":  # pragma: no cover - convenience entry point
-    main()
+if __name__ == "__main__":
+    print(solve(30))

@@ -32,7 +32,7 @@ def helper(index: int, n: int) -> int:
         return 1
     fibs = fibonaccis()
     if fibs[index + 2] <= n + 2:
-        return 2 ** (index - 1)
+        return 2 ** index
     return helper(index - 1, n) + helper(index - 1, n - fibs[index])
 
 
@@ -46,7 +46,7 @@ def solve() -> int:
 def main() -> int:
     """Main entry point."""
     result = solve()
-    print(result)
+    print(int(result))
     return result
 
 

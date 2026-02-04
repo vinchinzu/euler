@@ -1,129 +1,99 @@
 """Project Euler Problem 559: Permutation matrices.
 
-Let P(k, r, n) be the number of r x n matrices such that each row is a
-permutation of 1 to n, and iff column i is divisible by k, then each element is
-smaller than the one to its right. Find Σ_{k=1}^N P(k, N, N).
-
-Suppose that there are groups of columns of sizes g_t that are ascending, where
-Σ g_t = N. Then the number of matrices ascending in at least these columns is
-(N! / Π_t (g_t)!)^r, where the base is the number of ways to partition the
-elements of 1 to n into groups with those sizes. For a given k, the n columns
-are already grouped into ⌈N/k⌉ parts, and they can be further grouped together.
-
-To compute the number of matrices ascending at exactly those columns, we use
-Inclusion Exclusion, considering all possible ways that the ⌈N/k⌉ parts can be
-grouped together. This can be computed efficiently using dynamic programming
-where dp(i) is Σ N! / Π (g_t)! where the g_t add up to the length of the first
-i parts, and keeping track of the number of groups to determine the sign.
-Finally, for performance, we precompute all inverse factorials, and pull out
-the factor of N!.
+Compute Q(50000) mod 1000000123.
+Uses C extension for the heavy computation.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from typing import List
-
-
-class Zp:
-    """Modular arithmetic helper class."""
-
-    def __init__(self, max_n: int, mod: int) -> None:
-        """Initialize with maximum n and modulus."""
-        self.mod = mod
-        self.max_n = max_n
-        self._factorials: List[int] = []
-        self._inv_factorials: List[int] = []
-        self._precompute()
-
-    def _precompute(self) -> None:
-        """Precompute factorials and inverse factorials."""
-        self._factorials = [1] * (self.max_n + 1)
-        for i in range(1, self.max_n + 1):
-            self._factorials[i] = (self._factorials[i - 1] * i) % self.mod
-
-        self._inv_factorials = [1] * (self.max_n + 1)
-        self._inv_factorials[self.max_n] = pow(
-            self._factorials[self.max_n], self.mod - 2, self.mod
-        )
-        for i in range(self.max_n - 1, -1, -1):
-            self._inv_factorials[i] = (
-                self._inv_factorials[i + 1] * (i + 1)
-            ) % self.mod
-
-    def factorial(self, n: int) -> int:
-        """Return n! mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._factorials[n]
-
-    def inv_factorial(self, n: int) -> int:
-        """Return 1/(n!) mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._inv_factorials[n]
-
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Compute base^exp mod mod."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp % 2 == 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp //= 2
-    return result
-
-
-def parity(n: int) -> int:
-    """Return (-1)^n."""
-    return 1 if n % 2 == 0 else -1
-
-
-def solve() -> int:
-    """Solve Problem 559."""
+def solve():
     N = 50000
-    M = 10**9 + 123
+    M = 1000000123
 
-    zp = Zp(N, M)
-    pow_inv_factorials = [0] * (N + 1)
-    for i in range(N + 1):
-        pow_inv_factorials[i] = pow_mod(zp.inv_factorial(i), N, M)
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
 
-    def P(k: int) -> int:
-        """Compute P(k, N, N)."""
-        # Partition columns into groups of size k
-        parts: List[int] = []
-        for length in range(0, N, k):
-            parts.append(length)
-        parts.append(N)
-        num_parts = len(parts)
+typedef long long ll;
 
-        # DP: dp[i] = sum over ways to group first i parts
-        dp = [0] * num_parts
-        dp[0] = 1
-        for i in range(1, num_parts):
-            for start in range(i):
-                length = parts[i] - parts[start]
-                dp[i] = (dp[i] - pow_inv_factorials[length] * dp[start]) % M
+#define NVAL 50000
+#define MOD 1000000123LL
 
-        return (-parity(num_parts) * dp[num_parts - 1]) % M
+ll factorials[NVAL+1];
+ll inv_factorials[NVAL+1];
+ll pow_inv_fact[NVAL+1];
+ll dp[NVAL+2];
+int parts[NVAL+2];
 
-    ans = 0
-    for k in range(1, N + 1):
-        ans = (ans + P(k)) % M
+ll power(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-    # Multiply by (N!)^N
-    ans = (ans * pow_mod(zp.factorial(N), N, M)) % M
-    return ans
+int main() {
+    int N = NVAL;
+    ll M = MOD;
 
+    factorials[0] = 1;
+    for (int i = 1; i <= N; i++)
+        factorials[i] = factorials[i-1] * i % M;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    inv_factorials[N] = power(factorials[N], M - 2, M);
+    for (int i = N - 1; i >= 0; i--)
+        inv_factorials[i] = inv_factorials[i+1] * (i+1) % M;
 
+    for (int i = 0; i <= N; i++)
+        pow_inv_fact[i] = power(inv_factorials[i], N, M);
+
+    ll ans = 0;
+
+    for (int k = 1; k <= N; k++) {
+        /* Build parts array: 0, k, 2k, ..., last < N, then N */
+        int np = 0;
+        for (int v = 0; v < N; v += k)
+            parts[np++] = v;
+        parts[np++] = N;
+        /* np = num_parts */
+
+        dp[0] = 1;
+        for (int i = 1; i < np; i++) {
+            ll val = 0;
+            for (int s = 0; s < i; s++) {
+                int length = parts[i] - parts[s];
+                val = (val - pow_inv_fact[length] % M * (dp[s] % M)) % M;
+            }
+            dp[i] = (val % M + M) % M;
+        }
+
+        /* parity(np) = (-1)^np */
+        /* result = -parity(np) * dp[np-1] = -(-1)^np * dp[np-1] = (-1)^(np+1) * dp[np-1] */
+        ll sign = ((np + 1) % 2 == 0) ? 1 : -1;
+        ll pk = (sign * (ll)dp[np-1]) % M;
+        if (pk < 0) pk += M;
+        ans = (ans + pk) % M;
+    }
+
+    ans = ans * power(factorials[N], N, M) % M;
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "sol.c")
+        exe = os.path.join(tmpdir, "sol")
+        with open(src, "w") as f:
+            f.write(c_code)
+        subprocess.run(["gcc", "-O2", "-o", exe, src], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=30)
+        return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

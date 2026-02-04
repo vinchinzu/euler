@@ -2,8 +2,10 @@
 
 People sit in a row of N seats, the first person choosing any seat and each
 subsequent person choosing a seat furthest from anyone else already seated.
-Find Σ_{k=1}^N f(k) where f(k) is the number of chairs where the first person
-can sit such that the total number of seated people is maximized.
+Find sum_{k=1}^N f(k) where f(k) is the number of chairs where the first
+person can sit such that the total number of seated people is maximized.
+
+Uses the pattern-based approach from the Java solution.
 """
 
 from __future__ import annotations
@@ -14,40 +16,72 @@ def solve() -> int:
     N = 10**12
     M = 10**8
 
-    # Precompute f(k) for small k
-    f_small = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8]
-    ans = sum(f_small[: min(N + 1, len(f_small))])
+    def tr(n, m):
+        """Triangular number n*(n+1)/2 mod m."""
+        return n * (n + 1) // 2 % m
 
-    if N < len(f_small):
-        return ans % M
+    def sumF(n):
+        F = [1, 2, 2, 4, 3, 6, 2, 6, 3]
+        sumf = 0
+        index = 0
+        for i in range(9):
+            sumf = (sumf + F[i]) % M
+            index += 1
+            if index >= n:
+                return sumf
 
-    # Pattern for larger N
-    t = 4
-    k = 16
-    while k <= N:
-        # Add 8 seats for 2^t + 2
-        ans = (ans + 8) % M
-        k += 1
+        while True:
+            length = index // 4  # len in Java
+            sumf = (sumf + 8) % M
+            index += 1
+            if index >= n:
+                return sumf
 
-        # Add ranges
-        range_size = 1
-        while range_size < (1 << (t - 2)) and k <= N:
-            ans = (ans + 2 * range_size) % M  # Two ranges
-            range_size *= 2
-            k += range_size
+            l = 1
+            while l <= length // 2:
+                # Rising range
+                count = min(n - index, l)
+                sumf = (sumf + 2 * tr(count, M)) % M
+                index += l
+                if index >= n:
+                    return sumf
 
-        # Center range
-        if k <= N:
-            center_size = 1 << (t - 2)
-            while center_size > 0 and k <= N:
-                ans = (ans + center_size + 2) % M  # Range + 2 ends
-                center_size //= 2
-                k += center_size
+                # Peak
+                sumf = (sumf + 2 * (2 * l + 1)) % M
+                index += 1
+                if index >= n:
+                    return sumf
 
-        t += 1
-        k = (1 << t) + 1
+                # Falling range
+                count2 = max(l - (n - index), 1)
+                sumf = (sumf + 2 * (tr(l, M) - tr(count2, M))) % M
+                index += l - 1
+                if index >= n:
+                    return sumf
 
-    return ans % M
+                l *= 2
+
+            # Center rising range
+            count = min(n - index, length)
+            sumf = (sumf + 2 * tr(count, M)) % M
+            index += length
+            if index >= n:
+                return sumf
+
+            # Center peak
+            sumf = (sumf + 3 * (length + 1)) % M
+            index += 1
+            if index >= n:
+                return sumf
+
+            # Center falling range
+            count2 = max(length - (n - index) + 2, 2)
+            sumf = (sumf + tr(length + 2, M) - tr(count2, M)) % M
+            index += length
+            if index >= n:
+                return sumf
+
+    return sumF(N) % M
 
 
 def main() -> int:

@@ -1,65 +1,47 @@
 """Project Euler Problem 527: Randomized Binary Search.
 
-Let B(n) be the number of expected guesses to find a random number in
-[1, N] using binary search (including the final correct guess) and let
-R(n) be the number of expected guesses if each guess is a random number
-selected in the remaining valid range (also including the final correct
-guess). Find R(N) - B(N).
+R(n) = 2*(n+1)/n * H(n) - 3, where H(n) is the n-th harmonic number.
+B(n) is computed via recursion (O(log n) depth since binary search halves each time).
+H(n) for large n uses the Euler-Maclaurin asymptotic expansion.
 """
 
-from __future__ import annotations
-
-from typing import Dict
+from mpmath import mp, mpf, log, euler, bernoulli
 
 
-def harmonic(n: int) -> float:
-    """Compute harmonic number H_n."""
-    result = 0.0
-    for i in range(1, n + 1):
-        result += 1.0 / i
-    return result
+def harmonic_large(n):
+    """Compute H(n) using Euler-Maclaurin asymptotic expansion."""
+    mp.dps = 30
+    n = mpf(n)
+    gamma = euler
+    Hn = log(n) + gamma + 1 / (2 * n)
+    for k in range(1, 20):
+        Hn -= bernoulli(2 * k) / (2 * k * n ** (2 * k))
+    return Hn
 
 
-def B(n: int, cache: Dict[int, float]) -> float:
-    """Compute B(n) using memoization."""
+def B(n, cache={}):
+    """Expected guesses for standard binary search on range of size n."""
     if n in cache:
         return cache[n]
     if n <= 1:
-        return 1.0
-
-    # Binary search: guess middle
-    guess = (n + 1) // 2
-    # Too high: range [1, guess-1] with (guess-1) numbers
-    # Too low: range [guess+1, n] with (n-guess) numbers
-    prob_high = (guess - 1) / n
-    prob_low = (n - guess) / n
-
-    result = 1.0
-    if guess > 1:
-        result += prob_high * B(guess - 1, cache)
-    if guess < n:
-        result += prob_low * B(n - guess, cache)
-
-    cache[n] = result
-    return result
+        return mpf(1)
+    mid = (n + 1) // 2
+    left = mid - 1
+    right = n - mid
+    res = mpf(1) + (mpf(left) * B(left) + mpf(right) * B(right)) / mpf(n)
+    cache[n] = res
+    return res
 
 
-def solve() -> str:
-    """Solve Problem 527."""
-    N = 10**10
-    cache: Dict[int, float] = {}
-    B_val = B(N, cache)
-    R_val = 2 * harmonic(N) * (N + 1) / N - 3
+def solve():
+    mp.dps = 30
+    N = 10 ** 10
+    Hn = harmonic_large(N)
+    R_val = 2 * mpf(N + 1) / mpf(N) * Hn - 3
+    B_val = B(N)
     ans = R_val - B_val
-    return f"{ans:.8f}"
-
-
-def main() -> str:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return f"{float(ans):.8f}"
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

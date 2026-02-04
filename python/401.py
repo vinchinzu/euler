@@ -1,64 +1,80 @@
 """Project Euler Problem 401: Sum of squares of divisors.
 
-Let sigma2(n) be the sum of the squares of the divisors of n. Find
-sum_{k=1}^N sigma2(k).
+sum_{k=1}^N sigma2(k) = sum_{d=1}^N floor(N/d) * d^2.
 
-We can write sum_{k=1}^N sigma2(k) = sum_{d=1}^N ⌊N/d⌋ d², because each
-divisor d appears ⌊N/d⌋ times. We can compute the first ⌊√N⌋ terms directly,
-but we compute the rest of the terms in ranges with the same ⌊N/d⌋. For each
-distinct t=⌊N/d⌋, we sum the squares from d = ⌊N/(t+1)⌋ + 1 to ⌊N/t⌋.
+Split at sqrt(N). Use C for speed.
 """
+import subprocess, os, tempfile
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
 
-from math import isqrt
+typedef long long ll;
+typedef unsigned long long ull;
+typedef __int128 lll;
 
+/*
+ * sum_sq_mod(n, M): compute sum_{k=1}^n k^2 mod M
+ * = n*(n+1)*(2n+1)/6 mod M
+ * Since n*(n+1)*(2n+1) can overflow __int128 for large n,
+ * we compute n*(n+1)*(2n+1) mod (6*M), then divide by 6.
+ * 6*M = 6*10^9 fits in long long.
+ */
+ll sum_sq_mod(ll n, ll M) {
+    ll M6 = 6 * M;
+    /* n * (n+1) * (2n+1) mod M6 */
+    /* Each factor < 10^15, product < 10^45, but we reduce after each mult */
+    lll val = (lll)(n % M6);
+    val = val * ((n + 1) % M6) % M6;
+    val = val * ((2 * n + 1) % M6) % M6;
+    return (ll)(val / 6);
+}
 
-def sq(n: int, mod: int | None = None) -> int:
-    """Return n squared, optionally modulo mod."""
-    result = n * n
-    return result % mod if mod else result
+int main() {
+    ll N = 1000000000000000LL;  /* 10^15 */
+    ll M = 1000000000LL;        /* 10^9 */
+    ll L = (ll)sqrt((double)N);
+    while ((L+1)*(L+1) <= N) L++;
+    while (L*L > N) L--;
 
+    ll ans = 0;
 
-def sum_powers(n: int, exp: int, mod: int | None = None) -> int:
-    """Return sum_{k=1}^n k^exp, optionally modulo mod."""
-    if exp == 1:
-        result = n * (n + 1) // 2
-    elif exp == 2:
-        result = n * (n + 1) * (2 * n + 1) // 6
-    elif exp == 3:
-        result = (n * (n + 1) // 2) ** 2
-    else:
-        result = sum(k**exp for k in range(1, n + 1))
-    return result % mod if mod else result
+    /* Part 1: d from 1 to L */
+    for (ll d = 1; d <= L; d++) {
+        ll q = N / d;
+        ll dmod = d % M;
+        ll d2mod = (dmod * dmod) % M;
+        ll qmod = q % M;
+        ans = (ans + qmod * d2mod) % M;
+    }
 
+    /* Part 2: group by t = floor(N/d) for d > L */
+    ll tmax = N / (L + 1);
+    for (ll t = 1; t <= tmax; t++) {
+        ll d_hi = N / t;
+        ll d_lo = N / (t + 1) + 1;
+        if (d_lo <= L) d_lo = L + 1;
+        if (d_lo > d_hi) continue;
 
-def solve() -> int:
-    """Solve Problem 401."""
-    N = 10**15
-    L = isqrt(N)
-    M = 10**9
+        ll s = (sum_sq_mod(d_hi, M) - sum_sq_mod(d_lo - 1, M) + M) % M;
+        ans = (ans + (t % M) * s % M) % M;
+    }
 
-    ans = 0
-    for d in range(1, N // L):
-        ans = (ans + (N // d % M) * sq(d, M)) % M
-    for t in range(1, L + 1):
-        ans = (
-            ans
-            + t
-            * (
-                sum_powers(N // t, 2, M) - sum_powers(N // (t + 1), 2, M)
-            )
-        ) % M
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    if (ans < 0) ans += M;
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol401.c")
+    exe = os.path.join(tmpdir, "sol401")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True)
+    print(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    solve()

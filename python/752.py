@@ -1,147 +1,189 @@
-"""Project Euler Problem 752: Powers of 1+√7.
+"""Project Euler Problem 752: Powers of 1+sqrt(7).
 
-Let g(x) be the smallest integer n such that α(n) ≡ 1 (mod x) and β(n) ≡ 0
-(mod x), where (1+√7)^n = α(n) + β(n)√7, or 0 if no such n exists.
-Find Σ_{x=2}^N g(x).
+(1+sqrt(7))^n = alpha(n) + beta(n)*sqrt(7).
+g(x) = smallest n>0 with alpha(n)=1 (mod x) and beta(n)=0 (mod x), or 0.
+Find G(10^6) = sum of g(x) for x=2..10^6.
 
-We can see that [α(n), β(n)] = [[1, 7], [1, 1]]^n [1, 0]. This has no
-solutions if GCD(x, 6) = 1, and if x=7, we have g(x)=7. Otherwise, n is
-the order of the 2x2 matrix [[1, 7], [1, 1]] (mod x). For prime x, this
-order must divide (x-1)(x+1), so we can try all divisors. Combining this
-with g(p^e) = g(p)*p^{e-1} and g(m*n) = LCM(g(m), g(n)) for GCD(m, n) = 1,
-we can efficiently compute all g(x).
+Key observations:
+- g(x)=0 if gcd(x,6)>1 (since det of matrix [[1,7],[1,1]] is -6)
+- For prime p not dividing 6: g(p) = order of matrix [[1,7],[1,1]] mod p
+  This order divides p^2-1 (since the matrix is in GL(2,p))
+- g(p^e) = g(p) * p^(e-1)
+- g(m*n) = lcm(g(m), g(n)) for gcd(m,n)=1
+
+Implemented in C for performance.
 """
 
 from __future__ import annotations
 
-from functools import lru_cache
-from math import gcd, isqrt
-from typing import Dict, List, Set
-
-
-def preff(limit: int) -> List[int]:
-    """Precompute largest prime factor."""
-    ff = [0] * (limit + 1)
-    for i in range(2, limit + 1):
-        if ff[i] == 0:
-            for j in range(i, limit + 1, i):
-                ff[j] = i
-    return ff
-
-
-def lcm(a: int, b: int) -> int:
-    """Least common multiple."""
-    return a * b // gcd(a, b)
-
-
-def pow2x2(matrix: List[int], exp: int, mod: int) -> List[int]:
-    """Raise 2x2 matrix to power exp modulo mod.
-
-    Matrix is represented as [a, b, c, d] for [[a, b], [c, d]].
-    """
-    a, b, c, d = matrix
-    result = [1, 0, 0, 1]  # Identity matrix
-
-    base = [a % mod, b % mod, c % mod, d % mod]
-    while exp > 0:
-        if exp & 1:
-            # Multiply result by base
-            new_result = [
-                (result[0] * base[0] + result[1] * base[2]) % mod,
-                (result[0] * base[1] + result[1] * base[3]) % mod,
-                (result[2] * base[0] + result[3] * base[2]) % mod,
-                (result[2] * base[1] + result[3] * base[3]) % mod,
-            ]
-            result = new_result
-        # Square base
-        new_base = [
-            (base[0] * base[0] + base[1] * base[2]) % mod,
-            (base[0] * base[1] + base[1] * base[3]) % mod,
-            (base[2] * base[0] + base[3] * base[2]) % mod,
-            (base[2] * base[1] + base[3] * base[3]) % mod,
-        ]
-        base = new_base
-        exp >>= 1
-
-    return result
-
-
-def prime_factorization(n: int, ff: List[int]) -> Dict[int, int]:
-    """Prime factorization using largest prime factor array."""
-    factors: Dict[int, int] = {}
-    while n > 1:
-        p = ff[n] if n < len(ff) else n
-        factors[p] = factors.get(p, 0) + 1
-        n //= p
-    return factors
-
-
-def all_divisors(n: int, prime_factors: Set[int]) -> List[int]:
-    """Get all divisors of n using prime factors."""
-    divisors = [1]
-    temp = n
-    for p in sorted(prime_factors):
-        if temp % p == 0:
-            size = len(divisors)
-            power = 1
-            while temp % p == 0:
-                temp //= p
-                power *= p
-                for i in range(size):
-                    divisors.append(divisors[i] * power)
-    if temp > 1:
-        size = len(divisors)
-        for i in range(size):
-            divisors.append(divisors[i] * temp)
-    return divisors
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
-    """Solve Problem 752."""
-    N = 1_000_000
-    ff = preff(N)
-    cache: Dict[int, int] = {}
-    identity = [1, 0, 0, 1]
-    A = [1, 7, 1, 1]
+    """Solve Problem 752 using compiled C."""
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    def g(x: int) -> int:
-        """Compute g(x)."""
-        if gcd(x, 6) > 1:
-            return 0
-        if x == 7:
-            return 7
+#define MAXN 1000001
 
-        d = ff[x]
-        xx = x
-        while xx % d == 0:
-            xx //= d
+static int spf[MAXN];  /* smallest prime factor */
+static long long g_val[MAXN]; /* g(x) for each x */
 
-        if xx > 1:
-            return lcm(g(xx), g(x // xx))
-        elif d != x:
-            return g(d) * (x // d)
+void sieve(void) {
+    for (int i = 0; i < MAXN; i++) spf[i] = i;
+    for (int i = 2; (long long)i * i < MAXN; i++) {
+        if (spf[i] == i) {
+            for (int j = i * i; j < MAXN; j += i)
+                if (spf[j] == j) spf[j] = i;
+        }
+    }
+}
 
-        if x in cache:
-            return cache[x]
+/* 2x2 matrix multiplication mod m */
+typedef struct { long long a, b, c, d; } Mat;
 
-        # For prime x, find order dividing (x-1)(x+1)
-        factors1 = prime_factorization(x - 1, ff)
-        factors2 = prime_factorization(x + 1, ff)
-        all_primes: Set[int] = set(factors1.keys()) | set(factors2.keys())
-        divisors = all_divisors((x - 1) * (x + 1), all_primes)
+Mat mat_mul(Mat A, Mat B, long long m) {
+    Mat C;
+    C.a = (A.a * B.a + A.b * B.c) % m;
+    C.b = (A.a * B.b + A.b * B.d) % m;
+    C.c = (A.c * B.a + A.d * B.c) % m;
+    C.d = (A.c * B.b + A.d * B.d) % m;
+    return C;
+}
 
-        for e in sorted(divisors):
-            if pow2x2(A, e, x) == identity:
-                cache[x] = e
-                return e
+Mat mat_pow(Mat A, long long e, long long m) {
+    Mat R = {1, 0, 0, 1}; /* identity */
+    A.a %= m; A.b %= m; A.c %= m; A.d %= m;
+    while (e > 0) {
+        if (e & 1) R = mat_mul(R, A, m);
+        A = mat_mul(A, A, m);
+        e >>= 1;
+    }
+    return R;
+}
 
-        raise ValueError(f"No solution found for x={x}")
+int is_identity(Mat M, long long m) {
+    return M.a % m == 1 && M.b % m == 0 && M.c % m == 0 && M.d % m == 1;
+}
 
-    ans = 0
-    for x in range(2, N + 1):
-        ans += g(x)
+/* Find order of matrix A mod p, knowing it divides n = p^2-1 */
+/* Try all divisors of n in increasing order */
+long long mat_order(long long p) {
+    Mat A = {1, 7, 1, 1};
+    long long n = (p - 1) * (p + 1);  /* p^2 - 1 */
 
-    return ans
+    /* Factorize n */
+    long long temp = n;
+    int primes[64], exps[64], np = 0;
+    for (long long d = 2; d * d <= temp; d++) {
+        if (temp % d == 0) {
+            primes[np] = d;
+            exps[np] = 0;
+            while (temp % d == 0) { exps[np]++; temp /= d; }
+            np++;
+        }
+    }
+    if (temp > 1) { primes[np] = temp; exps[np] = 1; np++; }
+
+    /* The order divides n. Start with n and try dividing by each prime factor.
+       If the result still gives identity, use the smaller value. */
+    long long order = n;
+    for (int i = 0; i < np; i++) {
+        while (order % primes[i] == 0) {
+            long long trial = order / primes[i];
+            Mat M = mat_pow(A, trial, p);
+            if (is_identity(M, p))
+                order = trial;
+            else
+                break;
+        }
+    }
+    return order;
+}
+
+long long gcd(long long a, long long b) {
+    while (b) { long long t = b; b = a % b; a = t; }
+    return a;
+}
+
+long long lcm(long long a, long long b) {
+    if (a == 0 || b == 0) return 0;
+    return a / gcd(a, b) * b;
+}
+
+int main(void) {
+    int N = 1000000;
+    sieve();
+
+    /* Compute g for all primes first */
+    memset(g_val, 0, sizeof(g_val));
+
+    for (int p = 2; p <= N; p++) {
+        if (spf[p] != p) continue; /* not prime */
+        if (p == 2 || p == 3) {
+            g_val[p] = 0; /* gcd(p, 6) > 1 */
+        } else if (p == 7) {
+            g_val[p] = 7;
+        } else {
+            g_val[p] = mat_order((long long)p);
+        }
+    }
+
+    /* Compute g for prime powers p^e: g(p^e) = g(p) * p^(e-1) */
+    /* And for composite x: g(x) = lcm of g over prime power factors */
+
+    /* Process all x from 2 to N */
+    long long ans = 0;
+    for (int x = 2; x <= N; x++) {
+        if (spf[x] == x) {
+            /* Prime, already computed */
+            ans += g_val[x];
+            continue;
+        }
+
+        /* Factor x and compute g(x) = lcm of g(p^e) over prime powers */
+        int temp = x;
+        long long gx = 1;
+        int is_zero = 0;
+        while (temp > 1) {
+            int p = spf[temp];
+            int e = 0;
+            int pe = 1;
+            while (temp % p == 0) { temp /= p; e++; pe *= p; }
+            /* g(p^e) = g(p) * p^(e-1) */
+            long long gpe = g_val[p];
+            if (gpe == 0) { is_zero = 1; break; }
+            for (int i = 1; i < e; i++) gpe *= p;
+            gx = lcm(gx, gpe);
+        }
+        if (is_zero) gx = 0;
+        g_val[x] = gx;
+        ans += gx;
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                check=True, timeout=28)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
 def main() -> int:

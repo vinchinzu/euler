@@ -75,4 +75,4 @@ def solve_drilling_problem():
     return cost
 
 result = solve_drilling_problem()
-print(f"Minimal Expected Drilling Time: {result:.9f}")
+print(mpmath.nstr(result, 10))

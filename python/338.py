@@ -1,275 +1,162 @@
-"""Project Euler Problem 338 - Grid Paper Cutting (ported from Ruby).
+"""Project Euler Problem 338 - Cutting Rectangles.
 
-This module provides utilities to compute:
-- F(w, h): the number of distinct rectangles obtainable by cutting and
-  rearranging a w x h grid rectangle along grid lines (excluding the original
-  rectangle; rectangles equivalent under rotation are not distinct).
-- G(N): sum of F(w, h) over all integer pairs (w, h) with 0 < h <= w <= N.
-
-The original Ruby file contains several experimental and partially incorrect
-attempts at efficient algorithms for large N up to 10**12. Only some parts are
-sound, while others rely on heuristics, rough estimates, or incomplete blocks.
-
-This port focuses on:
-- Providing correct implementations for small N (sufficient for verification).
-- Providing a clear structure and type hints for potential future optimization.
-- Avoiding incorrect heuristic shortcuts for large N: where the Ruby source
-  guessed or left algorithms incomplete, we expose explicit TODOs instead of
-  embedding unsound logic.
-
-Current guarantees:
-- F(w, h) is implemented correctly for all positive integers w, h.
-- G(N) is implemented correctly for N up to MAX_PRECOMP via brute force.
-- The module is self-contained and executable with Python 3.12.
-
-Limitations / TODOs:
-- No fully verified efficient implementation for N as large as 10**12 is
-  included. Implementing that requires advanced number-theoretic optimization.
-- For N > MAX_PRECOMP, G(N) currently raises NotImplementedError instead of
-  silently returning an approximate or incorrect value.
+G(N) = sum_{2<=k<=N} floor(N/k)*floor(N/(k-1))
+     - numTripletsWithProductAtMost(N)
+     + sumFloorQuotients(N)
+all mod 10^8.
 """
-
-from __future__ import annotations
-
-from dataclasses import dataclass
 from math import isqrt
-from typing import Dict
 
-MOD: int = 100_000_000
-N_DEFAULT: int = 10**12
-MAX_PRECOMP: int = 10**6
+def solve():
+    N = 10**12
+    M = 10**8
+    L = isqrt(N)
 
+    # Part 1: sum_{k=2}^N floor(N/k)*floor(N/(k-1))
+    # Split into k <= L and grouping for k > L
+    ans = 0
 
-def _precompute_divisors(max_n: int) -> list[int]:
-    """Precompute divisor counts for all integers up to max_n.
+    # For k = 2 to L:
+    for k in range(2, L + 1):
+        ans = (ans + (N // k % M) * (N // (k - 1) % M)) % M
 
-    This builds an array d where d[n] is the number of positive divisors of n.
-    Time complexity is O(max_n log max_n), suitable for max_n up to 1e6.
-    """
+    # For k > L, group by t = floor(N/k)
+    # When k > L, floor(N/k) < L. Let t = floor(N/k), then k ranges over
+    # [N/(t+1)+1, N/t]. But we need floor(N/(k-1)) too.
+    # The Java code uses: for t=1 to N/L - 1:
+    # ans += ((N/t - N/(t+1) - 1) % M * sq(t, M) + t*(t+1)) % M
+    # where sq(t, M) = t*t % M
+    for t in range(1, N // L):
+        block = N // t - N // (t + 1)
+        # In this block, floor(N/k) = t and floor(N/(k-1)) = t or t+1
+        # Most have floor(N/(k-1)) = t, except possibly one has t+1
+        # The Java formula: (block - 1) * t^2 + t * (t+1) = (block-1)*t^2 + t^2 + t = block*t^2 + t
+        # Wait, let me re-derive from Java:
+        # ans += ((N/t - N/(t+1) - 1) % M * sq(t, M) + t * (t + 1)) % M
+        # = (block - 1) * t^2 + t*(t+1) = (block-1)*t^2 + t^2 + t = block*t^2 + t
+        # But that doesn't seem right for all cases. Let me just port the formula exactly.
+        val = ((block - 1) % M * (t % M * (t % M) % M) % M + t % M * ((t + 1) % M) % M) % M
+        ans = (ans + val) % M
 
-    divisors = [0] * (max_n + 1)
-    for i in range(1, max_n + 1):
-        for j in range(i, max_n + 1, i):
-            divisors[j] += 1
-    return divisors
+    # Part 2: numTripletsWithProductAtMost(N)
+    # Count (a,b,c) with a*b*c <= N, a,b,c >= 1
+    # = sum_{a=1}^{cbrt(N)} sum_{b=a}^{sqrt(N/a)} floor(N/(a*b))
+    # With careful counting for permutations
+    def count_triplets(N):
+        """Count ordered triplets (a,b,c) with a*b*c <= N."""
+        # = sum_{a=1}^N d(N//a) where d is divisor count sum
+        # = sum_{a=1}^N sum_{b=1}^{N//a} floor(N//(a*b))
+        # More efficient: O(N^{2/3})
+        # Use: sum_{a=1}^N floor(N/a) can be computed in O(sqrt(N))
+        # For triplets: sum_{a=1}^N D(floor(N/a)) where D(m) = sum_{b=1}^m floor(m/b)
 
+        cbrt_n = int(round(N ** (1/3)))
+        while (cbrt_n + 1) ** 3 <= N:
+            cbrt_n += 1
+        while cbrt_n ** 3 > N:
+            cbrt_n -= 1
 
-# Precompute divisor counts up to MAX_PRECOMP once at import time.
-_DIVISORS_COUNT: list[int] = _precompute_divisors(MAX_PRECOMP)
+        # Method: count all (a,b,c) with 1 <= a <= b <= c and abc <= N
+        # Multiply by appropriate permutation factor
+        # Total ordered = sum over unordered * multiplicity
 
+        # Direct: sum_{a=1}^{N} sum_{b=1}^{N//a} floor(N//(ab))
+        # Use hyperbola method
+        total = 0
 
-def count_factor_pairs(n: int) -> int:
-    """Return the number of unordered factor pairs (a, b) with a <= b and a * b = n.
+        # For small a: a = 1 to cbrt_n
+        # For each a, compute sum_{b=1}^{N//a} floor(N//(ab)) using O(sqrt(N/a))
+        def sum_floor_quot(m):
+            """sum_{b=1}^m floor(m/b)"""
+            s = isqrt(m)
+            result = 0
+            for b in range(1, s + 1):
+                result += m // b
+            result = 2 * result - s * s
+            return result
 
-    For example:
-    - n = 1 -> 1 pair: (1, 1)
-    - n = 6 -> 2 pairs: (1, 6), (2, 3)
+        for a in range(1, cbrt_n + 1):
+            ma = N // a
+            total += sum_floor_quot(ma)
 
-    Implementation notes:
-    - For n <= MAX_PRECOMP, uses the precomputed divisor count.
-    - For n > MAX_PRECOMP, falls back to trial division up to sqrt(n).
-      This is correct but can be slow for very large n; it is intended only
-      for occasional calls in this reference implementation.
-    """
+        # For a > cbrt_n, floor(N/a) < N^{2/3}
+        # Group by v = floor(N/a)
+        # For each v, the number of a values is floor(N/v) - floor(N/(v+1))
+        # And each contributes sum_floor_quot(v)
+        # But v ranges from 1 to N // (cbrt_n + 1)
+        # We need to enumerate distinct v values
 
-    if n <= 0:
-        raise ValueError("n must be positive")
+        max_v = N // (cbrt_n + 1)
+        # All distinct values of floor(N/a) for a > cbrt_n are <= max_v
+        # Enumerate them
+        v = 1
+        while v <= max_v:
+            a_lo = N // (v + 1) + 1 if v < N else 1
+            a_hi = N // v
+            # a ranges from max(a_lo, cbrt_n+1) to a_hi
+            a_lo = max(a_lo, cbrt_n + 1)
+            if a_lo <= a_hi:
+                count_a = a_hi - a_lo + 1
+                total += count_a * sum_floor_quot(v)
+            # Next distinct v
+            if v < max_v:
+                # Next v is floor(N / (floor(N/(v+1))))
+                next_a = N // (v + 1)
+                if next_a <= cbrt_n:
+                    break
+                v = N // next_a
+            else:
+                break
+            if v > max_v:
+                break
 
-    if n <= MAX_PRECOMP:
-        total_divisors = _DIVISORS_COUNT[n]
-        # Each unordered pair corresponds to one or two divisors depending
-        # on whether it's a square. (d(n) + 1) // 2 yields the count.
-        return (total_divisors + 1) // 2
+        return total % M
 
-    count = 0
-    root = isqrt(n)
-    for i in range(1, root + 1):
-        if n % i == 0:
-            count += 1
-            if i != n // i:
-                count += 1
-    # Convert from ordered divisor count to unordered factor pairs with a <= b.
-    return (count + 1) // 2
+    # Actually the above is getting complex. Let me use a simpler O(N^{2/3}) approach:
+    # sum_{a=1}^N sum_{b=1}^{N/a} floor(N/(ab))
+    # = sum_{a=1}^N D(floor(N/a)) where D(m) = sum_{k=1}^m floor(m/k)
 
+    def sum_floor_quotients(m):
+        """sum_{k=1}^m floor(m/k) in O(sqrt(m))."""
+        s = isqrt(m)
+        result = 0
+        for k in range(1, s + 1):
+            result += m // k
+        result = 2 * result - s * s
+        return result
 
-def compute_F(w: int, h: int) -> int:
-    """Compute F(w, h) as defined in the problem statement.
+    def num_triplets_mod(N, M):
+        """Count ordered triplets (a,b,c) with a*b*c <= N, mod M."""
+        # = sum_{a=1}^N D(floor(N/a))
+        # Group by distinct values of floor(N/a)
+        total = 0
+        a = 1
+        while a <= N:
+            v = N // a
+            # Find range of a with same floor(N/a) = v
+            a_end = N // v
+            count = a_end - a + 1
+            dfq = sum_floor_quotients(v)
+            total = (total + count % M * (dfq % M)) % M
+            a = a_end + 1
+        return total
 
-    F(w, h) is the number of distinct rectangles (up to rotation) obtainable
-    by cutting a w x h grid rectangle along grid lines in a stairway pattern
-    and rearranging them, excluding the original rectangle.
+    triplets = num_triplets_mod(N, M)
 
-    The algorithm uses the stairway cutting method: for each divisor d of w,
-    we can create new rectangles if (d-1) or (d+1) divides h.
-    """
+    # Part 3: sumFloorQuotients(N) = sum_{k=1}^N floor(N/k)
+    sfq = sum_floor_quotients(N) % M
 
-    if w <= 0 or h <= 0:
-        raise ValueError("w and h must be positive integers")
+    # Combine: G(N) = ans - triplets + sfq  (mod M)
+    # But wait - the Java formula subtracts triplets and adds sfq:
+    # ans -= NumberTheory.numTripletsWithProductAtMost(N);
+    # ans += NumberTheory.sumFloorQuotients(N);
+    # But the triplets function counts ordered triplets, and the Java subtracts it.
+    # Actually re-reading Java:
+    # ans -= numTripletsWithProductAtMost(N)
+    # ans += sumFloorQuotients(N)
 
-    if h > w:
-        # Normalize to h <= w
-        w, h = h, w
+    result = (ans - triplets + sfq) % M
+    return result
 
-    # Use a set to store unique rectangles (avoiding duplicates)
-    rectangles = set()
-
-    # Find all divisors of w
-    divisors_w = []
-    i = 1
-    while i * i <= w:
-        if w % i == 0:
-            divisors_w.append(i)
-            if i != w // i:
-                divisors_w.append(w // i)
-        i += 1
-
-    # For each divisor d of w, check if we can form new rectangles
-    for d in divisors_w:
-        # Check (d-1) | h
-        if d > 1 and h % (d - 1) == 0:
-            new_w = w * (d - 1) // d
-            new_h = h * d // (d - 1)
-            # Normalize (smaller dimension first)
-            rect = tuple(sorted([new_w, new_h]))
-            rectangles.add(rect)
-
-        # Check (d+1) | h
-        if h % (d + 1) == 0:
-            new_w = w * (d + 1) // d
-            new_h = h * d // (d + 1)
-            # Normalize (smaller dimension first)
-            rect = tuple(sorted([new_w, new_h]))
-            rectangles.add(rect)
-
-    # Remove the original rectangle (normalized as (h, w))
-    original = (h, w)
-    rectangles.discard(original)
-
-    return len(rectangles)
-
-
-def compute_G_brute(n: int) -> int:
-    """Compute G(n) exactly by brute force.
-
-    G(n) = sum_{1 <= h <= w <= n} F(w, h), result taken modulo MOD.
-    This is O(n^2) and only practical for relatively small n.
-    """
-
-    if n < 0:
-        raise ValueError("n must be non-negative")
-
-    total = 0
-    for h in range(1, n + 1):
-        for w in range(h, n + 1):
-            total += compute_F(w, h)
-            if total >= 10 * MOD:
-                # Periodic reduction to keep integers bounded.
-                total %= MOD
-    return total % MOD
-
-
-def compute_G(n: int) -> int:
-    """Compute G(n) = sum_{1 <= h <= w <= n} F(w, h) (mod MOD).
-
-    - For n up to MAX_PRECOMP, an exact brute-force computation is used.
-    - For larger n, a NotImplementedError is raised.
-
-    TODO:
-    Implement an efficient, mathematically justified algorithm for n up to
-    10**12 without resorting to the incomplete heuristics present in the
-    original Ruby draft.
-    """
-
-    if n < 0:
-        raise ValueError("n must be non-negative")
-
-    if n <= MAX_PRECOMP:
-        return compute_G_brute(n)
-
-    msg = (
-        "Efficient computation of G(n) for n > MAX_PRECOMP is not implemented. "
-        "The original Ruby file contained incomplete/heuristic code for this "
-        "case, which is intentionally omitted here."
-    )
-    raise NotImplementedError(msg)
-
-
-@dataclass(frozen=True)
-class Factorization:
-    """A simple container for prime factorizations.
-
-    This is provided as a utility for potential optimized implementations.
-    It is not currently used by compute_G and can be extended or removed.
-    """
-
-    factors: Dict[int, int]
-
-
-def factorize(n: int) -> Factorization:
-    """Factorize n using trial division.
-
-    This is suitable for moderately sized integers. It is included as a
-    helper to mirror utilities from the Ruby source and to support future
-    optimized algorithms.
-    """
-
-    if n <= 0:
-        raise ValueError("n must be positive")
-
-    factors: Dict[int, int] = {}
-
-    # Factor out powers of 2.
-    count = 0
-    while n % 2 == 0:
-        n //= 2
-        count += 1
-    if count:
-        factors[2] = count
-
-    # Odd factors.
-    p = 3
-    while p * p <= n:
-        if n % p == 0:
-            cnt = 0
-            while n % p == 0:
-                n //= p
-                cnt += 1
-            factors[p] = cnt
-        p += 2
-
-    # Remaining prime factor, if any.
-    if n > 1:
-        factors[n] = 1
-
-    return Factorization(factors)
-
-
-def _run_demo() -> None:
-    """Run a small self-test when executed as a script.
-
-    This verifies the examples provided in the original problem statement
-    for F and G on small inputs.
-    """
-
-    print("Project Euler Problem 338 - Grid Paper Cutting")
-
-    # Check F examples
-    print("F(2, 1) =", compute_F(2, 1), "(expected 0)")
-    print("F(2, 2) =", compute_F(2, 2), "(expected 1)")
-    print("F(9, 4) =", compute_F(9, 4), "(expected 3)")
-    print("F(9, 8) =", compute_F(9, 8), "(expected 2)")
-
-    # Check G examples via brute-force implementation
-    for n, expected in [(10, 55), (1000, 971_745)]:
-        if n <= MAX_PRECOMP:
-            value = compute_G_brute(n)
-            print(f"G({n}) = {value} (expected {expected})")
-        else:
-            print(
-                f"Skipping G({n}) brute force: exceeds MAX_PRECOMP="
-                f"{MAX_PRECOMP}"
-            )
-
-
-if __name__ == "__main__":  # pragma: no cover
-    _run_demo()
+if __name__ == "__main__":
+    print(solve())

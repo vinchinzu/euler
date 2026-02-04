@@ -1,60 +1,39 @@
 """Project Euler Problem 500: Problem 500!!!
 
-Find the smallest number with 2^N divisors.
+Find the smallest number with 2^500500 divisors, modulo 500500507.
+Use a priority queue: start with all primes up to ~8M.
+Each time we pick the smallest value from the queue, multiply it into the answer,
+and push its square back (representing doubling that prime's exponent contribution).
 """
-
-from __future__ import annotations
 
 import heapq
 from math import isqrt
-from typing import List
 
-
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
-
-
-def sq(n: int) -> int:
-    """Square."""
-    return n * n
-
-
-def solve() -> int:
-    """Solve Problem 500."""
+def solve():
     N = 500_500
     M = 500_500_507
 
-    primes = sieve_primes(N)
-    factors = []
+    # We need enough primes. The N-th prime is roughly N*ln(N) ~ 500500*13 ~ 7.7M
+    limit = 7_800_000
+    is_prime = bytearray(b'\x01') * (limit + 1)
+    is_prime[0] = is_prime[1] = 0
+    for i in range(2, isqrt(limit) + 1):
+        if is_prime[i]:
+            is_prime[i*i::i] = bytearray(len(is_prime[i*i::i]))
+    primes = [i for i in range(2, limit + 1) if is_prime[i]]
 
-    for p in primes:
-        pe = p
-        while pe > 0:
-            factors.append(pe)
-            pe = sq(pe) if pe > 0 else 0
+    # Priority queue: each entry is a value we could multiply in.
+    # Initially all primes. When we use value v, push v*v (next power-of-2 exponent).
+    heap = list(primes[:N])  # We need at most N primes
+    heapq.heapify(heap)
 
-    heapq.heapify(factors)
     ans = 1
     for _ in range(N):
-        factor = heapq.heappop(factors)
-        ans = (ans * factor) % M
+        v = heapq.heappop(heap)
+        ans = (ans * v) % M
+        heapq.heappush(heap, v * v)
 
     return ans
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

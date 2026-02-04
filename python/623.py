@@ -1,72 +1,86 @@
 """Project Euler Problem 623: Lambda Terms.
 
-Consider lambda terms built by the following rules:
-- A single letter variable is a lambda term.
-- If M and N are lambda terms, then so is the application of M onto N,
-  denoted (MN).
-- If x is a variable and M is a term, then so is the abstraction (λx.M).
+Count closed lambda terms with at most N=2000 characters (mod 10^9+7),
+where alpha-equivalent terms are identified.
 
-Find the number of lambda terms with at most N characters, assuming that all
-variables are bound in an abstraction, and renaming of variables is not
-considered distinct.
-
-We use dynamic programming on the number of characters and the number of bound
-variables in that scope. If there is only a single character, then it must be
-one of the bounded variables. Otherwise, if the number of characters is at
-least 6, then we can use 5 of those characters on the abstraction boilerplate
-(λx. ) and recurse on the remaining number of characters, remembering that we
-now have an additional bound variable. Also, if the number of characters is at
-least 4, then we can use 2 characters on the application boilerplate ( ) and
-split the remaining characters into 2 terms to recurse on.
+DP on (num_chars, num_bound_vars). Iterate b from high to low.
+Uses C for speed.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <string.h>
 
-def solve() -> int:
-    """Solve Problem 623."""
-    N = 2000
-    M = 10**9 + 7
+#define NN 2000
+#define MOD 1000000007LL
+#define MAXB 401
 
-    cache: dict[tuple[int, int], int] = {}
+/* T[c][b] = number of lambda terms with exactly c chars and b bound vars in scope */
+static long long T[NN+1][MAXB];
 
-    def num_terms(num_chars: int, num_bound: int) -> int:
-        """Compute number of lambda terms."""
-        if num_chars == 1:
-            return num_bound
-        key = (num_chars, num_bound)
-        if key in cache:
-            return cache[key]
+int main(void) {
+    memset(T, 0, sizeof(T));
 
-        num_terms_val = 0
-        if num_chars >= 6:
-            num_terms_val = (num_terms_val + num_terms(num_chars - 5, num_bound + 1)) % M
-        if num_chars >= 4:
-            for num_left in range(1, (num_chars - 1) // 2 + 1):
-                num_right = num_chars - 2 - num_left
-                if num_left == num_right:
-                    term_val = num_terms(num_left, num_bound)
-                    num_terms_val = (num_terms_val + term_val * term_val) % M
-                else:
-                    num_terms_val = (
-                        num_terms_val
-                        + 2 * num_terms(num_left, num_bound) * num_terms(num_right, num_bound)
-                    ) % M
-        cache[key] = num_terms_val
-        return num_terms_val
+    /* Iterate b from high to low.
+       T[1][b] = b
+       T[c][b] = T[c-5][b+1]  (abstraction, if c>=6 and b+1<MAXB)
+               + sum_{l=1}^{c-3} T[l][b] * T[c-2-l][b]  (application, if c>=4)
 
-    ans = 0
-    for num_chars in range(1, N + 1):
-        ans = (ans + num_terms(num_chars, 0)) % M
-    return ans
+       For a fixed b, the convolution only uses T[*][b] at the same b level,
+       and T[c-5][b+1] which was computed in the previous (higher b) iteration.
+    */
 
+    for (int b = MAXB - 1; b >= 0; b--) {
+        T[1][b] = b % MOD;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+        for (int c = 2; c <= NN; c++) {
+            long long val = 0;
 
+            /* Abstraction: costs 5 chars, adds 1 bound var */
+            if (c >= 6 && b + 1 < MAXB) {
+                val = T[c-5][b+1];
+            }
+
+            /* Application: costs 2 chars, split c-2 chars into two parts */
+            if (c >= 4) {
+                int rem = c - 2;
+                long long conv = 0;
+                for (int l = 1; l < rem; l++) {
+                    conv = (conv + T[l][b] % MOD * (T[rem - l][b] % MOD)) % MOD;
+                }
+                val = (val + conv) % MOD;
+            }
+
+            T[c][b] = val;
+        }
+    }
+
+    long long ans = 0;
+    for (int c = 1; c <= NN; c++) {
+        ans = (ans + T[c][0]) % MOD;
+    }
+    printf("%lld\n", ans);
+    return 0;
+}
+""";
+
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

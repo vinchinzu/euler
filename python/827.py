@@ -1,170 +1,211 @@
-"""Project Euler Problem 827: Pythagorean Triples.
+#!/usr/bin/env python3
+"""
+Project Euler 827 - Pythagorean Triple Occurrence
 
-Find Σ_{k=1}^N Q(10^k), where Q(n) is the smallest integer that is part
-of exactly n Pythagorean triples a<b<c.
-
-The number of ways that k can be the largest value of a Pythagorean triple
-is just the number of ways that k² can be written as the sum of two
-squares, which by the sum of squares function is just
-⌊(Π_i(2e_i + 1)) / 2⌋, where e_i is the exponent of all primes 1 (mod 4)
-in the prime factorization of k.
-
-The number of ways that k can be one of the small values of a Pythagorean
-triple is the number of ways that k² can be expressed as the product of
-(c-b)(c+b), which is almost the number of factors of k², except the two
-factors must be of the same parity. In our case, k is even in order to
-keep the numbers small, so we need both factors to contain a factor of 2;
-that means we only count the number of factors of k²/4, divided by 2.
-
-The total number of Pythagorean triples is thus the product of the
-exponents of all 1 (mod 4) primes, times the product of the exponents of
-all primes, both divided by 2. In order words, the product of the
-exponents of 1 (mod 4) primes, times one plus the product of the
-exponents of other primes, needs to be 2n+2 (where the +2 is because the
-two odd numbers both round down when divided by 2). So we compute all
-factorizations of 2n+2, and assign them to the 1 (mod 4) primes and not
-1 (mod 4) primes, in order to minimize the product. We find the
-factorization that gives the smallest result.
+Q(n) = smallest number occurring in exactly n Pythagorean triples.
+Find sum_{k=1}^{18} Q(10^k) mod 409120391.
 """
 
-from __future__ import annotations
-
 import math
-from dataclasses import dataclass
-from math import isqrt
-from typing import Dict, List, Set
+from sympy import factorint
 
+MOD = 409120391
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+def sieve(limit):
+    is_p = bytearray(b'\x01') * (limit + 1)
+    is_p[0] = is_p[1] = 0
+    for i in range(2, int(limit**0.5) + 1):
+        if is_p[i]:
+            is_p[i*i::i] = bytearray(len(is_p[i*i::i]))
+    return [i for i in range(2, limit + 1) if is_p[i]]
 
+PRIMES = sieve(500)
+PRIMES_1MOD4 = [p for p in PRIMES if p % 4 == 1]
+PRIMES_3MOD4 = [p for p in PRIMES if p % 4 == 3]
+LOG_P1 = [math.log(p) for p in PRIMES_1MOD4]
+LOG_P3 = [math.log(p) for p in PRIMES_3MOD4]
+LOG2 = math.log(2)
 
-def primes_mod(limit: int, mod: int, remainder: int) -> List[int]:
-    """Primes congruent to remainder mod mod."""
-    primes = sieve_primes(limit)
-    return [p for p in primes if p % mod == remainder]
+# Cache for factorizations and min_number results
+_factor_cache = {}
+_min_cache = {}
 
+def fast_factor(n):
+    """Fast factorization using sympy (Pollard rho etc), with cache."""
+    if n in _factor_cache:
+        return _factor_cache[n]
+    result = factorint(n)
+    _factor_cache[n] = result
+    return result
 
-def prime_factorize(n: int) -> Dict[int, int]:
-    """Factorize n into prime factors."""
-    factors: Dict[int, int] = {}
-    d = 2
-    while d * d <= n:
-        while n % d == 0:
-            factors[d] = factors.get(d, 0) + 1
-            n //= d
-        d += 1
-    if n > 1:
-        factors[n] = factors.get(n, 0) + 1
-    return factors
-
-
-def get_all_divisors(n: int) -> List[int]:
-    """Get all divisors of n."""
-    factors = prime_factorize(n)
-    divisors = [1]
-    for p, e in factors.items():
+def get_odd_divisors_of(n):
+    """Get all odd divisors of n, sorted."""
+    while n % 2 == 0:
+        n //= 2
+    if n == 1:
+        return [1]
+    fdict = fast_factor(n)
+    divs = [1]
+    for p, e in fdict.items():
         new_divs = []
-        for d in divisors:
-            for i in range(e + 1):
-                new_divs.append(d * (p**i))
-        divisors = new_divs
-    return sorted(divisors)
+        for dv in divs:
+            pk = 1
+            for _ in range(e + 1):
+                new_divs.append(dv * pk)
+                pk *= p
+        divs = new_divs
+    return sorted(divs)
 
+def divisors_of(n):
+    """Get all divisors of n >= 1, sorted."""
+    if n == 1:
+        return [1]
+    fdict = fast_factor(n)
+    divs = [1]
+    for p, e in fdict.items():
+        new_divs = []
+        for dv in divs:
+            pk = 1
+            for _ in range(e + 1):
+                new_divs.append(dv * pk)
+                pk *= p
+        divs = new_divs
+    return sorted(divs)
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+def ordered_factorizations(n, min_val=3):
+    """Generate all ways to write n as product of factors >= min_val (non-decreasing).
+    n must be odd >= 1.
+    """
+    if n == 1:
+        yield ()
+        return
+    if n < min_val:
+        return
 
+    # Get all divisors of n that are >= min_val and <= sqrt(n), plus n itself
+    all_divs = divisors_of(n)
 
-@dataclass
-class Number:
-    """Number with log and mod value."""
+    for d in all_divs:
+        if d < min_val:
+            continue
+        if d == n:
+            yield (n,)
+        elif n % d == 0 and d * d <= n:
+            for rest in ordered_factorizations(n // d, d):
+                yield (d,) + rest
 
-    log: float
-    mod: int
+def min_number_for_shape(n, log_primes, mod_primes, budget):
+    """Find factorization of odd n into parts >= 3 minimizing
+    prod(primes[i]^((f_i-1)/2)). Returns (log_val, mod_val) or None."""
+    key = (n, id(log_primes), budget)
+    if key in _min_cache:
+        return _min_cache[key]
 
-    @staticmethod
-    def of(value: int, M: int) -> "Number":
-        """Create Number from value."""
-        return Number(math.log(value), value % M)
+    if n == 1:
+        return (0.0, 1)
+    if n < 3 or n % 2 == 0:
+        return None
 
-    def multiply(self, other: "Number", M: int) -> "Number":
-        """Multiply two Numbers."""
-        return Number(self.log + other.log, (self.mod * other.mod) % M)
+    nprimes = len(log_primes)
+    best_log = budget
+    best_mod_val = 0
+    found = False
 
-    def pow(self, e: int, M: int) -> "Number":
-        """Raise to power."""
-        return Number(self.log * e, pow_mod(self.mod, e, M))
+    for factors in ordered_factorizations(n, 3):
+        k = len(factors)
+        if k > nprimes:
+            continue
+        exps = sorted([(f - 1) // 2 for f in factors], reverse=True)
+        log_val = sum(exps[i] * log_primes[i] for i in range(k))
+        if log_val < best_log:
+            best_log = log_val
+            mod_val = 1
+            for i in range(k):
+                mod_val = mod_val * pow(mod_primes[i], exps[i], MOD) % MOD
+            best_mod_val = mod_val
+            found = True
 
+    if found:
+        result = (best_log, best_mod_val)
+        # Don't cache with budget since budget varies
+        return result
+    return None
 
-def solve() -> int:
-    """Solve Problem 827."""
+def solve():
     N = 18
-    M = 409120391
-    L = 100
+    total = 0
 
-    primes_1_mod_4 = primes_mod(L, 4, 1)
-    primes_3_mod_4 = [2] + primes_mod(L, 4, 3)
-
-    ans = 0
     for k in range(1, N + 1):
-        n = 2 * (10**k) + 2
-        divisors = get_all_divisors(n)
-        min_result = Number(float("inf"), 0)
+        T = 10 ** k
+        target = 2 * T + 2
 
-        for d in divisors:
-            if d % 2 == 1:
-                factors_d = prime_factorize(d)
-                factors_other = prime_factorize(n // d - 1)
+        best_log = float('inf')
+        best_mod = 0
 
-                # Build number from factors
-                result = Number.of(2, M)
-                primes_1 = primes_1_mod_4[:]
-                primes_other = primes_3_mod_4[:]
+        odd_divs = get_odd_divisors_of(target)
 
-                # Assign factors from d to primes_1_mod_4
-                for p, e in sorted(factors_d.items(), reverse=True):
-                    if primes_1:
-                        prime = primes_1.pop(0)
-                        result = result.multiply(Number.of(prime, M).pow(e // 2, M), M)
+        for A in odd_divs:
+            D = target // A
+            Dm1 = D - 1
 
-                # Assign factors from n/d-1 to other primes
-                for p, e in sorted(factors_other.items(), reverse=True):
-                    if primes_other:
-                        prime = primes_other.pop(0)
-                        result = result.multiply(Number.of(prime, M).pow(e // 2, M), M)
+            # Best representation of A using primes 1 mod 4
+            if A == 1:
+                logA, modA = 0.0, 1
+            else:
+                res_A = min_number_for_shape(A, LOG_P1, PRIMES_1MOD4, best_log)
+                if res_A is None:
+                    continue
+                logA, modA = res_A
 
-                if result.log < min_result.log:
-                    min_result = result
+            if logA >= best_log:
+                continue
 
-        ans = (ans + min_result.mod) % M
+            # Case 1: odd m (a0=0), B = Dm1
+            if Dm1 == 1:
+                if logA < best_log:
+                    best_log = logA
+                    best_mod = modA
+            elif Dm1 % 2 == 1:
+                remaining = best_log - logA
+                res_B = min_number_for_shape(Dm1, LOG_P3, PRIMES_3MOD4, remaining)
+                if res_B is not None:
+                    logB, modB = res_B
+                    tl = logA + logB
+                    if tl < best_log:
+                        best_log = tl
+                        best_mod = (modA * modB) % MOD
 
-    return ans
+            # Case 2: even m, Dm1 = C * B, C = 2*a0-1
+            if Dm1 >= 1 and Dm1 % 2 == 1:
+                c_divs = get_odd_divisors_of(Dm1)
+                for C in c_divs:
+                    B = Dm1 // C
+                    a0 = (C + 1) // 2
+                    log2_part = a0 * LOG2
 
+                    if logA + log2_part >= best_log:
+                        continue
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+                    remaining = best_log - logA - log2_part
+                    mod2 = pow(2, a0, MOD)
 
+                    if B == 1:
+                        tl = logA + log2_part
+                        if tl < best_log:
+                            best_log = tl
+                            best_mod = (modA * mod2) % MOD
+                    elif B % 2 == 1:
+                        res_B = min_number_for_shape(B, LOG_P3, PRIMES_3MOD4, remaining)
+                        if res_B is not None:
+                            logB, modB = res_B
+                            tl = logA + log2_part + logB
+                            if tl < best_log:
+                                best_log = tl
+                                best_mod = (modA * mod2 % MOD * modB) % MOD
+
+        total = (total + best_mod) % MOD
+
+    return total
 
 if __name__ == "__main__":
-    main()
+    print(solve())

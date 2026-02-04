@@ -1,112 +1,87 @@
-"""Project Euler Problem 192: Best Approximations."""
+"""Project Euler Problem 192 - Best Approximations.
 
-from typing import Dict, List
+Find the sum of the denominators of the best approximations to sqrt(n)
+for non-squares 2 <= n <= 100000 with denominator bound 10^12.
+
+Uses continued fraction expansion and semiconvergent comparison.
+"""
 import math
 
-LIMIT_N = 100_000
-DENOMINATOR_BOUND = 1_000_000_000_000
-
-
-def int_sqrt(n: int) -> int:
-    """Integer square root via binary search."""
-    if n <= 0:
-        return 0
-    x = int(math.sqrt(n))
-    while x * x > n:
-        x -= 1
-    while (x + 1) * (x + 1) <= n:
-        x += 1
-    return x
-
-
-def perfect_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    r = int_sqrt(n)
-    return r * r == n
-
-
-def continued_fraction_sqrt(n: int) -> Dict[str, int | List[int]]:
-    """Return the continued fraction data for √n."""
-    a0 = int_sqrt(n)
-    if a0 * a0 == n:
-        return {"a0": a0, "period": []}
-
-    m = 0
-    d = 1
-    a = a0
-    period: List[int] = []
-    seen: Dict[tuple[int, int], bool] = {}
-
-    while True:
-        key = (m, d)
-        if key in seen:
-            break
-        seen[key] = True
-
-        m = d * a - m
-        d = (n - m * m) // d
-        a = (a0 + m) // d
-        period.append(a)
-
-    return {"a0": a0, "period": period}
-
-
-def best_denominator(n: int, cf: Dict[str, int | List[int]], limit: int) -> int:
-    """Compute the best denominator ≤ limit for √n."""
-    a0 = cf["a0"]
-    period = cf["period"]
-    if isinstance(period, int):
-        period = []
-    period_cycle = period if period else [0]
-
-    p_prev = 1
-    q_prev = 0
-    p_curr = a0
-    q_curr = 1
-
-    if q_curr > limit:
-        return q_curr
-
-    best = q_curr
-    index = 0
-
-    while True:
-        a = period_cycle[index % len(period_cycle)]
-        p_full = a * p_curr + p_prev
-        q_full = a * q_curr + q_prev
-
-        if q_full <= limit:
-            p_prev = p_curr
-            q_prev = q_curr
-            p_curr = p_full
-            q_curr = q_full
-            best = q_curr
-        else:
-            # Semi-convergent: find max k=1 to a-1
-            max_k = min(a - 1, (limit - q_prev) // q_curr)
-            if max_k >= 1:
-                best_q = max_k * q_curr + q_prev
-                best = max(best, best_q)
-            # After handling semi-convergent, break as q_full > limit
-            break
-
-        index += 1
-
-    return best
-
-
-def main() -> int:
-    """Main function."""
+def solve():
+    N = 100000
+    K = 10**12
     total = 0
 
-    for n in range(2, LIMIT_N + 1):
-        if perfect_square(n):
+    for n in range(2, N + 1):
+        a0 = math.isqrt(n)
+        if a0 * a0 == n:
             continue
-        cf = continued_fraction_sqrt(n)
-        total += best_denominator(n, cf, DENOMINATOR_BOUND)
+
+        # Generate convergents of sqrt(n) using standard CF algorithm
+        m, d, a = 0, 1, a0
+        # Previous and current convergent
+        A_prev, B_prev = 1, 0
+        A_curr, B_curr = a0, 1
+
+        # Store steps for the Pell-like algorithm
+        steps_A = [A_prev, A_curr]
+        steps_B = [B_prev, B_curr]
+
+        while True:
+            m = d * a - m
+            d = (n - m * m) // d
+            a = (a0 + m) // d
+
+            A_next = a * A_curr + A_prev
+            B_next = a * B_curr + B_prev
+
+            if B_next > K:
+                # The last convergent with B <= K is (A_curr, B_curr)
+                # Now check semiconvergents
+                h = (K - B_prev) // B_curr
+                den1 = B_curr
+                den2 = B_prev + h * B_curr
+
+                if h > a // 2:
+                    total += den2
+                elif h < (a + 1) // 2:
+                    total += den1
+                else:
+                    # h == a/2 (a even) or h == (a-1)/2+1 = (a+1)/2
+                    # Need to compare |A_curr/B_curr - sqrt(n)| vs |num2/den2 - sqrt(n)|
+                    num1 = A_curr
+                    num2 = A_prev + h * A_curr
+
+                    # Compare cross-multiplied: which is closer to sqrt(n)?
+                    # |num1/den1 - sqrt(n)| vs |num2/den2 - sqrt(n)|
+                    # Equivalent: |num1*den2 - num2*den1| cross check
+                    # Using the identity: convergents alternate being above/below sqrt(n)
+                    # So: (num1*den2 - num2*den1) and their distances from sqrt(n)*den
+                    # Better: compare (num1^2 - n*den1^2)^2 * den2^2 vs (num2^2 - n*den2^2)^2 * den1^2
+                    # Since |x/d - sqrt(n)| ~ |x^2 - n*d^2| / (d*(x + d*sqrt(n)))
+                    # ~ |x^2 - n*d^2| / (2*d^2*sqrt(n)) for good approximations
+                    # So compare |num1^2 - n*den1^2| * den2^2 vs |num2^2 - n*den2^2| * den1^2
+
+                    cross1 = num1 * den2
+                    cross2 = num2 * den1
+                    bot = den1 * den2
+
+                    # Compare |cross1 - cross2| using the formula from Java:
+                    # if (cross1^2 - cross2^2)^2 > 4n * (cross1 - cross2)^2 * bot^2
+                    # XOR cross1 > cross2 => use den1, else den2
+                    diff_sq = (cross1**2 - cross2**2)**2
+                    rhs = 4 * n * ((cross1 - cross2) * bot)**2
+
+                    if (diff_sq > rhs) ^ (cross1 > cross2):
+                        total += den1
+                    else:
+                        total += den2
+                break
+
+            A_prev, A_curr = A_curr, A_next
+            B_prev, B_curr = B_curr, B_next
 
     return total
 
-
 if __name__ == "__main__":
-    print(main())
+    print(solve())

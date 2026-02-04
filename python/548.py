@@ -117,7 +117,7 @@ def solve() -> int:
         if g_val <= N and has_exponents(g_val, tuple(sorted(es, reverse=True))):
             ans += g_val
         
-        max_c = es[-1] if es else float("inf")
+        max_c = es[-1] if es else N.bit_length()
         for c in range(1, int(max_c) + 1):
             if len(es) >= len(primes):
                 break

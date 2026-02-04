@@ -3,7 +3,7 @@
 Let f(m,a,b) be the number of patterns of rectangular stickers on a cylinder
 using exactly m colors, having the pattern repeat along the cylinder every a
 stickers, and with b stickers around the circumference, if translations,
-reflections, and rotations are not considered unique. Find Σ_{i=4}^N f(i,
+reflections, and rotations are not considered unique. Find sum_{i=4}^N f(i,
 F_{i-1}, F_i) where F_i are the Fibonacci numbers.
 
 We use Burnside's Lemma. The group operations are the (a*b) translations,
@@ -15,10 +15,9 @@ operation is the sum of the GCD of all pairs of cycles of the two permutations.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 from math import gcd
 
-from sympy import factorint, primerange
+from sympy import factorint
 
 
 def mod_inverse(a: int, m: int) -> int:
@@ -40,24 +39,13 @@ def mod_inverse(a: int, m: int) -> int:
 
 def pow_mod(base: int, exp: int, mod: int) -> int:
     """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+    return pow(base, exp, mod)
 
 
 def fibonacci_list(n: int) -> list[int]:
-    """Generate first n Fibonacci numbers."""
-    if n == 0:
-        return []
-    if n == 1:
-        return [1]
-    fib = [1, 1]
-    for _ in range(2, n):
+    """Generate first n+1 Fibonacci numbers, 0-indexed: F(0)=0, F(1)=1, F(2)=1, ..."""
+    fib = [0, 1]
+    for _ in range(2, n + 1):
         fib.append(fib[-1] + fib[-2])
     return fib
 
@@ -75,15 +63,16 @@ def nCr_table(n: int, mod: int) -> list[list[int]]:
 def lphi(n: int) -> int:
     """Euler's totient function."""
     result = n
+    temp = n
     p = 2
-    while p * p <= n:
-        if n % p == 0:
-            while n % p == 0:
-                n //= p
+    while p * p <= temp:
+        if temp % p == 0:
+            while temp % p == 0:
+                temp //= p
             result = result // p * (p - 1)
         p += 1
-    if n > 1:
-        result = result // n * (n - 1)
+    if temp > 1:
+        result = result // temp * (temp - 1)
     return result
 
 
@@ -94,26 +83,31 @@ def all_divisors(n: int) -> list[int]:
     for p, exp in factors.items():
         new_divs = []
         for d in divisors:
+            pe = 1
             for e in range(1, exp + 1):
-                new_divs.append(d * (p**e))
+                pe *= p
+                new_divs.append(d * pe)
         divisors.extend(new_divs)
     return sorted(divisors)
 
 
-def cycle_lens(n: int, reflect: bool) -> dict[Counter[int], int]:
-    """Get cycle lengths for permutation of n elements."""
+def cycle_lens(n: int, reflect: bool) -> dict[tuple, int]:
+    """Get cycle lengths for permutation of n elements.
+
+    Returns a dict mapping frozenset((cycle_len, count), ...) -> multiplicity.
+    """
     if reflect:
         if n % 2 == 1:
-            cycle_map = Counter({2: n // 2, 1: 1})
+            cycle_map = frozenset(((2, n // 2), (1, 1)))
             return {cycle_map: n}
         else:
-            cycle_map1 = Counter({2: n // 2})
-            cycle_map2 = Counter({2: n // 2 - 1, 1: 2})
+            cycle_map1 = frozenset(((2, n // 2),))
+            cycle_map2 = frozenset(((2, n // 2 - 1), (1, 2)))
             return {cycle_map1: n // 2, cycle_map2: n // 2}
 
-    cycle_lens_map: dict[Counter[int], int] = {}
+    cycle_lens_map: dict[tuple, int] = {}
     for d in all_divisors(n):
-        cycle_map = Counter({n // d: d})
+        cycle_map = frozenset(((n // d, d),))
         cycle_lens_map[cycle_map] = lphi(n // d)
     return cycle_lens_map
 
@@ -136,13 +130,9 @@ def f(m: int, a: int, b: int, mod: int) -> int:
             for cycle_map_a, count_a in cycle_lens_a.items():
                 for cycle_map_b, count_b in cycle_lens_b.items():
                     num_cycles = 0
-                    for la in cycle_map_a:
-                        for lb in cycle_map_b:
-                            num_cycles += (
-                                gcd(la, lb)
-                                * cycle_map_a[la]
-                                * cycle_map_b[lb]
-                            )
+                    for (la, ca) in cycle_map_a:
+                        for (lb, cb) in cycle_map_b:
+                            num_cycles += gcd(la, lb) * ca * cb
 
                     for i in range(m):
                         term = (
@@ -158,7 +148,7 @@ def f(m: int, a: int, b: int, mod: int) -> int:
                         )
                         result = (result + term) % mod
 
-    inv = mod_inverse(4 * a * b, mod)
+    inv = mod_inverse(4 * a * b % mod, mod)
     return result * inv % mod
 
 

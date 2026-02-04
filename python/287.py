@@ -1,48 +1,76 @@
-"""Project Euler Problem 287: Quadtree encoding.
-
-An image can be described with a quad-tree encoding: 10 represents a
-black pixel, 11 represents a white pixel, and 0 represents that 4
-recursive descriptions follow. Find the minimum number of bits required
-to encode an image where (x, y) is black if (x - 2^(N-1))² + (y -
-2^(N-1))² ≤ 2^(2N-2).
-"""
-
+"""Project Euler Problem 287: Quadtree encoding."""
 from __future__ import annotations
+import ctypes
+import tempfile
+import os
+import subprocess
+import sys
 
 
 def solve() -> int:
-    """Solve Problem 287."""
-    N = 24
-    L = 1 << (N - 1)
+    # Use C for the inner computation since Python is too slow for millions of recursive calls
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
 
-    def black(x: int, y: int) -> bool:
-        """Check if pixel is black."""
-        return (x - L) ** 2 + (y - L) ** 2 <= L * L
+#define N 24
+#define L (1 << (N - 1))
 
-    def len_encoding(x: int, y: int, side: int) -> int:
-        """Compute encoding length."""
-        if (
-            black(x, y) == black(x + side - 1, y + side - 1)
-            and black(x + side - 1, y) == black(x, y + side - 1)
-        ):
-            return 2
-        half = side // 2
-        return (
-            1
-            + len_encoding(x, y, half)
-            + len_encoding(x + half, y, half)
-            + len_encoding(x, y + half, half)
-            + len_encoding(x + half, y + half, half)
-        )
+static inline int black(long long x, long long y) {
+    return (x - L) * (x - L) + (y - L) * (y - L) <= (long long)L * L;
+}
 
-    return 1 + len_encoding(0, 0, L) + 2 * len_encoding(L, 0, L) + len_encoding(L, L, L)
+static int len_enc(int x, int y, int side) {
+    // Iterative with explicit stack
+    typedef struct { int x, y, side; } Item;
+    Item *stack = malloc(sizeof(Item) * 100000);
+    int sp = 0;
+    int bits = 0;
+    stack[sp].x = x; stack[sp].y = y; stack[sp].side = side; sp++;
+    while (sp > 0) {
+        sp--;
+        int cx = stack[sp].x, cy = stack[sp].y, cs = stack[sp].side;
+        int b00 = black(cx, cy);
+        int b11 = black(cx + cs - 1, cy + cs - 1);
+        int b10 = black(cx + cs - 1, cy);
+        int b01 = black(cx, cy + cs - 1);
+        if (b00 == b11 && b10 == b01) {
+            bits += 2;
+        } else {
+            int half = cs >> 1;
+            bits += 1;
+            stack[sp].x = cx;        stack[sp].y = cy;        stack[sp].side = half; sp++;
+            stack[sp].x = cx + half; stack[sp].y = cy;        stack[sp].side = half; sp++;
+            stack[sp].x = cx;        stack[sp].y = cy + half; stack[sp].side = half; sp++;
+            stack[sp].x = cx + half; stack[sp].y = cy + half; stack[sp].side = half; sp++;
+        }
+    }
+    free(stack);
+    return bits;
+}
+
+int main() {
+    long long ans = 1 + len_enc(0, 0, L) + 2 * len_enc(L, 0, L) + len_enc(L, L, L);
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    # Write, compile, and run C code
+    tmpdir = tempfile.mkdtemp()
+    c_path = os.path.join(tmpdir, "p287.c")
+    bin_path = os.path.join(tmpdir, "p287")
+    with open(c_path, "w") as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", bin_path, c_path], check=True, capture_output=True)
+    result = subprocess.run([bin_path], capture_output=True, text=True, check=True)
+    os.unlink(c_path)
+    os.unlink(bin_path)
+    os.rmdir(tmpdir)
+    return int(result.stdout.strip())
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+def main() -> None:
+    print(solve())
 
 
 if __name__ == "__main__":

@@ -7,31 +7,6 @@ and keeps it with probability 1/3. The round ends when both die land on the
 same player after k turns, and that player puts k^E money in the pot and is
 eliminated for future rounds. Find the expected number of money in the pot at
 the end of the game.
-
-Suppose a round has n players and let P_{d,k} be the probability that if the
-dice start d players apart (0≤d≤⌊n/2⌋), then the round will end in k turns.
-Then if k=0, P_{d,k} = [d=0]. Otherwise, P_{d,k} = Σ_t 1/9 P_{t(d),k-1},
-where t ranges over all 9 possibilities of how the dice will move, and t(d) is
-the new distance between the dice.
-
-Let X_{d,e} = Σ_{k=0}^∞ P_{d,k} k^e. For e=0, this is just the sum of the
-probabilities over all d and k, which is always 1. If d>0, then we have
-
-X_{d,e} = Σ_{k=1}^∞ Σ_t 1/9 P_{t(d),k-1} k^e
-        = 1/9 Σ_t Σ_{k=0}^∞ P_{t(d),k} (k+1)^e
-        = 1/9 Σ_t Σ_{e'=0}^e nCr(e,e') X_{t(d),e'}.
-
-So for each e, if we've computed all X_{d,e'} for e'<e, then we can compute
-all the X_{d,e} for 0≤d≤⌊n/2⌋ as a system of linear equations. Also, since
-t(d) never differs from d by more than 2, the system of equations can be
-expressed as a band matrix with maximum offset 2, and so the equations can be
-solved in linear time.
-
-Finally, there is a 1/n chance of the second die starting any particular number
-of players clockwise from the first die. Taking d to be the minimum distance
-(either clockwise or counter-clockwise) and averaging X_{d,E} over all n
-possibilities gives the expected money paid per round. Summing over all rounds
-(2≤n≤N) gives the answer.
 """
 
 from __future__ import annotations
@@ -76,12 +51,15 @@ def linear_system(A: BandMatrix, B: list[float]) -> list[float]:
     # Forward elimination
     for i in range(n):
         for j in range(1, A.max_diff + 1):
-            if i + j < n:
-                ratio = A.get(i + j, -j) / A.get(i, 0)
-                for k in range(-A.max_diff, A.max_diff + 1):
-                    if 0 <= i + j + k < n:
-                        A.add(i + j, k - j, -ratio * A.get(i, k))
-                B[i + j] -= ratio * B[i]
+            if i + j >= n:
+                break
+            pivot = A.get(i, 0)
+            if abs(pivot) < 1e-15:
+                continue
+            ratio = A.get(i + j, -j) / pivot
+            for k in range(A.max_diff + 1):
+                A.add(i + j, k - j, -ratio * A.get(i, k))
+            B[i + j] -= ratio * B[i]
 
     # Back substitution
     res = [0.0] * n
@@ -90,7 +68,9 @@ def linear_system(A: BandMatrix, B: list[float]) -> list[float]:
         for j in range(1, A.max_diff + 1):
             if i + j < n:
                 res[i] -= A.get(i, j) * res[i + j]
-        res[i] /= A.get(i, 0)
+        pivot = A.get(i, 0)
+        if abs(pivot) > 1e-15:
+            res[i] /= pivot
 
     return res
 
@@ -140,11 +120,10 @@ def solve() -> float:
     return ans
 
 
-def main() -> int:
+def main() -> None:
     """Main entry point."""
     result = solve()
     print(f"{result:.8e}".replace("+", ""))
-    return int(result)
 
 
 if __name__ == "__main__":

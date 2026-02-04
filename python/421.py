@@ -1,82 +1,127 @@
+#!/usr/bin/env python3
 """Project Euler Problem 421: Prime factors of n^15+1.
 
-Let s(n, m) be the sum of all distinct prime factors of n^15 + 1 that are
-no greater than m. Find Σ_{n=1}^N s(n, K).
+Let s(n, m) = sum of distinct prime factors of n^15+1 that are <= m.
+Find sum_{n=1}^{10^11} s(n, 10^8).
 
-We compute this sum by iterating over all possible primes p no greater than
-m, and for each one computing how many values of n^15 + 1 are divisible by
-p.
+For each prime p <= K, the contribution is p * (number of n in [1,N] with p | n^15+1).
+n^15 ≡ -1 (mod p) iff (-n)^15 ≡ 1 (mod p).
 
-Given a prime p, there is a generator g with order p-1. If some n satisfies
-n^15 + 1 ≡ 0 (mod p), then (-n)^15 ≡ 1 ≡ g^(k*(p-1)), which means -n ≡
-g^(k*(p-1)/15). This means that the exponent is a multiple of (p-1) /
-GCD(p-1,15), where the multiple k ranges from 1 to GCD(p-1,15) (which we
-abbreviate as just GCD from now on).
+So the roots are n ≡ -r (mod p) where r is a 15th root of unity mod p.
+But we also need (-n)^15 = -n^15, so actually n^15 = -1 means n = g^((2k+1)(p-1)/(2*gcd(p-1,30)))
+for appropriate generator g.
 
-For a prime p, by trying different values of g, we first find a 15th root
-g^((p-1) / GCD) that has GCD distinct exponent multiples, i.e. GCD is the
-smallest integer to multiply the exponent by such that the result is 1.
-Then, for each of those values r = g^(k*(p-1) / GCD) (where 0 ≤ r ≤ p-1),
-n can be p - r, 2p - r, etc. If the largest possible value is N, then this
-gives (N + r) / p different values of n.
+Simpler: iterate the gcd(p-1,15) roots of unity r, and for each, n = p - r gives
+n^15 ≡ (-r)^15 = -1 (mod p). Count of such n in [1,N] is (N + r) / p.
+
+Uses C for performance.
+"""
+import os
+import subprocess
+import tempfile
+
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef long long ll;
+typedef unsigned long long ull;
+typedef __uint128_t u128;
+
+#define KMAX 100000001
+
+static char is_composite[KMAX];
+
+void sieve(int limit) {
+    memset(is_composite, 0, limit + 1);
+    is_composite[0] = is_composite[1] = 1;
+    for (int i = 2; (ll)i * i <= limit; i++) {
+        if (!is_composite[i]) {
+            for (ll j = (ll)i * i; j <= limit; j += i)
+                is_composite[j] = 1;
+        }
+    }
+}
+
+static inline ull pow_mod(ull base, ull exp, ull mod) {
+    ull result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = (u128)result * base % mod;
+        base = (u128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+ll gcd_ll(ll a, ll b) { while (b) { ll t = b; b = a % b; a = t; } return a; }
+
+int main() {
+    ll N = 100000000000LL;  /* 10^11 */
+    int K = 100000000;       /* 10^8 */
+    int R = 15;
+
+    sieve(K);
+
+    ll ans = 0;
+
+    for (ll p = 2; p <= K; p++) {
+        if (is_composite[p]) continue;
+
+        ll g_val = gcd_ll(p - 1, R);  /* number of 15th roots of 1 mod p */
+
+        /* Find a primitive g_val-th root of unity */
+        ull nth_root = 1;
+        for (ull g = 1; g < (ull)p; g++) {
+            if (g == 1) {
+                nth_root = 1;
+            } else {
+                nth_root = pow_mod(g, (p - 1) / g_val, p);
+            }
+            /* Check if nth_root has order g_val */
+            ull r = nth_root;
+            int e = 1;
+            while (r != 1) {
+                r = (u128)r * nth_root % p;
+                e++;
+            }
+            if (e == g_val) break;
+        }
+
+        /* Enumerate 15th roots of 1: nth_root^0, nth_root^1, ..., nth_root^(g_val-1) */
+        /* For each root r, n ≡ p - r (mod p) gives n^15 ≡ -1 (mod p) */
+        /* Count of n in [1, N]: (N + r) / p */
+        ull r = 1;
+        for (int e = 0; e < g_val; e++) {
+            ans += p * ((N + (ll)r) / p);
+            r = (u128)r * nth_root % p;
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p421.c")
+    exe_file = os.path.join(tmpdir, "p421")
 
-from math import gcd
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-from sympy import primerange
+    subprocess.run(
+        ["gcc", "-O3", "-march=native", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Compute base^exp mod mod."""
-    result = 1
-    base %= mod
-    while exp:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def solve() -> int:
-    """Solve Problem 421."""
-    N = 10**11
-    K = 10**8
-    R = 15
-
-    ans = 0
-    for p in primerange(2, K + 1):
-        g_val = gcd(p - 1, R)
-        nth_root = 1
-        for g in range(1, p):
-            if g == 1:
-                nth_root = 1
-            else:
-                nth_root = pow_mod(g, (p - 1) // g_val, p)
-            e = 1
-            r = nth_root
-            while r != 1:
-                r = (r * nth_root) % p
-                e += 1
-            if e == g_val:
-                break
-
-        r = 1
-        for e in range(1, g_val + 1):
-            ans += (N + r) // p
-            r = (r * nth_root) % p
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True,
+        timeout=60
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

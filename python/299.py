@@ -8,41 +8,34 @@ CDP, and BDP are similar.
 
 from __future__ import annotations
 
-from math import gcd, isqrt
+from math import gcd
 
 
 def solve() -> int:
     """Solve Problem 299."""
     N = 10**8
 
-    # Precompute GCDs
-    limit = isqrt(N // 2)
-    gcds = [[0] * (i + 1) for i in range(limit + 1)]
-    for i in range(1, limit + 1):
-        for j in range(1, i + 1):
-            gcds[i][j] = gcd(i, j)
-
     ans = 0
 
     # Case 1: ABP ≡ DBP
-    for n in range(1, limit + 1):
-        if f1(n, n) >= N:
-            break
-        for m in range(n + 1, limit + 1, 2):
-            if f1(m, n) >= N:
-                break
-            if gcds[n][m % n] == 1:
+    n = 1
+    while f1(n, n) < N:
+        m = n + 1
+        while f1(m, n) < N:
+            if gcd(m, n) == 1:
                 ans += ((N - 1) // f1(m, n)) * 2
+            m += 2
+        n += 1
 
     # Case 2: ABP ≡ BDP
-    for n in range(1, limit + 1):
-        if f2(n, n) >= N:
-            break
-        for m in range(n + 1, limit + 1, 2):
-            if f2(m, n) >= N:
-                break
-            if gcds[n][m % n] == 1:
+    n = 1
+    while f2(n, n) < N:
+        m = n + 1
+        while f2(m, n) < N:
+            if gcd(m, n) == 1:
                 ans += (N - 1) // f2(m, n)
+            m += 2
+        n += 1
 
     return ans
 

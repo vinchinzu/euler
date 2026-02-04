@@ -72,6 +72,7 @@ def sqrt_mod(a: int, p: int) -> int:
 
 def mod_inv(a: int, m: int) -> int:
     """Modular inverse."""
+    a = a % m
     t, new_t = 0, 1
     r, new_r = m, a
     while new_r != 0:

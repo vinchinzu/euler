@@ -1,98 +1,133 @@
 """Project Euler Problem 629: Scatterstone Nim.
 
-In Scatterstone Nim, a move consists of breaking a pile with at least 2
-stones into at most k piles. Find sum_{k=2}^N f(N, k), where f(N, k) is the
-number of winning positions in a game with N stones and parameter k.
+Compute g(200) = sum_{k=2}^{200} f(200,k) mod 10^9+7,
+where f(n,k) counts winning positions (non-zero Grundy value partitions).
 
-For k=2 and k=3 we compute the nimbers directly; for k≥4 the nimber for a
-pile of n stones is always n-1.
+Nimbers: k=2 gives alternating 0,1; k=3 computed directly; k>=4 gives n-1.
+Uses C for the partition DP with XOR tracking.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from functools import lru_cache
-
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def solve() -> int:
-    """Solve Problem 629."""
+def solve():
     N = 200
-    M = 10**9 + 7
-    L = 1 << 20  # Large enough for nimber values
 
-    @lru_cache(maxsize=None)
-    def compute_nimbers(k: int) -> tuple:
-        """Compute nimbers for given k."""
-        nimbers = [0] * (N + 1)
+    # Compute nimbers for k=2
+    nimbers2 = [0] * (N + 1)
+    for n in range(2, N + 1):
+        used = set()
+        for i in range(1, n):
+            used.add(nimbers2[i] ^ nimbers2[n - i])
+        mex = 0
+        while mex in used:
+            mex += 1
+        nimbers2[n] = mex
 
-        for n in range(N + 1):
-            used = set()
-            for i in range(1, n):
-                used.add(nimbers[i] ^ nimbers[n - i])
+    # Compute nimbers for k=3
+    nimbers3 = [0] * (N + 1)
+    for n in range(2, N + 1):
+        used = set()
+        for i in range(1, n):
+            used.add(nimbers3[i] ^ nimbers3[n - i])
+        for i in range(1, n):
+            for j in range(i, n - i):
+                k_val = n - i - j
+                if k_val >= j:
+                    used.add(nimbers3[i] ^ nimbers3[j] ^ nimbers3[k_val])
+        mex = 0
+        while mex in used:
+            mex += 1
+        nimbers3[n] = mex
 
-            if k == 3:
-                for i in range(1, n):
-                    for j in range(i, n - i):
-                        used.add(
-                            nimbers[i] ^ nimbers[j] ^ nimbers[n - i - j]
-                        )
+    # For k>=4, nimbers are 0,0,1,2,...,N-1
+    nimbers4 = [0] * (N + 1)
+    for n in range(2, N + 1):
+        nimbers4[n] = n - 1
 
-            if k >= 4:
-                for i in range(n - 1):
-                    used.add(i)
+    xor_size = 256  # Enough for max nimber < 200
 
-            mex = 0
-            while mex in used:
-                mex += 1
-            nimbers[n] = mex
+    n2_str = ','.join(str(x) for x in nimbers2)
+    n3_str = ','.join(str(x) for x in nimbers3)
+    n4_str = ','.join(str(x) for x in nimbers4)
 
-        return tuple(nimbers)
+    c_code = f"""
+#include <stdio.h>
+#include <string.h>
 
-    def f(k: int) -> int:
-        """Compute f(N, k)."""
-        nimbers = compute_nimbers(k)
+#define NN 200
+#define MOD 1000000007LL
+#define XS {xor_size}
 
-        # DP: dp[a][b][c] = number of positions with a stones, max pile b,
-        # nimber c
-        dp = [[[0] * L for _ in range(N + 1)] for _ in range(N + 1)]
-        dp[0][N][0] = 1
+static int nimbers2[NN+1] = {{{n2_str}}};
+static int nimbers3[NN+1] = {{{n3_str}}};
+static int nimbers4[NN+1] = {{{n4_str}}};
 
-        for a in range(1, N + 1):
-            for b in range(1, N + 1):
-                for c in range(L):
-                    for d in range(1, min(a, b) + 1):
-                        if c ^ nimbers[d] < L:
-                            dp[a][b][c] = (
-                                dp[a][b][c]
-                                + dp[a - d][d][c ^ nimbers[d]]
-                            ) % M
+/* dp[a][x] = # partitions of a stones using parts of size <= current_d,
+   with XOR of nimbers = x */
+static long long dp[NN+1][XS];
+static long long tmp[NN+1][XS];
 
-        count = 0
-        for c in range(1, L):
-            count = (count + dp[N][N][c]) % M
-        return count
+static long long count_winning(int *nimbers) {{
+    memset(dp, 0, sizeof(dp));
+    dp[0][0] = 1;
 
-    ans = (f(2) + f(3) + (N - 3) * f(4)) % M
-    return ans
+    for (int d = 1; d <= NN; d++) {{
+        int g = nimbers[d];
+        /* Add 0 or more copies of pile size d.
+           tmp[a][x] = # ways to use >= 1 copy of size d to fill a stones
+                       with XOR = x (given dp has contributions from sizes < d).
+           Recurrence: tmp[a][x] = dp[a-d][x^g] + tmp[a-d][x^g]
+           (one copy from dp, or one more copy from tmp)
+        */
+        memset(tmp, 0, sizeof(tmp));
+        for (int a = d; a <= NN; a++) {{
+            for (int x = 0; x < XS; x++) {{
+                int px = x ^ g;
+                tmp[a][x] = (dp[a - d][px] + tmp[a - d][px]) % MOD;
+            }}
+        }}
 
+        /* dp += tmp */
+        for (int a = 0; a <= NN; a++) {{
+            for (int x = 0; x < XS; x++) {{
+                dp[a][x] = (dp[a][x] + tmp[a][x]) % MOD;
+            }}
+        }}
+    }}
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    long long result = 0;
+    for (int x = 1; x < XS; x++) {{
+        result = (result + dp[NN][x]) % MOD;
+    }}
+    return result;
+}}
 
+int main(void) {{
+    long long f2 = count_winning(nimbers2);
+    long long f3 = count_winning(nimbers3);
+    long long f4 = count_winning(nimbers4);
+
+    /* g(N) = f2 + f3 + (N-3)*f4 since f(N,k) = f4 for all k >= 4 */
+    long long ans = (f2 + f3 + (long long)(NN - 3) % MOD * (f4 % MOD)) % MOD;
+    printf("%lld\\n", ans);
+    return 0;
+}}
+"""
+
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

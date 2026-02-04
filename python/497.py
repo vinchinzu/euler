@@ -1,82 +1,62 @@
 """Project Euler Problem 497: Drunken Tower of Hanoi.
 
-In a variant of the Tower of Hanoi, the three rods are placed at positions
-a, b, c on a row n units long. Bob randomly moves left or right along the row,
-but picks up or puts down a disk whenever it is optimal to do so. Find Σ_n
-E(n, 10^n, 3^n, 6^n, 9^n).
+Ported from Java solution.
 """
 
-from __future__ import annotations
-
-from typing import List
-
-
-def solve() -> int:
-    """Solve Problem 497."""
-    N = 10_000
+def solve():
+    N = 10000
     M = 10**9
 
-    # numMoves[n][start][end][s][e] = number of moves from s to e
-    num_moves: List[List[List[List[List[int]]]]] = [
-        [[[[0 for _ in range(3)] for _ in range(3)] for _ in range(3)] for _ in range(3)]
-        for _ in range(N + 1)
-    ]
+    # numMoves[n][start][end][s][e] = number of times Bob moves from rod s to rod e
+    # when moving n disks from start to end
+    # We only need current and previous n, but the array is manageable for N=10000
+    # Actually N=10000 with 3^4=81 entries per n is fine as a list of dicts
 
-    # Base case: n=1
+    # Use a flat approach: numMoves[n] is a 3x3x3x3 array
+    # But storing all N levels would use too much memory (10000 * 81 longs)
+    # Actually 10000 * 81 = 810000 entries, that's fine
+
+    numMoves = [[[[[0]*3 for _ in range(3)] for _ in range(3)] for _ in range(3)] for _ in range(N+1)]
+
     for start in range(3):
         for end in range(3):
             if start != end:
-                num_moves[1][start][end][start][end] = 1
+                numMoves[1][start][end][start][end] = 1
 
-    # Recurrence
-    for n in range(2, N + 1):
+    for n in range(2, N+1):
         for start in range(3):
             for end in range(3):
                 if start != end:
                     other = 3 - start - end
                     for s in range(3):
                         for e in range(3):
-                            num_moves[n][start][end][s][e] += num_moves[n - 1][
-                                start
-                            ][other][s][e]
-                    num_moves[n][start][end][other][start] += 1
-                    num_moves[n][start][end][start][end] += 1
-                    num_moves[n][start][end][end][other] += 1
+                            numMoves[n][start][end][s][e] += numMoves[n-1][start][other][s][e]
+                    numMoves[n][start][end][other][start] += 1
+                    numMoves[n][start][end][start][end] += 1
+                    numMoves[n][start][end][end][other] += 1
                     for s in range(3):
                         for e in range(3):
-                            num_moves[n][start][end][s][e] += num_moves[n - 1][
-                                other
-                            ][end][s][e]
+                            numMoves[n][start][end][s][e] += numMoves[n-1][other][end][s][e]
+                            numMoves[n][start][end][s][e] %= M
 
     ans = 0
-    for n in range(1, N + 1):
-        k = 10**n
-        a = 3**n
-        b = 6**n
-        c = 9**n
-
-        # Expected moves
-        E = 0
+    for n in range(1, N+1):
+        k = pow(10, n, M)
+        rods = [pow(3, n, M), pow(6, n, M), pow(9, n, M)]
         for s in range(3):
             for e in range(3):
-                positions = [a, b, c]
-                moves = (
-                    abs(positions[e] - positions[s]) ** 2
-                    - abs(positions[s] - positions[s]) ** 2
-                )
-                E += num_moves[n][0][2][s][e] * moves
+                if s < e:
+                    dist = (rods[e] - 1) * (rods[e] - 1) - (rods[s] - 1) * (rods[s] - 1)
+                else:
+                    dist = (k - rods[e]) * (k - rods[e]) - (k - rods[s]) * (k - rods[s])
+                # Java: numMoves[1][1][0][s][e] + numMoves[n][0][2][s][e]
+                # The first term accounts for Bob moving from rod b(=1) to rod a(=0) initially
+                count = (numMoves[1][1][0][s][e] + numMoves[n][0][2][s][e]) % M
+                ans += dist % M * count % M
 
-        ans = (ans + E) % M
-
+    ans = ans % M
     return ans
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,104 +1,156 @@
 """Project Euler Problem 650: Divisors of Binomial Product.
 
-Let B(n) be the product of nCr(n, k) over all k, and let D(n) be the sum of
-the divisors of B(n). Find sum_{k=1}^n D(k).
+B(n) = product_{k=0}^{n} C(n,k). D(n) = sigma(B(n)) = sum of divisors of B(n).
+Find S(N) = sum_{n=1}^{N} D(n) mod 10^9+7 for N=20000.
 
-Since B(n) / B(n-1) = n^(n-1) / (n-1)!, we can start with B(0) = 0 and
-repeatedly compute the prime factorization of increasing B(n). For efficiency,
-we also maintain the prime factorization of n!, and update it for increasing n.
-The sum of divisors can be computed from the prime factorization.
+B(n) = (n!)^{n+1} / (product_{k=0}^n k!)^2.
+Exponent of p in B(n): (n+1)*v_p(n!) - 2*sum_{k=0}^n v_p(k!).
+Incremental: exp_p(B(n)) - exp_p(B(n-1)) = (n-1)*v_p(n) - v_p((n-1)!).
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from collections import defaultdict
-
-from sympy import factorint, primerange
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def mod_invs(n: int, m: int) -> list[int]:
-    """Precompute modular inverses for 1..n modulo m."""
-    invs = [0] * (n + 1)
-    invs[1] = 1
-    for i in range(2, n + 1):
-        invs[i] = (m - (m // i) * invs[m % i] % m) % m
-    return invs
-
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def solve() -> int:
-    """Solve Problem 650."""
+def solve():
     N = 20000
-    M = 10**9 + 7
+    MOD = 10**9 + 7
 
-    primes = list(primerange(2, N + 1))
-    mod_invs_list = mod_invs(N, M)
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    factorial_exp = defaultdict(int)
-    B_exp = defaultdict(int)
-    ans = 0
+typedef long long ll;
+#define MAXN 20001
 
-    for n in range(1, N + 1):
-        # Update factorial factorization
-        factors = factorint(n)
-        for p, e in factors.items():
-            factorial_exp[p] += e
+ll power(ll base, ll exp, ll mod) {
+    ll r = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) r = r * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return r;
+}
 
-        # Update B factorization: B(n) / B(n-1) = n^(n-1) / (n-1)!
-        # So B_exp[p] += (n-1)*e - factorial_exp[p] for each prime factor of n
-        for p, e in factors.items():
-            B_exp[p] += (n - 1) * e
-        for p in primes:
-            if p <= n:
-                B_exp[p] -= factorial_exp[p]
+int spf[MAXN]; /* smallest prime factor */
+int primes[MAXN];
+int nprimes;
+int pidx[MAXN]; /* prime index: pidx[p] = index in primes[] */
 
-        # Compute D(n) = sum of divisors
-        D = 1
-        for p in primes:
-            if B_exp[p] > 0:
-                num = (pow_mod(p, B_exp[p] + 1, M) - 1) % M
-                den = mod_invs_list[p - 1] if p - 1 < len(mod_invs_list) else mod_inverse(p - 1, M)
-                D = (D * num * den) % M
+/* B_exp[i] = exponent of primes[i] in B(n) */
+/* fact_exp[i] = exponent of primes[i] in n! */
+int B_exp[MAXN];
+int fact_exp[MAXN];
 
-        ans = (ans + D) % M
+int main() {
+    int N;
+    ll MOD;
+    scanf("%d %lld", &N, &MOD);
 
-    return ans
+    /* Sieve SPF */
+    for (int i = 2; i <= N; i++) spf[i] = 0;
+    nprimes = 0;
+    for (int i = 2; i <= N; i++) {
+        if (spf[i] == 0) {
+            spf[i] = i;
+            primes[nprimes] = i;
+            pidx[i] = nprimes;
+            nprimes++;
+        }
+        for (int j = 0; j < nprimes && primes[j] <= spf[i] && (ll)i * primes[j] <= N; j++) {
+            spf[i * primes[j]] = primes[j];
+        }
+    }
 
+    /* Precompute modular inverses of (p-1) for each prime p */
+    ll *inv_pm1 = (ll *)malloc(nprimes * sizeof(ll));
+    for (int i = 0; i < nprimes; i++) {
+        inv_pm1[i] = power(primes[i] - 1, MOD - 2, MOD);
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    memset(B_exp, 0, sizeof(B_exp));
+    memset(fact_exp, 0, sizeof(fact_exp));
+
+    /* D_product[i] = contribution of primes[i] to D(n) = (p^(e+1)-1)/(p-1) */
+    /* We maintain this incrementally */
+    ll *D_factor = (ll *)malloc(nprimes * sizeof(ll));
+    for (int i = 0; i < nprimes; i++) D_factor[i] = 1; /* p^0 => (p-1)/(p-1)=1 */
+
+    ll answer = 0;
+
+    for (int n = 1; n <= N; n++) {
+        /* Update fact_exp: v_p((n-1)!) is fact_exp before update,
+           then fact_exp becomes v_p(n!) = v_p((n-1)!) + v_p(n) */
+
+        /* Step 1: update B_exp by subtracting v_p((n-1)!) for all primes */
+        /* But fact_exp currently IS v_p((n-1)!) */
+        /* B_exp[i] -= fact_exp[i] for all i with fact_exp[i] > 0 */
+        for (int i = 0; i < nprimes && primes[i] < n; i++) {
+            if (fact_exp[i] > 0) {
+                B_exp[i] -= fact_exp[i];
+                /* Update D_factor for this prime */
+                if (B_exp[i] > 0) {
+                    D_factor[i] = (power(primes[i], B_exp[i] + 1, MOD) - 1 + MOD) % MOD * inv_pm1[i] % MOD;
+                } else {
+                    D_factor[i] = 1;
+                }
+            }
+        }
+
+        /* Step 2: add (n-1)*v_p(n) for each prime p dividing n */
+        {
+            int m = n;
+            while (m > 1) {
+                int p = spf[m];
+                int e = 0;
+                while (m % p == 0) { m /= p; e++; }
+                int pi = pidx[p];
+                B_exp[pi] += (n - 1) * e;
+                /* Also update fact_exp: v_p(n!) = v_p((n-1)!) + e */
+                fact_exp[pi] += e;
+                /* Update D_factor */
+                if (B_exp[pi] > 0) {
+                    D_factor[pi] = (power(p, B_exp[pi] + 1, MOD) - 1 + MOD) % MOD * inv_pm1[pi] % MOD;
+                } else {
+                    D_factor[pi] = 1;
+                }
+            }
+        }
+
+        /* Compute D(n) = product of D_factor[i] for all primes */
+        ll D = 1;
+        for (int i = 0; i < nprimes && primes[i] <= n; i++) {
+            D = D * D_factor[i] % MOD;
+        }
+
+        answer = (answer + D) % MOD;
+    }
+
+    printf("%lld\n", answer);
+
+    free(inv_pm1);
+    free(D_factor);
+    return 0;
+}
+"""
+
+    input_data = f"{N} {MOD}\n"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "sol.c")
+        exe = os.path.join(tmpdir, "sol")
+        with open(src, "w") as f:
+            f.write(c_code)
+        r = subprocess.run(["gcc", "-O2", "-o", exe, src], capture_output=True, text=True)
+        if r.returncode != 0:
+            import sys; sys.stderr.write("Compile: " + r.stderr + "\n"); return -1
+        result = subprocess.run([exe], input=input_data, capture_output=True, text=True, timeout=28)
+        if result.returncode != 0:
+            import sys; sys.stderr.write("Runtime: " + result.stderr + "\n"); return -1
+        return int(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

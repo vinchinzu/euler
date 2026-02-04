@@ -17,45 +17,23 @@ into an arithmetico-geometric series.
 
 from __future__ import annotations
 
-from sympy import primerange
+from sympy import nextprime
 
 
 def mod_inverse(a: int, m: int) -> int:
     """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def triangular(n: int, mod: int) -> int:
-    """Triangular number n(n+1)/2 modulo mod."""
-    return n * (n + 1) // 2 % mod
+    return pow(a, m - 2, m)
 
 
 def S(P: str, K: int, M: int) -> int:
-    """Compute sum of contiguous substrings."""
+    """Compute sum of contiguous substrings.
+
+    Matches the Java implementation exactly:
+      layeredNum = sum_{n} d_n * n * B^(L-1-n)   (mod M)
+      num        = sum_{n} d_n     * B^(L-1-n)   (mod M)
+      layeredSum = sum_{n} d_n * n                (mod M)
+      sum        = sum_{n} d_n                    (mod M)
+    """
     B = 10
     layered_num = 0
     num = 0
@@ -69,25 +47,39 @@ def S(P: str, K: int, M: int) -> int:
         layered_sum = (layered_sum + n * d) % M
         num = (num + d) % M
         sum_val = (sum_val + d) % M
-        layered_num = (layered_num * B) % M
-        num = (num * B) % M
+        layered_num = layered_num * B % M
+        num = num * B % M
 
-    piece = pow_mod(B, L, M)
-    all_pow = pow_mod(piece, K, M) - 1
-    inv_den = mod_inverse(piece - 1, M)
-    res = (
-        (
-            all_pow * inv_den % M * layered_num
-            + (all_pow + L * all_pow % M * inv_den - K % M * L) % M
-            * inv_den
-            % M
-            * num
-            - K % M * (layered_sum % M)
-            - (L * triangular(K - 1, M) + K) % M * sum_val
-        )
-        % M
-        * mod_inverse(B - 1, M)
-    ) % M
+    piece = pow(B, L, M)
+    all_pow = (pow(piece, K, M) - 1) % M
+    inv_den = mod_inverse((piece - 1) % M, M)
+
+    # tr(K-1, M) = (K-1)*K/2 mod M
+    tr_km1 = (K - 1) % M * (K % M) % M * mod_inverse(2, M) % M
+
+    # Match Java expression with explicit parenthesization:
+    # res = (all * invDen % M * layeredNum
+    #      + (all + L * all % M * invDen - K % M * L) % M * invDen % M * num
+    #      - K % M * (layeredSum % M)
+    #      - (L * tr(K-1,M) + K) % M * sum
+    #      ) % M * modInv(B-1, M)
+    #
+    # Java operator precedence (left-to-right for * and %):
+    # term1 = ((all * invDen) % M) * layeredNum
+    # term2_inner = (all + ((L * all) % M) * invDen - ((K % M) * L)) % M
+    # term2 = ((term2_inner * invDen) % M) * num
+    # term3 = (K % M) * (layeredSum % M)
+    # term4 = ((L * tr(K-1,M) + K) % M) * sum
+
+    term1 = (all_pow * inv_den % M) * layered_num % M
+    term2_inner = (all_pow + (L % M * all_pow % M) * inv_den % M - (K % M) * (L % M) % M) % M
+    term2 = (term2_inner * inv_den % M) * num % M
+    term3 = (K % M) * (layered_sum % M) % M
+    term4 = ((L % M) * tr_km1 % M + K % M) % M * sum_val % M
+
+    res = (term1 + term2 - term3 - term4) % M
+    res = res * mod_inverse(B - 1, M) % M
+
     return res % M
 
 
@@ -96,13 +88,13 @@ def solve() -> int:
     N = 10**6
     K = 10**12
     M = 10**9 + 7
-    B = 10
 
+    # Generate first N primes
     sb = []
-    for p in primerange(2, N + 1000):
-        if p > N:
-            break
+    p = 2
+    for _ in range(N):
         sb.append(str(p))
+        p = nextprime(p)
     P = "".join(sb)
 
     return S(P, K, M)

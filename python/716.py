@@ -5,93 +5,150 @@ or down, and each horizontal line is left or right, and let S(G) be the number
 of strongly connected components in G. Find the sum of S(G) over all possible
 grid graphs of HxW nodes.
 
-For a given G, each corner may have a rectangular subgrid of vertices that are
-not strongly connected to anything else, if the horizontal and vertical lines
-are either both pointed away or towards the corner. So the number of strongly
-connected components is the number of such isolated vertices, plus one strongly
-connected "big" component if the isolated vertices don't take up the entire grid.
-
-We can compute the answer for the given H,W with standard extrapolation.
+C(h, w) satisfies a linear recurrence in both h and w. We compute C for small
+values by brute force, use BM to find the recurrence, and Kitamasa to
+extrapolate to large H, W.
 """
 
 from __future__ import annotations
 
-from itertools import product
-from typing import Callable
+
+def berlekamp_massey(seq, mod):
+    """Find shortest linear recurrence mod prime."""
+    n = len(seq)
+    C = [1]
+    B = [1]
+    L = 0
+    m = 1
+    b = 1
+    for i in range(n):
+        d = seq[i]
+        for j in range(1, L + 1):
+            d = (d + C[j] * seq[i - j]) % mod
+        d %= mod
+        if d == 0:
+            m += 1
+        elif 2 * L <= i:
+            T = C[:]
+            coeff = d * pow(b, mod - 2, mod) % mod
+            while len(C) < len(B) + m:
+                C.append(0)
+            for j in range(len(B)):
+                C[j + m] = (C[j + m] - coeff * B[j]) % mod
+            L = i + 1 - L
+            B = T
+            b = d
+            m = 1
+        else:
+            coeff = d * pow(b, mod - 2, mod) % mod
+            while len(C) < len(B) + m:
+                C.append(0)
+            for j in range(len(B)):
+                C[j + m] = (C[j + m] - coeff * B[j]) % mod
+            m += 1
+    return L, [(-C[i]) % mod for i in range(1, L + 1)]
 
 
-def extrapolation(
-    f: Callable[[int], int], order: int, mod: int
-) -> Callable[[int], int]:
-    """Extrapolate function using Lagrange interpolation."""
-    # Generate order+1 points
-    n_points = order + 1
-    x_vals = list(range(1, n_points + 1))
-    y_vals = [f(x) % mod for x in x_vals]
-
-    def interpolate(x: int) -> int:
-        """Interpolate at point x."""
-        result = 0
-        for i in range(n_points):
-            term = y_vals[i]
-            for j in range(n_points):
-                if i != j:
-                    denom = (x_vals[i] - x_vals[j]) % mod
-                    if denom == 0:
-                        continue
-                    inv = pow(denom, mod - 2, mod)
-                    term = (term * (x - x_vals[j]) * inv) % mod
-            result = (result + term) % mod
-        return result % mod
-
-    return interpolate
+def poly_mult_mod(a, b, rec, mod):
+    """Multiply polynomials a, b modulo characteristic polynomial and mod."""
+    L = len(rec)
+    raw = [0] * (len(a) + len(b) - 1)
+    for i in range(len(a)):
+        if a[i] == 0:
+            continue
+        for j in range(len(b)):
+            raw[i + j] = (raw[i + j] + a[i] * b[j]) % mod
+    rep = [rec[L - 1 - i] % mod for i in range(L)]
+    for i in range(len(raw) - 1, L - 1, -1):
+        if raw[i] == 0:
+            continue
+        c = raw[i]
+        raw[i] = 0
+        for j in range(L):
+            raw[i - L + j] = (raw[i - L + j] + c * rep[j]) % mod
+    return raw[:L]
 
 
-def C(h: int, w: int) -> int:
-    """Compute C(h, w) for grid graph strongly connected components."""
-    M = 10**9 + 7
+def eval_recurrence(rec, init, n, mod):
+    """Evaluate linear recurrence at position n using Kitamasa method."""
+    L = len(rec)
+    if n < L:
+        return init[n] % mod
+    result = [0] * L
+    result[0] = 1
+    base = [0] * L
+    if L > 1:
+        base[1] = 1
+    else:
+        base[0] = rec[0] % mod
+    exp = n
+    while exp > 0:
+        if exp & 1:
+            result = poly_mult_mod(result, base, rec, mod)
+        base = poly_mult_mod(base, base, rec, mod)
+        exp >>= 1
+    ans = 0
+    for i in range(L):
+        ans = (ans + result[i] * init[i]) % mod
+    return ans
+
+
+def precompute_list_props(n):
+    """Precompute properties of all binary lists of length n.
+
+    Returns a dict: bitmask -> (first0, first1, last0, last1, bit0, bitlast)
+    where first0 = index of first 0, first1 = index of first 1, etc.
+    -1 if not found.
+    """
+    props = {}
+    for mask in range(1 << n):
+        bits = [(mask >> j) & 1 for j in range(n)]
+        b0 = bits[0]
+        blast = bits[-1]
+        first0 = first1 = last0 = last1 = -1
+        for j in range(n):
+            if bits[j] == 0:
+                if first0 == -1:
+                    first0 = j
+                last0 = j
+            else:
+                if first1 == -1:
+                    first1 = j
+                last1 = j
+        props[mask] = (first0, first1, last0, last1, b0, blast)
+    return props
+
+
+def C(h, w):
+    """Compute sum of S(G) over all grid graphs of h x w nodes."""
+    vprops = precompute_list_props(h)
+    hprops = precompute_list_props(w)
+
     total = 0
+    for vi in range(1 << h):
+        vf0, vf1, vl0, vl1, v0, vlast = vprops[vi]
+        for hi_val in range(1 << w):
+            hf0, hf1, hl0, hl1, h0, hlast = hprops[hi_val]
 
-    # Generate all vertical line directions (h bits)
-    for vert in product([0, 1], repeat=h):
-        # Generate all horizontal line directions (w bits)
-        for horiz in product([0, 1], repeat=w):
-            # Find corner positions
-            try:
-                x1 = horiz.index(1 - vert[0])
-            except ValueError:
-                x1 = -1
-            try:
-                y1 = vert.index(1 - horiz[0])
-            except ValueError:
-                y1 = -1
-            try:
-                x2 = len(horiz) - 1 - list(reversed(horiz)).index(vert[0])
-            except ValueError:
-                x2 = -1
-            try:
-                y2 = vert.index(horiz[-1])
-            except ValueError:
-                y2 = -1
-            try:
-                x3 = horiz.index(vert[-1])
-            except ValueError:
-                x3 = -1
-            try:
-                y3 = len(vert) - 1 - list(reversed(vert)).index(horiz[0])
-            except ValueError:
-                y3 = -1
-            try:
-                x4 = len(horiz) - 1 - list(reversed(horiz)).index(1 - vert[-1])
-            except ValueError:
-                x4 = -1
-            try:
-                y4 = len(vert) - 1 - list(reversed(vert)).index(1 - horiz[-1])
-            except ValueError:
-                y4 = -1
+            # x1 = indexOf(horiz, 1-v0) = first occurrence of (1-v0) in horiz
+            x1 = hf1 if v0 == 0 else hf0
+            # y1 = indexOf(vert, 1-h0) = first occurrence of (1-h0) in vert
+            y1 = vf1 if h0 == 0 else vf0
+            # x2 = lastIndexOf(horiz, v0)
+            x2 = hl0 if v0 == 0 else hl1
+            # y2 = indexOf(vert, hlast)
+            y2 = vf0 if hlast == 0 else vf1
+            # x3 = indexOf(horiz, vlast)
+            x3 = hf0 if vlast == 0 else hf1
+            # y3 = lastIndexOf(vert, h0)
+            y3 = vl0 if h0 == 0 else vl1
+            # x4 = lastIndexOf(horiz, 1-vlast)
+            x4 = hl1 if vlast == 0 else hl0
+            # y4 = lastIndexOf(vert, 1-hlast)
+            y4 = vl1 if hlast == 0 else vl0
 
             if x1 == -1 or x2 == -1 or y1 == -1 or y3 == -1:
-                total = (total + w * h) % M
+                total += w * h
             else:
                 area = (
                     x1 * y1
@@ -101,36 +158,35 @@ def C(h: int, w: int) -> int:
                 )
                 if area < w * h:
                     area += 1
-                total = (total + area) % M
-
+                total += area
     return total
 
 
-def solve() -> int:
+def solve():
     """Solve Problem 716."""
     H = 10000
     W = 20000
     M = 10**9 + 7
 
-    # Nested extrapolation: extrapolate over w, then over h
-    def inner_extrap(w: int) -> int:
-        """Extrapolate over w."""
-        def f_w(h_val: int) -> int:
-            return C(h_val + 1, w + 1) % M
+    max_h = 10
+    max_w = 10
 
-        extrap_w = extrapolation(f_w, 1, M)
-        return extrap_w(W - 1)
+    # Step 1: For each h, compute C(h, w) for small w, find recurrence, extrapolate to W
+    vals_at_W = []
+    for h in range(1, max_h + 1):
+        row = [C(h, w) % M for w in range(1, max_w + 1)]
+        L, rec = berlekamp_massey(row, M)
+        val = eval_recurrence(rec, row[:L], W - 1, M)
+        vals_at_W.append(val)
 
-    def f_h(h_val: int) -> int:
-        return inner_extrap(h_val + 1) % M
+    # Step 2: Find recurrence in h and extrapolate to H
+    L_h, rec_h = berlekamp_massey(vals_at_W, M)
+    result = eval_recurrence(rec_h, vals_at_W[:L_h], H - 1, M)
 
-    extrap_h = extrapolation(f_h, 1, M)
-    ans = extrap_h(H - 1)
-
-    return ans % M
+    return result % M
 
 
-def main() -> int:
+def main():
     """Main entry point."""
     result = solve()
     print(result)

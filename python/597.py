@@ -77,8 +77,9 @@ def solve() -> float:
                 break
             new_last_bumper = boats.pop(i)
             new_last_bumped = boats[i]
+            after = boats[i + 1] if i + 1 < len(boats) else N + 1
             bumps.append(
-                Bump(boats[i - 1], new_last_bumper, new_last_bumped, boats[i + 1])
+                Bump(boats[i - 1], new_last_bumper, new_last_bumped, after)
             )
             helper(boats, spots, bumps, new_last_bumped)
             boats.insert(i, new_last_bumper)

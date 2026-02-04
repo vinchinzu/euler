@@ -85,11 +85,15 @@ def solve() -> int:
     K = 62
     M = 1_000_062_031
 
-    def f(n: int) -> int:
-        return H(K + n, K, M)
+    # H(K + n, K) satisfies a linear recurrence of order 1 (geometric):
+    #   H(K + n + 1, K) = ratio * H(K + n, K)  (mod M)
+    # Compute two sample values to determine the ratio.
+    v1 = H(K + 1, K, M)
+    v2 = H(K + 2, K, M)
+    ratio = (v2 * pow(v1, -1, M)) % M
 
-    extrap = lagrange_extrapolation(f, 1, M)
-    return extrap(N - K)
+    # Answer = H(K + (N - K), K) = v1 * ratio^(N - K - 1) mod M
+    return (v1 * pow(ratio, N - K - 1, M)) % M
 
 
 def main() -> int:

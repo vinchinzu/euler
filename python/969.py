@@ -7,7 +7,7 @@
 # correct 412543690
 import sys
 mod = 1000000007
-M = 10
+M = 10**18
 maxj = 60
 primes = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59]
 stir = [[0 for _ in range(maxj+1)] for _ in range(maxj+1)]

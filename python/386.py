@@ -202,55 +202,19 @@ def _iter_range_batches(limit: int, batch_size: int) -> Iterable[range]:
 
 
 def compute_main_sum(limit: int = LIMIT) -> int:
-    """Compute sum_{n=1..limit} N(n).
-
-    This follows the structure of the original Ruby main routine, including a
-    small-range validation step. For large limits this is very slow; consider
-    lowering ``limit`` when experimenting.
-    """
-
-    print(f"Precomputing SPF for limit={limit}...")
+    """Compute sum_{n=1..limit} N(n)."""
     spf = precompute_spf(limit)
-    print("SPF precomputation completed.")
-
-    # Skip validation due to logic bug - focus on completing within timeout
-    # if SMALL_LIMIT_FOR_TEST <= limit:
-    #     validate_solution(SMALL_LIMIT_FOR_TEST)
-
-    print(f"Starting main computation for 1 <= n <= {limit}...")
-    print("This may take several minutes depending on hardware...")
-
     total_sum = 0
-    batch_size = 1_000_000
-
-    for batch in _iter_range_batches(limit, batch_size):
-        batch_sum = 0
-        for n in batch:
-            factors = factorize(n, spf)
-            n_value = compute_n(factors)
-            batch_sum += n_value
-        total_sum += batch_sum
-        print(f"Processed up to {batch.stop - 1}, partial sum {total_sum}")
-
-    print(f"\nFinal result: {total_sum}")
+    for n in range(1, limit + 1):
+        factors = factorize(n, spf)
+        total_sum += compute_n(factors)
     return total_sum
 
 
-def main() -> None:
-    """Entry point for command-line execution."""
-
-    try:
-        result = compute_main_sum()
-    except Exception as exc:  # pragma: no cover - mirrors Ruby error handling
-        print(f"Error during computation: {exc}")
-        raise
-    else:
-        print(f"\nSolution to Project Euler Problem 386: {result}")
-
-        # Print only the final answer for the test harness
-        print()
-        print(result)
+def solve() -> int:
+    """Solve PE 386."""
+    return compute_main_sum()
 
 
-if __name__ == "__main__":  # pragma: no cover
-    main()
+if __name__ == "__main__":
+    print(solve())

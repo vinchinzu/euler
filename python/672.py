@@ -5,72 +5,93 @@ number is divisible by 7, and add one otherwise, ending at 1. Let g(n) be the
 number of times when we add one, S(N) = sum_{n=1}^N g(n), and H(K) = S((7^K - 1) / 11).
 Find H(N).
 
-First consider S(N) = g(1) + ... + g(N). The values up to g(7⌊N/7⌋) can be split
-into ⌊N/7⌋ groups of 7. In each group (7k+1, ..., 7k+7), the first number needs
-to be incremented 6 times before it becomes a multiple of 7, the next one 5 times,
-and so on down to 0 times. This gives 21 steps, plus an additional 7g(k) steps.
-All groups together require 21⌊n/7⌋ + 7S(⌊n/7⌋) steps.
-
-There are (N%7) remaining numbers. Again, the first number needs to be incremented
-6 times, and so on, which in total require (21 - tr(6 - n%7)) steps, and the result
-will always be 7(⌊n/7⌋ + 1), which require g(⌊n/7⌋ + 1) more steps to get to 1.
-
-Finally, we need to make one correction: g(1) = 0, i.e. we don't need to increment
-6 times like any of the other numbers that are 1 (mod 7). This means we over-counted
-and need to subtract 6. The final recurrence is
-
-S(N) = 21⌊n/7⌋ + 7S(⌊n/7⌋) + (21 - tr(6 - n%7)) + (n%7)g(⌊n/7⌋ + 1) - 6
-     = 7S(⌊n/7⌋) + 21⌊n/7⌋ + (n%7)g(⌊n/7⌋ + 1) + 15 - tr(6 - n%7).
-
-Note that g(⌊n/7⌋ + 1) is the sum of (6-b) over all digits b in the base 7
-representation of ⌊n/7⌋.
-
-To compute H(K) efficiently, we can compute the base 7 representation of
-N = (7^K - 1) / 11 with long division, and then iteratively compute the values
-of S for prefixes of N, keeping track of cumulative values of ⌊n/7⌋ and
-g = sum (6-b) for prefixes of N for efficient computation of S.
-
-Finally, for extra speed, we recognize that the base 7 representation of N is
-periodic, so obeys a relatively small recurrence. This allows us to only compute
-H(K) for relatively small values of K.
+We compute H(k) for small k values, find the linear recurrence using
+Berlekamp-Massey, and then use polynomial exponentiation to evaluate at N.
 """
 
 from __future__ import annotations
 
-from typing import Callable
+
+def berlekamp_massey(s: list[int], mod: int) -> list[int]:
+    """Find shortest linear recurrence using Berlekamp-Massey algorithm."""
+    n = len(s)
+    C = [1]
+    B = [1]
+    L = 0
+    m = 1
+    b = 1
+    for i in range(n):
+        d = s[i]
+        for j in range(1, L + 1):
+            d = (d + C[j] * s[i - j]) % mod
+        if d == 0:
+            m += 1
+        elif 2 * L <= i:
+            T = list(C)
+            coeff = d * pow(b, -1, mod) % mod
+            while len(C) < len(B) + m:
+                C.append(0)
+            for j in range(len(B)):
+                C[j + m] = (C[j + m] - coeff * B[j]) % mod
+            L = i + 1 - L
+            B = T
+            b = d
+            m = 1
+        else:
+            coeff = d * pow(b, -1, mod) % mod
+            while len(C) < len(B) + m:
+                C.append(0)
+            for j in range(len(B)):
+                C[j + m] = (C[j + m] - coeff * B[j]) % mod
+            m += 1
+    return [(-c) % mod for c in C[1:L+1]]
 
 
-def tr(n: int) -> int:
-    """Triangular number."""
-    return n * (n + 1) // 2
+def poly_mult_mod(a: list[int], b: list[int], rec: list[int], mod: int) -> list[int]:
+    """Multiply two polynomials modulo the characteristic polynomial of recurrence."""
+    L = len(rec)
+    result = [0] * (2 * L)
+    for i in range(len(a)):
+        if a[i] == 0:
+            continue
+        for j in range(len(b)):
+            result[i + j] = (result[i + j] + a[i] * b[j]) % mod
+    for i in range(2 * L - 1, L - 1, -1):
+        if result[i] == 0:
+            continue
+        c = result[i]
+        result[i] = 0
+        for j in range(L):
+            result[i - L + j] = (result[i - L + j] + c * rec[L - 1 - j]) % mod
+    return result[:L]
 
 
-def extrapolation(
-    f: Callable[[int], int], n_points: int, mod: int
-) -> Callable[[int], int]:
-    """Extrapolate function using Lagrange interpolation."""
-    # Generate n_points values
-    values = []
-    for i in range(1, n_points + 1):
-        values.append(f(i) % mod)
+def linear_recurrence_nth(rec: list[int], init: list[int], n: int, mod: int) -> int:
+    """Compute n-th term of linear recurrence using polynomial exponentiation."""
+    L = len(rec)
+    if n < L:
+        return init[n] % mod
 
-    def interpolate(x: int) -> int:
-        """Interpolate at point x."""
-        result = 0
-        for i in range(n_points):
-            term = values[i]
-            for j in range(n_points):
-                if i != j:
-                    denom = (i + 1 - (j + 1)) % mod
-                    if denom == 0:
-                        continue
-                    # Compute modular inverse
-                    inv = pow(denom, mod - 2, mod)
-                    term = (term * (x - (j + 1)) * inv) % mod
-            result = (result + term) % mod
-        return result
+    base = [0] * L
+    if L > 1:
+        base[1] = 1
+    else:
+        base[0] = rec[0]
 
-    return interpolate
+    result = [0] * L
+    result[0] = 1
+
+    exp = n
+    while exp > 0:
+        if exp & 1:
+            result = poly_mult_mod(result, base, rec, mod)
+        base = poly_mult_mod(base, base, rec, mod)
+        exp >>= 1
+
+    ans = 0
+    for i in range(L):
+        ans = (ans + result[i] * init[i]) % mod
+    return ans
 
 
 def solve() -> int:
@@ -79,6 +100,9 @@ def solve() -> int:
     K = 11
     M = 1117117717
     B = 7
+
+    def tr(n: int) -> int:
+        return n * (n + 1) // 2
 
     def H(k: int) -> int:
         """Compute H(k) = S((7^k - 1) / 11)."""
@@ -101,9 +125,17 @@ def solve() -> int:
             g += B - 1 - digit
         return H_val
 
-    extrap_func = extrapolation(H, 3, M)
-    ans = extrap_func(N) % M
-    return ans
+    # Compute enough values (H is 1-indexed: H(1), H(2), ...)
+    num_values = 60
+    vals = [H(k) for k in range(1, num_values + 1)]
+
+    # Find recurrence
+    rec = berlekamp_massey(vals, M)
+    L = len(rec)
+
+    # Compute H(N) using the recurrence (0-indexed in vals, so H(N) = vals[N-1])
+    ans = linear_recurrence_nth(rec, vals[:L], N - 1, M)
+    return ans % M
 
 
 def main() -> int:

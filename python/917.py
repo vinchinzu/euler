@@ -149,16 +149,5 @@ def solve(N):
     return int(dp[NR-1][NC-1])
 
 if __name__ == "__main__":
-    # Test cases
-    print(f"A(1) = {solve(1)}")
-    print(f"A(2) = {solve(2)}")
-    print(f"A(10) = {solve(10)}")
-
-    # Main problem
-    print("Computing A(10^7)...")
     result = solve(10**7)
-    print(f"A(10^7) = {result}")
-
-    import os
-    with open(os.path.join(os.path.dirname(__file__), 'answer.txt'), 'w') as f:
-        f.write(str(result))
+    print(result)

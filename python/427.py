@@ -1,131 +1,136 @@
+#!/usr/bin/env python3
 """Project Euler Problem 427: n-sequences.
 
-If S is a sequence of N integers, each from 1 to N inclusive, let L(S) be the
-length of the longest contiguous subsequence of the same value. Find Σ L(S)
-over all such sequences S.
-
-We use generating functions and binomial coefficients to compute this
-efficiently.
+Find sum of L(S) over all sequences of length N with values 1..N,
+where L(S) is the longest contiguous run of the same value.
+Uses C for performance.
 """
+import os
+import subprocess
+import tempfile
 
-from __future__ import annotations
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-from typing import List
+typedef long long ll;
+typedef unsigned long long ull;
 
+#define N 7500000
+#define MOD 1000000009LL
 
-class Zp:
-    """Modular arithmetic helper for binomial coefficients."""
+static ll fact[N + 1];
+static ll inv_fact[N + 1];
+static ll pow_n[N + 2];
+static ll pow_nm1[N + 2];
 
-    def __init__(self, max_n: int, mod: int) -> None:
-        """Initialize with maximum n and modulus."""
-        self.mod = mod
-        self.max_n = max_n
-        self._factorials: List[int] = []
-        self._inv_factorials: List[int] = []
-        self._precompute()
+static ll power(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-    def _precompute(self) -> None:
-        """Precompute factorials and inverse factorials."""
-        self._factorials = [1] * (self.max_n + 1)
-        for i in range(1, self.max_n + 1):
-            self._factorials[i] = (self._factorials[i - 1] * i) % self.mod
+static void precompute() {
+    fact[0] = 1;
+    for (int i = 1; i <= N; i++)
+        fact[i] = fact[i - 1] * i % MOD;
 
-        self._inv_factorials = [1] * (self.max_n + 1)
-        self._inv_factorials[self.max_n] = pow(
-            self._factorials[self.max_n], self.mod - 2, self.mod
-        )
-        for i in range(self.max_n - 1, -1, -1):
-            self._inv_factorials[i] = (
-                self._inv_factorials[i + 1] * (i + 1)
-            ) % self.mod
+    inv_fact[N] = power(fact[N], MOD - 2, MOD);
+    for (int i = N - 1; i >= 0; i--)
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) % MOD;
 
-    def nCr(self, n: int, r: int) -> int:
-        """Return C(n, r) mod mod."""
-        if r < 0 or r > n:
-            return 0
-        if n > self.max_n:
-            # Compute directly for large n
-            result = 1
-            for i in range(r):
-                result = (result * (n - i)) % self.mod
-            return (
-                result * pow(self.factorial(r), self.mod - 2, self.mod)
-            ) % self.mod
-        return (
-            self._factorials[n]
-            * self._inv_factorials[r]
-            * self._inv_factorials[n - r]
-        ) % self.mod
+    pow_n[0] = 1;
+    for (int i = 1; i <= N + 1; i++)
+        pow_n[i] = pow_n[i - 1] * N % MOD;
 
-    def factorial(self, n: int) -> int:
-        """Return n! mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._factorials[n]
+    pow_nm1[0] = 1;
+    for (int i = 1; i <= N + 1; i++)
+        pow_nm1[i] = pow_nm1[i - 1] * (N - 1) % MOD;
+}
 
+static ll nCr(int n, int r) {
+    if (r < 0 || r > n) return 0;
+    return fact[n] % MOD * inv_fact[r] % MOD * inv_fact[n - r] % MOD;
+}
 
-def ipow(base: int, exp: int) -> int:
-    """Integer power."""
-    result = 1
-    for _ in range(exp):
-        result *= base
-    return result
+int main() {
+    precompute();
 
+    /* f[k] = number of sequences where longest run <= k */
+    /* We compute f[k] - f[k-1] incrementally */
+    /* ans = sum_{k=1}^{N} (f[k] - f[k-1]) * k = sum_{k=1}^{N} k * delta_k */
 
-def pows(base: int, max_exp: int, mod: int) -> List[int]:
-    """Precompute powers of base up to max_exp."""
-    result = [1] * (max_exp + 1)
-    for i in range(1, max_exp + 1):
-        result[i] = (result[i - 1] * base) % mod
-    return result
+    ll ans = 0;
+    ll prev_f = 0;
 
+    for (int k = 1; k <= N; k++) {
+        ll fk = 0;
+        for (int i = 0; ; i++) {
+            if ((ll)i * (k + 1) > N) break;
+            int A = N - i * k - 1;
+            if (A < 0) break;
 
-def parity(i: int) -> int:
-    """Return (-1)^i."""
-    return 1 if i % 2 == 0 else -1
+            ll term = 0;
+            /* First part: C(A, i) * (N-1)^i * N^(A-i+1) */
+            {
+                int exp1 = A - i + 1;
+                if (exp1 < 0) exp1 = 0;
+                ll t = nCr(A, i);
+                t = t * pow_nm1[i] % MOD;
+                t = t * pow_n[exp1] % MOD;
+                term = (term + t) % MOD;
+            }
+            /* Second part: C(A, i-1) * (N-1)^(i-1) * N^(A-i+2), only if i >= 1 */
+            if (i >= 1) {
+                int exp2 = A - i + 2;
+                if (exp2 < 0) exp2 = 0;
+                ll t = nCr(A, i - 1);
+                t = t * pow_nm1[i - 1] % MOD;
+                t = t * pow_n[exp2] % MOD;
+                term = (term + t) % MOD;
+            }
 
+            if (i % 2 == 0)
+                fk = (fk + term) % MOD;
+            else
+                fk = (fk - term + MOD) % MOD;
+        }
 
-def solve() -> int:
-    """Solve Problem 427."""
-    N = 7500000
-    M = ipow(10, 9) + 9
+        ll delta = (fk - prev_f + MOD) % MOD;
+        ans = (ans + delta % MOD * k) % MOD;
+        prev_f = fk;
+    }
 
-    pow_ns = pows(N, N, M)
-    pow_nm1s = pows(N - 1, N, M)
-    zp = Zp(N, M)
+    printf("%lld\n", ans);
+    return 0;
+}
+""";
 
-    f = [0] * (N + 1)
-    for k in range(1, N + 1):
-        for i in range(0, N + 1):
-            if i * (k + 1) > N:
-                break
-            A = N - i * k - 1
-            term = 0
-            term += (
-                zp.nCr(A, i) * pow_nm1s[i] % M * pow_ns[A - i + 1]
-            ) % M
-            if i >= 1:
-                term += (
-                    zp.nCr(A, i - 1)
-                    * pow_nm1s[i - 1]
-                    % M
-                    * pow_ns[A - i + 2]
-                ) % M
-            f[k] = (f[k] + parity(i) * term) % M
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p427.c")
+    exe_file = os.path.join(tmpdir, "p427")
 
-    ans = 0
-    for k in range(1, N + 1):
-        ans = (ans + (f[k] - f[k - 1]) * k) % M
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-    return ans % M
+    subprocess.run(
+        ["gcc", "-O3", "-march=native", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True,
+        timeout=60
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

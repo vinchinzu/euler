@@ -1,38 +1,56 @@
 """Project Euler Problem 686: Powers of Two.
 
-Find the Nth positive integer j such that 2^j starts with the digits of K.
+Find the Nth positive integer j such that 2^j starts with the digits "123".
+Uses logarithms: fractional part of j*log10(2) determines leading digits.
+Compiled C inner loop for speed.
 """
 
 from __future__ import annotations
 
-
-def iceil_pow(n: int, base: int) -> int:
-    """Smallest power of base >= n."""
-    result = 1
-    while result < n:
-        result *= base
-    return result
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
-    """Solve Problem 686."""
-    N = 678910
-    K = 123
-    B = 10
-    L = iceil_pow(K, B)
+    """Solve Problem 686 using compiled C for performance."""
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
 
-    pow2 = 1.0
-    ans = 0
-    n = 0
-    while n < N:
-        ans += 1
-        pow2 *= 2
-        if pow2 > L:
-            pow2 /= B
-        if int(pow2) == K:
-            n += 1
+int main(void) {
+    int N = 678910;
+    double log2 = log10(2.0);
+    double lo = log10(1.23);
+    double hi = log10(1.24);
+    int count = 0;
+    long long j = 0;
+    while (count < N) {
+        j++;
+        double val = j * log2;
+        double frac = val - (long long)val;
+        if (frac >= lo && frac < hi) {
+            count++;
+        }
+    }
+    printf("%lld\n", j);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
 
-    return ans
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
 def main() -> int:

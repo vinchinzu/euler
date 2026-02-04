@@ -1,41 +1,36 @@
-"""Project Euler Problem 568: Reciprocal games II.
+"""Project Euler Problem 568: Reciprocal Games II.
 
-Let J_A(n) be the expected value in a game where k is randomly chosen from 1
-to n, and if a random binary sequence has k 1s it scores 1/k. Let J_B(n) be
-the expected value in a game where two random binary sequence of k 1s are the
-same scores 1/k. Find J_B(N) - J_A(N).
+D(n) = J_B(n) - J_A(n) = H_n / 2^n, where H_n is the n-th harmonic number.
 
-Similarly to problem 567 we have J_A(n) = nCr(n,k)/(k*2^n) =
-1/2^n Σ_{k=1}^n (2^k - 1) / k and J_B(n) = 1/(k nCr(n,k)) =
-1/2^n Σ_{k=1}^n 2^k / k. So
+We need the 7 most significant digits of D(123456789) after removing leading zeros.
 
-J_B - J_A = (1/2^N) Σ_k 1/k
-          = H_N / 2^N.
+Approach: compute log10(D(n)) = log10(H_n) - n*log10(2) using high-precision
+arithmetic (mpmath), then extract the significant digits from the fractional part.
 """
 
 from __future__ import annotations
 
 import math
-
-
-def harmonic(n: int) -> float:
-    """Compute the n-th harmonic number H_n = 1 + 1/2 + ... + 1/n."""
-    if n <= 0:
-        return 0.0
-    return sum(1.0 / i for i in range(1, n + 1))
+from mpmath import mp, mpf, log10, harmonic
 
 
 def solve() -> str:
     """Solve Problem 568."""
+    mp.dps = 50  # 50 decimal digits of precision
     N = 123456789
 
-    h_n = harmonic(N)
-    log10_h_n = math.log10(h_n)
-    log10_2_n = N * math.log10(2)
-    ans = math.pow(10, log10_h_n - log10_2_n)
-    # Return fractional part after decimal point
-    fractional = ans - int(ans)
-    return f"{fractional:.7f}".replace("0.", "")
+    # H_N via Euler-Maclaurin summation (fast for large N in mpmath)
+    H_N = harmonic(N)
+
+    # log10(D(N)) = log10(H_N) - N * log10(2)
+    log10_H_N = float(log10(H_N))
+    N_log10_2 = float(N * log10(mpf(2)))
+    log10_D = log10_H_N - N_log10_2
+
+    # Extract 7 most significant digits from the fractional part of log10
+    frac = log10_D - math.floor(log10_D)
+    significant = 10**frac
+    return str(significant).replace(".", "")[:7]
 
 
 def main() -> str:

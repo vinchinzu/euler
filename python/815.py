@@ -1,112 +1,131 @@
 """Project Euler Problem 815: Grouping Cards.
 
-If one card is dealt at a time from a pack of cards with K copies of each
-of N values, and the K copies of each value are removed as soon as they
-are all dealt, find the expected value of the maximum number of distinct
-card values present at a time during this process.
+K=4 copies of each of N=60 values. Deal one at a time, remove all K copies
+when complete. Find expected max distinct values present at any time.
 
-This can be solved using dynamic programming. At any point, we can
-consider the counts of values of which there are 0 present, 1 present,
-2 present, etc. up to K-1 present (the number of which there are K
-present is fixed because they must add to N), as well as the current
-maximum number of distinct card values so far. Then we consider the K
-possible states of the next card: e.g. if the next card is a value of
-which there are currently t present, then we decrement the number of
-values where there are t present and increment the number where there
-are t+1 present, and update the max as necessary.
-
-By balls and bins, there are nCr(N+K, K) possible values of these
-counts. For performance, instead of using a map to store the cached
-values, we use an array where the index is determined by the
-combinatorial number system.
+Ported to C for performance.
 """
 
-from __future__ import annotations
-
-from typing import Dict, List, Tuple
-
-
-def nCr(n: int, r: int) -> int:
-    """Compute binomial coefficient."""
-    if r < 0 or r > n:
-        return 0
-    if r == 0 or r == n:
-        return 1
-    result = 1
-    for i in range(min(r, n - r)):
-        result = result * (n - i) // (i + 1)
-    return result
+import subprocess
+import tempfile
+import os
 
 
-def compute_nCr_table(max_n: int, max_r: int) -> List[List[int]]:
-    """Precompute binomial coefficients."""
-    table: List[List[int]] = []
-    for n in range(max_n + 1):
-        row: List[int] = []
-        for r in range(max_r + 1):
-            row.append(nCr(n, r))
-        table.append(row)
-    return table
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <string.h>
+
+#define N 60
+#define K 4
+// counts: c[0]..c[K], where c[i] = number of values with exactly i copies dealt
+// c[K] = completed values (removed). Sum c[0]+...+c[K] = N.
+// The "distinct values present" = N - c[0] - c[K] = c[1]+c[2]+c[3]
+// max_val tracks the running maximum of this quantity.
+
+// State indexing: we need to index (c[0], c[1], c[2], c[3]) since c[4] = N - sum.
+// Index using combinatorial number system.
+
+// nCr table
+static long long nCr_table[N + K + 1][K + 1];
+
+void precompute_nCr() {
+    for (int n = 0; n <= N + K; n++) {
+        nCr_table[n][0] = 1;
+        for (int r = 1; r <= K && r <= n; r++) {
+            nCr_table[n][r] = nCr_table[n-1][r-1] + nCr_table[n-1][r];
+        }
+    }
+}
+
+// Convert counts c[0..K-1] (c[K] derived) to index in range [0, C(N+K,K))
+int index_from_counts(int c[]) {
+    int total = -1;
+    int idx = 0;
+    for (int i = 0; i < K; i++) {
+        total += c[i] + 1;
+        if (total >= i + 1) {
+            idx += nCr_table[total][i + 1];
+        }
+    }
+    return idx;
+}
+
+// Cache: indexed by (counts_index, max_val)
+// max_index = C(N+K, K), max_val in [0, N]
+#define MAX_INDEX 635376  // C(64,4) = 635376
+#define MAX_VAL (N + 1)
+
+static double cache[MAX_INDEX][MAX_VAL];
+static char computed[MAX_INDEX][MAX_VAL];
+
+double solve_recursive(int c[], int max_val) {
+    int idx = index_from_counts(c);
+    if (computed[idx][max_val]) return cache[idx][max_val];
+
+    int remaining = 0;
+    for (int i = 0; i < K; i++) {
+        remaining += (K - i) * c[i];
+    }
+    if (remaining == 0) {
+        computed[idx][max_val] = 1;
+        cache[idx][max_val] = (double)max_val;
+        return (double)max_val;
+    }
+
+    double result = 0.0;
+    for (int t = 0; t < K; t++) {
+        if (c[t] > 0) {
+            int count = c[t];
+            c[t]--;
+            c[t + 1]++;
+            int distinct = N - c[0] - c[K];
+            int new_max = max_val > distinct ? max_val : distinct;
+            result += solve_recursive(c, new_max) * (K - t) * count;
+            c[t]++;
+            c[t + 1]--;
+        }
+    }
+
+    computed[idx][max_val] = 1;
+    cache[idx][max_val] = result / remaining;
+    return cache[idx][max_val];
+}
+
+int main() {
+    precompute_nCr();
+    memset(computed, 0, sizeof(computed));
+
+    int c[K + 1];
+    c[0] = N;
+    for (int i = 1; i <= K; i++) c[i] = 0;
+
+    double result = solve_recursive(c, 0);
+    printf("%.8f\n", result);
+    return 0;
+}
+"""
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                      check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True,
+                              timeout=30)
+        return result.stdout.strip()
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
-def index_from_counts(counts: List[int], nCr_table: List[List[int]]) -> int:
-    """Convert counts to index using combinatorial number system."""
-    total = -1
-    idx = 0
-    K = len(counts) - 1
-    for i in range(K):
-        total += counts[i] + 1
-        if total >= i + 1:
-            idx += nCr_table[total][i + 1]
-    return idx
-
-
-def solve() -> float:
-    """Solve Problem 815."""
-    N = 60
-    K = 4
-
-    nCr_table = compute_nCr_table(N + K, K)
-    max_index = nCr_table[N + K][K]
-    cache: Dict[Tuple[int, int], float] = {}
-
-    def e(counts: List[int], max_val: int) -> float:
-        """Expected maximum given counts and current max."""
-        idx = index_from_counts(counts, nCr_table)
-        key = (idx, max_val)
-        if key in cache:
-            return cache[key]
-
-        remaining = 0
-        for i in range(K):
-            remaining += (K - i) * counts[i]
-        if remaining == 0:
-            cache[key] = float(max_val)
-            return cache[key]
-
-        result = 0.0
-        for t in range(K):
-            if counts[t] > 0:
-                count = counts[t]
-                counts[t] -= 1
-                counts[t + 1] += 1
-                new_max = max(max_val, N - counts[0] - counts[K])
-                result += e(counts, new_max) * (K - t) * count
-                counts[t] += 1
-                counts[t + 1] -= 1
-
-        cache[key] = result / remaining
-        return cache[key]
-
-    counts = [N] + [0] * K
-    return e(counts, 0)
-
-
-def main() -> float:
-    """Main entry point."""
+def main():
     result = solve()
-    print(f"{result:.8f}")
-    return result
+    print(result)
 
 
 if __name__ == "__main__":

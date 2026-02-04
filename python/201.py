@@ -1,60 +1,57 @@
 """Project Euler Problem 201: Subsets with a Unique Sum.
 
 Find the sum of all numbers that are the sum of exactly one K-element subset
-of {1², 2², ..., 100²}.
+of {1^2, 2^2, ..., 100^2}.
 
-Uses dynamic programming:
-- dp(i, j, k) = number of i-element subsets of {1², 2², ..., k²} that sum to j
-- dp(i, j, k) = dp(i, j, k-1) + dp(i-1, j-k², k-1)
+Uses DP with the key optimization from the Java reference: cap the DP table
+at L/2 where L = sum of all squares, and use numpy for the inner loops.
+Values are capped at min(2, count) to save memory and time.
 """
 
-from __future__ import annotations
+import numpy as np
 
-from typing import List
-
-
-def sum_powers(n: int, exp: int) -> int:
-    """Return sum_{k=1}^n k^exp."""
-    return sum(k**exp for k in range(1, n + 1))
-
-
-def isq(n: int) -> int:
-    """Return n squared."""
-    return n * n
-
-
-def solve() -> int:
-    """Solve Problem 201."""
+def solve():
     N = 100
     K = 50
-    # Maximum possible sum for K elements: sum of largest K squares
-    max_sum = sum(isq(n) for n in range(N - K + 1, N + 1))
+    L = sum(i * i for i in range(1, N + 1))  # 338350
 
-    # dp[i][j] = number of i-element subsets that sum to j
-    dp: List[List[int]] = [[0] * (max_sum + 1) for _ in range(K + 1)]
+    half = L // 2  # 169175
+
+    # dp[i][j] = min(2, number of i-element subsets summing to j)
+    # Use uint8 since values are only 0, 1, or 2
+    dp = np.zeros((K + 1, half + 1), dtype=np.uint8)
     dp[0][0] = 1
 
     for n in range(1, N + 1):
-        sq = isq(n)
-        for i in range(min(K, n), 0, -1):
-            for j in range(max_sum, sq - 1, -1):
-                if dp[i - 1][j - sq] > 0:
-                    dp[i][j] = min(2, dp[i][j] + dp[i - 1][j - sq])
+        sq = n * n
+        # Upper bound on j: min(sum of first n squares, half)
+        max_j = min(n * (n + 1) * (2 * n + 1) // 6, half)
+        max_i = min(K, n)
 
+        for i in range(max_i, 0, -1):
+            # dp[i][sq:max_j+1] = min(2, dp[i][sq:max_j+1] + dp[i-1][0:max_j+1-sq])
+            end = max_j + 1
+            if end <= sq:
+                continue
+            old = dp[i][sq:end].copy()
+            contrib = dp[i - 1][0:end - sq]
+            # Add and cap at 2
+            result = old.astype(np.uint16) + contrib.astype(np.uint16)
+            np.minimum(result, 2, out=result)
+            dp[i][sq:end] = result.astype(np.uint8)
+
+    # Sum all j where dp[K][j] == 1
+    # By symmetry: if sum S has exactly 1 subset of size K, then L-S also
+    # has exactly 1 subset of size K (the complement). So we count pairs.
+    # The Java uses: for j in [half..0], if dp[K][j] == 1: ans += L
+    # This works because j and L-j are complementary and each contributes L total.
     ans = 0
-    for j in range(max_sum + 1):
-        if dp[K][j] == 1:
-            ans += j
+    row = dp[K]
+    for j in range(half + 1):
+        if row[j] == 1:
+            ans += L
 
     return ans
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

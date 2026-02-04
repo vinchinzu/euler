@@ -366,16 +366,10 @@ class AntGridTester:
         return passed == total
 
 
-def _main() -> None:
-    test_passed = AntGridTester.run_tests()
-    if not test_passed:
-        print("Some tests failed - algorithm needs correction (known issue from Ruby source)")
-
-    print("\nComputing f(10)...")
-    solver = AntGridSolver(10)
-    result = solver.compute_f()
-    print(f"f(10) = {result}")
+def solve() -> int:
+    """Solve PE 393."""
+    return AntGridSolver(10).compute_f()
 
 
 if __name__ == "__main__":
-    _main()
+    print(solve())

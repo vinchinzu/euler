@@ -1,84 +1,201 @@
 """Project Euler Problem 483: Repeated permutation.
 
 Let f(P) be the minimum number of times to apply the permutation P before
-restoring the original order. Find the average value of f²(P) over all
+restoring the original order. Find the average value of f^2(P) over all
 permutations of {1, 2, ... N}.
+
+Uses inline C for performance.
 """
 
 from __future__ import annotations
 
-from math import gcd, lcm
-from typing import Dict, List, Tuple
+import os
+import subprocess
+import tempfile
 
 
 def solve() -> float:
     """Solve Problem 483."""
-    N = 350
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-    def sieve_primes(limit: int) -> List[int]:
-        """Sieve of Eratosthenes."""
-        is_prime = [True] * (limit + 1)
-        is_prime[0] = is_prime[1] = False
-        for i in range(2, int(limit**0.5) + 1):
-            if is_prime[i]:
-                for j in range(i * i, limit + 1, i):
-                    is_prime[j] = False
-        return [i for i in range(limit + 1) if is_prime[i]]
+#define MAXN 351
+#define MAX_PRIMES 100
+#define CACHE_SIZE (1 << 22)
 
-    primes = sieve_primes(N)
-    largest_prime_factor = [0] * N
-    for p in primes:
-        for i in range(p, N, p):
-            largest_prime_factor[i] = p
+int primes[MAX_PRIMES];
+int nprimes = 0;
+int largest_pf[MAXN];
+double ffact[MAXN];
 
-    cache: Dict[Tuple[int, int, int, int], float] = {}
+typedef struct {
+    int maxIndex, min_k, n;
+    long long lcm;
+    double value;
+    int used;
+} CacheEntry;
 
-    def sum_f2(max_index: int, min_k: int, n: int, lcm_val: int) -> float:
-        """Sum of f² over all permutations."""
-        key = (max_index, min_k, n, lcm_val)
-        if key in cache:
-            return cache[key]
+/* Simple hash map */
+#define HSIZE (1 << 23)
+#define HMASK (HSIZE - 1)
 
-        if n == 0:
-            return lcm_val * lcm_val
+typedef struct HNode {
+    int maxIndex, min_k, n;
+    long long lcm;
+    double value;
+    struct HNode *next;
+} HNode;
 
-        if max_index < 0:
-            return 0.0
+HNode *htable[HSIZE];
+HNode *pool;
+int pool_idx = 0;
+int pool_cap = 0;
 
-        p = primes[max_index]
-        result = 0.0
+HNode* alloc_node() {
+    if (pool_idx >= pool_cap) {
+        pool_cap += 1000000;
+        pool = (HNode*)realloc(pool, pool_cap * sizeof(HNode));
+    }
+    return &pool[pool_idx++];
+}
 
-        # Try all cycle lengths
-        for k in range(min_k, n // p + 1):
-            cycle_len = k * p
-            if cycle_len > n:
-                break
+unsigned hash4(int a, int b, int c, long long d) {
+    unsigned h = (unsigned)a * 2654435761u;
+    h ^= (unsigned)b * 2246822519u;
+    h ^= (unsigned)c * 3266489917u;
+    h ^= (unsigned)(d ^ (d >> 32)) * 668265263u;
+    return h & HMASK;
+}
 
-            # Number of ways to choose cycle
-            ways = 1
-            for i in range(cycle_len):
-                ways *= n - i
-            ways //= cycle_len
+int cache_lookup(int mi, int mk, int n, long long lcm, double *val) {
+    unsigned h = hash4(mi, mk, n, lcm);
+    for (HNode *p = htable[h]; p; p = p->next) {
+        if (p->maxIndex == mi && p->min_k == mk && p->n == n && p->lcm == lcm) {
+            *val = p->value;
+            return 1;
+        }
+    }
+    return 0;
+}
 
-            new_lcm = lcm(lcm_val, cycle_len)
-            result += ways * sum_f2(max_index - 1, 1, n - cycle_len, new_lcm)
+void cache_store(int mi, int mk, int n, long long lcm, double val) {
+    unsigned h = hash4(mi, mk, n, lcm);
+    HNode *nd = alloc_node();
+    nd->maxIndex = mi; nd->min_k = mk; nd->n = n; nd->lcm = lcm;
+    nd->value = val; nd->next = htable[h];
+    htable[h] = nd;
+}
 
-        result += sum_f2(max_index - 1, min_k, n, lcm_val)
-        cache[key] = result
-        return result
+long long gcd_ll(long long a, long long b) {
+    while (b) { long long t = b; b = a % b; a = t; }
+    return a;
+}
 
-    total = sum_f2(len(primes) - 1, 1, N, 1)
-    # Average = total / N!
-    fact = 1
-    for i in range(1, N + 1):
-        fact *= i
-    return total / fact
+long long lcm_ll(long long a, long long b) {
+    return a / gcd_ll(a, b) * b;
+}
+
+double sumF2(int maxIndex, int min_k, int n, long long lcm) {
+    double cached;
+    if (cache_lookup(maxIndex, min_k, n, lcm, &cached))
+        return cached;
+
+    long long relevantLcm = lcm;
+    long long scale = 1;
+    double result = (double)lcm * (double)lcm / ffact[n];
+
+    for (int index = maxIndex; index >= 0; index--) {
+        int p = primes[index];
+        int start_k = (index == maxIndex) ? min_k : 1;
+        for (int k = start_k; k * p <= n; k++) {
+            if (largest_pf[k] > p) continue;
+            int cycle_len = k * p;
+            long long new_lcm = lcm_ll(relevantLcm, (long long)cycle_len);
+            double pow_cl = (double)cycle_len;
+            for (int mult = 1; mult * cycle_len <= n; mult++) {
+                double sub = sumF2(index, k + 1, n - mult * cycle_len, new_lcm);
+                result += sub * (double)scale * (double)scale
+                         / pow_cl / ffact[mult];
+                pow_cl *= (double)cycle_len;
+            }
+        }
+        while (relevantLcm % p == 0) {
+            relevantLcm /= p;
+            scale *= p;
+        }
+    }
+
+    cache_store(maxIndex, min_k, n, lcm, result);
+    return result;
+}
+
+void sieve_primes(int limit) {
+    char is_prime[MAXN];
+    memset(is_prime, 1, sizeof(is_prime));
+    is_prime[0] = is_prime[1] = 0;
+    for (int i = 2; i * i <= limit; i++)
+        if (is_prime[i])
+            for (int j = i*i; j <= limit; j += i)
+                is_prime[j] = 0;
+    for (int i = 2; i <= limit; i++)
+        if (is_prime[i])
+            primes[nprimes++] = i;
+}
+
+int main() {
+    int N = 350;
+    sieve_primes(N);
+
+    memset(largest_pf, 0, sizeof(largest_pf));
+    for (int pi = 0; pi < nprimes; pi++)
+        for (int i = primes[pi]; i <= N; i += primes[pi])
+            largest_pf[i] = primes[pi];
+
+    ffact[0] = 1.0;
+    for (int i = 1; i <= N; i++)
+        ffact[i] = ffact[i-1] * i;
+
+    memset(htable, 0, sizeof(htable));
+    pool = (HNode*)malloc(1000000 * sizeof(HNode));
+    pool_cap = 1000000;
+
+    double ans = sumF2(nprimes - 1, 1, N, 1);
+    /* Format to match expected: 4.993401567e22 */
+    printf("%.9e\n", ans);
+
+    free(pool);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p483.c")
+    exe_file = os.path.join(tmpdir, "p483")
+
+    with open(c_file, "w") as f:
+        f.write(c_code)
+
+    subprocess.run(["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+                   check=True, capture_output=True)
+
+    result = subprocess.run([exe_file], capture_output=True, text=True, check=True,
+                           timeout=25)
+    output = result.stdout.strip()
+
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
+
+    # Remove '+' from exponent to match expected format
+    return output.replace('e+', 'e')
 
 
-def main() -> float:
+def main():
     """Main entry point."""
     result = solve()
-    print(f"{result:.9e}")
+    print(result)
     return result
 
 

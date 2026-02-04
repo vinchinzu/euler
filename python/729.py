@@ -1,106 +1,128 @@
 """Project Euler Problem 729: Range of Periodic Sequence.
 
-Find the sum of the ranges of every distinct sequence a_{n+1} = a_n - 1/a_n
-with period ≤ N.
+Find S(25) = sum of ranges of all periodic sequences a_{n+1} = a_n - 1/a_n
+with period <= 25.
 
-Every a_{n+1} can be reached from two distinct a_n, given by
-a_n = f(a_{n+1}) = ( a_{n+1} ± √((a_{n+1})²+4) ) / 2, and so any a_N can be
-reached from 2^N possible starting values a_0. We can try each of the 2^N
-branching combinations, finding the solution to f^N(a_0) = a_0 by repeatedly
-applying f^N until the value stabilizes. The range of any sequence can be
-computed straightforwardly.
-
-For efficiency, we don't need to find starting values a_0 which are a_i in some
-other sequence, i.e. we don't need to consider branches which are cycles of
-other branches. Also, we don't want to consider branching combinations which
-consist of multiple copies of a smaller branching combination (those will
-already be counted for the smaller period). This set of branching combinations
-are exactly the Lyndon words, for which there is a direct enumeration algorithm
-maintaining the current "branches" word and its length "len". For each Lyndon
-word, we find the corresponding a_0, and multiply by the number of distinct
-rotations of that word.
+Uses Lyndon word enumeration over binary alphabet for each length.
+Ported to C for performance.
 """
 
-from __future__ import annotations
-
-import math
-from typing import Set
-
-
-def hypot(x: float, y: float) -> float:
-    """Compute sqrt(x^2 + y^2)."""
-    return math.sqrt(x * x + y * y)
+import subprocess
+import tempfile
+import os
 
 
-def parity(n: int) -> int:
-    """Return 1 if n is even, -1 if odd."""
-    return 1 if n % 2 == 0 else -1
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+
+#define MAXN 25
+
+double ans = 0.0;
+
+// For a given binary word of length 'len' (encoded as an integer),
+// find the fixed point of the composed inverse map and compute the range.
+// The recurrence is a_{n+1} = a_n - 1/a_n.
+// Inverse: a_n = (a_{n+1} + sign * sqrt(a_{n+1}^2 + 4)) / 2
+// Each bit determines the sign choice.
+
+void process_lyndon(int *w, int len) {
+    if (len < 2) return;
+
+    // Convert to bitmask (w[0] is MSB or LSB? Let's use w[0] as step 0)
+    unsigned int word = 0;
+    for (int i = 0; i < len; i++) {
+        if (w[i]) word |= (1u << i);
+    }
+
+    // Find fixed point by iterating the composed map
+    double d = 1.0;
+    for (int iter = 0; iter < 300; iter++) {
+        double prev = d;
+        for (int i = 0; i < len; i++) {
+            int bit = (word >> i) & 1;
+            double sign = (bit == 0) ? 1.0 : -1.0;
+            d = (d + sign * sqrt(d * d + 4.0)) / 2.0;
+        }
+        if (fabs(d - prev) < 1e-13) break;
+    }
+
+    // Compute range
+    double min_val = d, max_val = d;
+    for (int i = 0; i < len; i++) {
+        int bit = (word >> i) & 1;
+        double sign = (bit == 0) ? 1.0 : -1.0;
+        d = (d + sign * sqrt(d * d + 4.0)) / 2.0;
+        if (d < min_val) min_val = d;
+        if (d > max_val) max_val = d;
+    }
+
+    // For a Lyndon word of length len, all len rotations are distinct
+    ans += len * (max_val - min_val);
+}
+
+// Generate all binary Lyndon words of EXACTLY length n using the
+// standard recursive algorithm.
+// gen(w, t, p, n): w[1..t-1] filled, p = period so far
+// When t > n: if n % p == 0 AND p == n, output (this ensures primitive period = n)
+// Actually, this standard algorithm generates ALL Lyndon words of length dividing n
+// when called with gen(w, 1, 1, n) and the condition is n % p == 0.
+// To get ONLY length-n Lyndon words, use condition p == n.
+
+int w_buf[MAXN + 2];
+
+void gen(int t, int p, int n) {
+    if (t > n) {
+        if (p == n) {
+            // w_buf[1..n] is a Lyndon word of length exactly n
+            process_lyndon(w_buf + 1, n);
+        }
+    } else {
+        w_buf[t] = w_buf[t - p];
+        gen(t + 1, p, n);
+        for (int j = w_buf[t - p] + 1; j <= 1; j++) {
+            w_buf[t] = j;
+            gen(t + 1, t, n);
+        }
+    }
+}
+
+int main() {
+    ans = 0.0;
+
+    // Generate Lyndon words of each length from 2 to MAXN
+    for (int n = 2; n <= MAXN; n++) {
+        memset(w_buf, 0, sizeof(w_buf));
+        gen(1, 1, n);
+    }
+
+    printf("%.4f\n", ans);
+    return 0;
+}
+"""
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                      check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True,
+                              timeout=30)
+        return result.stdout.strip()
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
-def feq(a: float, b: float, eps: float = 1e-10) -> bool:
-    """Check if two floats are approximately equal."""
-    return abs(a - b) < eps
-
-
-def solve() -> float:
-    """Solve Problem 729."""
-    N = 25
-    d = 1.0
-    ans = 0.0
-
-    branches = 1
-    length = N
-
-    while length > 1:
-        # Find fixed point by iterating f^len
-        prev_d = 0.0
-        while not feq(d, prev_d):
-            prev_d = d
-            for i in range(length):
-                sign = parity(branches >> i)
-                d = (d + sign * hypot(d, 2)) / 2
-
-        # Compute range
-        min_val = d
-        max_val = d
-        for i in range(length):
-            sign = parity(branches >> i)
-            d = (d + sign * hypot(d, 2)) / 2
-            min_val = min(min_val, d)
-            max_val = max(max_val, d)
-
-        # Count distinct rotations
-        cycles: Set[int] = set()
-        cycle = branches
-        for i in range(length):
-            cycles.add(cycle)
-            # Rotate left
-            cycle = ((cycle << 1) % (1 << length)) + (cycle >> (length - 1))
-
-        ans += len(cycles) * (max_val - min_val)
-
-        # Generate next Lyndon word
-        # Extend to length N if needed
-        while length < N:
-            length *= 2
-            branches = (branches << (length // 2)) + branches
-
-        # Find next Lyndon word
-        branches >>= length - N
-        branches += 1
-        length = N
-        while branches % 2 == 0:
-            branches //= 2
-            length -= 1
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
-    print(f"{result:.4f}")
-    return 0
+    print(result)
 
 
 if __name__ == "__main__":

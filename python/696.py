@@ -1,170 +1,310 @@
 """Project Euler Problem 696: Mahjong.
 
-Find the number of distinct winning Mahjong hands consisting of T triples and
-one pair, given S suits, N numbers in each suit, and 4 copies of each suit and
-number.
+Find w(10^8, 10^8, 30) mod 10^9+7.
+w(n, s, t) = number of distinct winning hands with n numbers, s suits, t triples.
 
-Each triple and pair must be in one suit, so the suits are independent.
-Therefore, we can first compute the number of ways to have 0≤t≤T triples and
-0≤p≤1 pairs in a single suit for small values of n. To do this, we use dynamic
-programming: for each tile number in increasing order, we build a solution
-using 0≤k≤4 tiles with that number. The only previous state required is the
-number of tiles used so far, the number of Chows starting at the previous two
-tile numbers, and whether a pair has yet been used.
+Uses NFA-to-DFA DP for single-suit counting, interpolation to large n,
+polynomial exponentiation across suits.
 
-To avoid double-counting hands that can be organized into triples and pairs in
-different ways, first we disallow 3+ Chows starting at the same tile number
-(this is already counted by 3 consecutive Pungs). Second, we use a "full state"
-that stores the set of all possible states: for example, if we start with 2
-tiles with a given number, that can represent either a pair, or 2 Chows starting
-at that number. To get these possibilities, we iterate over all possible counts
-of Pungs, Chows, and pairs at the given tile number, and see which are compatible
-with the given k. At the end, we count any full state with some state that
-matches our desired criteria. This can also be thought of as converting an NFA
-to a DFA.
-
-Now that we can compute the number of hands w(n,s,t) for small n, s=1, and all t,
-both for with and without a pair, we can use extrapolation to compute the hands
-w(N,1,t), which gives generating functions g_0(t) (the number of hands with t
-triples but without a pair, with tiles up to n but all in 1 suit) and g_1(t)
-(same, but with a pair). The number of hands over S suits is then
-S g_0(t)^{S-1} g_1(t): we can select any of the S suits to have the pair.
+Key: f[pair][triples](n) is polynomial in n for n >= 3*triples + 2*pair + 1.
 """
 
-from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
 
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import Callable, Set
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+typedef long long ll;
+#define MOD 1000000007LL
+#define T_VAL 30
+#define BIG_N 100000000LL
+#define BIG_S 100000000LL
+#define NUM_STATES 18
 
-@dataclass(frozen=True)
-class State:
-    """State for DP."""
+/* For interpolation: polynomial degree is at most 2*T+2 = 62.
+   We need 63 sample points in the polynomial regime.
+   The polynomial regime starts at n >= 3*T + 3 = 93.
+   So we sample n = 93, 94, ..., 93+62 = 155. Need DP up to n=155. */
+#define START_N (3*T_VAL + 3)
+#define NPTS (2*T_VAL + 3)
+#define MAX_N (START_N + NPTS)
 
-    prev_chows: int
-    curr_chows: int
-    num_pairs: int
+static int encode(int prev, int curr, int pair) {
+    return prev * 6 + curr * 2 + pair;
+}
+static void decode(int code, int *prev, int *curr, int *pair) {
+    *pair = code % 2;
+    *curr = (code / 2) % 3;
+    *prev = code / 6;
+}
 
+static int dfa_transition(int old_mask, int k) {
+    int new_mask = 0;
+    for (int si = 0; si < NUM_STATES; si++) {
+        if (!(old_mask & (1 << si))) continue;
+        int prev, curr, pair_used;
+        decode(si, &prev, &curr, &pair_used);
+        int carry = prev + curr;
+        int remain = k - carry;
+        if (remain < 0) continue;
+        for (int nc = 0; nc <= 2; nc++) {
+            int r2 = remain - nc;
+            if (r2 < 0) break;
+            for (int pu = 0; pu <= 1 && 3*pu <= r2; pu++) {
+                int r3 = r2 - 3*pu;
+                if (r3 == 0)
+                    new_mask |= (1 << encode(curr, nc, pair_used));
+                else if (r3 == 2 && !pair_used)
+                    new_mask |= (1 << encode(curr, nc, 1));
+            }
+        }
+    }
+    return new_mask;
+}
 
-@dataclass(frozen=True)
-class FullState:
-    """Full state for DP."""
+/* Hash table for DP entries */
+#define HASH_SIZE (1 << 16)
+#define HMASK (HASH_SIZE - 1)
 
-    num_tiles: int
-    states: Set[State]
+typedef struct HEntry {
+    int tiles;
+    int mask;
+    ll count;
+    int next;  /* index into pool, -1 = end */
+} HEntry;
 
+static int heads_a[HASH_SIZE], heads_b[HASH_SIZE];
+static HEntry pool_a[500000], pool_b[500000];
+static int pa, pb;
 
-def extrapolation(
-    f: Callable[[int], int], n_points: int, mod: int
-) -> Callable[[int], int]:
-    """Extrapolate function."""
-    values = []
-    for i in range(1, n_points + 1):
-        values.append(f(i) % mod)
+static int hfunc(int tiles, int mask) {
+    return ((unsigned)(tiles * 262147 ^ mask)) & HMASK;
+}
 
-    def interpolate(x: int) -> int:
-        """Interpolate at x."""
-        result = 0
-        for i in range(n_points):
-            term = values[i]
-            for j in range(n_points):
-                if i != j:
-                    denom = (i + 1 - (j + 1)) % mod
-                    if denom == 0:
-                        continue
-                    inv = pow(denom, mod - 2, mod)
-                    term = (term * (x - (j + 1)) * inv) % mod
-            result = (result + term) % mod
-        return result
+static void add_b(int tiles, int mask, ll count) {
+    int h = hfunc(tiles, mask);
+    for (int idx = heads_b[h]; idx >= 0; idx = pool_b[idx].next) {
+        if (pool_b[idx].tiles == tiles && pool_b[idx].mask == mask) {
+            pool_b[idx].count = (pool_b[idx].count + count) % MOD;
+            return;
+        }
+    }
+    int ni = pb++;
+    pool_b[ni].tiles = tiles;
+    pool_b[ni].mask = mask;
+    pool_b[ni].count = count % MOD;
+    pool_b[ni].next = heads_b[h];
+    heads_b[h] = ni;
+}
 
-    return interpolate
+/* Result arrays: f[pair][triples][sample_index] */
+static ll f[2][T_VAL+1][NPTS+1];
 
+static ll power(ll base, ll exp, ll m) {
+    ll result = 1;
+    base = ((base % m) + m) % m;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % m;
+        base = base * base % m;
+        exp >>= 1;
+    }
+    return result;
+}
 
-def solve() -> int:
-    """Solve Problem 696."""
-    N = 10**8
-    S = 10**8
-    T = 30
-    M = 10**9 + 7
-    L = 300
+static ll inv_mod(ll a) { return power(a, MOD-2, MOD); }
 
-    # Simplified implementation - full version would require polynomial operations
-    # This is a placeholder
-    f = [[[0] * L for _ in range(T + 1)] for _ in range(2)]
+/* Lagrange interpolation: given npts values y[0..npts-1] at
+   x = x_start, x_start+1, ..., x_start+npts-1,
+   evaluate at x = target. */
+static ll interpolate(ll *y, int npts, ll x_start, ll target) {
+    int n = npts;
+    ll *prefix = (ll *)malloc((n+1) * sizeof(ll));
+    ll *suffix = (ll *)malloc((n+1) * sizeof(ll));
 
-    # Initialize with basic states
-    full_states: dict[FullState, int] = {
-        FullState(0, {State(0, 0, 0)}): 1
+    prefix[0] = 1;
+    for (int i = 0; i < n; i++) {
+        ll xi = x_start + i;
+        prefix[i+1] = prefix[i] * ((target - xi) % MOD + MOD) % MOD;
     }
 
-    for index in range(1, L):
-        new_full_states: dict[FullState, int] = defaultdict(int)
-        for full_state, count in full_states.items():
-            for k in range(5):
-                if (full_state.num_tiles + k) // 3 > T:
-                    continue
-                new_states: Set[State] = set()
-                for num_pungs in range(2):
-                    for num_chows in range(3):
-                        for num_pairs in range(2):
-                            for state in full_state.states:
-                                if state.num_pairs + num_pairs > 1:
-                                    continue
-                                total = (
-                                    state.prev_chows
-                                    + state.curr_chows
-                                    + num_pungs * 3
-                                    + num_chows
-                                    + num_pairs * 2
-                                )
-                                if total != k:
-                                    continue
-                                new_states.add(
-                                    State(state.curr_chows, num_chows, state.num_pairs + num_pairs)
-                                )
-                new_full_state = FullState(full_state.num_tiles + k, new_states)
-                new_full_states[new_full_state] = (
-                    new_full_states[new_full_state] + count
-                ) % M
+    suffix[n] = 1;
+    for (int i = n-1; i >= 0; i--) {
+        ll xi = x_start + i;
+        suffix[i] = suffix[i+1] * ((target - xi) % MOD + MOD) % MOD;
+    }
 
-        full_states = new_full_states
-        for full_state, count in full_states.items():
-            for num_pairs in range(2):
-                if any(
-                    s.prev_chows == 0
-                    and s.curr_chows == 0
-                    and s.num_pairs == num_pairs
-                    for s in full_state.states
-                ):
-                    num_triples = full_state.num_tiles // 3
-                    if num_triples <= T:
-                        f[num_pairs][num_triples][index] = (
-                            f[num_pairs][num_triples][index] + count
-                        ) % M
+    ll *fact_inv = (ll *)malloc(n * sizeof(ll));
+    ll fv = 1;
+    for (int i = 1; i < n; i++) fv = fv * i % MOD;
+    fact_inv[n-1] = inv_mod(fv);
+    for (int i = n-2; i >= 0; i--)
+        fact_inv[i] = fact_inv[i+1] * (i+1) % MOD;
 
-    # Use extrapolation (simplified)
-    g = [[0] * (T + 1) for _ in range(2)]
-    for num_pairs in range(2):
-        for num_triples in range(T + 1):
-            def f_func(n: int) -> int:
-                return f[num_pairs][num_triples][n + T] if n + T < L else 0
+    ll result = 0;
+    for (int i = 0; i < n; i++) {
+        ll num = prefix[i] * suffix[i+1] % MOD;
+        ll den = fact_inv[i] * fact_inv[n-1-i] % MOD;
+        if ((n-1-i) % 2 == 1) den = (MOD - den) % MOD;
+        result = (result + y[i] % MOD * num % MOD * den) % MOD;
+    }
 
-            extrap_func = extrapolation(f_func, 1, M)
-            g[num_pairs][num_triples] = extrap_func(N - T) % M
+    free(prefix); free(suffix); free(fact_inv);
+    return result;
+}
 
-    # Compute final answer (simplified - would need polynomial multiplication)
-    ans = 0
-    # Placeholder: would compute S * g[0]^(S-1) * g[1] using polynomial operations
-    return ans
+int main(void) {
+    memset(f, 0, sizeof(f));
+
+    int max_tiles = 3 * T_VAL + 2;
+
+    /* Initialize DP */
+    memset(heads_a, -1, sizeof(heads_a));
+    pa = 1;
+    pool_a[0].tiles = 0;
+    pool_a[0].mask = 1 << encode(0,0,0);
+    pool_a[0].count = 1;
+    pool_a[0].next = -1;
+    heads_a[hfunc(0, 1 << encode(0,0,0))] = 0;
+
+    for (int step = 1; step <= MAX_N; step++) {
+        /* Clear buffer b */
+        memset(heads_b, -1, sizeof(heads_b));
+        pb = 0;
+
+        /* Process all entries in buffer a */
+        for (int i = 0; i < pa; i++) {
+            int tiles = pool_a[i].tiles;
+            int mask = pool_a[i].mask;
+            ll count = pool_a[i].count;
+            if (count == 0) continue;
+
+            for (int k = 0; k <= 4; k++) {
+                if (tiles + k > max_tiles) break;
+                int nm = dfa_transition(mask, k);
+                if (nm) add_b(tiles + k, nm, count);
+            }
+        }
+
+        /* Swap a and b */
+        pa = pb;
+        memcpy(pool_a, pool_b, pb * sizeof(HEntry));
+        memcpy(heads_a, heads_b, sizeof(heads_a));
+
+        /* Extract results if step is in the sampling range */
+        if (step >= START_N && step < START_N + NPTS) {
+            int idx = step - START_N;
+            int fs0 = encode(0,0,0), fs1 = encode(0,0,1);
+            for (int i = 0; i < pa; i++) {
+                int tiles = pool_a[i].tiles;
+                int mask = pool_a[i].mask;
+                ll count = pool_a[i].count;
+
+                if (mask & (1 << fs1)) {
+                    if (tiles >= 2 && (tiles-2)%3 == 0) {
+                        int t = (tiles-2)/3;
+                        if (t <= T_VAL)
+                            f[1][t][idx] = (f[1][t][idx] + count) % MOD;
+                    }
+                }
+                if (mask & (1 << fs0)) {
+                    if (tiles%3 == 0) {
+                        int t = tiles/3;
+                        if (t <= T_VAL)
+                            f[0][t][idx] = (f[0][t][idx] + count) % MOD;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Interpolate to get g[pair][triples] at n = BIG_N */
+    ll g0[T_VAL+1], g1[T_VAL+1];
+    for (int t = 0; t <= T_VAL; t++) {
+        int npts0 = 2*t + 1;
+        if (npts0 > NPTS) npts0 = NPTS;
+        if (npts0 < 1) npts0 = 1;
+        g0[t] = interpolate(f[0][t], npts0, (ll)START_N, BIG_N);
+
+        int npts1 = 2*t + 3;
+        if (npts1 > NPTS) npts1 = NPTS;
+        if (npts1 < 1) npts1 = 1;
+        g1[t] = interpolate(f[1][t], npts1, (ll)START_N, BIG_N);
+    }
+
+    /* Polynomial exponentiation: g0^(S-1) mod x^{T+1} */
+    ll poly[T_VAL+1], base[T_VAL+1], temp[T_VAL+1];
+    memset(poly, 0, sizeof(poly));
+    poly[0] = 1;
+    for (int i = 0; i <= T_VAL; i++) base[i] = g0[i];
+
+    ll exp = BIG_S - 1;
+    while (exp > 0) {
+        if (exp & 1) {
+            memset(temp, 0, sizeof(temp));
+            for (int i = 0; i <= T_VAL; i++) {
+                if (poly[i] == 0) continue;
+                for (int j = 0; j <= T_VAL - i; j++)
+                    temp[i+j] = (temp[i+j] + poly[i] * base[j]) % MOD;
+            }
+            memcpy(poly, temp, sizeof(poly));
+        }
+        memset(temp, 0, sizeof(temp));
+        for (int i = 0; i <= T_VAL; i++) {
+            if (base[i] == 0) continue;
+            for (int j = 0; j <= T_VAL - i; j++)
+                temp[i+j] = (temp[i+j] + base[i] * base[j]) % MOD;
+        }
+        memcpy(base, temp, sizeof(base));
+        exp >>= 1;
+    }
+
+    /* Multiply g0^{S-1} by g1, take coeff of x^T */
+    ll ans = 0;
+    for (int i = 0; i <= T_VAL; i++) {
+        int j = T_VAL - i;
+        if (j >= 0 && j <= T_VAL)
+            ans = (ans + poly[i] * g1[j]) % MOD;
+    }
+    ans = ans * (BIG_S % MOD) % MOD;
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p696.c")
+    exe_file = os.path.join(tmpdir, "p696")
+
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
+
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=120
+    )
+
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
+
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

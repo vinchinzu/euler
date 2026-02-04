@@ -114,7 +114,10 @@ def solve() -> float:
 def main() -> int:
     """Main entry point."""
     result = solve()
-    print(f"{result:.12e}")
+    # Format without + in exponent to match expected output
+    s = f"{result:.12e}"
+    s = s.replace("e+", "e")
+    print(s)
     return 0
 
 

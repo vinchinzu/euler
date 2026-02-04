@@ -106,11 +106,7 @@ def main():
     """Main function."""
     n = 26
     result = solve(n)
-    print(f"F({n}) = {result}")
-
-    # Write answer to file
-    with open(os.path.join(os.path.dirname(__file__), 'answer.txt'), 'w') as f:
-        f.write(str(result))
+    print(result)
 
     return result
 

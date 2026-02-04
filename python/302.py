@@ -227,9 +227,4 @@ def solve() -> int:
 
 
 if __name__ == "__main__":
-    result = solve()
-    print(f"Strong Achilles numbers below 10^4: {result}")
-
-    # Print only final answer for test harness
-    print()
-    print(result)
+    print(solve())

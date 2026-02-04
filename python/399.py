@@ -150,7 +150,7 @@ def rank_of_apparition(p: int) -> int:
     raise ValueError(f"Could not find rank of apparition for prime {p}")
 
 
-def compute_density(max_prime: int = MAX_PRIME, verbose: bool = True) -> float:
+def compute_density(max_prime: int = MAX_PRIME, verbose: bool = False) -> float:
     """Estimate density of squarefree Fibonacci numbers via heuristic product.
 
     This computes:
@@ -185,7 +185,7 @@ def estimate_index(n: int, density: float) -> int:
     return int(k_estimate * 1.05)
 
 
-def find_exact_index(n: int, density: float, verbose: bool = True) -> int:
+def find_exact_index(n: int, density: float, verbose: bool = False) -> int:
     """Heuristically find index k with approximately n squarefree Fibonacci.
 
     The original Ruby code used density * k as an approximation and a binary
@@ -222,12 +222,8 @@ def find_exact_index(n: int, density: float, verbose: bool = True) -> int:
 
 def compute_last_16_digits(k: int) -> str:
     """Return the last 16 digits of F_k as zero-padded decimal string."""
-
-    print(f"Computing F_{k} mod 10^16...")
     f_k_mod = fib_mod(k, M)
-    last_digits = f"{f_k_mod:016d}"
-    print("Last 16 digits computed")
-    return last_digits
+    return f"{f_k_mod:016d}"
 
 
 def compute_scientific_notation(k: int) -> str:
@@ -326,9 +322,6 @@ def solve(n: int) -> Tuple[str, str]:
     if n <= 13:
         return _small_case_solution(n)
 
-    print(f"Solving for the {n}th squarefree Fibonacci number...")
-    print("Using Wall's conjecture for density estimation")
-
     density = compute_density()
     k = find_exact_index(n, density)
     last_digits = compute_last_16_digits(k)
@@ -336,32 +329,6 @@ def solve(n: int) -> Tuple[str, str]:
     return last_digits, sci_notation
 
 
-def main() -> None:
-    """Run the solver for the configured N and print the result.
-
-    This follows the behavior of the Ruby script when executed directly.
-    """
-
-    try:
-        last_digits, sci = solve(N)
-        result = f"{last_digits},{sci}"
-
-        # Print only final answer for test harness
-        print()
-        print(result)
-
-        if N == 200:
-            print()
-            print("Verification for n=200:")
-            print("Expected: 1608739584170445,9.7e53")
-            print(f"Actual: {result}")
-    except Exception as exc:  # pylint: disable=broad-except
-        # Keep behavior similar to Ruby: print error and stack-like details.
-        import traceback
-
-        print(f"Error: {exc}")
-        traceback.print_exc()
-
-
 if __name__ == "__main__":
-    main()
+    last_digits, sci = solve(N)
+    print(f"{last_digits},{sci}")

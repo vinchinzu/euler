@@ -59,8 +59,7 @@ def solve() -> int:
             while sq(x) * q <= n:
                 upper = min(max_y, n // x // q)
                 lower = max(x, n // x // (q + 1))
-                if upper >= lower:
-                    res += tr(q) * x * (tr(upper) - tr(lower - 1))
+                res += tr(q) * x * (tr(upper) - tr(lower))
                 q += 1
 
         ans += mobius[g] * sq(g) * res

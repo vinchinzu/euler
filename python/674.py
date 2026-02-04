@@ -1,202 +1,170 @@
-"""Project Euler Problem 674: Solving I-equations.
-
-Define I(x,y) = (1+x+y)²+y-x. Given a list of I-expressions, which are either
-variables or expressions of the form I(x,y) where x and y are also I-expressions,
-find the least simultaneous value of all pairs of I-expressions (e1,e2), defined
-as the minimum value that can be attained where e1=e2 and all variables are
-non-negative integers.
-
-Given an equality of I-expressions, we can simplify by repeatedly doing the
-following:
-
-- If I(a,b)=I(c,d), we can replace with a=c and b=d (I(x,y) is always distinct
-  on the non-negative integers)
-- Otherwise, all equations are of the form a=I(b,c). Find an equation such that
-  the variable on the left hand side does not appear on the right hand side of
-  any equation. (If there are none, the equations are unsolvable because I(a,b)
-  is strictly larger than both a and b.)
-- If the variable only appears once, remove it: we can evaluate it once all
-  remaining variables are solved for.
-- Otherwise, we add equations for the right hand sides being equal to one
-  another, and repeat.
-"""
+"""Project Euler Problem 674: Solving I-equations."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Set
 
 
 M = 10**9
 
 
-@dataclass(frozen=True)
-class IAndVar:
-    """I-expression and variable pair."""
-
-    i: "I"
-    var: str
-
-
-@dataclass
 class I:
-    """I-expression."""
+    """I-expression: either a variable or I(left, right)."""
 
-    var: str | None
-    left: "I | None"
-    right: "I | None"
-    vars: Set[str]
+    __slots__ = ('var', 'left', 'right', 'vars', '_hash')
 
-    def __init__(
-        self,
-        var: str | None = None,
-        left: "I | None" = None,
-        right: "I | None" = None,
-    ) -> None:
-        """Initialize I-expression."""
+    def __init__(self, var=None, left=None, right=None):
         self.var = var
         self.left = left
         self.right = right
         if var is not None:
-            self.vars = {var}
+            self.vars = frozenset([var])
         elif left is not None and right is not None:
             self.vars = left.vars | right.vars
         else:
-            self.vars = set()
+            self.vars = frozenset()
+        self._hash = hash((self.var, id(self.left), id(self.right)))
 
-    def evaluate(self, values: dict[str, int]) -> int:
-        """Evaluate I-expression with given variable values."""
+    def __eq__(self, other):
+        if not isinstance(other, I):
+            return NotImplemented
+        if self.var is not None and other.var is not None:
+            return self.var == other.var
+        if self.var is not None or other.var is not None:
+            return False
+        return self.left is other.left and self.right is other.right
+
+    def __hash__(self):
+        return self._hash
+
+    def evaluate(self, values):
         if self.var is not None:
-            return values.get(self.var, 0)
-        if self.left is None or self.right is None:
-            return 0
+            return values[self.var]
         x = self.left.evaluate(values)
         y = self.right.evaluate(values)
         return ((1 + x + y) ** 2 + y - x) % M
 
     @staticmethod
-    def parse(equation: str) -> "I":
-        """Parse I-expression from string."""
-        return IAndIndex.parse(equation, 0).i
+    def parse(equation):
+        result = _parse(equation, 0)
+        return result[0]
 
 
-@dataclass
-class IAndIndex:
-    """I-expression and parse index."""
-
-    i: I
-    index: int
-
-    @staticmethod
-    def parse(equation: str, index: int) -> "IAndIndex":
-        """Parse I-expression starting at index."""
-        if index < len(equation) and equation[index] == "I":
-            left_result = IAndIndex.parse(equation, index + 2)
-            right_result = IAndIndex.parse(equation, left_result.index + 1)
-            return IAndIndex(
-                I(left=left_result.i, right=right_result.i),
-                right_result.index + 1,
-            )
-        new_index = index
-        while new_index < len(equation) and equation[new_index].islower():
-            new_index += 1
-        var = equation[index:new_index]
-        return IAndIndex(I(var=var), new_index)
+def _parse(equation, index):
+    """Parse I-expression starting at index. Returns (I, next_index)."""
+    if index < len(equation) and equation[index] == 'I':
+        left_i, left_idx = _parse(equation, index + 2)
+        right_i, right_idx = _parse(equation, left_idx + 1)
+        return I(left=left_i, right=right_i), right_idx + 1
+    new_index = index
+    while new_index < len(equation) and equation[new_index].islower():
+        new_index += 1
+    var = equation[index:new_index]
+    return I(var=var), new_index
 
 
-def least_simultaneous_value(e1: I, e2: I) -> int:
+class IAndVar:
+    """Pair of I-expression and variable name."""
+
+    __slots__ = ('i', 'var', '_hash')
+
+    def __init__(self, i, var):
+        self.i = i
+        self.var = var
+        self._hash = hash((id(i), var))
+
+    def __eq__(self, other):
+        if not isinstance(other, IAndVar):
+            return NotImplemented
+        return self.i is other.i and self.var == other.var
+
+    def __hash__(self):
+        return self._hash
+
+
+def least_simultaneous_value(e1, e2):
     """Find least simultaneous value of two I-expressions."""
-    equalities: Set[IAndVar] = set()
+    equalities = set()
     helper(e1, e2, equalities)
 
-    evaluations: list[IAndVar] = []
+    evaluations = []
     while equalities:
-        # Find an equality where the variable doesn't appear on RHS of others
+        # Find an equality where the variable doesn't appear on RHS of any other
         good_equality = None
         for equality in equalities:
-            if not any(
-                other.i.vars.__contains__(equality.var) for other in equalities
-            ):
+            found = False
+            for other in equalities:
+                if equality.var in other.i.vars:
+                    found = True
+                    break
+            if not found:
                 good_equality = equality
                 break
-        
+
         if good_equality is None:
             return 0
-        
+
         # Collect all equalities with this variable
-        good_equalities = [
-            other for other in equalities if other.var == good_equality.var
-        ]
+        good_equalities = [other for other in equalities if other.var == good_equality.var]
         evaluations.append(good_equalities[0])
-        equalities -= set(good_equalities)
-        
+        for ge in good_equalities:
+            equalities.discard(ge)
+
         # Add new equalities for remaining pairs
-        for i in range(1, len(good_equalities)):
-            helper(good_equalities[0].i, good_equalities[i].i, equalities)
+        for k in range(1, len(good_equalities)):
+            helper(good_equalities[0].i, good_equalities[k].i, equalities)
 
     evaluations.reverse()
 
-    values: dict[str, int] = {}
+    values = {}
     all_vars = e1.vars | e2.vars
+    eval_vars = {ev.var for ev in evaluations}
     for var in all_vars:
-        if not any(eval_item.var == var for eval_item in evaluations):
+        if var not in eval_vars:
             values[var] = 0
-    
+
     for evaluation in evaluations:
         values[evaluation.var] = evaluation.i.evaluate(values)
-    
+
     return e1.evaluate(values)
 
 
-def helper(e1: I, e2: I, equalities: Set[IAndVar]) -> None:
-    """Helper function to build equalities."""
+def helper(e1, e2, equalities):
+    """Build equalities from two I-expressions."""
     if e1.var is not None and e2.var is not None:
         if e1.var < e2.var:
             equalities.add(IAndVar(e1, e2.var))
-        if e1.var > e2.var:
+        elif e1.var > e2.var:
             equalities.add(IAndVar(e2, e1.var))
     elif e1.var is not None:
         equalities.add(IAndVar(e2, e1.var))
     elif e2.var is not None:
         equalities.add(IAndVar(e1, e2.var))
     else:
-        if e1.left is not None and e1.right is not None:
-            if e2.left is not None and e2.right is not None:
-                helper(e1.left, e2.left, equalities)
-                helper(e1.right, e2.right, equalities)
+        helper(e1.left, e2.left, equalities)
+        helper(e1.right, e2.right, equalities)
 
 
-def solve() -> int:
+def solve():
     """Solve Problem 674."""
     script_dir = Path(__file__).parent
-    file_path = script_dir.parent / "kevinychen-project-euler" / "files" / "p674.txt"
-    
-    equations: list[I] = []
-    if file_path.exists():
-        with open(file_path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    equations.append(I.parse(line))
-    else:
-        # If file doesn't exist, return 0 (or handle appropriately)
-        return 0
+    file_path = script_dir / "0674_i_expressions.txt"
+
+    equations = []
+    with open(file_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                equations.append(I.parse(line))
 
     ans = 0
     for i in range(len(equations)):
         for j in range(i + 1, len(equations)):
-            ans = (ans + least_simultaneous_value(equations[i], equations[j])) % M
-    
+            ans += least_simultaneous_value(equations[i], equations[j])
+    ans %= M
+
     return ans
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

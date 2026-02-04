@@ -1,25 +1,23 @@
 """Project Euler Problem 795: Alternating GCD Sum.
 
-Find Σ_{n=1}^N g(n), where g(n) = Σ_{i=1}^n (-1)^i GCD(n,i²).
+Find sum_{n=1}^N g(n), where g(n) = sum_{i=1}^n (-1)^i GCD(n,i^2).
 
-First consider Σ_{n=1}^N g'(n), where g'(n) = Σ_{i=1}^n GCD(n,i²). Then g'(n)
-is multiplicative where g'(p^e) = Σ_{i=1}^{p^e} GCD(p^e,i²) can be computed
+First consider sum_{n=1}^N g'(n), where g'(n) = sum_{i=1}^n GCD(n,i^2). Then g'(n)
+is multiplicative where g'(p^e) = sum_{i=1}^{p^e} GCD(p^e,i^2) can be computed
 easily by noting that there are p^{e-k}-p^{e-k-1} occurrences of each p^{2k}
 (capped at p^e).
 
 For the original g(n), if n is even then for the factor corresponding to p=2,
 the 2^{e-k}-2^{e-k-1} occurrences of 1 are negative instead. If n is odd,
 then this doesn't work, but g(n) is easy to compute because except for the
-last term, each (-1)^k GCD(k,i²) cancels with (-1)^{n-k} GCD(n-k,i²). That
+last term, each (-1)^k GCD(k,i^2) cancels with (-1)^{n-k} GCD(n-k,i^2). That
 means g(n) is equal to its last term, -n.
 """
 
 from __future__ import annotations
 
-from typing import List
 
-
-def pre_ff(limit: int) -> List[int]:
+def pre_ff(limit):
     """Precompute smallest prime factor."""
     ff = [0] * (limit + 1)
     for i in range(2, limit + 1):
@@ -31,26 +29,12 @@ def pre_ff(limit: int) -> List[int]:
     return ff
 
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def solve() -> int:
+def solve():
     """Solve Problem 795."""
     N = 12345678
     ff = pre_ff(N)
 
     f = [0] * (N + 1)
-    f[1] = 1
-
     for n in range(2, N + 1):
         nn = n
         p = ff[nn]
@@ -63,10 +47,11 @@ def solve() -> int:
             f[n] = f[nn] * f[n // nn]
         else:
             for k in range(e + 1):
-                term = (pow_mod(p, e - k, 2**63) - pow_mod(p, e - k - 1, 2**63))
+                pe_k = p ** (e - k)
+                count = pe_k - pe_k // p  # p^(e-k) - p^(e-k-1) using integer division
                 sign = -1 if (p == 2 and k == 0) else 1
-                power = min(2 * k, e)
-                f[n] += term * sign * pow_mod(p, power, 2**63)
+                power = p ** min(2 * k, e)
+                f[n] += count * sign * power
 
     ans = 0
     for n in range(1, N + 1):
@@ -78,7 +63,7 @@ def solve() -> int:
     return ans
 
 
-def main() -> int:
+def main():
     """Main entry point."""
     result = solve()
     print(result)

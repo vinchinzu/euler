@@ -1,120 +1,130 @@
 """Project Euler Problem 233: Lattice points on a circle.
 
-Find the number of positive integers k≤N such that there are exactly K lattice
-points on the circle through (0, 0), (k, 0), (0, k), and (k, k).
+Find the sum of all n <= 10^11 such that the circle through (0,0), (n,0),
+(0,n), (n,n) has exactly 420 lattice points.
+
+The number of lattice points on this circle equals r_2(2n^2) = 4 * prod(2*a_i+1)
+where a_i are the exponents of primes ≡ 1 mod 4 in the factorization of n. We need
+this product to equal 105. The valid exponent tuples (for primes ≡ 1 mod 4) are:
+  (1,2,3), (2,10), (3,7)
+(The tuples (1,17) and (52,) always produce cores exceeding 10^11.)
+
+For each exponent pattern, enumerate all valid cores (products of primes ≡ 1 mod 4
+raised to their assigned exponents), then for each core P, the valid n are P*m where
+m has no prime factor ≡ 1 mod 4 and P*m <= N.
 """
 
-from __future__ import annotations
-
-from math import isqrt, pow
-from typing import List, Set, Tuple
+from math import isqrt
+import bisect
 
 
-def primes_mod(limit: int, k: int, mod: int) -> List[int]:
-    """Return primes p <= limit with p ≡ k (mod mod)."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [p for p in range(limit + 1) if is_prime[p] if p % mod == k]
-
-
-def get_primes_limit(num_primes: int) -> int:
-    """Estimate limit needed for num_primes primes."""
-    import math
-
-    if num_primes < 6:
-        return 15
-    return int(num_primes * (math.log(num_primes) + math.log(math.log(num_primes + 1)))) + 2
-
-
-def ipow(base: int, exp: int) -> int:
-    """Return base^exp."""
-    return base**exp
-
-
-def pow_int(base: int, exp: int) -> int:
-    """Return base^exp."""
-    return base**exp
-
-
-def solve() -> int:
-    """Solve Problem 233."""
+def solve():
     N = 10**11
-    K = 420
 
-    # Find factorizations of K/4
-    factorizations: Set[Tuple[int, ...]] = set()
+    # Sieve primes
+    def sieve_primes(limit):
+        is_prime = bytearray(b'\x01') * (limit + 1)
+        is_prime[0] = is_prime[1] = 0
+        for i in range(2, isqrt(limit) + 1):
+            if is_prime[i]:
+                is_prime[i*i::i] = bytearray(len(is_prime[i*i::i]))
+        return [p for p in range(2, limit + 1) if is_prime[p]]
 
-    def find_factorizations(min_factor: int, n: int, factorization: List[int]) -> None:
-        """Find all factorizations."""
-        if n == 1:
-            factorizations.add(tuple(factorization))
-            return
-        for factor in range(min_factor, n + 1, 2):
-            if n % factor == 0:
-                factorization.append((factor - 1) // 2)
-                find_factorizations(factor, n // factor, factorization)
-                factorization.pop()
+    # Maximum multiplier: N / min_core for (1,2,3) = N / (5^3 * 13^2 * 17)
+    MAX_MULT = N // (5**3 * 13**2 * 17) + 10
 
-    find_factorizations(3, K // 4, [])
+    # Build prefix sum of valid multipliers (numbers with no prime factor ≡ 1 mod 4)
+    primes_small = sieve_primes(MAX_MULT)
+    is_valid = bytearray(b'\x01') * (MAX_MULT + 1)
+    is_valid[0] = 0
+    for p in primes_small:
+        if p % 4 == 1:
+            for j in range(p, MAX_MULT + 1, p):
+                is_valid[j] = 0
 
-    possible_ps = primes_mod(get_primes_limit(K), 1, 4)
-    max_p = 0
-    max_q = 0
+    valid_sum = [0] * (MAX_MULT + 1)
+    v = 0
+    for m in range(MAX_MULT + 1):
+        v += m * is_valid[m]
+        valid_sum[m] = v
 
-    for factorization in factorizations:
-        p_val = N
-        for i in range(len(factorization) - 1):
-            p_val //= ipow(possible_ps[i], factorization[i + 1])
-        q_val = p_val // pow_int(possible_ps[len(factorization) - 1], factorization[0])
-        p_val = round(p_val ** (1.0 / factorization[0]))
-        if p_val > max_p:
-            max_p = p_val
-        if q_val > max_q:
-            max_q = int(q_val)
+    def S(L):
+        if L <= 0:
+            return 0
+        return valid_sum[min(L, MAX_MULT)]
 
-    # Build prod_qs: products of 2s and primes ≡ 3 (mod 4)
-    prod_qs = [True] * (max_q + 1)
-    prod_qs[0] = False
-    for p in primes_mod(max_q, 1, 4):
-        for i in range(p, max_q + 1, p):
-            prod_qs[i] = False
+    # Primes ≡ 1 mod 4 up to limit needed for cores
+    PLIMIT = 5_000_000
+    P1 = [p for p in sieve_primes(PLIMIT) if p % 4 == 1]
 
-    ans = [0]
+    total = 0
 
-    def helper(index: int, prod: int, factorization: List[int], ps: List[int]) -> None:
-        """Recursive helper."""
-        if index == len(factorization):
-            max_i = min(N // prod, max_q)
-            for i in range(1, max_i + 1):
-                if prod_qs[i]:
-                    ans[0] += prod * i
-            return
-
-        e = factorization[index]
-        for i, p in enumerate(ps):
-            if prod * pow(p, e) > N:
+    # Pattern (1, 2, 3): three distinct primes, all 6 permutations of exponent assignment
+    for (ep, eq, er) in [(1,2,3),(1,3,2),(2,1,3),(2,3,1),(3,1,2),(3,2,1)]:
+        for ip, p in enumerate(P1):
+            pp = p ** ep
+            if pp >= N:
                 break
-            if prod % p != 0:
-                helper(index + 1, prod * pow_int(p, e), factorization, ps)
+            remain_p = N // pp
+            for iq in range(ip + 1, len(P1)):
+                q = P1[iq]
+                qq = q ** eq
+                if qq > remain_p:
+                    break
+                remain_pq = remain_p // qq
+                if er == 1:
+                    max_r = remain_pq
+                elif er == 2:
+                    max_r = isqrt(remain_pq)
+                else:
+                    max_r = int(round(remain_pq ** (1.0/er)))
+                    while (max_r + 1) ** er <= remain_pq:
+                        max_r += 1
+                    while max_r ** er > remain_pq:
+                        max_r -= 1
+                if max_r <= q:
+                    continue
+                end_ir = bisect.bisect_right(P1, max_r)
+                for ir in range(iq + 1, end_ir):
+                    r = P1[ir]
+                    core = pp * qq * r ** er
+                    L = N // core
+                    if L <= 0:
+                        break
+                    total += core * S(L)
 
-    for factorization in factorizations:
-        helper(0, 1, list(factorization), primes_mod(max_p, 1, 4))
+    # Pattern (2, 10): two distinct primes, both permutations
+    for (ep, eq) in [(2, 10), (10, 2)]:
+        for ip, p in enumerate(P1):
+            pp = p ** ep
+            if pp >= N:
+                break
+            remain = N // pp
+            for iq in range(ip + 1, len(P1)):
+                q = P1[iq]
+                qq = q ** eq
+                if qq > remain:
+                    break
+                core = pp * qq
+                total += core * S(N // core)
 
-    return ans[0]
+    # Pattern (3, 7): two distinct primes, both permutations
+    for (ep, eq) in [(3, 7), (7, 3)]:
+        for ip, p in enumerate(P1):
+            pp = p ** ep
+            if pp >= N:
+                break
+            remain = N // pp
+            for iq in range(ip + 1, len(P1)):
+                q = P1[iq]
+                qq = q ** eq
+                if qq > remain:
+                    break
+                core = pp * qq
+                total += core * S(N // core)
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return total
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

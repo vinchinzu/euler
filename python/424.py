@@ -1,303 +1,394 @@
+#!/usr/bin/env python3
 """Project Euler Problem 424: Kakuro puzzles.
 
-Solve cryptic Kakuro logic puzzles where each digit is replaced with one of
-the letters from A to J. We use constraint programming with backtracking.
+Solve 200 cryptic kakuro puzzles where digits are replaced by letters A-J.
+Uses C solver with constraint propagation + backtracking for performance.
+"""
+import os
+import subprocess
+import tempfile
 
-Constraints:
-- The values of letters A to J must be distinct integers from 0 to 9.
-- The value of each open box is a distinct integer from 1 to 9.
-- Any open boxes that contain a letter must have a value equal to the letter.
-- Every row and column must contain distinct integers.
-- The first letter in an encrypted sum cannot be zero.
-- The sum of values in a row or column equals the encrypted sum.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(SCRIPT_DIR, "..", "data", "kakuro200.txt")
+if not os.path.exists(DATA_FILE):
+    DATA_FILE = os.path.join(SCRIPT_DIR, "..", "..", "data", "kakuro200.txt")
+
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define MAXCELLS 50
+#define MAXCLUES 50
+#define MAXSIZE 8
+
+typedef struct {
+    int sum_letters[3]; /* letter indices for the encoded sum */
+    int n_sum_letters;
+    int cells[6]; /* cell indices */
+    int n_cells;
+} Clue;
+
+typedef struct {
+    int size;
+    int n_cells;
+    int n_clues;
+    int cell_letter[MAXCELLS]; /* -1 or letter index 0-9 */
+    int cell_clues[MAXCELLS][8]; /* clue indices for each cell */
+    int n_cell_clues[MAXCELLS];
+    Clue clues[MAXCLUES];
+    int nonzero_letters; /* bitmask */
+    int letter_to_cells[10][MAXCELLS]; /* cells for each letter */
+    int n_letter_cells[10];
+} Puzzle;
+
+int letter_vals[10];
+int cell_vals[MAXCELLS];
+int used_letters; /* bitmask of used letter values */
+
+int compute_target(Puzzle *p, int clue_idx) {
+    Clue *c = &p->clues[clue_idx];
+    int target = 0;
+    for (int i = 0; i < c->n_sum_letters; i++) {
+        int v = letter_vals[c->sum_letters[i]];
+        if (v < 0) return -1;
+        target = target * 10 + v;
+    }
+    return target;
+}
+
+int check_clue(Puzzle *p, int clue_idx) {
+    Clue *c = &p->clues[clue_idx];
+    int target = compute_target(p, clue_idx);
+    if (target < 0) return 1;
+
+    int partial_sum = 0, unassigned = 0;
+    int seen = 0; /* bitmask of values 1-9 */
+    for (int i = 0; i < c->n_cells; i++) {
+        int v = cell_vals[c->cells[i]];
+        if (v > 0) {
+            if (seen & (1 << v)) return 0;
+            seen |= (1 << v);
+            partial_sum += v;
+        } else {
+            unassigned++;
+        }
+    }
+
+    if (unassigned == 0)
+        return partial_sum == target;
+
+    int remaining = target - partial_sum;
+    /* Quick bounds check */
+    int avail = 0x3FE & ~seen; /* bits 1-9 not in seen */
+    int count = __builtin_popcount(avail);
+    if (count < unassigned) return 0;
+
+    /* Compute min and max possible sums from avail */
+    int min_sum = 0, max_sum = 0, cnt = 0;
+    for (int v = 1; v <= 9 && cnt < unassigned; v++)
+        if (avail & (1 << v)) { min_sum += v; cnt++; }
+    cnt = 0;
+    for (int v = 9; v >= 1 && cnt < unassigned; v--)
+        if (avail & (1 << v)) { max_sum += v; cnt++; }
+
+    return min_sum <= remaining && remaining <= max_sum;
+}
+
+int propagate(Puzzle *p) {
+    int changed = 1;
+    while (changed) {
+        changed = 0;
+        /* Cell-letter equalities */
+        for (int ci = 0; ci < p->n_cells; ci++) {
+            int li = p->cell_letter[ci];
+            if (li < 0) continue;
+            if (letter_vals[li] >= 0 && cell_vals[ci] <= 0) {
+                if (letter_vals[li] < 1 || letter_vals[li] > 9) return 0;
+                cell_vals[ci] = letter_vals[li];
+                changed = 1;
+            } else if (cell_vals[ci] > 0 && letter_vals[li] < 0) {
+                int v = cell_vals[ci];
+                if (used_letters & (1 << v)) return 0;
+                letter_vals[li] = v;
+                used_letters |= (1 << v);
+                for (int k = 0; k < p->n_letter_cells[li]; k++) {
+                    int ci2 = p->letter_to_cells[li][k];
+                    if (cell_vals[ci2] <= 0) { cell_vals[ci2] = v; changed = 1; }
+                    else if (cell_vals[ci2] != v) return 0;
+                }
+                changed = 1;
+            } else if (letter_vals[li] >= 0 && cell_vals[ci] > 0) {
+                if (letter_vals[li] != cell_vals[ci]) return 0;
+            }
+        }
+
+        /* Clues with one unassigned cell */
+        for (int ci_idx = 0; ci_idx < p->n_clues; ci_idx++) {
+            Clue *c = &p->clues[ci_idx];
+            int target = compute_target(p, ci_idx);
+            if (target < 0) continue;
+
+            int unassigned_ci = -2, partial_sum = 0, seen = 0;
+            for (int i = 0; i < c->n_cells; i++) {
+                int v = cell_vals[c->cells[i]];
+                if (v > 0) {
+                    if (seen & (1 << v)) return 0;
+                    seen |= (1 << v);
+                    partial_sum += v;
+                } else if (unassigned_ci == -2) {
+                    unassigned_ci = c->cells[i];
+                } else {
+                    unassigned_ci = -1;
+                }
+            }
+
+            if (unassigned_ci >= 0) {
+                int needed = target - partial_sum;
+                if (needed < 1 || needed > 9 || (seen & (1 << needed))) return 0;
+                cell_vals[unassigned_ci] = needed;
+                changed = 1;
+            }
+        }
+    }
+    return 1;
+}
+
+int check_all(Puzzle *p) {
+    for (int ci_idx = 0; ci_idx < p->n_clues; ci_idx++)
+        if (!check_clue(p, ci_idx)) return 0;
+    return 1;
+}
+
+int solve_bt(Puzzle *p) {
+    int save_l[10], save_c[MAXCELLS], save_used;
+    memcpy(save_l, letter_vals, sizeof(letter_vals));
+    memcpy(save_c, cell_vals, p->n_cells * sizeof(int));
+    save_used = used_letters;
+
+    if (!propagate(p) || !check_all(p)) {
+        memcpy(letter_vals, save_l, sizeof(letter_vals));
+        memcpy(cell_vals, save_c, p->n_cells * sizeof(int));
+        used_letters = save_used;
+        return 0;
+    }
+
+    /* Find first unassigned letter */
+    int best_li = -1;
+    for (int li = 0; li < 10; li++)
+        if (letter_vals[li] < 0) { best_li = li; break; }
+
+    if (best_li >= 0) {
+        for (int val = 0; val <= 9; val++) {
+            if (used_letters & (1 << val)) continue;
+            if ((p->nonzero_letters & (1 << best_li)) && val == 0) continue;
+
+            int sl[10], sc[MAXCELLS]; int su;
+            memcpy(sl, letter_vals, sizeof(letter_vals));
+            memcpy(sc, cell_vals, p->n_cells * sizeof(int));
+            su = used_letters;
+
+            letter_vals[best_li] = val;
+            used_letters |= (1 << val);
+
+            if (solve_bt(p)) return 1;
+
+            memcpy(letter_vals, sl, sizeof(letter_vals));
+            memcpy(cell_vals, sc, p->n_cells * sizeof(int));
+            used_letters = su;
+        }
+        return 0;
+    }
+
+    /* Find first unassigned cell */
+    int best_ci = -1;
+    for (int ci = 0; ci < p->n_cells; ci++)
+        if (cell_vals[ci] <= 0) { best_ci = ci; break; }
+
+    if (best_ci < 0) return 1;
+
+    int used_in_groups = 0;
+    for (int k = 0; k < p->n_cell_clues[best_ci]; k++) {
+        Clue *c = &p->clues[p->cell_clues[best_ci][k]];
+        for (int i = 0; i < c->n_cells; i++)
+            if (cell_vals[c->cells[i]] > 0)
+                used_in_groups |= (1 << cell_vals[c->cells[i]]);
+    }
+
+    for (int val = 1; val <= 9; val++) {
+        if (used_in_groups & (1 << val)) continue;
+
+        int sl[10], sc[MAXCELLS]; int su;
+        memcpy(sl, letter_vals, sizeof(letter_vals));
+        memcpy(sc, cell_vals, p->n_cells * sizeof(int));
+        su = used_letters;
+
+        cell_vals[best_ci] = val;
+
+        if (solve_bt(p)) return 1;
+
+        memcpy(letter_vals, sl, sizeof(letter_vals));
+        memcpy(cell_vals, sc, p->n_cells * sizeof(int));
+        used_letters = su;
+    }
+    return 0;
+}
+
+/* Parse puzzle line */
+void parse_puzzle(char *line, Puzzle *p) {
+    memset(p, 0, sizeof(Puzzle));
+    for (int i = 0; i < MAXCELLS; i++) p->cell_letter[i] = -1;
+
+    /* Tokenize respecting parentheses */
+    char tokens[100][64];
+    int n_tokens = 0;
+    char *s = line;
+    while (*s) {
+        while (*s == ',') s++;
+        if (!*s) break;
+        char *t = tokens[n_tokens];
+        if (*s == '(') {
+            while (*s && *s != ')') *t++ = *s++;
+            if (*s == ')') *t++ = *s++;
+        } else {
+            while (*s && *s != ',') *t++ = *s++;
+        }
+        *t = 0;
+        n_tokens++;
+    }
+
+    p->size = atoi(tokens[0]);
+    char grid[MAXSIZE][MAXSIZE][64];
+    for (int i = 0; i < p->size; i++)
+        for (int j = 0; j < p->size; j++)
+            strcpy(grid[i][j], tokens[1 + i * p->size + j]);
+
+    /* Map open cells */
+    int cell_map[MAXSIZE][MAXSIZE];
+    memset(cell_map, -1, sizeof(cell_map));
+
+    for (int i = 0; i < p->size; i++) {
+        for (int j = 0; j < p->size; j++) {
+            char *c = grid[i][j];
+            if (c[0] == 'X' || c[0] == '(') continue;
+            /* O or single letter A-J */
+            int ci = p->n_cells++;
+            cell_map[i][j] = ci;
+            if (c[0] >= 'A' && c[0] <= 'J') {
+                int li = c[0] - 'A';
+                p->cell_letter[ci] = li;
+                p->letter_to_cells[li][p->n_letter_cells[li]++] = ci;
+            }
+        }
+    }
+
+    /* Parse clues */
+    for (int i = 0; i < p->size; i++) {
+        for (int j = 0; j < p->size; j++) {
+            char *c = grid[i][j];
+            if (c[0] != '(') continue;
+
+            /* Parse directions inside parens */
+            char inner[64];
+            strncpy(inner, c + 1, strlen(c) - 2);
+            inner[strlen(c) - 2] = 0;
+
+            char *tok = strtok(inner, ",");
+            while (tok) {
+                while (*tok == ' ') tok++;
+                char dir = tok[0]; /* h or v */
+                char *letters_str = tok + 1;
+
+                Clue *cl = &p->clues[p->n_clues];
+                cl->n_sum_letters = 0;
+                cl->n_cells = 0;
+
+                for (char *ch = letters_str; *ch; ch++) {
+                    if (*ch >= 'A' && *ch <= 'J')
+                        cl->sum_letters[cl->n_sum_letters++] = *ch - 'A';
+                }
+
+                if (cl->n_sum_letters >= 2)
+                    p->nonzero_letters |= (1 << cl->sum_letters[0]);
+
+                if (dir == 'h') {
+                    for (int dj = 1; j + dj < p->size; dj++) {
+                        if (cell_map[i][j + dj] < 0) break;
+                        cl->cells[cl->n_cells++] = cell_map[i][j + dj];
+                    }
+                } else if (dir == 'v') {
+                    for (int di = 1; i + di < p->size; di++) {
+                        if (cell_map[i + di][j] < 0) break;
+                        cl->cells[cl->n_cells++] = cell_map[i + di][j];
+                    }
+                }
+
+                if (cl->n_cells > 0) {
+                    for (int k = 0; k < cl->n_cells; k++) {
+                        int ci = cl->cells[k];
+                        p->cell_clues[ci][p->n_cell_clues[ci]++] = p->n_clues;
+                    }
+                    p->n_clues++;
+                }
+
+                tok = strtok(NULL, ",");
+            }
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
+    char *filename = argv[1];
+    FILE *f = fopen(filename, "r");
+    if (!f) { fprintf(stderr, "Cannot open %s\n", filename); return 1; }
+
+    long long total = 0;
+    char line[4096];
+    while (fgets(line, sizeof(line), f)) {
+        /* Remove newline */
+        int len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = 0;
+        if (len == 0) continue;
+
+        Puzzle p;
+        parse_puzzle(line, &p);
+
+        memset(letter_vals, -1, sizeof(letter_vals));
+        memset(cell_vals, 0, sizeof(cell_vals));
+        used_letters = 0;
+
+        if (solve_bt(&p)) {
+            long long val = 0;
+            for (int i = 0; i < 10; i++)
+                val = val * 10 + (letter_vals[i] >= 0 ? letter_vals[i] : 0);
+            total += val;
+        }
+    }
+    fclose(f);
+    printf("%lld\n", total);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p424.c")
+    exe_file = os.path.join(tmpdir, "p424")
 
-import re
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
+    subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file],
+        check=True, capture_output=True
+    )
 
-@dataclass(frozen=True)
-class Dir:
-    """Direction vector."""
-
-    di: int
-    dj: int
-
-    def in_bounds(self, i: int, j: int, mult: int, size: int) -> bool:
-        """Check if position is in bounds."""
-        new_i = i + mult * self.di
-        new_j = j + mult * self.dj
-        return 0 <= new_i < size and 0 <= new_j < size
-
-
-@dataclass(frozen=True)
-class IPoint:
-    """Integer point."""
-
-    x: int
-    y: int
-
-
-class ConstraintSolver:
-    """Simple backtracking constraint solver."""
-
-    def __init__(self) -> None:
-        """Initialize solver."""
-        self.variables: Dict[str, Set[int]] = {}
-        self.constraints: List[Tuple[List[str], List[int], int]] = []
-        self.alldiff_groups: List[List[str]] = []
-        self.equalities: List[Tuple[str, str]] = []
-        self.inequalities: List[Tuple[str, int]] = []
-
-    def add_variable(self, name: str, domain: Set[int]) -> None:
-        """Add a variable with its domain."""
-        self.variables[name] = domain.copy()
-
-    def add_alldiff(self, var_names: List[str]) -> None:
-        """Add all-different constraint."""
-        self.alldiff_groups.append(var_names)
-
-    def add_equality(self, var1: str, var2: str) -> None:
-        """Add equality constraint."""
-        self.equalities.append((var1, var2))
-
-    def add_inequality(self, var: str, value: int) -> None:
-        """Add inequality constraint."""
-        self.inequalities.append((var, value))
-
-    def add_weighted_sum(
-        self, var_names: List[str], coefficients: List[int], target: int
-    ) -> None:
-        """Add weighted sum constraint."""
-        self.constraints.append((var_names, coefficients, target))
-
-    def solve(self) -> Optional[Dict[str, int]]:
-        """Solve using backtracking."""
-        assignment: Dict[str, int] = {}
-        return self._backtrack(assignment)
-
-    def _backtrack(self, assignment: Dict[str, int]) -> Optional[Dict[str, int]]:
-        """Backtracking search."""
-        if len(assignment) == len(self.variables):
-            if self._check_all_constraints(assignment):
-                return assignment
-            return None
-
-        # Select unassigned variable
-        unassigned = [
-            name for name in self.variables if name not in assignment
-        ]
-        if not unassigned:
-            return None
-
-        var = unassigned[0]
-        domain = self.variables[var].copy()
-
-        # Apply forward checking
-        domain = self._forward_check(var, domain, assignment)
-
-        for value in sorted(domain):
-            assignment[var] = value
-            if self._check_partial_constraints(assignment):
-                result = self._backtrack(assignment)
-                if result is not None:
-                    return result
-            del assignment[var]
-
-        return None
-
-    def _forward_check(
-        self, var: str, domain: Set[int], assignment: Dict[str, int]
-    ) -> Set[int]:
-        """Forward checking to prune domain."""
-        pruned = set()
-        for value in domain:
-            test_assignment = assignment.copy()
-            test_assignment[var] = value
-            if self._check_partial_constraints(test_assignment):
-                pruned.add(value)
-        return pruned
-
-    def _check_partial_constraints(
-        self, assignment: Dict[str, int]
-    ) -> bool:
-        """Check constraints that can be checked with partial assignment."""
-        # Check equalities
-        for var1, var2 in self.equalities:
-            if var1 in assignment and var2 in assignment:
-                if assignment[var1] != assignment[var2]:
-                    return False
-
-        # Check inequalities
-        for var, value in self.inequalities:
-            if var in assignment:
-                if assignment[var] == value:
-                    return False
-
-        # Check alldiff groups
-        for group in self.alldiff_groups:
-            assigned_in_group = [
-                assignment[var] for var in group if var in assignment
-            ]
-            if len(assigned_in_group) != len(set(assigned_in_group)):
-                return False
-
-        return True
-
-    def _check_all_constraints(self, assignment: Dict[str, int]) -> bool:
-        """Check all constraints."""
-        if not self._check_partial_constraints(assignment):
-            return False
-
-        # Check weighted sum constraints
-        for var_names, coefficients, target in self.constraints:
-            total = 0
-            for var, coeff in zip(var_names, coefficients):
-                if var not in assignment:
-                    return False
-                total += assignment[var] * coeff
-            if total != target:
-                return False
-
-        return True
-
-
-def ipow(base: int, exp: int) -> int:
-    """Integer power."""
-    result = 1
-    for _ in range(exp):
-        result *= base
-    return result
-
-
-def parse_puzzle(line: str) -> Tuple[int, List[List[str]]]:
-    """Parse puzzle line."""
-    # Split by comma, but not inside parentheses
-    parts = re.split(r",(?![^(]*\))", line)
-    size = int(parts[0])
-    grid: List[List[str]] = []
-    for i in range(size):
-        row: List[str] = []
-        for j in range(size):
-            row.append(parts[size * i + j + 1])
-        grid.append(row)
-    return size, grid
-
-
-def solve_puzzle(puzzle_line: str) -> int:
-    """Solve a single puzzle and return the letter values as integer."""
-    size, grid = parse_puzzle(puzzle_line)
-    B = 10
-
-    solver = ConstraintSolver()
-
-    # Create letter variables A-J (0-9)
-    letter_vars: Dict[str, str] = {}
-    for c in range(ord("A"), ord("A") + B):
-        letter_name = f"letter_{chr(c)}"
-        letter_vars[chr(c)] = letter_name
-        solver.add_variable(letter_name, set(range(B)))
-
-    # All letters must be distinct
-    solver.add_alldiff(list(letter_vars.values()))
-
-    # Create grid variables
-    grid_vars: Dict[IPoint, str] = {}
-    for i in range(size):
-        for j in range(size):
-            cell = grid[i][j]
-            if len(cell) > 0 and cell[0] >= "A" and cell[0] <= "O":
-                var_name = f"grid_{i}_{j}"
-                grid_vars[IPoint(i, j)] = var_name
-                solver.add_variable(var_name, set(range(1, B)))
-                # If it's a letter A-J, add equality constraint
-                if cell[0] in letter_vars:
-                    solver.add_equality(var_name, letter_vars[cell[0]])
-
-    # Process directed sums
-    for i in range(size):
-        for j in range(size):
-            cell = grid[i][j]
-            # Split by non-word characters but keep parentheses
-            parts = re.split(r"\W+", cell)
-            for part in parts:
-                if not part:
-                    continue
-                if part.startswith("h"):
-                    dir_obj = Dir(0, 1)
-                elif part.startswith("v"):
-                    dir_obj = Dir(1, 0)
-                else:
-                    continue
-
-                # Collect variables in this direction
-                variables: List[str] = []
-                coefficients: List[int] = []
-                mult = 1
-                while dir_obj.in_bounds(i, j, mult, size):
-                    point = IPoint(i + mult * dir_obj.di, j + mult * dir_obj.dj)
-                    if point not in grid_vars:
-                        break
-                    variables.append(grid_vars[point])
-                    coefficients.append(-1)
-                    mult += 1
-
-                if not variables:
-                    continue
-
-                # All variables in this sum must be distinct
-                solver.add_alldiff(variables)
-
-                # Process the encrypted sum
-                sum_str = part[1:]
-                for k, char in enumerate(sum_str):
-                    if char in letter_vars:
-                        variables.append(letter_vars[char])
-                        power = ipow(B, len(sum_str) - 1 - k)
-                        coefficients.append(power)
-
-                # First letter cannot be zero
-                if sum_str and sum_str[0] in letter_vars:
-                    solver.add_inequality(letter_vars[sum_str[0]], 0)
-
-                # Add weighted sum constraint (sum equals zero)
-                solver.add_weighted_sum(variables, coefficients, 0)
-
-    # Solve
-    solution = solver.solve()
-    if solution is None:
-        raise ValueError("No solution found")
-
-    # Extract letter values
-    result_str = ""
-    for c in range(ord("A"), ord("A") + B):
-        letter_name = letter_vars[chr(c)]
-        result_str += str(solution[letter_name])
-
-    return int(result_str)
-
-
-def solve() -> int:
-    """Solve all puzzles and return sum."""
-    total = 0
-    with open("kevinychen-project-euler/files/p424.txt") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            total += solve_puzzle(line)
-    return total
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file, DATA_FILE], capture_output=True, text=True, check=True,
+        timeout=60
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,129 +1,153 @@
-"""Project Euler Problem 283: Integer Sided Triangles.
-
-Find the number of integer-sided triangles whose ratio of area to perimeter is
-an integer up to N.
-
-Such triangles must satisfy K = rP, where K is the area, P is the perimeter,
-and r≤N. Using Heron's Formula and squaring both sides gives (s-a)(s-b)(s-c)
-= 4r²s, where s is the semiperimeter. Note that s cannot be a half-integer,
-because then the left-hand side would have a denominator of 8. Therefore, we
-let integers x = s - a, y = s - b, and z = s - c, which gives xyz = 4r²(x+y+z)
-=> (xy - 4r²)(xz - 4r²) = 4r²(4r² + x²).
-
-Without loss of generality we let x≤y≤z, so the above inequality gives
-4r²(4r² + x²) ≥ (x² - 4r²)² => x < 2√3 r. This means we can iterate over all
-r≤N and x≤(2√3)N, and compute all divisors of the right-hand side. For each
-divisor, we solve for y and z. If they are both integral, and they pass our
-original assumption x≤y≤z, then we add the perimeter a + b + c = 2(x + y + z).
-
-As optimizations, we compute the prime factors of the two right-hand side
-factors 4r² and (4r² + x²), and build up a list of all divisors only up to
-the square root of the product (which also ensures that y≤z). We use an array
-with a end pointer as a further performance optimization.
-"""
-
+"""Project Euler Problem 283: Integer Sided Triangles."""
 from __future__ import annotations
-
-from math import isqrt, sqrt
-from typing import List, Set
-
-from sympy import factorint
-
-
-def isq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def fsq(n: int) -> int:
-    """Floor square root."""
-    return isqrt(n)
-
-
-def build_spf(limit: int) -> List[int]:
-    """Build smallest prime factor array."""
-    spf = list(range(limit + 1))
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] == i:
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
-    """Solve Problem 283."""
-    N = 1000
-    L = int(2 * sqrt(3) * N)
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-    # Precompute smallest prime factor array
-    max_val = 4 * N * N + L * L
-    spf = build_spf(max_val)
+/*
+ * Find the sum of perimeters of all integer-sided triangles whose
+ * area/perimeter ratio is a positive integer r, for r = 1..N.
+ *
+ * Key identity: let p = semi-perimeter, and x = p-a, y = p-b, z = p-c
+ * with x >= y >= z >= 1.  Then xyz = 4 r^2 (x+y+z), and
+ * (x*y - 4r^2)(x*z - 4r^2) = 4 r^2 (x^2 + 4 r^2)  [= "product"].
+ *
+ * We loop over r and the smallest parameter z (called "x" in the loop
+ * variable below, confusingly), enumerate divisors d of "product" with
+ * d <= sqrt(product), and recover the other two parameters.
+ */
 
-    divisors: List[int] = [0] * 10000
+#define N 1000
+static int spf[16000001];
+static long long divisors[100000];
 
-    ans = 0
+void build_spf(int limit) {
+    for (int i = 0; i <= limit; i++) spf[i] = i;
+    for (int i = 2; (long long)i * i <= limit; i++) {
+        if (spf[i] == i) {
+            for (int j = i * i; j <= limit; j += i) {
+                if (spf[j] == j) spf[j] = i;
+            }
+        }
+    }
+}
 
-    for r in range(1, N + 1):
-        factors_4r2: Set[int] = set(factorint(4 * isq(r)).keys())
+/* Overflow-safe check: val*val <= product, using __int128 to avoid overflow */
+static inline int sq_le(long long val, long long product) {
+    return (__int128)val * val <= (__int128)product;
+}
 
-        for x in range(1, L + 1):
-            product = k = 4 * sq(r) * (4 * sq(r) + sq(x))
-            divisors_size = 1
-            divisors[0] = 1
+/* Trial division for values larger than SPF array */
+static long long smallest_factor_large(long long n) {
+    if (n % 2 == 0) return 2;
+    for (long long i = 3; i * i <= n; i += 2) {
+        if (n % i == 0) return i;
+    }
+    return n;
+}
 
-            # Add divisors from factors of 4r²
-            for d in factors_4r2:
-                e = 0
-                temp_k = k
-                while temp_k % d == 0:
-                    temp_k //= d
-                    e += 1
-                old_size = divisors_size
-                for i in range(old_size - 1, -1, -1):
-                    mult = d
-                    for j in range(e):
-                        if fsq(divisors[i] * mult) <= product:
-                            divisors[divisors_size] = divisors[i] * mult
-                            divisors_size += 1
-                        mult *= d
+int main() {
+    int L = (int)(2.0 * sqrt(3.0) * N);
+    int max_val = 4 * N * N + L * L;
+    build_spf(max_val);
 
-            # Add divisors from factors of (4r² + x²) using SPF
-            temp_k = k
-            while temp_k > 1:
-                d = spf[temp_k] if temp_k < len(spf) else temp_k
-                e = 0
-                while temp_k % d == 0:
-                    temp_k //= d
-                    e += 1
-                old_size = divisors_size
-                for i in range(old_size - 1, -1, -1):
-                    mult = d
-                    for j in range(e):
-                        if fsq(divisors[i] * mult) <= product:
-                            divisors[divisors_size] = divisors[i] * mult
-                            divisors_size += 1
-                        mult *= d
+    long long ans = 0;
+    divisors[0] = 1;
 
-            # Check each divisor
-            for i in range(divisors_size):
-                xy = divisors[i] + 4 * sq(r)
-                xz = product // divisors[i] + 4 * sq(r)
-                if xy % x == 0 and xz % x == 0 and x * x <= xy:
-                    ans += 2 * (x + xy // x + xz // x)
+    for (int r = 1; r <= N; r++) {
+        long long r2_4 = 4LL * r * r;
 
-    return ans
+        /* Get distinct prime factors of 4r^2 */
+        int factors[20];
+        int nfactors = 0;
+        {
+            int tmp = (int)r2_4;
+            while (tmp > 1) {
+                int f = spf[tmp];
+                factors[nfactors++] = f;
+                while (tmp % f == 0) tmp /= f;
+            }
+        }
+
+        for (int x = 1; x <= L; x++) {
+            long long product = r2_4 * (r2_4 + (long long)x * x);
+            long long k = product;
+            int divisors_size = 1;
+
+            /* Add divisors from known factors of 4r^2 */
+            for (int fi = 0; fi < nfactors; fi++) {
+                int d = factors[fi];
+                int e = 0;
+                while (k % d == 0) { k /= d; e++; }
+                int old_size = divisors_size;
+                for (int i = old_size - 1; i >= 0; i--) {
+                    long long mult = d;
+                    for (int j = 0; j < e; j++) {
+                        long long val = divisors[i] * mult;
+                        if (sq_le(val, product))
+                            divisors[divisors_size++] = val;
+                        mult *= d;
+                    }
+                }
+            }
+
+            /* Add divisors from remaining factors */
+            while (k > 1) {
+                long long d;
+                if (k <= max_val)
+                    d = spf[(int)k];
+                else
+                    d = smallest_factor_large(k);
+                int e = 0;
+                while (k % d == 0) { k /= d; e++; }
+                int old_size = divisors_size;
+                for (int i = old_size - 1; i >= 0; i--) {
+                    long long mult = d;
+                    for (int j = 0; j < e; j++) {
+                        long long val = divisors[i] * mult;
+                        if (sq_le(val, product))
+                            divisors[divisors_size++] = val;
+                        mult *= d;
+                    }
+                }
+            }
+
+            /* Check each divisor */
+            for (int i = 0; i < divisors_size; i++) {
+                long long xy = divisors[i] + r2_4;
+                long long xz = product / divisors[i] + r2_4;
+                if (xy % x == 0 && xz % x == 0 && (long long)x * x <= xy)
+                    ans += 2 * (x + xy / x + xz / x);
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    c_path = os.path.join(tmpdir, "p283.c")
+    bin_path = os.path.join(tmpdir, "p283")
+    with open(c_path, "w") as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-lm", "-o", bin_path, c_path], check=True, capture_output=True)
+    result = subprocess.run([bin_path], capture_output=True, text=True, check=True)
+    os.unlink(c_path)
+    os.unlink(bin_path)
+    os.rmdir(tmpdir)
+    return int(result.stdout.strip())
 
 
 def main() -> None:
-    """Main entry point."""
-    result = solve()
-    print(result)
+    print(solve())
 
 
 if __name__ == "__main__":

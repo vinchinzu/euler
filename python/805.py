@@ -1,144 +1,176 @@
-"""Project Euler Problem 805: Shifted Multiple.
+"""Project Euler Problem 805: Shifted Multiples.
 
-Let N(r) be the smallest positive integer n such that s(n) = r*n, where
-s(n) is obtained by moving the leftmost digit to the rightmost position.
-Find Σ N(u³/v³) over all co-prime u,v not exceeding N.
-
-Let the integer n have k+1 digits, the first one is a and the remainder
-is b. Then we have
-
-u³/v³ (a 10^k + b) = 10b + a
-=> (u³10^k-v³)a = (10v³-u³)b = cb,
-
-where c = 10v³-u³. Firstly, we need b ≤ 10^k, so u³a ≤ c. Then, for each
-a, we need to find k such that a(u³10^k-v³) is divisible by c. We can see
-that if k=-1, then this value is equal to a(c/10) ≡ 0 (mod c), so the
-smallest positive k is T-1 where T is the order of k (mod c / gcd(a,c)).
-For each k we can compute the value of b directly.
-
-We iterate over all digits a to find the one with minimum k. For efficiency,
-we don't recompute orders if we've already seen a mod.
+n = a*v3*(10^{k+1} - 1) / c where c = 10*v3 - u3.
+k+1 = ord(10, c / gcd(a*v3, c)).
+Sum N(u^3/v^3) mod 10^9+7 for coprime u,v <= 200.
 """
 
-from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
 
-import math
-from typing import Dict
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef long long ll;
+typedef unsigned long long ull;
+
+static const ll MOD = 1000000007LL;
+
+static ll gcd(ll a, ll b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
+
+static ll power(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+/* Euler's totient function */
+static ll euler_totient(ll n) {
+    ll result = n;
+    for (ll p = 2; p * p <= n; p++) {
+        if (n % p == 0) {
+            while (n % p == 0) n /= p;
+            result -= result / p;
+        }
+    }
+    if (n > 1) result -= result / n;
+    return result;
+}
+
+/* Find multiplicative order of base mod m, assuming gcd(base, m) = 1 */
+static ll mult_order(ll base, ll m) {
+    if (m == 1) return 1;
+    ll phi = euler_totient(m);
+
+    /* Find prime factorization of phi */
+    ll temp = phi;
+    ll factors[64];
+    int nfactors = 0;
+    for (ll p = 2; p * p <= temp; p++) {
+        if (temp % p == 0) {
+            factors[nfactors++] = p;
+            while (temp % p == 0) temp /= p;
+        }
+    }
+    if (temp > 1) factors[nfactors++] = temp;
+
+    ll ord = phi;
+    for (int i = 0; i < nfactors; i++) {
+        while (ord % factors[i] == 0) {
+            if (power(base, ord / factors[i], m) == 1)
+                ord /= factors[i];
+            else
+                break;
+        }
+    }
+    return ord;
+}
+
+int main(void) {
+    int N = 200;
+    ll ans = 0;
+
+    for (int v = 1; v <= N; v++) {
+        for (int u = 1; u <= N; u++) {
+            if (gcd(u, v) != 1) continue;
+
+            ll u3 = (ll)u * u * u;
+            ll v3 = (ll)v * v * v;
+            ll c = 10 * v3 - u3;
+            if (c <= 0) continue;
+
+            ll best_k = -1;
+            int best_a = 0;
+
+            for (int a = 1; a <= 9; a++) {
+                if ((ll)a * u3 >= c) continue;  /* need a*u3 < c for b < 10^k */
+
+                ll g = gcd((ll)a * v3, c);
+                ll d = c / g;
+
+                if (d == 1) {
+                    /* k+1 = 1, so k = 0 */
+                    /* But k=0 means n is single digit = a, need s(a) = a => r = 1 */
+                    /* Check: n = a*v3*(10-1)/c = 9*a*v3/c */
+                    /* For k=0, n = a, b = 0, so need u3*1 - v3 = 0 * c/a = 0 */
+                    /* Actually k+1 = ord(10, 1) = 1, so k = 0 */
+                    ll k = 0;
+                    if (best_k < 0 || k < best_k || (k == best_k && a < best_a)) {
+                        best_k = k;
+                        best_a = a;
+                    }
+                    continue;
+                }
+
+                if (gcd(10, d) != 1) continue;  /* no solution for this a */
+
+                ll k = mult_order(10, d) - 1;
+                if (best_k < 0 || k < best_k || (k == best_k && a < best_a)) {
+                    best_k = k;
+                    best_a = a;
+                }
+            }
+
+            if (best_k >= 0) {
+                /* n = best_a * v3 * (10^{best_k+1} - 1) / c mod MOD */
+                ll k1 = best_k + 1;
+                ll p10 = power(10, k1, MOD);
+                ll num = (ll)best_a % MOD * (v3 % MOD) % MOD;
+                num = num * ((p10 - 1 + MOD) % MOD) % MOD;
+                ll inv_c = power(c % MOD, MOD - 2, MOD);
+                num = num * inv_c % MOD;
+                ans = (ans + num) % MOD;
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
 
 
-def gcd(a: int, b: int) -> int:
-    """Greatest common divisor."""
-    while b:
-        a, b = b, a % b
-    return a
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p805.c")
+    exe_file = os.path.join(tmpdir, "p805")
 
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
 
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=25
+    )
 
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if math.gcd(a, m) != 1:
-        raise ValueError("Inverse does not exist")
-    return pow(a, -1, m)
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
 
-
-def order(base: int, mod: int) -> int:
-    """Find the order of base modulo mod."""
-    if math.gcd(base, mod) != 1:
-        raise ValueError("Base and mod must be coprime")
-    phi = mod
-    # Factorize phi to find order
-    factors = []
-    temp = phi
-    for i in range(2, int(temp**0.5) + 1):
-        if temp % i == 0:
-            count = 0
-            while temp % i == 0:
-                temp //= i
-                count += 1
-            factors.append((i, count))
-    if temp > 1:
-        factors.append((temp, 1))
-
-    ord_val = phi
-    for p, _ in factors:
-        while ord_val % p == 0:
-            if pow_mod(base, ord_val // p, mod) == 1:
-                ord_val //= p
-            else:
-                break
-
-    return ord_val
-
-
-def solve() -> int:
-    """Solve Problem 805."""
-    N = 200
-    M = 10**9 + 7
-    B = 10
-
-    ans = 0
-    order_cache: Dict[int, int] = {}
-
-    for v in range(1, N + 1):
-        for u in range(1, N + 1):
-            if gcd(u, v) != 1:
-                continue
-
-            u3 = u * u * u
-            v3 = v * v * v
-            min_k = float("inf")
-            min_mod_val = float("inf")
-            n = 0
-
-            for a in range(1, B):
-                c = B * v3 - u3
-                if u3 * a > c:
-                    continue
-
-                mod_val = c // gcd(a, c)
-                if mod_val >= min_mod_val:
-                    continue
-
-                min_mod_val = mod_val
-
-                if mod_val not in order_cache:
-                    order_cache[mod_val] = order(B, mod_val)
-                k = order_cache[mod_val] - 1
-
-                if k < min_k:
-                    min_k = k
-                    term1 = (a * pow_mod(B, k, M)) % M
-                    term2 = (
-                        (u3 * pow_mod(B, k, M) - v3)
-                        * a
-                        % M
-                        * mod_inverse(c, M)
-                        % M
-                    )
-                    n = (term1 + term2) % M
-
-            ans = (ans + n) % M
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

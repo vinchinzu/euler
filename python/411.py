@@ -1,164 +1,189 @@
+#!/usr/bin/env python3
 """Project Euler Problem 411: Station paths.
 
-Let S(n) be the maximum number of stations that a path from (0, 0) to (n, n)
-can pass through, given that there is a station at (x, y) if (x, y) ≡ (2^i,
-3^i) for some 0 ≤ i ≤ 2n, and the x and y coordinates of the path can never
-decrease. Find sum_{k=1}^N S(k^K).
+Compute sum of S(k^5) for k=1..30, where S(n) is the max number of stations
+on a non-decreasing path from (0,0) to (n,n), with stations at
+(2^i mod n, 3^i mod n).
 
-To compute S(n), we can find all stations, sort them by x-coordinate (followed
-by y-coordinate), and then find the longest increasing subsequence of the
-y-coordinates using the LIS algorithm.
+Uses C for performance-critical station generation and LIS computation.
+"""
+import os
+import subprocess
+import tempfile
 
-Optimizations:
-- Consider just the x-coordinate. If n has e_2 factors of 2, then the first
-  e_2 stations (2^i, 3^i) for 0 ≤ i < e_2 are not duplicated. If we define n_2
-  to equal n with all factors of 2 divided out, then the station for i ≥ e_2 has
-  the same x-coordinate as the station for i ≥ e_2 + order(2, n_2), where the
-  order is the smallest o such that 2^o ≡ 1.
-- Using similar logic for the y-coordinate to compute e_3 and n_3, we find that
-  the station for i = max(e_2, e_3) + lcm(order(2, n_2), order(3, n_3)) is the
-  same as the station for i = max(e_2, e_3), and we can stop generating stations
-  after that amount.
-- When sorting, we encode each station (x, y) as a 64-bit integer where the most
-  significant 32 bits are the x-coordinate and the least significant 32 bits are
-  the y-coordinate, to avoid creating objects.
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef unsigned long long ull;
+
+long long gcd_ll(long long a, long long b) {
+    while (b) { long long t = b; b = a % b; a = t; }
+    return a;
+}
+
+long long lcm_ll(long long a, long long b) {
+    return a / gcd_ll(a, b) * b;
+}
+
+ull pow_mod(ull base, ull exp, ull mod) {
+    ull result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = (__uint128_t)result * base % mod;
+        base = (__uint128_t)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+/* Compute multiplicative order of base mod mod */
+/* mod must be coprime to base */
+long long mult_order(long long base, long long mod) {
+    if (mod <= 1) return 1;
+    if (gcd_ll(base, mod) != 1) return 0;
+
+    /* Compute Euler totient of mod */
+    long long phi = mod;
+    long long temp = mod;
+    for (long long p = 2; p * p <= temp; p++) {
+        if (temp % p == 0) {
+            phi -= phi / p;
+            while (temp % p == 0) temp /= p;
+        }
+    }
+    if (temp > 1) phi -= phi / temp;
+
+    /* Order divides phi. Find smallest divisor that works */
+    long long result = phi;
+
+    /* Factor phi */
+    temp = phi;
+    for (long long p = 2; p * p <= temp; p++) {
+        if (temp % p == 0) {
+            while (temp % p == 0) temp /= p;
+            while (result % p == 0 && pow_mod(base, result / p, mod) == 1)
+                result /= p;
+        }
+    }
+    if (temp > 1) {
+        while (result % temp == 0 && pow_mod(base, result / temp, mod) == 1)
+            result /= temp;
+    }
+    return result;
+}
+
+int cmp_ull(const void *a, const void *b) {
+    ull va = *(const ull *)a;
+    ull vb = *(const ull *)b;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+}
+
+/* Longest non-decreasing subsequence using patience sorting */
+int lis(int *arr, int n) {
+    if (n == 0) return 0;
+    int *tails = (int *)malloc(n * sizeof(int));
+    int len = 0;
+
+    for (int i = 0; i < n; i++) {
+        /* bisect_right: find first position where tails[pos] > arr[i] */
+        int lo = 0, hi = len;
+        while (lo < hi) {
+            int mid = (lo + hi) / 2;
+            if (tails[mid] <= arr[i]) lo = mid + 1;
+            else hi = mid;
+        }
+        tails[lo] = arr[i];
+        if (lo == len) len++;
+    }
+
+    free(tails);
+    return len;
+}
+
+long long S(long long n) {
+    if (n <= 1) return 1;
+
+    /* Find e_2 and n_2 */
+    int e_2 = 0;
+    long long n_2 = n;
+    while (n_2 % 2 == 0) { e_2++; n_2 /= 2; }
+
+    int e_3 = 0;
+    long long n_3 = n;
+    while (n_3 % 3 == 0) { e_3++; n_3 /= 3; }
+
+    long long ord_2 = (n_2 > 1) ? mult_order(2, n_2) : 1;
+    long long ord_3 = (n_3 > 1) ? mult_order(3, n_3) : 1;
+    long long num_stations = (e_2 > e_3 ? e_2 : e_3) + lcm_ll(ord_2, ord_3);
+
+    /* Generate stations encoded as 64-bit: (x << 32) | y */
+    ull *stations = (ull *)malloc(num_stations * sizeof(ull));
+    long long x = 1 % n, y = 1 % n;
+    for (long long i = 0; i < num_stations; i++) {
+        stations[i] = ((ull)x << 32) | (ull)y;
+        x = (__uint128_t)x * 2 % n;
+        y = (__uint128_t)y * 3 % n;
+    }
+
+    /* Remove duplicates by sorting */
+    qsort(stations, num_stations, sizeof(ull), cmp_ull);
+    long long unique = 0;
+    for (long long i = 0; i < num_stations; i++) {
+        if (i == 0 || stations[i] != stations[i-1]) {
+            stations[unique++] = stations[i];
+        }
+    }
+
+    /* Extract y-coordinates */
+    int *y_coords = (int *)malloc(unique * sizeof(int));
+    for (long long i = 0; i < unique; i++) {
+        y_coords[i] = (int)(stations[i] & 0xFFFFFFFF);
+    }
+
+    int result = lis(y_coords, (int)unique);
+
+    free(stations);
+    free(y_coords);
+    return result;
+}
+
+int main() {
+    int N = 30, K = 5;
+    long long ans = 0;
+
+    for (int k = 1; k <= N; k++) {
+        long long n = 1;
+        for (int j = 0; j < K; j++) n *= k;
+        long long s = S(n);
+        ans += s;
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p411.c")
+    exe_file = os.path.join(tmpdir, "p411")
 
-from math import gcd
-from typing import List
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
+    subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def lcm(a: int, b: int) -> int:
-    """Least common multiple."""
-    return a * b // gcd(a, b)
-
-
-def order(base: int, mod: int) -> int:
-    """Find the order of base modulo mod (smallest o such that base^o ≡ 1)."""
-    if gcd(base, mod) != 1:
-        return 0
-    phi = mod
-    result = phi
-    p = 2
-    while p * p <= phi:
-        if phi % p == 0:
-            while phi % p == 0:
-                phi //= p
-            while result % p == 0:
-                if pow_mod(base, result // p, mod) == 1:
-                    result //= p
-                else:
-                    break
-        p += 1
-    if phi > 1:
-        while result % phi == 0:
-            if pow_mod(base, result // phi, mod) == 1:
-                result //= phi
-            else:
-                break
-    return result
-
-
-def longest_increasing_subsequence(arr: List[int]) -> int:
-    """Find the length of the longest increasing subsequence."""
-    if not arr:
-        return 0
-
-    lowest_with_len: List[int] = []
-    max_len = 0
-
-    for val in arr:
-        # Binary search for the position to insert
-        left, right = 0, len(lowest_with_len)
-        while left < right:
-            mid = (left + right) // 2
-            if lowest_with_len[mid] <= val:
-                left = mid + 1
-            else:
-                right = mid
-
-        if right == len(lowest_with_len):
-            lowest_with_len.append(val)
-        else:
-            lowest_with_len[right] = val
-        max_len = max(max_len, right + 1)
-
-    return max_len
-
-
-def S(n: int) -> int:
-    """Compute S(n): maximum stations in a path from (0,0) to (n,n)."""
-    # Find e_2 and n_2
-    e_2 = 0
-    n_2 = n
-    while n_2 % 2 == 0:
-        e_2 += 1
-        n_2 //= 2
-
-    # Find e_3 and n_3
-    e_3 = 0
-    n_3 = n
-    while n_3 % 3 == 0:
-        e_3 += 1
-        n_3 //= 3
-
-    # Compute number of stations needed
-    ord_2 = order(2, n_2) if n_2 > 1 else 1
-    ord_3 = order(3, n_3) if n_3 > 1 else 1
-    num_stations = max(e_2, e_3) + lcm(ord_2, ord_3)
-
-    # Generate stations encoded as 64-bit integers
-    stations: List[int] = []
-    x = 1 % n
-    y = 1 % n
-    for i in range(num_stations):
-        # Encode (x, y) as (x << 32) | y
-        encoded = (x << 32) | y
-        stations.append(encoded)
-        x = (x * 2) % n
-        y = (y * 3) % n
-
-    # Sort by x-coordinate (most significant 32 bits), then y-coordinate
-    stations.sort()
-
-    # Extract y-coordinates (least significant 32 bits)
-    y_coords = [s & 0xFFFFFFFF for s in stations]
-
-    # Find longest increasing subsequence of y-coordinates
-    return longest_increasing_subsequence(y_coords)
-
-
-def solve() -> int:
-    """Solve Problem 411."""
-    N = 30
-    K = 5
-    ans = 0
-    for k in range(1, N + 1):
-        n = pow(k, K)
-        ans += S(n)
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

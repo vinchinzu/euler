@@ -1,18 +1,17 @@
 """Project Euler Problem 707: Lights Out.
 
 Let F(w, h) be the number of solvable Lights Out games on a w x h grid. Find
-Σ_{k=1}^N F(N, f_k), where f_k is the k'th Fibonacci number.
+sum_{k=1}^N F(N, f_k), where f_k is the k'th Fibonacci number.
 
 If the Lights Out matrix has a corank of R, then the number of solvable games
-is 2^{w*h - R}. According to https://www.win.tue.nl/~aeb/ca/madness/madrect.html,
-the corank can be computed as the degree of GCD(p_w(x), p_h(x+1)), where the
-polynomials p are defined by p_0(x) = 1, p_1(x) = x, and
+is 2^{w*h - R}. The corank can be computed as the degree of GCD(p_w(x), p_h(x+1)),
+where the polynomials p are defined by p_0(x) = 1, p_1(x) = x, and
 p_{n+1}(x) = x*p_n(x) + p_{n-1}(x).
 
-As an optimization, we can compute all p_h(x+1) modulo p_N(x), which ensures
-that the polynomials are always relatively small (having no more than degree N).
-And at some point p_h(x+1) ≡ 0 (mod p_N(x)), so the coranks are periodic and
-we can take the modulo of the large Fibonacci numbers f_k by this period length.
+As an optimization, we compute all p_h(x+1) modulo p_N(x), which ensures
+that the polynomials are always relatively small. At some point p_h(x+1) = 0
+(mod p_N(x)), so the coranks are periodic and we can take the modulo of the
+large Fibonacci numbers f_k by this period length.
 """
 
 from __future__ import annotations
@@ -20,98 +19,92 @@ from __future__ import annotations
 from typing import List
 
 
-class LPolynomial:
-    """Laurent polynomial (polynomial with integer coefficients)."""
+class Poly:
+    """Polynomial with integer coefficients, stored as list [c0, c1, ..., cd]."""
 
-    ZERO: LPolynomial
-
-    def __init__(self, *coeffs: int) -> None:
-        """Initialize polynomial with coefficients.
-
-        Args:
-            *coeffs: Variable number of coefficients. If one int, it's the
-                     constant term. If two ints, they are [const, x^1].
-        """
-        if len(coeffs) == 1 and isinstance(coeffs[0], int):
-            # Single integer: constant term
-            self.coefficients = [coeffs[0]]
-        else:
-            # Multiple coefficients: [x^0, x^1, x^2, ...]
-            self.coefficients = list(coeffs)
+    def __init__(self, coeffs: List[int]):
+        """Initialize with list of coefficients. coeffs[i] is coefficient of x^i."""
+        self.c = list(coeffs)
         # Remove trailing zeros
-        while self.coefficients and self.coefficients[-1] == 0:
-            self.coefficients.pop()
-        if not self.coefficients:
-            self.coefficients = [0]
+        while len(self.c) > 1 and self.c[-1] == 0:
+            self.c.pop()
 
-    def shift_up(self, n: int) -> LPolynomial:
-        """Shift polynomial up by n degrees."""
-        return LPolynomial([0] * n + self.coefficients)
+    @staticmethod
+    def zero():
+        return Poly([0])
 
-    def add(self, other: LPolynomial, mod: int) -> LPolynomial:
-        """Add another polynomial modulo mod."""
-        max_len = max(len(self.coefficients), len(other.coefficients))
-        result = [0] * max_len
-        for i in range(len(self.coefficients)):
-            result[i] = self.coefficients[i] % mod
-        for i in range(len(other.coefficients)):
-            result[i] = (result[i] + other.coefficients[i]) % mod
-        return LPolynomial(*result)
+    @staticmethod
+    def one():
+        return Poly([1])
 
-    def mod(self, mod_poly: LPolynomial, mod: int) -> LPolynomial:
-        """Reduce polynomial modulo mod_poly and mod."""
-        if len(self.coefficients) < len(mod_poly.coefficients):
-            return self
-        result = LPolynomial(*self.coefficients)
-        while len(result.coefficients) >= len(mod_poly.coefficients):
-            if result.coefficients[-1] == 0:
-                result.coefficients.pop()
-                continue
-            factor = result.coefficients[-1]
-            shift = len(result.coefficients) - len(mod_poly.coefficients)
-            for i, c in enumerate(mod_poly.coefficients):
-                idx = shift + i
-                if idx < len(result.coefficients):
-                    result.coefficients[idx] = (
-                        result.coefficients[idx] - factor * c
-                    ) % mod
-            result.coefficients.pop()
-            # Remove trailing zeros
-            while result.coefficients and result.coefficients[-1] == 0:
-                result.coefficients.pop()
-            if not result.coefficients:
-                result.coefficients = [0]
-        return result
+    @staticmethod
+    def x():
+        return Poly([0, 1])
 
-    def gcd(self, other: LPolynomial, mod: int) -> LPolynomial:
-        """Compute GCD of two polynomials modulo mod."""
-        a = self
-        b = other
-        while not b.equals(LPolynomial.ZERO):
-            a, b = b, a.mod(b, mod)
-        return a
+    def is_zero(self) -> bool:
+        return len(self.c) == 1 and self.c[0] == 0
 
     def degree(self) -> int:
-        """Return the degree of the polynomial."""
-        if len(self.coefficients) == 1 and self.coefficients[0] == 0:
+        if self.is_zero():
             return -1
-        return len(self.coefficients) - 1
+        return len(self.c) - 1
 
-    def equals(self, other: LPolynomial) -> bool:
-        """Check if two polynomials are equal."""
-        return self.coefficients == other.coefficients
+    def shift_up(self, n: int) -> Poly:
+        """Multiply by x^n."""
+        return Poly([0] * n + self.c)
 
+    def add(self, other: Poly, mod: int) -> Poly:
+        """Add another polynomial, coefficients mod mod."""
+        max_len = max(len(self.c), len(other.c))
+        result = [0] * max_len
+        for i in range(len(self.c)):
+            result[i] = self.c[i] % mod
+        for i in range(len(other.c)):
+            result[i] = (result[i] + other.c[i]) % mod
+        return Poly(result)
 
-# Initialize ZERO constant
-LPolynomial.ZERO = LPolynomial(0)
+    def mod_poly(self, divisor: Poly, mod: int) -> Poly:
+        """Reduce self modulo divisor polynomial, with coefficients mod mod."""
+        if len(self.c) < len(divisor.c):
+            return Poly([x % mod for x in self.c])
+        result = [x % mod for x in self.c]
+        while len(result) >= len(divisor.c):
+            if result[-1] == 0:
+                result.pop()
+                if not result:
+                    return Poly([0])
+                continue
+            factor = result[-1]
+            shift = len(result) - len(divisor.c)
+            for i in range(len(divisor.c)):
+                result[shift + i] = (result[shift + i] - factor * divisor.c[i]) % mod
+            result.pop()
+            if not result:
+                return Poly([0])
+        # Clean trailing zeros
+        while len(result) > 1 and result[-1] == 0:
+            result.pop()
+        return Poly(result)
+
+    def gcd(self, other: Poly, mod: int) -> Poly:
+        """Compute GCD of two polynomials with coefficients mod mod."""
+        a = self
+        b = other
+        while not b.is_zero():
+            a, b = b, a.mod_poly(b, mod)
+        return a
+
+    def __eq__(self, other):
+        if isinstance(other, Poly):
+            return self.c == other.c
+        return False
 
 
 def pow_mod(base: int, exp: int, mod: int) -> int:
     """Modular exponentiation."""
     if mod <= 0:
-        msg = "mod must be positive"
-        raise ValueError(msg)
-    if base == 0:
+        raise ValueError("mod must be positive")
+    if mod == 1:
         return 0
     base %= mod
     result = 1
@@ -124,33 +117,28 @@ def pow_mod(base: int, exp: int, mod: int) -> int:
 
 
 def fibonacci(n: int, mod: int) -> int:
-    """Compute n-th Fibonacci number modulo mod."""
-    if n <= 1:
-        return n % mod
+    """Compute n-th Fibonacci number modulo mod using matrix exponentiation."""
+    if n <= 0:
+        return 0
+    if n == 1:
+        return 1 % mod
 
-    def mat_mult(a: List[List[int]], b: List[List[int]], mod: int) -> List[List[int]]:
-        """Multiply two 2x2 matrices modulo mod."""
+    def mat_mult(a, b, m):
         return [
-            [
-                (a[0][0] * b[0][0] + a[0][1] * b[1][0]) % mod,
-                (a[0][0] * b[0][1] + a[0][1] * b[1][1]) % mod,
-            ],
-            [
-                (a[1][0] * b[0][0] + a[1][1] * b[1][0]) % mod,
-                (a[1][0] * b[0][1] + a[1][1] * b[1][1]) % mod,
-            ],
+            [(a[0][0] * b[0][0] + a[0][1] * b[1][0]) % m,
+             (a[0][0] * b[0][1] + a[0][1] * b[1][1]) % m],
+            [(a[1][0] * b[0][0] + a[1][1] * b[1][0]) % m,
+             (a[1][0] * b[0][1] + a[1][1] * b[1][1]) % m],
         ]
 
-    def mat_pow(mat: List[List[int]], exp: int, mod: int) -> List[List[int]]:
-        """Raise matrix to power modulo mod."""
-        if exp == 0:
-            return [[1, 0], [0, 1]]
-        if exp == 1:
-            return mat
-        half = mat_pow(mat, exp // 2, mod)
-        result = mat_mult(half, half, mod)
-        if exp % 2 == 1:
-            result = mat_mult(result, mat, mod)
+    def mat_pow(mat, exp, m):
+        result = [[1, 0], [0, 1]]
+        base = [row[:] for row in mat]
+        while exp > 0:
+            if exp & 1:
+                result = mat_mult(result, base, m)
+            base = mat_mult(base, base, m)
+            exp >>= 1
         return result
 
     fib_mat = [[1, 1], [1, 0]]
@@ -164,25 +152,22 @@ def solve() -> int:
     M = 10**9 + 7
 
     # Build p_n(x) polynomials: p_0 = 1, p_1 = x, p_{n+1} = x*p_n + p_{n-1}
-    px: List[LPolynomial] = [LPolynomial(1), LPolynomial(0, 1)]
+    # All arithmetic mod 2 (GF(2))
+    px = [Poly.one(), Poly.x()]
     for n in range(2, N + 1):
         # p_n = x * p_{n-1} + p_{n-2}
-        # x * p_{n-1} is shift_up(1)
         new_poly = px[-1].shift_up(1).add(px[-2], 2)
         px.append(new_poly)
 
-    # Build p_n(x+1) polynomials modulo p_N(x)
-    px1: List[LPolynomial] = [LPolynomial(1), LPolynomial(1, 1)]
-    while not px1[-1].equals(LPolynomial.ZERO):
-        # p_{n+1}(x+1) = (x+1) * p_n(x+1) + p_{n-1}(x+1)
-        # (x+1) * p_n = x*p_n + p_n = shift_up(1) + p_n
-        new_poly = (
-            px1[-1]
-            .shift_up(1)
-            .add(px1[-1], 2)
-            .add(px1[-2], 2)
-            .mod(px[N], 2)
-        )
+    # Build p_h(x+1) polynomials modulo p_N(x), all mod 2
+    # p_0(x+1) = 1, p_1(x+1) = x+1
+    # p_{n+1}(x+1) = (x+1)*p_n(x+1) + p_{n-1}(x+1)
+    px1 = [Poly.one(), Poly([1, 1])]
+    while not px1[-1].is_zero():
+        last = px1[-1]
+        penult = px1[-2]
+        # (x+1)*last = x*last + last
+        new_poly = last.shift_up(1).add(last, 2).add(penult, 2).mod_poly(px[N], 2)
         px1.append(new_poly)
     period = len(px1)
 
@@ -192,7 +177,11 @@ def solve() -> int:
         fib_k_mod_m_minus_1 = fibonacci(k, M - 1)
         gcd_poly = px[N].gcd(px1[fib_k_mod_period], 2)
         corank = gcd_poly.degree()
-        exponent = N * fib_k_mod_m_minus_1 - corank
+        if corank < 0:
+            corank = 0
+        exponent = (N * fib_k_mod_m_minus_1 - corank) % (M - 1)
+        if exponent < 0:
+            exponent += M - 1
         ans = (ans + pow_mod(2, exponent, M)) % M
 
     return ans

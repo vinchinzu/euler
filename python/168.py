@@ -1,62 +1,32 @@
-"""Project Euler Problem 168: Number Rotations."""
+"""Project Euler Problem 168 - Number Rotations.
 
-from typing import Set
-import math
+Find the last 5 digits of the sum of all positive integers with 2 to 100 digits
+that are a divisor of their right rotation.
 
-MAX_DIGITS = 100
-MODULO = 100_000
+A number b is valid if mult*b (as a string) has its last digit moved to the front
+to equal b. We build numbers digit by digit.
+"""
 
+def solve():
+    N = 100
+    K = 5
+    B = 10
+    MOD = B ** K
 
-def numbers_with_rotation_property() -> Set[int]:
-    """Compute integers n (10 < n < 10^100) with rotation property."""
-    results: Set[int] = set()
-    pow10: list[int] = [1] * (MAX_DIGITS + 1)
-    for i in range(1, MAX_DIGITS + 1):
-        pow10[i] = pow10[i - 1] * 10
+    total = 0
+    for mult in range(1, B):
+        for last_digit in range(1, B):
+            b = str(last_digit)
+            for i in range(1, N + 1):
+                multb = str(mult * int(b))
+                # Check: rotating multb (last char to front) gives b
+                rotated = multb[1:] + multb[0]
+                if rotated == b and b[0] != '0' and i > 1:
+                    total = (total + int(b)) % MOD
+                # Next b: take last i chars of multb, append last_digit
+                b = multb[len(multb) - i:] + str(last_digit)
 
-    for k in range(1, 10):
-        multiplier_mod = 10 * k - 1
-
-        for digits in range(2, MAX_DIGITS + 1):
-            base_power = pow10[digits - 1]
-            difference = base_power - k
-            if difference <= 0:
-                continue
-
-            gcd_val = math.gcd(multiplier_mod, difference)
-            reduced_mod = multiplier_mod // gcd_val
-            reduced_diff = difference // gcd_val
-
-            for last_digit in range(1, 10):
-                if (last_digit * reduced_diff) % reduced_mod != 0:
-                    continue
-
-                prefix_val = last_digit * difference // multiplier_mod
-                prefix_str = str(prefix_val)
-                if len(prefix_str) != digits - 1:
-                    continue
-
-                number_str = str(last_digit) + prefix_str
-                number = int(number_str)
-                rotated_str = prefix_str + str(last_digit)
-                rotated = int(rotated_str)
-                if rotated % number != 0:
-                    continue
-
-                results.add(number)
-
-    return results
-
-
-def main() -> int:
-    """Main function."""
-    numbers = numbers_with_rotation_property()
-    # Sum with modulo at each step to avoid overflow
-    sum_mod = 0
-    for num in numbers:
-        sum_mod = (sum_mod + num) % MODULO
-    return sum_mod
-
+    return total % MOD
 
 if __name__ == "__main__":
-    print(main())
+    print(solve())

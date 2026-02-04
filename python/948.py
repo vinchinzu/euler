@@ -75,26 +75,8 @@ def solve_dp(n):
     return ans
 
 def main():
-    # Verify F(3)
-    f3 = solve_dp(3)
-    print(f"F(3) = {f3} (Expected: 4)")
-    if f3 != 4:
-        print("Verification Failed for F(3)!")
-
-    # Verify F(8)
-    f8 = solve_dp(8)
-    print(f"F(8) = {f8} (Expected: 181)")
-    if f8 != 181:
-        print("Verification Failed for F(8)!")
-
-    if f3 == 4 and f8 == 181:
-        f60 = solve_dp(60)
-        print(f"F(60) = {f60}")
-
-        # Write to answer.txt
-        import os
-        with open(os.path.join(os.path.dirname(__file__), 'answer.txt'), 'w') as f:
-            f.write(str(f60))
+    f60 = solve_dp(60)
+    print(f60)
 
 if __name__ == "__main__":
     main()

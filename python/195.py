@@ -1,49 +1,53 @@
-"""Project Euler Problem 195: Inscribed circles of triangles with one angle of 60 degrees."""
+"""Project Euler Problem 195 - Inscribed circles of 60-degree triangles.
 
+Find the number of triangles with inradius at most N=1053779 and
+exactly one 60-degree angle.
+
+Parametrization: for coprime m > 2n, the primitive inradius is
+(m+n)(m-2n) / (2*sqrt(3)). If (m+n) % 3 == 0, the GCD of the
+triple is 3, giving a smaller primitive inradius.
+
+Use Stern-Brocot / Farey-like enumeration of coprime pairs via
+the mediant property to avoid GCD computation.
+"""
 import math
 
-def main() -> int:
-    T = 1_053_779
-    # We need r <= T
-    # Derived relationship for 60 degree triangle:
-    # r = (sqrt(3)/2) * n * k  (parameterized)
-    # or scaled if divisibility conditions met.
-    
-    limit_val = 2 * T / math.sqrt(3)
-    L = int(limit_val)
-    
-    total = 0
-    limit_3L = 3 * L
-    
-    for n in range(1, limit_3L + 1):
-        max_k = limit_3L // n
-        if max_k < 1: break
-        
-        for k in range(1, max_k + 1):
-            if math.gcd(n, k) != 1:
-                continue
-                
-            m = n + k
-            
-            # If (m+n) is divisible by 3, we can scale down the sides by 3.
-            # This increases the effective r limit (or allows larger n, k for same r).
-            if (m + n) % 3 == 0:
-                res = int( (3 * limit_val) / (n * k) )
-                total += res
-            else:
-                res = int( limit_val / (n * k) )
-                total += res
+def solve():
+    N = 1053779
+    sqrt3 = math.sqrt(3)
+    inv_2sqrt3 = 1.0 / (2.0 * sqrt3)
+    limit_3N = 3.0 * N
 
-    # The loop counts each scalene shape twice (once for (n,k) and once for (k,n)).
-    # Equilateral shapes (n=k=1) are counted once.
-    # We want: Scalene + Equilateral
-    # Computed Total = 2*Scalene + Equilateral
-    # We need to adjust.
-    # Count_Eq approx 3 * limit_val (since n=k=1 => m+n=3 => div 3 case).
-    
-    count_eq = int(3 * limit_val)
-    
-    return (total + count_eq) // 2
+    ans = 0
+
+    # Use a stack-based enumeration of coprime pairs (m, n) with m > 2n
+    # via Stern-Brocot tree approach.
+    # Actually, let's just use math.gcd which is C-implemented and fast.
+    # The key insight: for large n, m range is tiny (often just 1 value).
+    # Total iterations: O(N / sqrt(3)) which is about 600K.
+
+    n = 1
+    while True:
+        m_start = 2 * n + 1
+        # inradius at m_start
+        ir_start = (m_start + n) * (m_start - 2 * n) * inv_2sqrt3
+        if ir_start > limit_3N:
+            break
+
+        m = m_start
+        while True:
+            ir = (m + n) * (m - 2 * n) * inv_2sqrt3
+            if ir > limit_3N:
+                break
+            if math.gcd(m, n) == 1:
+                if (m + n) % 3 == 0:
+                    ans += int(N / (ir / 3.0))
+                else:
+                    ans += int(N / ir)
+            m += 1
+        n += 1
+
+    return ans
 
 if __name__ == "__main__":
-    print(main())
+    print(solve())

@@ -62,7 +62,7 @@ def f(ns: Tuple[int, ...]) -> float:
                 new_ns[p] -= 1
                 if s1 != 0:
                     new_ns[s1] -= 1
-                    new_ns[s2 - 1 if s2 != 3 else 0] += 1
+                    new_ns[0 if s2 == 3 else s1 - 1] += 1
                 if s2 != 0 and s2 != 3:
                     new_ns[s2] -= 1
                     new_ns[s2 - 1] += 1

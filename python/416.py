@@ -1,207 +1,228 @@
+#!/usr/bin/env python3
 """Project Euler Problem 416: A frog's trip.
 
-Find the number of ways that a frog can jump from the leftmost square of a
-row of N squares, to the rightmost square, then back to the leftmost square,
-etc., making K round trips total, such that each jump is over 1, 2, or 3
-squares, and at most one square is unvisited.
+Count paths of 2K frogs from left to right on N squares, where jumps are 1-3,
+at most 1 square unvisited. Use matrix exponentiation with CRT.
 
-This is equivalent to the number of ways that 2K frogs can jump from the
-leftmost square to the rightmost square. If at any point, the leftmost frogs
-jump, then all frogs must always be within 3 consecutive squares, which we'll
-label A, B, and C from left to right. The state can be uniquely defined by
-the number of frogs on A and the number of frogs on B (after which the
-number of frogs on C is fixed). We also need to maintain the number of
-unvisited squares, though we can ignore states with at least 2 unvisited
-squares.
+Uses C for performance-critical matrix operations.
+"""
+import os
+import subprocess
+import tempfile
 
-Given a state, we can consider all possible ways that the frogs on A can
-jump. Some of them can jump 1 square, some 2 squares, and the remaining 3
-squares. This gives the new state, (A', B', C') = (B + jump1, C + jump2,
-jump3), and the number of unvisited squares is only incremented if there were
-no frogs on A.
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-In the start state, all 2K frogs are on A and there are no unvisited
-squares. In the end state, we must again have all 2K frogs on A, but there
-can be 0 or 1 unvisited squares. We can use matrix exponentiation to compute
-the transition matrix from the start to the end.
+typedef long long ll;
+
+/* State: (num_a, num_b, num_unvisited) where num_c = 2K - num_a - num_b */
+/* num_a: 0..2K, num_b: 0..2K-num_a, num_unvisited: 0..1 */
+/* Constraint: num_a + num_b <= 2K */
+
+#define K 10
+#define FK (2*K)
+#define MAX_STATES 1000
+
+int n_states;
+int state_a[MAX_STATES], state_b[MAX_STATES], state_u[MAX_STATES];
+int state_idx[FK+1][FK+1][2];  /* [num_a][num_b][num_unvisited] -> index */
+
+void init_states() {
+    n_states = 0;
+    memset(state_idx, -1, sizeof(state_idx));
+    for (int a = 0; a <= FK; a++)
+        for (int b = 0; b <= FK - a; b++)
+            for (int u = 0; u < 2; u++) {
+                state_a[n_states] = a;
+                state_b[n_states] = b;
+                state_u[n_states] = u;
+                state_idx[a][b][u] = n_states;
+                n_states++;
+            }
+}
+
+/* Multinomial coefficient n! / (a! b! c!) where a+b+c = n */
+ll multinomial(int n, int a, int b, int c) {
+    if (a < 0 || b < 0 || c < 0 || a+b+c != n) return 0;
+    /* C(n,a) * C(n-a,b) */
+    ll r = 1;
+    for (int i = 0; i < a; i++) r = r * (n - i) / (i + 1);
+    for (int i = 0; i < b; i++) r = r * (n - a - i) / (i + 1);
+    return r;
+}
+
+/* Matrix operations mod p */
+typedef struct {
+    ll *data;
+    int n;
+} Matrix;
+
+Matrix mat_alloc(int n) {
+    Matrix m;
+    m.n = n;
+    m.data = (ll *)calloc((size_t)n * n, sizeof(ll));
+    return m;
+}
+
+void mat_free(Matrix *m) {
+    free(m->data);
+}
+
+void mat_identity(Matrix *m) {
+    memset(m->data, 0, (size_t)m->n * m->n * sizeof(ll));
+    for (int i = 0; i < m->n; i++)
+        m->data[i * m->n + i] = 1;
+}
+
+void mat_mul(Matrix *res, const Matrix *a, const Matrix *b, ll mod) {
+    int n = a->n;
+    memset(res->data, 0, (size_t)n * n * sizeof(ll));
+    /* Row-k contribution: skip zero entries in a */
+    for (int i = 0; i < n; i++) {
+        for (int k = 0; k < n; k++) {
+            ll aik = a->data[i * n + k];
+            if (aik == 0) continue;
+            ll *rrow = &res->data[i * n];
+            ll *brow = &b->data[k * n];
+            for (int j = 0; j < n; j++)
+                rrow[j] += aik * brow[j];
+        }
+        /* Reduce row mod */
+        for (int j = 0; j < n; j++)
+            res->data[i * n + j] %= mod;
+    }
+}
+
+void mat_pow(Matrix *res, Matrix *base, ll exp, ll mod) {
+    int n = base->n;
+    mat_identity(res);
+    Matrix tmp = mat_alloc(n);
+
+    while (exp > 0) {
+        if (exp & 1) {
+            mat_mul(&tmp, res, base, mod);
+            ll *t = res->data; res->data = tmp.data; tmp.data = t;
+        }
+        mat_mul(&tmp, base, base, mod);
+        ll *t = base->data; base->data = tmp.data; tmp.data = t;
+        exp >>= 1;
+    }
+
+    mat_free(&tmp);
+}
+
+/* Build transition matrix */
+void build_matrix(Matrix *A) {
+    int n = n_states;
+    memset(A->data, 0, (size_t)n * n * sizeof(ll));
+
+    for (int i = 0; i < n_states; i++) {
+        int a = state_a[i], b = state_b[i], c = FK - a - b, u = state_u[i];
+
+        int new_u = u + (a == 0 ? 1 : 0);
+        if (new_u > 1) continue;
+
+        /* For each way frogs on A can jump: j1 jump 1, j2 jump 2, j3 jump 3 */
+        for (int j1 = 0; j1 <= a; j1++) {
+            for (int j2 = 0; j2 <= a - j1; j2++) {
+                int j3 = a - j1 - j2;
+                int new_a = b + j1;
+                int new_b = c + j2;
+                int new_c = j3;
+                if (new_a + new_b + new_c != FK) continue;
+                if (new_a > FK || new_b > FK) continue;
+
+                int j = state_idx[new_a][new_b][new_u];
+                if (j < 0) continue;
+
+                ll coeff = multinomial(a, j1, j2, j3);
+                A->data[j * n + i] += coeff;
+            }
+        }
+    }
+}
+
+ll extended_gcd(ll a, ll b, ll *x, ll *y) {
+    if (a == 0) { *x = 0; *y = 1; return b; }
+    ll x1, y1;
+    ll g = extended_gcd(b % a, a, &x1, &y1);
+    *x = y1 - (b / a) * x1;
+    *y = x1;
+    return g;
+}
+
+ll mod_inverse(ll a, ll m) {
+    ll x, y;
+    extended_gcd(a, m, &x, &y);
+    return ((x % m) + m) % m;
+}
+
+ll crt(ll r1, ll m1, ll r2, ll m2) {
+    ll M = m1 * m2;
+    ll M1 = m2, M2 = m1;
+    ll inv1 = mod_inverse(M1, m1);
+    ll inv2 = mod_inverse(M2, m2);
+    return ((r1 * M1 % M * inv1 % M) + (r2 * M2 % M * inv2 % M)) % M;
+}
+
+int main() {
+    ll N = 1000000000000LL;  /* 10^12 */
+    ll M1 = 512;   /* 2^9 */
+    ll M2 = 1953125; /* 5^9 */
+
+    init_states();
+
+    int start = state_idx[FK][0][0];
+    int end0 = state_idx[FK][0][0];
+    int end1 = state_idx[FK][0][1];
+
+    /* Compute modulo M1 */
+    Matrix A1 = mat_alloc(n_states);
+    Matrix R1 = mat_alloc(n_states);
+    build_matrix(&A1);
+    /* Reduce A1 mod M1 */
+    for (int i = 0; i < n_states * n_states; i++)
+        A1.data[i] %= M1;
+    mat_pow(&R1, &A1, N - 1, M1);
+    ll r1 = (R1.data[end0 * n_states + start] + R1.data[end1 * n_states + start]) % M1;
+
+    /* Compute modulo M2 */
+    Matrix A2 = mat_alloc(n_states);
+    Matrix R2 = mat_alloc(n_states);
+    build_matrix(&A2);
+    for (int i = 0; i < n_states * n_states; i++)
+        A2.data[i] %= M2;
+    mat_pow(&R2, &A2, N - 1, M2);
+    ll r2 = (R2.data[end0 * n_states + start] + R2.data[end1 * n_states + start]) % M2;
+
+    ll result = crt(r1, M1, r2, M2);
+    printf("%lld\n", result);
+
+    mat_free(&A1); mat_free(&R1);
+    mat_free(&A2); mat_free(&R2);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p416.c")
+    exe_file = os.path.join(tmpdir, "p416")
 
-from dataclasses import dataclass
-from math import gcd
-from typing import Dict, List
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
+    subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-@dataclass(frozen=True)
-class State:
-    """State of the frog jumping problem."""
-
-    num_a: int
-    num_b: int
-    num_c: int
-    num_unvisited: int
-
-
-def ncr(n: int, k: int) -> int:
-    """Binomial coefficient C(n, k)."""
-    if k < 0 or k > n:
-        return 0
-    if k == 0 or k == n:
-        return 1
-    k = min(k, n - k)
-    result = 1
-    for i in range(k):
-        result = result * (n - i) // (i + 1)
-    return result
-
-
-def multinomial(n: int, *ks: int) -> int:
-    """Multinomial coefficient: n! / (k1! k2! ... km!)."""
-    if sum(ks) != n:
-        return 0
-    result = 1
-    remaining = n
-    for k in ks:
-        result = result * ncr(remaining, k)
-        remaining -= k
-    return result
-
-
-def matrix_multiply(
-    a: List[List[int]], b: List[List[int]], mod: int
-) -> List[List[int]]:
-    """Multiply two matrices modulo mod."""
-    n = len(a)
-    result = [[0] * n for _ in range(n)]
-    for i in range(n):
-        for k in range(n):
-            if a[i][k]:
-                for j in range(n):
-                    result[i][j] = (result[i][j] + a[i][k] * b[k][j]) % mod
-    return result
-
-
-def matrix_power(
-    matrix: List[List[int]], exp: int, mod: int
-) -> List[List[int]]:
-    """Raise matrix to power exp modulo mod."""
-    n = len(matrix)
-    # Identity matrix
-    result = [[0] * n for _ in range(n)]
-    for i in range(n):
-        result[i][i] = 1
-
-    base = [row[:] for row in matrix]
-    e = exp
-
-    while e > 0:
-        if e & 1:
-            result = matrix_multiply(result, base, mod)
-        base = matrix_multiply(base, base, mod)
-        e >>= 1
-
-    return result
-
-
-def extended_gcd(a: int, b: int) -> tuple[int, int, int]:
-    """Extended Euclidean algorithm."""
-    if a == 0:
-        return (b, 0, 1)
-    gcd_val, x1, y1 = extended_gcd(b % a, a)
-    x = y1 - (b // a) * x1
-    y = x1
-    return (gcd_val, x, y)
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse."""
-    gcd_val, x, _y = extended_gcd(a, m)
-    if gcd_val != 1:
-        raise ValueError("Modular inverse does not exist")
-    return (x % m + m) % m
-
-
-def crt(mods: List[int], values: List[int]) -> int:
-    """Chinese Remainder Theorem."""
-    result = 0
-    M = 1
-    for m in mods:
-        M *= m
-
-    for i, (m, v) in enumerate(zip(mods, values)):
-        Mi = M // m
-        inv = mod_inverse(Mi, m)
-        result = (result + v * Mi * inv) % M
-
-    return result
-
-
-def solve() -> int:
-    """Solve Problem 416."""
-    N = 10**12
-    K = 10
-    M1 = 2**9
-    M2 = 5**9
-
-    # Generate all states
-    states: List[State] = []
-    for num_a in range(2 * K + 1):
-        for num_b in range(2 * K + 1 - num_a):
-            for num_unvisited in range(2):
-                num_c = 2 * K - (num_a + num_b)
-                states.append(State(num_a, num_b, num_c, num_unvisited))
-
-    # Create ordering map
-    ordering: Dict[State, int] = {state: i for i, state in enumerate(states)}
-
-    # Build transition matrix
-    n_states = len(states)
-    A = [[0] * n_states for _ in range(n_states)]
-
-    for i, state in enumerate(states):
-        new_num_unvisited = state.num_unvisited + (1 if state.num_a == 0 else 0)
-        if new_num_unvisited <= 1:
-            for jump1s in range(state.num_a + 1):
-                for jump2s in range(state.num_a + 1 - jump1s):
-                    jump3s = state.num_a - (jump1s + jump2s)
-                    new_state = State(
-                        state.num_b + jump1s,
-                        state.num_c + jump2s,
-                        jump3s,
-                        new_num_unvisited,
-                    )
-                    if new_state in ordering:
-                        j = ordering[new_state]
-                        A[j][i] += multinomial(state.num_a, jump1s, jump2s, jump3s)
-
-    # Find start and end state indices
-    start_state = State(2 * K, 0, 0, 0)
-    end_state_0 = State(2 * K, 0, 0, 0)
-    end_state_1 = State(2 * K, 0, 0, 1)
-
-    idx_start = ordering[start_state]
-    idx_end_0 = ordering[end_state_0]
-    idx_end_1 = ordering[end_state_1]
-
-    # Compute result modulo M1 and M2 separately, then combine with CRT
-    def compute_result(mod: int) -> int:
-        """Compute result modulo mod."""
-        An = matrix_power(A, N - 1, mod)
-        return (An[idx_end_0][idx_start] + An[idx_end_1][idx_start]) % mod
-
-    result_m1 = compute_result(M1)
-    result_m2 = compute_result(M2)
-
-    return crt([M1, M2], [result_m1, result_m2])
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,373 +1,272 @@
-"""Project Euler Problem 305 solution in Python 3.12.
+#!/usr/bin/env python3
+"""Project Euler Problem 305 - Reflexive Position
 
-This module computes
-    S = 12345678910111213...
-(the Champernowne-like concatenation of positive integers in base 10)
+S = "123456789101112131415..."  (Champernowne string)
+f(n) = starting position of the n-th occurrence of n in S.
+Find sum of f(3^k) for k=1..13.
 
-For a positive integer n, let f(n) be the starting position (1-based) of the
-n-th occurrence of the decimal representation of n in S.
-
-The script can be executed directly to:
-- run a few basic sanity tests for f(n)
-- compute sum(f(3**k) for 1 <= k <= 13)
-
-The implementation is a Pythonic port of the provided Ruby code with
-adjustments for clarity, correctness, and performance. Only the standard
-library is used.
+Uses C for performance: digit DP with KMP automaton for non-spanning
+occurrences (with multiplicity), and direct counting for spanning
+occurrences across consecutive number boundaries.
 """
+import subprocess, tempfile, os
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-from dataclasses import dataclass, field
-from typing import Dict, List
+typedef long long ll;
 
-BASE: int = 10
-MAX_K: int = 13
-CHUNK_SIZE: int = 1000  # For forward scan only
+int pat[20];
+int pat_len;
+int kmp_fail[20];
+int kmp_trans[20][10];
 
+void build_kmp_table_v2(void) {
+    kmp_fail[0] = 0;
+    for (int i = 1; i < pat_len; i++) {
+        int j = kmp_fail[i-1];
+        while (j > 0 && pat[j] != pat[i]) j = kmp_fail[j-1];
+        if (pat[j] == pat[i]) j++;
+        kmp_fail[i] = j;
+    }
+    for (int state = 0; state < pat_len; state++) {
+        for (int c = 0; c < 10; c++) {
+            int j = state;
+            while (j > 0 && pat[j] != c) j = kmp_fail[j-1];
+            if (pat[j] == c) j++;
+            kmp_trans[state][c] = j;
+        }
+    }
+    int fallback = kmp_fail[pat_len - 1];
+    for (int c = 0; c < 10; c++) {
+        int j = fallback;
+        while (j > 0 && pat[j] != c) j = kmp_fail[j-1];
+        if (pat[j] == c) j++;
+        kmp_trans[pat_len][c] = j;
+    }
+}
 
-@dataclass
-class ChampernownePositionFinder:
-    """Find positions of occurrences within the concatenated integer string S.
+typedef struct { ll cnt; ll matches; } dp_pair;
+dp_pair dp2_memo[20][2][20];
+int dp2_valid[20][2][20];
+int dp2_epoch;
+int upper_digits[20];
+int num_digits;
 
-    Public methods:
-    - f(n): return the starting position of the n-th occurrence of n in S.
-    - find_kth_occurrence_position(target, k): generic helper used by f.
-    """
+dp_pair digit_dp2(int pos, int tight, int kmp_state) {
+    if (pos == num_digits) {
+        dp_pair r = {1, 0};
+        return r;
+    }
+    if (dp2_valid[pos][tight][kmp_state] == dp2_epoch)
+        return dp2_memo[pos][tight][kmp_state];
+    int limit = tight ? upper_digits[pos] : 9;
+    int start = (pos == 0) ? 1 : 0;
+    dp_pair result = {0, 0};
+    for (int d = start; d <= limit; d++) {
+        int new_tight = tight && (d == limit);
+        int new_kmp = kmp_trans[kmp_state][d];
+        int match_here = (new_kmp == pat_len) ? 1 : 0;
+        dp_pair sub = digit_dp2(pos + 1, new_tight, new_kmp);
+        result.cnt += sub.cnt;
+        result.matches += sub.matches + match_here * sub.cnt;
+    }
+    dp2_valid[pos][tight][kmp_state] = dp2_epoch;
+    dp2_memo[pos][tight][kmp_state] = result;
+    return result;
+}
 
-    digit_counts: Dict[int, int] = field(default_factory=dict)
+ll count_nonspanning_d_digits(int d) {
+    if (d < pat_len) return 0;
+    num_digits = d;
+    for (int i = 0; i < d; i++) upper_digits[i] = 9;
+    dp2_epoch++;
+    return digit_dp2(0, 0, 0).matches;
+}
 
-    def count_digits_up_to(self, n: int) -> int:
-        """Return the number of digits in S formed by integers from 1 up to n.
+ll count_nonspanning_up_to_m(int d, ll m) {
+    if (d < pat_len) return 0;
+    num_digits = d;
+    char buf[25]; sprintf(buf, "%lld", m);
+    for (int i = 0; i < d; i++) upper_digits[i] = buf[i] - '0';
+    dp2_epoch++;
+    return digit_dp2(0, 1, 0).matches;
+}
 
-        For n < 1, this returns 0.
-        Results are memoized to speed up repeated calls.
-        """
+ll power10[20];
 
-        if n < 1:
-            return 0
-        if n in self.digit_counts:
-            return self.digit_counts[n]
+ll count_spanning_for_split(int a, int b, ll m_val) {
+    if (m_val < 2) return 0;
+    ll P = 0;
+    for (int i = 0; i < a; i++) P = P * 10 + pat[i];
+    ll R = (P + 1) % power10[a];
+    int carry = (P + 1 >= power10[a]) ? 1 : 0;
+    ll Q = 0;
+    for (int i = a; i < pat_len; i++) Q = Q * 10 + pat[i];
 
-        total = 0
-        digits = 1
-        while True:
-            first = BASE ** (digits - 1)
-            last = min(n, BASE**digits - 1)
-            if last < first:
-                break
+    ll total = 0;
+    char mbuf[25]; sprintf(mbuf, "%lld", m_val);
+    int max_d2 = strlen(mbuf);
 
-            count = last - first + 1
-            total += count * digits
-            digits += 1
+    for (int d2 = 1; d2 <= max_d2; d2++) {
+        if (d2 < b) continue;
+        ll x_lo = (d2 == 1) ? 2 : power10[d2-1];
+        if (x_lo < 2) x_lo = 2;
+        ll x_hi = (d2 < max_d2) ? power10[d2] - 1 : m_val;
+        if (x_hi > m_val) x_hi = m_val;
+        if (x_lo > x_hi) continue;
 
-        self.digit_counts[n] = total
-        return total
+        if (d2 < a + b) {
+            int overlap_start = d2 - a;
+            char qbuf[20], rbuf[20];
+            sprintf(qbuf, "%0*lld", b, Q);
+            sprintf(rbuf, "%0*lld", a, R);
+            if (carry) continue;
+            int consistent = 1;
+            for (int i = overlap_start; i < b; i++) {
+                if (qbuf[i] != rbuf[i - overlap_start]) { consistent = 0; break; }
+            }
+            if (!consistent) continue;
+            char xbuf[20];
+            for (int i = 0; i < b; i++) xbuf[i] = qbuf[i];
+            for (int j = 0; j < a; j++) {
+                int pos = d2 - a + j;
+                if (pos >= b) xbuf[pos] = rbuf[j];
+            }
+            xbuf[d2] = '\0';
+            ll x = 0;
+            for (int i = 0; i < d2; i++) x = x * 10 + (xbuf[i] - '0');
+            if (x >= x_lo && x <= x_hi) {
+                ll n_val = x - 1;
+                if (n_val >= 1 && n_val % power10[a] == P) total++;
+            }
+            continue;
+        }
 
-    def _digit_dp(self, pos: int, tight: int, upper: List[int], fixed_pos: set, fixed_dig: Dict[int, int], d: int, memo: Dict[tuple, int]) -> int:
-        key = (pos, tight)
-        if key in memo:
-            return memo[key]
-        if pos == d:
-            return 1
-        ans = 0
-        up = upper[pos] if tight else 9
-        lo = 1 if pos == 0 else 0
-        for dig in range(lo, up + 1):
-            new_tight = 1 if tight and dig == up else 0
-            if pos in fixed_pos:
-                if dig != fixed_dig[pos]:
-                    continue
-            ans += self._digit_dp(pos + 1, new_tight, upper, fixed_pos, fixed_dig, d, memo)
-        memo[key] = ans
-        return ans
+        int mid_len = d2 - a - b;
+        if (!carry) {
+            if (b == 1 && Q == 0) continue;
+            ll base = Q * power10[mid_len + a] + R;
+            ll mid_lo = 0, mid_hi = power10[mid_len] - 1;
+            if (base + mid_lo * power10[a] < x_lo)
+                mid_lo = (x_lo - base + power10[a] - 1) / power10[a];
+            if (base + mid_hi * power10[a] > x_hi)
+                mid_hi = (x_hi - base) / power10[a];
+            if (mid_lo > mid_hi) continue;
+            total += mid_hi - mid_lo + 1;
+        } else {
+            if (b == 1 && Q == 0) continue;
+            ll base = Q * power10[mid_len + a];
+            ll mid_lo = 0, mid_hi = power10[mid_len] - 1;
+            if (base + mid_lo * power10[a] < x_lo)
+                mid_lo = (x_lo - base + power10[a] - 1) / power10[a];
+            if (base + mid_hi * power10[a] > x_hi)
+                mid_hi = (x_hi - base) / power10[a];
+            if (mid_lo > mid_hi) continue;
+            total += mid_hi - mid_lo + 1;
+        }
+    }
+    return total;
+}
 
-    def count_occurrences_up_to(self, target: int, m: int) -> int:
-        if m < 1:
-            return 0
-        p = str(target)
-        l = len(p)
-        if l == 0:
-            return 0
-        p_list = [int(c) for c in p]
-        total = 0
-        d_m = len(str(m))
-        # Non-spanning full blocks
-        for dd in range(l, d_m):
-            power = 10 ** (dd - l)
-            total += power + (dd - l) * 9 * power // 10
-        # Partial non-spanning
-        upper_str = str(m)
-        upper_digits = [int(c) for c in upper_str]
-        d = d_m
-        start_d = 10 ** (d - 1)
-        if m >= start_d:
-            for o in range(d - l + 1):
-                fixed_pos = set(range(o, o + l))
-                fixed_dig = {o + j: p_list[j] for j in range(l)}
-                memo = {}
-                count = self._digit_dp(0, 1, upper_digits, fixed_pos, fixed_dig, d, memo)
-                total += count
-        # Spanning full blocks
-        for dd in range(1, d_m):
-            for a in range(1, l):
-                b = l - a
-                for c in range(0, a):
-                    if not all(p_list[a - c + j] == 9 for j in range(c)):
-                        continue
-                    if a - c - 1 >= 0 and p_list[a - c - 1] >= 9:
-                        continue
-                    fixed = {dd - a + j: p_list[j] for j in range(a)}
-                    affected_pos = dd - c - 1
-                    conflict = False
-                    if affected_pos >= b:
-                        for j in range(b):
-                            pos = j
-                            val = p_list[a + j]
-                            if pos in fixed and fixed[pos] != val:
-                                conflict = True
-                                break
-                        if conflict:
-                            continue
-                    else:
-                        trailed_len = b - affected_pos - 1
-                        if trailed_len > 0 and not all(p_list[a + affected_pos + 1 + j] == 0 for j in range(trailed_len)):
-                            continue
-                        k_dig = p_list[a + affected_pos] - 1
-                        if k_dig < 0:
-                            continue
-                        if a - c - 1 >= 0 and p_list[a - c - 1] != k_dig:
-                            continue
-                        temp_fixed = fixed.copy()
-                        conflict = False
-                        for j in range(affected_pos):
-                            pos = j
-                            val = p_list[a + j]
-                            if pos in temp_fixed and temp_fixed[pos] != val:
-                                conflict = True
-                                break
-                        if conflict:
-                            continue
-                        pos = affected_pos
-                        val = k_dig
-                        if pos in temp_fixed and temp_fixed[pos] != val:
-                            conflict = True
-                            continue
-                        temp_fixed[pos] = val
-                        for j in range(affected_pos + 1, b):
-                            pos = j
-                            val = 9
-                            if pos in temp_fixed and temp_fixed[pos] != val:
-                                conflict = True
-                                break
-                            temp_fixed[pos] = val
-                        if conflict:
-                            continue
-                        fixed = temp_fixed
-                    memo = {}
-                    count = self._digit_dp(0, 1, [9] * dd, set(fixed.keys()), fixed, dd, memo)
-                    total += count
-        # Partial spanning
-        if m > start_d:
-            upper_k = m - 1
-            upper_k_str = str(upper_k)
-            if len(upper_k_str) == d:
-                upper_k_digits = [int(c) for c in upper_k_str]
-                for a in range(1, l):
-                    b = l - a
-                    for c in range(0, a):
-                        if not all(p_list[a - c + j] == 9 for j in range(c)):
-                            continue
-                        if a - c - 1 >= 0 and p_list[a - c - 1] >= 9:
-                            continue
-                        fixed = {d - a + j: p_list[j] for j in range(a)}
-                        affected_pos = d - c - 1
-                        conflict = False
-                        if affected_pos >= b:
-                            for j in range(b):
-                                pos = j
-                                val = p_list[a + j]
-                                if pos in fixed and fixed[pos] != val:
-                                    conflict = True
-                                    break
-                            if conflict:
-                                continue
-                        else:
-                            trailed_len = b - affected_pos - 1
-                            if trailed_len > 0 and not all(p_list[a + affected_pos + 1 + j] == 0 for j in range(trailed_len)):
-                                continue
-                            k_dig = p_list[a + affected_pos] - 1
-                            if k_dig < 0:
-                                continue
-                            if a - c - 1 >= 0 and p_list[a - c - 1] != k_dig:
-                                continue
-                            temp_fixed = fixed.copy()
-                            conflict = False
-                            for j in range(affected_pos):
-                                pos = j
-                                val = p_list[a + j]
-                                if pos in temp_fixed and temp_fixed[pos] != val:
-                                    conflict = True
-                                    break
-                            if conflict:
-                                continue
-                            pos = affected_pos
-                            val = k_dig
-                            if pos in temp_fixed and temp_fixed[pos] != val:
-                                conflict = True
-                                continue
-                            temp_fixed[pos] = val
-                            for j in range(affected_pos + 1, b):
-                                pos = j
-                                val = 9
-                                if pos in temp_fixed and temp_fixed[pos] != val:
-                                    conflict = True
-                                    break
-                                temp_fixed[pos] = val
-                            if conflict:
-                                continue
-                            fixed = temp_fixed
-                        memo = {}
-                        count = self._digit_dp(0, 1, upper_k_digits, set(fixed.keys()), fixed, d, memo)
-                        total += count
-        return total
+ll count_occurrences(ll m) {
+    if (m < 1) return 0;
+    char buf[25]; sprintf(buf, "%lld", m);
+    int d_m = strlen(buf);
+    ll total = 0;
+    for (int d = pat_len; d < d_m; d++)
+        total += count_nonspanning_d_digits(d);
+    if (d_m >= pat_len)
+        total += count_nonspanning_up_to_m(d_m, m);
+    for (int a = 1; a < pat_len; a++)
+        total += count_spanning_for_split(a, pat_len - a, m);
+    return total;
+}
 
-    @staticmethod
-    def build_chunk_string(start_num: int, end_num: int) -> str:
-        """Return the concatenation of decimal representations from start_num to
-        end_num (inclusive).
-        """
+ll count_digits_up_to(ll n) {
+    if (n < 1) return 0;
+    ll total = 0, d = 1, first = 1;
+    while (first <= n) {
+        ll last = first * 10 - 1;
+        if (last > n) last = n;
+        total += (last - first + 1) * d;
+        d++; first *= 10;
+    }
+    return total;
+}
 
-        return "".join(str(i) for i in range(start_num, end_num + 1))
+ll find_nth_occurrence(ll target, ll n) {
+    char buf[25]; sprintf(buf, "%lld", target);
+    pat_len = strlen(buf);
+    for (int i = 0; i < pat_len; i++) pat[i] = buf[i] - '0';
+    build_kmp_table_v2();
 
-    @staticmethod
-    def count_substring_occurrences(text: str, pattern: str) -> int:
-        """Count possibly overlapping occurrences of ``pattern`` in ``text``.
-        """
+    ll lo = 1, hi = 10000000000000LL;
+    while (lo < hi) {
+        ll mid = lo + (hi - lo) / 2;
+        if (count_occurrences(mid) >= n) hi = mid;
+        else lo = mid + 1;
+    }
 
-        if not pattern or len(text) < len(pattern):
-            return 0
+    ll prev_count = count_occurrences(lo - 1);
+    ll remaining = n - prev_count;
 
-        count = 0
-        start = 0
-        plen = len(pattern)
-        limit = len(text) - plen
+    char window[100]; int wlen = 0;
+    ll nums[3] = {lo-1, lo, lo+1};
+    int starts[3];
+    for (int i = 0; i < 3; i++) {
+        starts[i] = wlen;
+        if (nums[i] >= 1) {
+            char nb[25]; sprintf(nb, "%lld", nums[i]);
+            int nbl = strlen(nb);
+            for (int j = 0; j < nbl; j++) window[wlen++] = nb[j];
+        }
+    }
+    window[wlen] = '\0';
 
-        while start <= limit:
-            idx = text.find(pattern, start)
-            if idx == -1:
-                break
-            count += 1
-            start = idx + 1  # allow overlaps
+    ll pos_base = count_digits_up_to(lo - 2) + 1;
+    for (int i = 0; i <= wlen - pat_len; i++) {
+        int match = 1;
+        for (int j = 0; j < pat_len; j++)
+            if (window[i+j] - '0' != pat[j]) { match = 0; break; }
+        if (match) {
+            if (i + pat_len <= starts[1]) continue;
+            remaining--;
+            if (remaining == 0) return pos_base + i;
+        }
+    }
+    return -1;
+}
 
-        return count
+int main(void) {
+    power10[0] = 1;
+    for (int i = 1; i < 20; i++) power10[i] = power10[i-1] * 10;
 
-    def find_kth_occurrence_position(self, target: int, k: int) -> int:
-        """Return the starting position of the k-th occurrence of target in S.
+    ll total = 0, p3 = 1;
+    for (int k = 1; k <= 13; k++) {
+        p3 *= 3;
+        total += find_nth_occurrence(p3, p3);
+    }
+    printf("%lld\n", total);
+    return 0;
+}
+""";
 
-        Raises:
-            ValueError: if target <= 0 or k <= 0.
-        """
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_file = f.name
+    exe_file = c_file.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe_file, c_file, '-lm'],
+                      check=True, capture_output=True)
+        result = subprocess.run([exe_file], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe_file):
+            os.unlink(exe_file)
 
-        if target <= 0:
-            raise ValueError("Target must be positive")
-        if k <= 0:
-            raise ValueError("k must be positive")
-
-        target_str = str(target)
-        pattern_len = len(target_str)
-
-        # Binary search on the largest integer N such that counting occurrences
-        # in S built from 1..N reaches at least k occurrences.
-        low = 1
-        high = 10**18  # Generous upper bound as in the Ruby code.
-
-        while low < high:
-            mid = (low + high) // 2
-            if self.count_occurrences_up_to(target, mid) >= k:
-                high = mid
-            else:
-                low = mid + 1
-
-        # At this point, low is the smallest N such that occurrences up to N
-        # contain at least k matches.
-        prev_count = self.count_occurrences_up_to(target, low - 1)
-        remaining = k - prev_count
-
-        # Position in S where the representation of ``low`` starts.
-        current_pos = self.count_digits_up_to(low - 1) + 1
-        current_num = low
-        chunk_start = current_num
-
-        while True:
-            # Small forward scan (as in Ruby) to locate the exact k-th match.
-            chunk_end = min(chunk_start + CHUNK_SIZE - 1, current_num + 100)
-            chunk_str = self.build_chunk_string(chunk_start, chunk_end)
-
-            pos_in_chunk = 0
-            while remaining > 0 and pos_in_chunk <= len(chunk_str) - pattern_len:
-                match_pos = chunk_str.find(target_str, pos_in_chunk)
-                if match_pos == -1:
-                    break
-
-                # When remaining == 1, this match is the k-th occurrence overall.
-                remaining -= 1
-                if remaining == 0:
-                    digits_before_chunk = self.count_digits_up_to(chunk_start - 1)
-                    # Positions are 1-based.
-                    return digits_before_chunk + match_pos + 1
-
-                pos_in_chunk = match_pos + 1
-
-            chunk_start = chunk_end + 1
-            current_pos += len(chunk_str)
-
-    def f(self, n: int) -> int:
-        """Return the starting position of the n-th occurrence of n in S."""
-
-        return self.find_kth_occurrence_position(n, n)
-
-    @staticmethod
-    def run_tests() -> None:
-        """Run basic sanity tests for known f(n) values and print results."""
-
-        # Removed f(12) and f(7780) tests due to timeout - too expensive to compute
-        tests: List[tuple[int, int]] = [
-            (1, 1),
-            (5, 81),
-            (10, 214),
-        ]
-
-        print("Running tests...")
-        for n, expected in tests:
-            result = ChampernownePositionFinder().f(n)
-            status = "PASS" if result == expected else "FAIL"
-            print(f"f({n}): expected {expected}, got {result} [{status}]")
-        print()
-
-
-def main() -> None:
-    """Execute tests and compute the required Project Euler sum."""
-
-    finder = ChampernownePositionFinder()
-
-    ChampernownePositionFinder.run_tests()
-
-    total = 0
-    print(f"Computing f(3^k) for k = 1 to {MAX_K}...")
-
-    for k in range(1, MAX_K + 1):
-        n = 3**k
-        f_n = finder.f(n)
-        total += f_n
-        print(f"k={k}, n={n}, f({n}) = {f_n}")
-
-    print(f"\nFinal result: {total}")
-
-    # Print only final answer for test harness
-    print()
-    print(total)
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()
+solve()

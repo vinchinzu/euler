@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Project Euler Python Solutions Validator
+Project Euler Python Solutions Validator (Improved)
 
 Features:
 - Two-pass validation: 60s timeout first pass, 120s second pass for timeouts
 - Saves results after every problem (fault-tolerant, interruptible)
 - Skips already validated correct answers
-- Uses solutions.txt as answer source
+- Uses solutions_b.txt as answer source
 - Clear progress output
 - Sequential processing (no threading issues)
 """
@@ -21,12 +21,16 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 
-def load_expected_answers(filepath: str = "solutions.txt") -> Dict[int, str]:
-    """Load expected answers from solutions.txt (nayuki format: 'Problem NNN: answer')."""
+def load_expected_answers(filepath: str = "solutions_b.txt") -> Dict[int, str]:
+    """Load expected answers from solutions_b.txt or Solutions.txt."""
     answers = {}
 
     if not Path(filepath).exists():
-        print(f"Error: {filepath} not found!")
+        print(f"Warning: {filepath} not found, trying Solutions.txt...")
+        filepath = "Solutions.txt"
+
+    if not Path(filepath).exists():
+        print(f"Error: No answer file found!")
         return answers
 
     print(f"Loading answers from {filepath}...")
@@ -38,23 +42,25 @@ def load_expected_answers(filepath: str = "solutions.txt") -> Dict[int, str]:
                 continue
 
             # Skip header lines
-            if line.startswith("Project Euler") or line.startswith("http") or line.startswith("Computed"):
+            if line.startswith("Project Euler") or line.startswith("http"):
                 continue
 
-            # Handle "Problem NNN: answer" format
-            if line.startswith("Problem "):
+            # Handle both "number. answer" and "number." formats
+            if ". " in line:
                 try:
-                    # "Problem 001: 233168"
-                    parts = line.split(": ", 1)
-                    if len(parts) == 2:
-                        problem_part = parts[0].replace("Problem ", "").strip()
-                        answer_part = parts[1].strip()
-                        problem_num = int(problem_part)
-                        answers[problem_num] = answer_part
+                    problem_part, answer_part = line.split(". ", 1)
+                    problem_num = int(problem_part)
+                    answers[problem_num] = answer_part.strip()
+                except ValueError:
+                    continue
+            elif line.endswith("."):
+                try:
+                    problem_num = int(line[:-1])
+                    # No answer available for this problem
+                    answers[problem_num] = None
                 except ValueError:
                     continue
 
-    print(f"Loaded {len(answers)} answers")
     return answers
 
 
@@ -93,9 +99,7 @@ def run_python_script(script_path: Path, timeout: int = 60) -> Dict[str, Any]:
         result["runtime"] = round(runtime, 3)
 
         if process.returncode == 0:
-            # Get the last line of output (the answer)
-            lines = stdout.split('\n')
-            result["actual"] = lines[-1].strip() if lines else ""
+            result["actual"] = stdout
             result["status"] = "unknown"  # Will be set when compared to expected
         else:
             result["error"] = f"Return code {process.returncode}"
@@ -153,7 +157,7 @@ def save_results(results: Dict[str, Dict[str, Any]], output_file: Path):
             temp_file.unlink()
 
 
-def get_python_solutions(python_dir: Path, max_problem: Optional[int] = None) -> list[tuple[Path, int]]:
+def get_python_solutions(python_dir: Path) -> list[tuple[Path, int]]:
     """Get all Python solution files and their problem numbers."""
     solutions = []
 
@@ -161,8 +165,7 @@ def get_python_solutions(python_dir: Path, max_problem: Optional[int] = None) ->
     for script_path in sorted(python_dir.glob("*.py")):
         try:
             problem_num = int(script_path.stem)
-            if max_problem is None or problem_num <= max_problem:
-                solutions.append((script_path, problem_num))
+            solutions.append((script_path, problem_num))
         except ValueError:
             # Skip non-numeric filenames
             continue
@@ -180,6 +183,17 @@ def validate_solutions_pass(
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run one validation pass with specified timeout.
+
+    Args:
+        solutions: List of (script_path, problem_num) tuples
+        expected_answers: Dict of problem_num -> expected answer
+        results: Existing results dict (will be updated)
+        output_file: Path to save results after each problem
+        timeout: Timeout in seconds
+        pass_name: Name of this pass (for display)
+
+    Returns:
+        Updated results dict
     """
     # Filter to problems that need testing in this pass
     need_testing = []
@@ -238,24 +252,38 @@ def validate_solutions_pass(
         # Determine status
         if result["timeout"]:
             result["status"] = "timeout"
-            print(f"TIMEOUT ({result['runtime']:.1f}s)")
+            print(f"⏰ TIMEOUT ({result['runtime']:.1f}s)")
         elif result["error"]:
             result["status"] = "error"
-            print(f"ERROR ({result['runtime']:.3f}s)")
+            print(f"🔥 ERROR ({result['runtime']:.3f}s)")
             print(f"    {result['error']}")
         elif expected is None:
             result["status"] = "unknown"
-            print(f"UNKNOWN - no answer ({result['runtime']:.3f}s)")
-            if result['actual']:
-                print(f"    Output: {result['actual'][:80]}")
+            print(f"❓ UNKNOWN - no answer ({result['runtime']:.3f}s)")
+            print(f"    Output: {result['actual'][:80]}")
         elif result["actual"] == expected:
             result["status"] = "passed"
-            print(f"PASSED ({result['runtime']:.3f}s)")
+            # Show performance improvement if this was a re-validation
+            if was_revalidating and problem_key in results:
+                old_runtime = results[problem_key].get("runtime", 0)
+                new_runtime = result["runtime"]
+                if old_runtime > 0:
+                    speedup = ((old_runtime - new_runtime) / old_runtime) * 100
+                    if speedup > 0:
+                        print(f"✅ PASSED ({result['runtime']:.3f}s) 🚀 {speedup:.1f}% faster!")
+                    elif speedup < -5:  # More than 5% slower
+                        print(f"✅ PASSED ({result['runtime']:.3f}s) ⚠️  {abs(speedup):.1f}% slower")
+                    else:
+                        print(f"✅ PASSED ({result['runtime']:.3f}s)")
+                else:
+                    print(f"✅ PASSED ({result['runtime']:.3f}s)")
+            else:
+                print(f"✅ PASSED ({result['runtime']:.3f}s)")
         else:
             result["status"] = "failed"
-            print(f"FAILED ({result['runtime']:.3f}s)")
+            print(f"❌ FAILED ({result['runtime']:.3f}s)")
             print(f"    Expected: {expected}")
-            print(f"    Got:      {result['actual'][:80] if result['actual'] else '(empty)'}")
+            print(f"    Got:      {result['actual'][:80]}")
 
         # Update results
         results[problem_key] = result
@@ -266,51 +294,43 @@ def validate_solutions_pass(
     return results
 
 
-def print_summary(results: Dict[str, Dict[str, Any]], max_problem: Optional[int] = None):
+def print_summary(results: Dict[str, Dict[str, Any]]):
     """Print a summary of the validation results."""
     if not results:
         print("\nNo results to summarize.")
         return
 
-    # Filter results if max_problem specified
-    if max_problem:
-        filtered = {k: v for k, v in results.items() if int(k) <= max_problem}
-    else:
-        filtered = results
-
-    total = len(filtered)
-    passed = sum(1 for r in filtered.values() if r["status"] == "passed")
-    failed = sum(1 for r in filtered.values() if r["status"] == "failed")
-    errors = sum(1 for r in filtered.values() if r["status"] == "error")
-    timeouts = sum(1 for r in filtered.values() if r["status"] == "timeout")
-    unknown = sum(1 for r in filtered.values() if r["status"] == "unknown")
+    total = len(results)
+    passed = sum(1 for r in results.values() if r["status"] == "passed")
+    failed = sum(1 for r in results.values() if r["status"] == "failed")
+    errors = sum(1 for r in results.values() if r["status"] == "error")
+    timeouts = sum(1 for r in results.values() if r["status"] == "timeout")
+    unknown = sum(1 for r in results.values() if r["status"] == "unknown")
 
     # Calculate runtime statistics for passed solutions
-    passed_runtimes = [r["runtime"] for r in filtered.values()
+    passed_runtimes = [r["runtime"] for r in results.values()
                       if r["status"] == "passed" and r["runtime"] is not None]
     total_runtime = sum(passed_runtimes) if passed_runtimes else 0
     avg_runtime = total_runtime / len(passed_runtimes) if passed_runtimes else 0
     max_runtime = max(passed_runtimes) if passed_runtimes else 0
 
     # Find slowest passed problems
-    passed_with_runtime = [(k, r["runtime"]) for k, r in filtered.items()
+    passed_with_runtime = [(k, r["runtime"]) for k, r in results.items()
                           if r["status"] == "passed" and r["runtime"] is not None]
     slowest = sorted(passed_with_runtime, key=lambda x: x[1], reverse=True)[:10]
 
     print("\n" + "="*70)
     print("VALIDATION SUMMARY")
-    if max_problem:
-        print(f"(Problems 1-{max_problem})")
     print("="*70)
     print(f"Total solutions tested: {total}")
-    print(f"  Passed: {passed} ({100*passed/total:.1f}%)" if total > 0 else "  Passed: 0")
-    print(f"  Failed: {failed}")
-    print(f"  Errors: {errors}")
-    print(f"  Timeouts: {timeouts}")
-    print(f"  Unknown: {unknown}")
+    print(f"✅ Passed: {passed} ({100*passed/total:.1f}%)")
+    print(f"❌ Failed: {failed}")
+    print(f"🔥 Errors: {errors}")
+    print(f"⏰ Timeouts: {timeouts}")
+    print(f"❓ Unknown: {unknown}")
 
     if passed > 0:
-        print(f"\nPerformance Stats (for {passed} passed solutions):")
+        print(f"\n⏱️  Performance Stats (for {passed} passed solutions):")
         print(f"   Total runtime: {total_runtime:.2f}s")
         print(f"   Average runtime: {avg_runtime:.3f}s")
         print(f"   Max runtime: {max_runtime:.3f}s")
@@ -321,13 +341,13 @@ def print_summary(results: Dict[str, Dict[str, Any]], max_problem: Optional[int]
                 print(f"     Problem {problem_num}: {runtime:.3f}s")
 
     if failed > 0 or errors > 0 or timeouts > 0:
-        print(f"\nFAILED/ERROR/TIMEOUT PROBLEMS:")
+        print(f"\n⚠️  FAILED/ERROR/TIMEOUT PROBLEMS:")
 
         failed_list = []
         error_list = []
         timeout_list = []
 
-        for problem_num, result in sorted(filtered.items(), key=lambda x: int(x[0])):
+        for problem_num, result in sorted(results.items(), key=lambda x: int(x[0])):
             if result["status"] == "failed":
                 failed_list.append(problem_num)
             elif result["status"] == "error":
@@ -336,11 +356,11 @@ def print_summary(results: Dict[str, Dict[str, Any]], max_problem: Optional[int]
                 timeout_list.append(problem_num)
 
         if failed_list:
-            print(f"\n   Failed ({len(failed_list)}): {', '.join(failed_list)}")
+            print(f"\n   ❌ Failed ({len(failed_list)}): {', '.join(failed_list)}")
         if error_list:
-            print(f"\n   Errors ({len(error_list)}): {', '.join(error_list)}")
+            print(f"\n   🔥 Errors ({len(error_list)}): {', '.join(error_list)}")
         if timeout_list:
-            print(f"\n   Timeouts ({len(timeout_list)}): {', '.join(timeout_list)}")
+            print(f"\n   ⏰ Timeouts ({len(timeout_list)}): {', '.join(timeout_list)}")
 
     print("="*70)
 
@@ -351,43 +371,35 @@ def main():
     first_pass_timeout = 60
     second_pass_timeout = 120
     target_problems = None
-    max_problem = None
-    ci_mode = False
-    revalidate_all = False
 
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg in ["--help", "-h"]:
-            print("Usage: python validate.py [options]")
-            print()
-            print("Options:")
-            print("  --timeout SECONDS    Set first pass timeout (default: 60)")
-            print("  --problems 1,2,3     Test specific problems only")
-            print("  --max N              Only test problems <= N")
-            print("  --ci                 CI mode: exit with error if any failures")
-            print("  --revalidate         Force revalidation of all problems")
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ["--help", "-h"]:
+            print("Usage: python validate.py [--timeout SECONDS] [--problems 1,2,3]")
             print()
             return
-        elif arg == "--timeout":
-            i += 1
-            first_pass_timeout = int(sys.argv[i])
-            second_pass_timeout = first_pass_timeout * 2
-        elif arg == "--problems":
-            i += 1
-            target_problems = set()
-            for p in sys.argv[i].split(","):
-                val = p.strip()
-                if val:
-                    target_problems.add(int(val))
-        elif arg == "--max":
-            i += 1
-            max_problem = int(sys.argv[i])
-        elif arg == "--ci":
-            ci_mode = True
-        elif arg == "--revalidate":
-            revalidate_all = True
-        i += 1
+        elif sys.argv[1] == "--timeout":
+            if len(sys.argv) < 3:
+                print("Error: --timeout requires a value")
+                sys.exit(1)
+            try:
+                first_pass_timeout = int(sys.argv[2])
+                second_pass_timeout = first_pass_timeout * 2
+            except ValueError:
+                print(f"Error: invalid timeout value: {sys.argv[2]}")
+                sys.exit(1)
+        elif sys.argv[1] == "--problems":
+            if len(sys.argv) < 3:
+                print("Error: --problems requires a value")
+                sys.exit(1)
+            try:
+                target_problems = set()
+                for p in sys.argv[2].split(","):
+                    val = p.strip()
+                    if val:
+                        target_problems.add(int(val))
+            except ValueError:
+                print("Error: invalid problem list")
+                sys.exit(1)
 
     # Check if we're in the right directory
     python_dir = Path("python")
@@ -396,39 +408,32 @@ def main():
         sys.exit(1)
 
     # Load expected answers
-    expected_answers = load_expected_answers("solutions.txt")
+    expected_answers = load_expected_answers("solutions_b.txt")
     if not expected_answers:
         sys.exit(1)
 
     # Get all Python solutions
-    solutions = get_python_solutions(python_dir, max_problem)
-
+    solutions = get_python_solutions(python_dir)
+    
     # Filter if needed
     if target_problems:
         solutions = [s for s in solutions if s[1] in target_problems]
         print(f"Filtered to {len(solutions)} target problems")
-
+        
     print(f"Found {len(solutions)} Python solutions")
 
     # Load existing results
     output_file = Path("validation_results.json")
     results = load_existing_results(output_file)
-
-    # Force re-validate if requested
-    if revalidate_all:
-        for s in solutions:
-            p_key = str(s[1])
-            if p_key in results:
-                results[p_key]["force_revalidate"] = True
-    elif target_problems:
+    
+    # If using target_problems, force re-validate them
+    if target_problems:
         for s in solutions:
             p_key = str(s[1])
             if p_key in results:
                 results[p_key]["force_revalidate"] = True
 
-    already_passed = sum(1 for k, r in results.items()
-                         if r.get("status") == "passed"
-                         and (max_problem is None or int(k) <= max_problem))
+    already_passed = sum(1 for r in results.values() if r.get("status") == "passed")
     print(f"Already validated: {already_passed} passed problems")
 
     # First pass with configurable timeout
@@ -453,18 +458,10 @@ def main():
 
     # Final save
     save_results(results, output_file)
-    print(f"\nResults saved to {output_file}")
+    print(f"\n✅ Results saved to {output_file}")
 
     # Print summary
-    print_summary(results, max_problem)
-
-    # CI mode: exit with error if any failures
-    if ci_mode:
-        filtered = results if max_problem is None else {k: v for k, v in results.items() if int(k) <= max_problem}
-        failed = sum(1 for r in filtered.values() if r["status"] in ["failed", "error"])
-        if failed > 0:
-            print(f"\nCI: {failed} failures detected, exiting with error")
-            sys.exit(1)
+    print_summary(results)
 
 
 if __name__ == "__main__":

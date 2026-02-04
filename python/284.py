@@ -1,77 +1,88 @@
 """Project Euler Problem 284: Steady Squares.
 
-Find the sum of the digits of all steady squares in base 14 with up to N
-digits, where a steady square is a number with no leading zeros whose square
-ends in the number itself.
+Find the sum of the digits of all n-digit steady squares in base 14 for
+1 <= n <= 10000, where a steady square is a positive integer (no leading zeros)
+whose square ends with the same digits as the number itself in base 14.
 
-A steady square k with N digits must satisfy k² ≡ k (mod 14^N). This means
-that k² ≡ k (mod 2^N) and k² ≡ k (mod 7^N), so k ≡ 0 or 1 in both mod 2^N
-and 7^N. The trivial cases are 0 and 1.
+A steady square k with n digits satisfies k^2 ≡ k (mod 14^n), equivalently
+k(k-1) ≡ 0 (mod 14^n). Since 14^n = 2^n * 7^n with gcd(2^n, 7^n) = 1,
+by CRT the solutions mod 14^n are:
+  - 0 (trivial, excluded since no leading zeros unless n=0)
+  - 1 (trivial, 1-digit steady square)
+  - a_n ≡ 0 (mod 2^n), ≡ 1 (mod 7^n)
+  - b_n ≡ 1 (mod 2^n), ≡ 0 (mod 7^n)
 
-For the case where k ≡ 0 (mod 2^N) and k ≡ 1 (mod 7^N), we have by the
-Chinese Remainder Theorem that k ≡ 2^N (2^N (mod 7^N)) (mod 14^N).
-Similarly, if k ≡ 1 (mod 2^N) and k ≡ 0 (mod 7^N), then k ≡ 7^N (7^N (mod
-2^N)). Once we have these steady squares with N digits, it is easy to find
-the smaller steady squares by taking suffixes. This means the first digit is
-counted once, the second digit is counted twice, and so on. There is one catch:
-since steady squares can't have leading zeros, we do not increment the
-multiplier if a digit is zero.
+Key insight: a_n = a_N mod 14^n (suffix property). So the base-14 digits of a_N
+contain all shorter steady squares as suffixes. An n-digit suffix is a valid
+steady square iff its leading digit (d[n-1]) is non-zero.
+
+For each digit d[i], it contributes to all valid n-digit steady squares with
+n >= i+1. The total contribution is d[i] * |{j >= i : d[j] != 0}|, which
+can be computed efficiently with a suffix count of non-zero digits.
 """
 
 from __future__ import annotations
 
 
-def solve() -> int:
-    """Solve Problem 284."""
+def solve() -> str:
+    """Solve Problem 284 and return the answer in base 14."""
     N = 10000
-    B = 14
+    p2 = 2 ** N
+    p7 = 7 ** N
+    mod = p2 * p7  # 14^N
 
-    pow2 = 2**N
-    pow7 = (B // 2) ** N
+    # Two non-trivial steady square sequences via CRT
+    a = p2 * pow(p2, -1, p7) % mod
+    b = p7 * pow(p7, -1, p2) % mod
 
-    # Compute modular inverses
-    def mod_inverse(a: int, m: int) -> int:
-        """Modular inverse using extended Euclidean algorithm."""
-        if m == 1:
-            return 0
-        t, new_t = 0, 1
-        r, new_r = m, a % m
-        while new_r != 0:
-            quotient = r // new_r
-            t, new_t = new_t, t - quotient * new_t
-            r, new_r = new_r, r - quotient * new_r
-        if r > 1:
-            raise ValueError("Modular inverse does not exist")
-        return (t % m + m) % m
+    def get_digits(k: int) -> list[int]:
+        """Extract base-14 digits, least significant first."""
+        digits = []
+        for _ in range(N):
+            digits.append(k % 14)
+            k //= 14
+        return digits
 
-    # Two steady squares
-    steady1 = pow2 * mod_inverse(pow2, pow7) % (pow2 * pow7)
-    steady2 = pow7 * mod_inverse(pow7, pow2) % (pow2 * pow7)
+    def digit_sum_contribution(digits: list[int]) -> int:
+        """Compute the total digit-sum contribution across all valid suffixes.
 
-    ans = 1  # Count the digit '1' from trivial case
+        For each valid n-digit suffix (where d[n-1] != 0), we add its digit sum.
+        Rearranging, d[i] contributes d[i] * (count of non-zero d[j] for j >= i).
+        """
+        nonzero_suffix = [0] * (N + 1)
+        for i in range(N - 1, -1, -1):
+            nonzero_suffix[i] = nonzero_suffix[i + 1] + (1 if digits[i] != 0 else 0)
 
-    for steady in [steady1, steady2]:
-        mult = 1
-        s = ""
-        temp = steady
-        while temp > 0:
-            s = str(temp % B) + s
-            temp //= B
+        total = 0
+        for i in range(N):
+            total += digits[i] * nonzero_suffix[i]
+        return total
 
-        for c in s:
-            digit = int(c, B)
-            ans += mult * digit
-            if c != "0":
-                mult += 1
+    da = get_digits(a)
+    db = get_digits(b)
 
-    return ans
+    result = 1  # Trivial steady square: 1
+    result += digit_sum_contribution(da)
+    result += digit_sum_contribution(db)
+
+    return to_base14(result)
+
+
+def to_base14(num: int) -> str:
+    """Convert a non-negative integer to its base-14 string representation."""
+    if num == 0:
+        return "0"
+    chars = "0123456789abcd"
+    parts: list[str] = []
+    while num > 0:
+        parts.append(chars[num % 14])
+        num //= 14
+    return "".join(reversed(parts))
 
 
 def main() -> None:
     """Main entry point."""
-    result = solve()
-    # Convert to base 14
-    print(format(result, "x"))
+    print(solve())
 
 
 if __name__ == "__main__":

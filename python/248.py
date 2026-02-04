@@ -89,8 +89,8 @@ def solve() -> int:
             for num in nums:
                 pe = 1
                 while Kf % (num.phi * pe * (p - 1)) == 0:
-                    pe *= p
                     new_nums.append(Num(num.prod * pe * p, num.phi * pe * (p - 1)))
+                    pe *= p
             nums.extend(new_nums)
 
     # Filter and sort

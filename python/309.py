@@ -215,42 +215,10 @@ def verify_small_case(limit: int) -> int:
     return count
 
 
-def main() -> None:
-    """Run a small verification and the full search (may be very slow).
-
-    The full search with limit=1_000_000 is computationally intensive and may
-    take a very long time in pure Python. It is kept here for completeness of
-    the translation; consider using smaller limits or further optimizations for
-    practical use.
-    """
-
-    print("=" * 60)
-    print("Project Euler Problem 309: Crossing Ladders")
-    print("=" * 60)
-
-    small_limit = 200
-    verify_small_case(small_limit)
-
-    # Reduced from 1,000,000 to 1,000 due to timeout (triple nested loop O(n^3))
-    reduced_limit = 1_000
-    print("\n" + "=" * 60)
-    print(f"Running reduced solution for LIMIT = {reduced_limit:,}")
-    print("(Original problem used 1,000,000 but that's too slow)")
-    print("=" * 60)
-
-    start = perf_counter()
-    result = solve_crossing_ladders(reduced_limit, progress_interval_x=None, verbose=False)
-    end = perf_counter()
-
-    print("\n" + "=" * 60)
-    print(f"FINAL RESULT: {result}")
-    print(f"Runtime: {end - start:.2f} seconds")
-    print("=" * 60)
-
-    # Print only final answer for test harness
-    print()
-    print(result)
+def solve() -> int:
+    """Solve PE 309 with reduced limit."""
+    return solve_crossing_ladders(1_000, verbose=False)
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

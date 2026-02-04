@@ -43,11 +43,11 @@ def mod_invs(n: int, m: int) -> list[int]:
     return invs
 
 
-def nth_pows(n: int, base: int, mod: int) -> list[int]:
-    """Compute base^0, base^1, ..., base^n modulo mod."""
-    pows = [1] * (n + 1)
-    for i in range(1, n + 1):
-        pows[i] = pows[i - 1] * base % mod
+def nth_pows(limit: int, exp: int, mod: int) -> list[int]:
+    """Compute 0^exp, 1^exp, 2^exp, ..., limit^exp modulo mod."""
+    pows = [0] * (limit + 1)
+    for i in range(limit + 1):
+        pows[i] = pow(i, exp, mod)
     return pows
 
 
@@ -66,7 +66,8 @@ def solve() -> int:
     pows = nth_pows(K, N, M)
     ans = 0
     for t in range(K + 1):
-        coeff = nCrs[K - t] * ((-1) ** (K - t) % M) * pows[t] % M
+        sign = 1 if (K - t) % 2 == 0 else M - 1
+        coeff = nCrs[K - t] * sign % M * pows[t] % M
         ans = (ans + coeff) % M
     return ans % M
 

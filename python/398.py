@@ -265,26 +265,10 @@ def _run_tests() -> None:
         print("TEST PASSED: E(8,3)")
 
 
-def main() -> None:
-    """Compute and print the answer for the default Euler 398 parameters."""
-
-    print("Project Euler Problem 398 Solver (Python)")
-    print(f"Computing E({N}, {M})...")
-    print("=" * 50)
-
-    _run_tests()
-    print()
-
-    start = perf_counter()
-    result = compute_expected_value(N, M, verbose=True)
-    elapsed = perf_counter() - start
-
-    print("=" * 50)
-    print(f"RESULT: E({N}, {M}) = {result:.5f}")
-    print(f"Rounded to 5 decimal places: {result:.5f}")
-    print(f"Computation time: {elapsed:.2f} seconds")
-    print("=" * 50)
+def solve() -> float:
+    """Solve PE 398."""
+    return compute_expected_value(N, M)
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry point
-    main()
+if __name__ == "__main__":
+    print(solve())

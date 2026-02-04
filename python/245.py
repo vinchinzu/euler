@@ -1,152 +1,246 @@
 """Project Euler Problem 245: Coresilience.
 
-Find the number of composite integers n ≤ N such that (n - ϕ(n)) / (n - 1) is
+Find the sum of composite integers n <= N such that (n - phi(n)) / (n - 1) is
 a unit fraction.
+
+Uses compiled C for the performance-critical computation since Python loops are
+too slow for the millions of recursive calls needed.
 """
 
-from __future__ import annotations
-
-from math import isqrt
-from typing import List, Set
-
-
-def build_spf(limit: int) -> List[int]:
-    """Build smallest prime factor array up to limit."""
-    spf = list(range(limit + 1))
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] == i:
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
+import subprocess
+import tempfile
+import os
 
 
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
+#define N 200000000000LL
+#define L 447213
+#define LIMIT 34199519
 
-def is_sq(n: int, p: int) -> bool:
-    """Check if n is a perfect square modulo p."""
-    return pow(n, (p - 1) // 2, p) <= 1
+static char is_prime_sieve[LIMIT + 1];
+static char is_prime_small[L + 1];
 
+/* Lists of prime factors for each index up to L */
+static int pf_data[L + 1][20];  /* max 20 prime factors per entry */
+static int pf_count[L + 1];
 
-def sqrt_mod(n: int, p: int) -> int:
-    """Compute sqrt(n) mod p."""
-    if p % 4 == 3:
-        return pow(n, (p + 1) // 4, p)
-    for x in range(1, p):
-        if pow(x, 2, p) == n:
-            return x
-    return 0
+static int primes[40000];
+static int nprimes;
 
+void build_sieves(void) {
+    memset(is_prime_sieve, 1, sizeof(is_prime_sieve));
+    is_prime_sieve[0] = is_prime_sieve[1] = 0;
+    for (long i = 2; i * i <= LIMIT; i++)
+        if (is_prime_sieve[i])
+            for (long j = i * i; j <= LIMIT; j += i)
+                is_prime_sieve[j] = 0;
 
-def imod(n: int, mod: int) -> int:
-    """Return n mod mod (always positive)."""
-    return ((n % mod) + mod) % mod
+    memset(is_prime_small, 1, sizeof(is_prime_small));
+    is_prime_small[0] = is_prime_small[1] = 0;
+    for (int i = 2; (long)i * i <= L; i++)
+        if (is_prime_small[i])
+            for (int j = i * i; j <= L; j += i)
+                is_prime_small[j] = 0;
 
+    nprimes = 0;
+    for (int i = 3; i <= L; i++)
+        if (is_prime_small[i])
+            primes[nprimes++] = i;
+}
 
-def sq(n: int) -> int:
-    """Return n squared."""
-    return n * n
+int check_prime(long n) {
+    if (n < 2) return 0;
+    if (n <= L) return is_prime_small[n];
+    if (n <= LIMIT) return is_prime_sieve[n];
+    /* Miller-Rabin */
+    if (n % 2 == 0) return 0;
+    long d = n - 1;
+    int r = 0;
+    while (d % 2 == 0) { d /= 2; r++; }
+    int witnesses[] = {2, 3, 5, 7, 11, 13};
+    for (int w = 0; w < 6; w++) {
+        long a = witnesses[w];
+        if (a >= n) continue;
+        /* Compute a^d mod n using __int128 */
+        __int128 x = 1, base = a;
+        long dd = d;
+        while (dd > 0) {
+            if (dd & 1) x = x * base % n;
+            base = base * base % n;
+            dd >>= 1;
+        }
+        long xl = (long)x;
+        if (xl == 1 || xl == n - 1) continue;
+        int cont = 0;
+        for (int i = 0; i < r - 1; i++) {
+            x = (__int128)xl * xl % n;
+            xl = (long)x;
+            if (xl == n - 1) { cont = 1; break; }
+        }
+        if (!cont) return 0;
+    }
+    return 1;
+}
 
+long power_mod(long base, long exp, long mod) {
+    __int128 result = 1, b = base % mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * b % mod;
+        b = b * b % mod;
+        exp >>= 1;
+    }
+    return (long)result;
+}
 
-def all_divisors(n: int, prime_factors: List[int]) -> List[int]:
-    """Return all divisors of n given prime factors."""
-    divisors = [1]
-    temp = n
-    for p in prime_factors:
-        if temp % p == 0:
-            size = len(divisors)
-            power = 1
-            while temp % p == 0:
-                temp //= p
-                power *= p
-                for i in range(size):
-                    divisors.append(divisors[i] * power)
-    if temp > 1:
-        size = len(divisors)
-        for i in range(size):
-            divisors.append(divisors[i] * temp)
-    return divisors
+int is_sq(long n, long p) {
+    return power_mod(n, (p - 1) / 2, p) <= 1;
+}
 
+long sqrt_mod(long n, long p) {
+    n = n % p;
+    if (n < 0) n += p;
+    if (n == 0) return 0;
+    if (p % 4 == 3) return power_mod(n, (p + 1) / 4, p);
+    /* Tonelli-Shanks */
+    long q = p - 1;
+    int s = 0;
+    while (q % 2 == 0) { q /= 2; s++; }
+    long z = 2;
+    while (power_mod(z, (p - 1) / 2, p) != p - 1) z++;
+    int m = s;
+    long c = power_mod(z, q, p);
+    long t = power_mod(n, q, p);
+    long r = power_mod(n, (q + 1) / 2, p);
+    while (1) {
+        if (t == 1) return r;
+        int i = 1;
+        __int128 tmp = (__int128)t * t % p;
+        while ((long)tmp != 1) { tmp = tmp * (long)tmp % p; i++; }
+        long b = c;
+        for (int j = 0; j < m - i - 1; j++) b = (__int128)b * b % p;
+        m = i;
+        c = (__int128)b * b % p;
+        t = (__int128)t * c % p;
+        r = (__int128)r * b % p;
+    }
+}
 
-def is_prime(n: int, spf: List[int]) -> bool:
-    """Check if n is prime."""
-    return n > 1 and (n >= len(spf) or spf[n] == n)
+/* Get all divisors of n using precomputed prime factors */
+static long divisors[10000];
+int all_divisors(long n, int idx) {
+    divisors[0] = 1;
+    int ndivs = 1;
+    long temp = n;
+    for (int pi = 0; pi < pf_count[idx]; pi++) {
+        int p = pf_data[idx][pi];
+        if (temp % p == 0) {
+            int size = ndivs;
+            long power = 1;
+            while (temp % p == 0) {
+                temp /= p;
+                power *= p;
+                for (int i = 0; i < size; i++)
+                    divisors[ndivs++] = divisors[i] * power;
+            }
+        }
+    }
+    if (temp > 1) {
+        int size = ndivs;
+        for (int i = 0; i < size; i++)
+            divisors[ndivs++] = divisors[i] * temp;
+    }
+    return ndivs;
+}
 
+static long ans = 0;
 
-def solve() -> int:
-    """Solve Problem 245."""
-    N = 2 * (10**11)
-    L = isqrt(N)
+void helper(int index, long P, long phi, int *factors, int nfactors) {
+    if (nfactors >= 2) {
+        int smallest = factors[0];
+        for (int k = 2; k < smallest; k += 2) {
+            long num = phi * k + 1;
+            long den = P - (P - phi) * k;
+            if (den > 0 && num % den == 0) {
+                long q = num / den;
+                if (factors[nfactors-1] < q && P * q <= N && check_prime(q))
+                    ans += P * q;
+            }
+        }
+    }
+    int idx = index;
+    while (idx < nprimes) {
+        long q = primes[idx];
+        if (P * q * q > N) break;
+        factors[nfactors] = (int)q;
+        helper(idx + 1, P * q, phi * (q - 1), factors, nfactors + 1);
+        idx++;
+    }
+}
 
-    limit = int(N ** (2.0 / 3))
-    spf = build_spf(limit)
-    primes_list = sieve(L)
+int main(void) {
+    build_sieves();
 
-    # Build prime factors for p*(p-1)+1
-    prime_factors: List[List[int]] = [[] for _ in range(L + 1)]
-    for q in primes_list:
-        if q >= 3 and is_sq(q - 3, q):
-            r1 = sqrt_mod(q - 3, q)
-            for p in range(imod((1 + r1) * (q + 1) // 2, q), L + 1, q):
-                prime_factors[p].append(q)
-            r2 = q - r1
-            for p in range(imod((1 - r1) * (q + 1) // 2, q), L + 1, q):
-                prime_factors[p].append(q)
+    memset(pf_count, 0, sizeof(pf_count));
+    for (int qi = 0; qi < nprimes; qi++) {
+        int q = primes[qi];
+        if (q >= 3 && is_sq(q - 3, q)) {
+            long r1 = sqrt_mod(q - 3, q);
+            long inv2 = (q + 1) / 2;
+            long s1 = ((1 + r1) * inv2) % q;
+            if (s1 == 0) s1 = q;
+            for (long p = s1; p <= L; p += q)
+                pf_data[p][pf_count[p]++] = q;
+            long s2 = ((1 - r1 + q) * inv2) % q;
+            if (s2 == 0) s2 = q;
+            for (long p = s2; p <= L; p += q)
+                pf_data[p][pf_count[p]++] = q;
+        }
+    }
 
-    ans = 0
+    /* Two primes case */
+    for (int i = 0; i < nprimes; i++) {
+        long p = primes[i];
+        long val = p * (p - 1) + 1;
+        int nd = all_divisors(val, (int)p);
+        for (int j = 0; j < nd; j++) {
+            long d = divisors[j];
+            if (d >= p) {
+                long q = d - (p - 1);
+                if (p < q && p * q <= N && check_prime(q))
+                    ans += p * q;
+            }
+        }
+    }
 
-    # Handle two primes case
-    for p in primes_list:
-        if p < 3:
-            continue
-        for d in all_divisors(p * (p - 1) + 1, prime_factors[p]):
-            if d >= p:
-                q = d - (p - 1)
-                if p < q and p * q <= N and is_prime(q, spf):
-                    ans += p * q
+    /* More than two primes case */
+    int factors[20];
+    helper(0, 1, 1, factors, 0);
 
-    # Handle more than two primes
-    def helper(index: int, P: int, phi: int, factors: List[int]) -> None:
-        """Recursive helper."""
-        if len(factors) >= 2:
-            for k in range(2, factors[0], 2):
-                num = phi * k + 1
-                den = P - (P - phi) * k
-                if den != 0 and num % den == 0:
-                    q = num // den
-                    if (not factors or factors[-1] < q) and P * q <= N and is_prime(q, spf):
-                        ans += P * q
+    printf("%ld\n", ans);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_file = f.name
 
-        while index < len(primes_list):
-            q = primes_list[index]
-            if P * sq(q) > N:
-                break
-            factors.append(q)
-            helper(index + 1, P * q, phi * (q - 1), factors)
-            factors.pop()
-            index += 1
-
-    helper(0, 1, 1, [])
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    exe_file = c_file.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe_file, c_file, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([exe_file], capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe_file):
+            os.unlink(exe_file)
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

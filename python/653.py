@@ -28,12 +28,12 @@ class Marble:
     is_west: bool
 
 
-def blum_blum_shub(seed: int, n: int) -> list[int]:
-    """Generate Blum Blum Shub sequence."""
-    m = 2147483647  # 2^31 - 1
-    x = seed
-    result = []
-    for _ in range(n):
+def blum_blum_shub(n: int) -> list[int]:
+    """Generate the pseudo-random sequence as specified in problem 653."""
+    m = 32745673
+    x = 6563116
+    result = [x]
+    for _ in range(n - 1):
         x = (x * x) % m
         result.append(x)
     return result
@@ -46,8 +46,8 @@ def solve() -> int:
     D = 20
     L = 10**9
 
-    # Generate marbles using Blum Blum Shub
-    rng = blum_blum_shub(0, N)
+    # Generate marbles using the problem's pseudo-random sequence
+    rng = blum_blum_shub(N)
     marbles = []
     for r in rng:
         gap_before = (r % 1000) + 1

@@ -1,147 +1,140 @@
 """Project Euler Problem 554: Centaurs on a chessboard.
 
-Let C(n) be the number of ways that n² centaurs (a piece that can move as a
-king or knight) can be placed on a (2n)x(2n) chessboard such that no centaur
-attacks another. Find Σ_{i=2}^N C(F_i), where F_i is the i'th Fibonacci number.
+C(n) = 8*C(2n,n) - 3*(n-1)^2 - 8n - 4
 
-Firstly, note that each 2x2 block can have at most one centaur, and to place n²
-centaurs we need exactly one centaur in each block. If a block has a centaur
-in a particular corner, then all 2x2 blocks in the direction of that corner
-must have the centaur in the same position. This means that a placement of
-centaurs is equivalent to partitioning the grid into up to 4 regions, one region
-per corner, such that no square can "fall" closer to the corner.
-
-There are 4 ways to fill the board with only one region.
-
-To fill two regions corresponding to two adjacent corners, we can only select
-one of the n-1 straight lines between those corners. There are 4 different ways
-to select the corners.
-
-To fill two regions corresponding to two opposite corners, we can draw any path
-between the other two corners as the boundary of the two regions. There are
-nCr(2n, n) paths, though we have to subtract the 2 that result in only one
-region. There are 2 ways to select the corners.
-
-To fill three regions, we must make a rectangular region for the "middle" corner
-(and it cannot extend all the way to either opposing edge), and then draw any
-path from the open corner of that rectangle to the opposite corner. The number
-of paths to any point on the grid is an entry of Pascal's Triangle, and the
-sum of the number of paths over all interior points can be summed up to be
-nCr(2n, n) - 2n. There are 4 ways to select the corners.
-
-Finally, to fill four regions, we choose a rectangular region for two opposite
-corners (again, neither can extend all the way to an opposing edge) and draw
-any path between the two open corners. Each sum is nCr(a+b, a) - 1, so the
-sum over all sums is nCr(2n, n) - 2n - (n-1)². We double this for selecting
-the other two opposite corners. However, we've double-counted the configurations
-where all four regions are rectangles meeting at a corner; there are (n-1)² of
-these.
+Find sum_{i=2}^{90} C(F_i) mod (10^8+7).
+Uses Lucas' theorem with C code for fast factorial precomputation.
 """
 
-from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
 
-from typing import List
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef long long ll;
+typedef unsigned long long ull;
+
+static const ll M = 100000007LL;  /* 10^8 + 7, prime */
+
+static ll *fact = NULL;
+static ll *inv_fact = NULL;
+
+static ll power(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+static void precompute(void) {
+    fact = (ll *)malloc(M * sizeof(ll));
+    inv_fact = (ll *)malloc(M * sizeof(ll));
+    if (!fact || !inv_fact) { fprintf(stderr, "malloc failed\n"); exit(1); }
+
+    fact[0] = 1;
+    for (ll i = 1; i < M; i++)
+        fact[i] = fact[i-1] * i % M;
+
+    inv_fact[M-1] = power(fact[M-1], M-2, M);
+    for (ll i = M-2; i >= 0; i--)
+        inv_fact[i] = inv_fact[i+1] * (i+1) % M;
+}
+
+static ll nCr_small(ll a, ll b) {
+    if (b < 0 || b > a || a < 0) return 0;
+    if (a >= M) return 0;  /* should not happen with Lucas */
+    return fact[a] % M * inv_fact[b] % M * inv_fact[a-b] % M;
+}
+
+/* Lucas theorem: C(n, r) mod p */
+static ll nCr_lucas(ull n, ull r) {
+    if (r > n) return 0;
+    ll result = 1;
+    while (n > 0 || r > 0) {
+        ll ni = (ll)(n % M);
+        ll ri = (ll)(r % M);
+        if (ri > ni) return 0;
+        result = result * nCr_small(ni, ri) % M;
+        n /= M;
+        r /= M;
+    }
+    return result;
+}
+
+int main(void) {
+    precompute();
+
+    /* Fibonacci numbers - store as pairs for big Fib */
+    /* F(90) ~ 2.88e18 fits in unsigned long long */
+    ull fibs[91];
+    fibs[0] = 0; fibs[1] = 1;
+    for (int i = 2; i <= 90; i++)
+        fibs[i] = fibs[i-1] + fibs[i-2];
+
+    ll ans = 0;
+    for (int i = 2; i <= 90; i++) {
+        ull n = fibs[i];
+        ll n_mod = (ll)(n % M);
+        ll c2n_n = nCr_lucas(2ULL * n, n);
+
+        /* C(n) = 8*C(2n,n) - 3*(n-1)^2 - 8n - 4 */
+        ll sq = (n_mod - 1 + M) % M;
+        sq = sq * sq % M;
+        ll val = (8LL * c2n_n % M - 3LL * sq % M + M - 8LL * n_mod % M + M - 4 + M) % M;
+        /* More careful with mod arithmetic */
+        val = 8LL * c2n_n % M;
+        val = (val - 3LL * sq % M + M) % M;
+        val = (val - 8LL * n_mod % M + M) % M;
+        val = (val - 4 + M) % M;
+
+        ans = (ans + val) % M;
+    }
+
+    printf("%lld\n", ans);
+
+    free(fact);
+    free(inv_fact);
+    return 0;
+}
+"""
 
 
-class Zp:
-    """Modular arithmetic helper class."""
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p554.c")
+    exe_file = os.path.join(tmpdir, "p554")
 
-    def __init__(self, max_n: int, mod: int) -> None:
-        """Initialize with maximum n and modulus."""
-        self.mod = mod
-        self.max_n = max_n
-        self._factorials: List[int] = []
-        self._inv_factorials: List[int] = []
-        self._precompute()
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-    def _precompute(self) -> None:
-        """Precompute factorials and inverse factorials."""
-        self._factorials = [1] * (self.max_n + 1)
-        for i in range(1, self.max_n + 1):
-            self._factorials[i] = (self._factorials[i - 1] * i) % self.mod
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
 
-        self._inv_factorials = [1] * (self.max_n + 1)
-        self._inv_factorials[self.max_n] = pow(
-            self._factorials[self.max_n], self.mod - 2, self.mod
-        )
-        for i in range(self.max_n - 1, -1, -1):
-            self._inv_factorials[i] = (
-                self._inv_factorials[i + 1] * (i + 1)
-            ) % self.mod
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=25
+    )
 
-    def factorial(self, n: int) -> int:
-        """Return n! mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._factorials[n]
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
 
-    def inv_factorial(self, n: int) -> int:
-        """Return 1/(n!) mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._inv_factorials[n]
-
-    def nCr(self, n: int, r: int) -> int:
-        """Return C(n, r) mod mod."""
-        if r < 0 or r > n:
-            return 0
-        if n > self.max_n:
-            # Compute directly for large n
-            result = 1
-            for i in range(r):
-                result = (result * (n - i)) % self.mod
-            return (result * pow(self.factorial(r), self.mod - 2, self.mod)) % self.mod
-        return (
-            self._factorials[n]
-            * self._inv_factorials[r]
-            * self._inv_factorials[n - r]
-        ) % self.mod
-
-
-def fibonacci(n: int) -> int:
-    """Compute the n-th Fibonacci number."""
-    if n <= 1:
-        return n
-    a, b = 0, 1
-    for _ in range(2, n + 1):
-        a, b = b, a + b
-    return b
-
-
-def solve() -> int:
-    """Solve Problem 554."""
-    N = 90
-    M = 10**8 + 7
-
-    zp = Zp(2 * N, M)
-    ans = 0
-
-    def C(n: int) -> int:
-        """Compute C(n) mod M."""
-        n_mod = n % M
-        nCr_2n_n = zp.nCr(2 * n, n)
-        term1 = 4
-        term2 = ((n_mod - 1) * 4) % M
-        term3 = ((nCr_2n_n - 2) * 2) % M
-        term4 = ((nCr_2n_n - (2 * n_mod) % M) * 4) % M
-        sq_n_minus_1 = ((n_mod - 1) ** 2) % M
-        term5 = ((nCr_2n_n - (2 * n_mod) % M - sq_n_minus_1) * 2) % M
-        term6 = (-sq_n_minus_1) % M
-        return (term1 + term2 + term3 + term4 + term5 + term6) % M
-
-    for i in range(2, N + 1):
-        fib = fibonacci(i)
-        ans = (ans + C(fib)) % M
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

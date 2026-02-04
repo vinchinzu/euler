@@ -1,230 +1,176 @@
-"""Project Euler Problem 343 - Python 3.12 solution.
+#!/usr/bin/env python3
+"""Project Euler Problem 343 - Fractional Sequences
 
-This module provides tools to compute the value of the function f(k) defined via a
-fraction sequence, and to efficiently compute sum_{k=1..n} f(k^3).
+f(k) = largest_prime_factor(k+1) - 1
+Sum f(k^3) for k=1..2000000.
+k^3+1 = (k+1)(k^2-k+1), so lpf(k^3+1) = max(lpf(k+1), lpf(k^2-k+1)).
 
-Key public functions:
-- f: direct simulation of the sequence (primarily for reference/testing).
-- f_efficient: optimized computation of f(n).
-- sum_f_cubes: sum of f(k^3) for k in [1, n].
+Uses C extension with sieve for speed.
+"""
+import subprocess, os, tempfile
 
-The logic is adapted from the provided Ruby implementation and structured to be
-idiomatic, typed Python.
+C_CODE = r"""
+#include <stdio.h>
+#include <string.h>
+
+#define N 2000000
+#define SZ (N + 2)
+
+static int lpf_kp1[SZ];
+static int primes[200000];
+static int nprimes = 0;
+
+/* Remaining cofactor after dividing out small primes */
+static long long cofactor[SZ];
+/* Largest prime factor of k^2-k+1 found during sieve */
+static int best_small[SZ];
+
+void build_sieve(void) {
+    memset(lpf_kp1, 0, sizeof(lpf_kp1));
+    for (int i = 2; i < SZ; i++) {
+        if (lpf_kp1[i] == 0) {
+            primes[nprimes++] = i;
+            for (int j = i; j < SZ; j += i)
+                lpf_kp1[j] = i;
+        }
+    }
+}
+
+/* modpow using __int128 */
+static long long mpow(long long base, long long exp, long long mod) {
+    long long r = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) r = (__int128)r * base % mod;
+        base = (__int128)base * base % mod;
+        exp >>= 1;
+    }
+    return r;
+}
+
+static long long modsqrt(long long n, long long p) {
+    n %= p; if (n < 0) n += p;
+    if (n == 0) return 0;
+    if (p == 2) return n & 1;
+    if (mpow(n, (p-1)/2, p) != 1) return -1;
+    long long s = 0, q = p - 1;
+    while (q % 2 == 0) { s++; q /= 2; }
+    if (s == 1) return mpow(n, (p+1)/4, p);
+    long long z = 2;
+    while (mpow(z, (p-1)/2, p) != p - 1) z++;
+    long long M = s;
+    long long c = mpow(z, q, p);
+    long long t = mpow(n, q, p);
+    long long R = mpow(n, (q+1)/2, p);
+    while (1) {
+        if (t == 1) return R;
+        long long i = 1, tmp = (__int128)t * t % p;
+        while (tmp != 1) { tmp = (__int128)tmp * tmp % p; i++; }
+        long long b = c;
+        for (long long j = 0; j < M - i - 1; j++) b = (__int128)b * b % p;
+        M = i;
+        c = (__int128)b * b % p;
+        t = (__int128)t * c % p;
+        R = (__int128)R * b % p;
+    }
+}
+
+void init_cofactors(void) {
+    for (int k = 1; k <= N; k++) {
+        cofactor[k] = (long long)k * k - k + 1;
+        best_small[k] = 0;
+    }
+}
+
+void sieve_poly(void) {
+    /* For each prime p, find roots of x^2-x+1 = 0 mod p
+       discriminant = -3, so need sqrt(-3) mod p */
+    for (int i = 0; i < nprimes; i++) {
+        int p = primes[i];
+        long long pp = p;
+
+        if (p == 2) {
+            /* x^2-x+1 mod 2: x=0:1, x=1:1. No roots. */
+            continue;
+        }
+        if (p == 3) {
+            /* x=2 mod 3 is the only root (double) */
+            for (long long k = 2; k <= N; k += 3) {
+                while (cofactor[k] % 3 == 0) {
+                    cofactor[k] /= 3;
+                    best_small[k] = 3;
+                }
+            }
+            continue;
+        }
+
+        long long sq = modsqrt(pp - 3, pp);
+        if (sq < 0) continue;
+
+        long long inv2 = (pp + 1) / 2;
+        long long r1 = (__int128)(1 + sq) * inv2 % pp;
+        long long r2 = (__int128)(1 + pp - sq) * inv2 % pp;
+
+        if (r1 == 0) r1 = pp;
+        if (r2 == 0) r2 = pp;
+
+        for (long long k = r1; k <= N; k += pp) {
+            while (cofactor[k] % pp == 0) {
+                cofactor[k] /= pp;
+                if (p > best_small[k]) best_small[k] = p;
+            }
+        }
+        if (r2 != r1) {
+            for (long long k = r2; k <= N; k += pp) {
+                while (cofactor[k] % pp == 0) {
+                    cofactor[k] /= pp;
+                    if (p > best_small[k]) best_small[k] = p;
+                }
+            }
+        }
+    }
+}
+
+int main(void) {
+    build_sieve();
+    init_cofactors();
+    sieve_poly();
+
+    long long total = 0;
+    for (int k = 1; k <= N; k++) {
+        /* Largest prime factor of k^2-k+1 */
+        long long lpf_q;
+        if (cofactor[k] > 1) {
+            /* cofactor is a prime > 2M (can't be composite since k^2-k+1 < 4e12
+               and we sieved up to 2M, so at most one prime factor > 2M) */
+            lpf_q = cofactor[k];
+        } else {
+            lpf_q = best_small[k];
+        }
+        if (lpf_q == 0) lpf_q = 1; /* k=1: k^2-k+1=1 */
+
+        long long lpf1 = lpf_kp1[k + 1];
+        long long lpf = lpf1 > lpf_q ? lpf1 : lpf_q;
+        total += lpf - 1;
+    }
+    printf("%lld\n", total);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "p343.c")
+    exe = os.path.join(tmpdir, "p343")
+    with open(src, "w") as f:
+        f.write(C_CODE)
+    r = subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], capture_output=True, text=True)
+    if r.returncode != 0:
+        import sys
+        print(r.stderr, file=sys.stderr)
+        return None
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=60)
+    return result.stdout.strip()
 
-from math import gcd
-from typing import Dict, Iterable, Tuple
-
-
-def popcount(n: int) -> int:
-    """Return the number of set bits (1-bits) in the non-negative integer n."""
-
-    if n < 0:
-        msg = "popcount is only defined for non-negative integers"
-        raise ValueError(msg)
-
-    count = 0
-    while n > 0:
-        count += n & 1
-        n >>= 1
-    return count
-
-
-def f(n: int) -> int:
-    """Compute f(n) by simulating the fraction sequence.
-
-    This is a direct, relatively slow implementation following the problem's
-    definition. It is primarily intended for reference and small inputs.
-    """
-
-    if n < 1:
-        msg = "f(n) is only defined for positive integers"
-        raise ValueError(msg)
-
-    if n == 1:
-        return 1
-
-    x, y = 1, n
-    iterations = 0
-    max_iterations = 100_000
-
-    while y > 1 and iterations < max_iterations:
-        x_new = x + 1
-        y_new = y - 1
-        g = gcd(x_new, y_new)
-        x, y = x_new // g, y_new // g
-        iterations += 1
-
-        if y == 1:
-            return x
-
-    if iterations >= max_iterations:
-        # Fallback heuristic mirroring the Ruby safety behavior.
-        return 2 * popcount(n)
-
-    return x
-
-
-def _state_key(x: int, y: int) -> Tuple[int, int]:
-    """Return a hashable state key for memoizing (x, y) pairs."""
-
-    return x, y
-
-
-def f_efficient(n: int) -> int:
-    """Efficiently compute f(n).
-
-    This mirrors the optimized Ruby implementation. For most values, it simulates
-    the sequence with memoization and an early-convergence path once the
-    denominator is small.
-
-    The behavior for large or pathological inputs is based on the original Ruby
-    code and is not derived from a formal proof of minimality.
-    """
-
-    if n <= 0:
-        msg = "f_efficient(n) is only defined for positive integers"
-        raise ValueError(msg)
-
-    if n <= 1:
-        return 1
-    if n == 3:
-        return 1
-    if n == 2:
-        return 2
-    if n == 20:
-        return 6
-
-    # If n is a power of two, the sequence behaves simply and ends at n.
-    if n & (n - 1) == 0:
-        return n
-
-    x, y = 1, n
-    seen: Dict[Tuple[int, int], bool] = {}
-
-    while y > 1:
-        state = _state_key(x, y)
-        if state in seen:
-            # Detected a loop; mirror the Ruby behavior of returning current x.
-            return x
-        seen[state] = True
-
-        x_new = x + 1
-        y_new = y - 1
-
-        g = gcd(x_new, y_new)
-        x, y = x_new // g, y_new // g
-
-        # Once denominator small, finish deterministically without memo.
-        if y <= 100:
-            while y > 1:
-                x_new = x + 1
-                y_new = y - 1
-                g = gcd(x_new, y_new)
-                x, y = x_new // g, y_new // g
-            return x
-
-    return x
-
-
-def sum_f_cubes(n: int) -> int:
-    """Return sum_{k=1..n} f(k^3) using f_efficient.
-
-    Raises ValueError if n < 1 or if n is unreasonably large for this reference
-    implementation (above 10_000_000), matching the original Ruby guard.
-    """
-
-    if n < 1:
-        msg = "n must be positive"
-        raise ValueError(msg)
-    if n > 10_000_000:
-        msg = f"n too large: {n}"
-        raise ValueError(msg)
-
-    total = 0
-    for k in range(1, n + 1):
-        cube = k * k * k
-        total += f_efficient(cube)
-    return total
-
-
-def _run_tests() -> None:
-    """Run basic self-tests to validate core behavior.
-
-    These tests mirror the checks present in the original Ruby script.
-    """
-
-    print("Running tests...")
-
-    test_cases = [
-        (1, 1),
-        (2, 2),
-        (3, 1),
-        (4, 4),
-        (8, 2),
-        (16, 16),
-        (20, 6),
-        (27, 3),
-    ]
-
-    for n, expected in test_cases:
-        result = f_efficient(n)
-        status = "✓" if result == expected else "✗"
-        print(f"{status} f({n}) = {result} (expected {expected})")
-
-    small_n = 5
-    expected_sum = sum(f_efficient(k**3) for k in range(1, small_n + 1))
-    actual_sum = sum_f_cubes(small_n)
-    status = "✓" if actual_sum == expected_sum else "✗"
-    print(
-        f"{status} sum_f_cubes({small_n}) = {actual_sum} "
-        f"(expected {expected_sum})",
-    )
-
-    # Check against the known value stated in the Ruby comments.
-    known_sum_100 = 118_937
-    actual_100 = sum_f_cubes(100)
-    status = "✓" if actual_100 == known_sum_100 else "✗"
-    print(
-        f"{status} Verified example: sum_f_cubes(100) = {actual_100} "
-        f"(expected {known_sum_100})",
-    )
-
-
-def _main(argv: Iterable[str]) -> None:
-    """Command-line interface entry point.
-
-    Usage: python 343.py [n]
-
-    If n is omitted or invalid/non-positive, defaults to 2_000_000.
-    """
-
-    from itertools import islice
-
-    _run_tests()
-    print()
-
-    # Pull first argument if present.
-    first_arg = next(islice(argv, 1, 2), None)
-    try:
-        n = int(first_arg) if first_arg is not None else 2_000_000
-        if n <= 0:
-            raise ValueError
-    except (TypeError, ValueError):
-        n = 2_000_000
-
-    try:
-        result = sum_f_cubes(n)
-        print(f"Result for n={n}: {result}")
-    except ValueError as exc:  # Mirrors Ruby's ArgumentError handling.
-        print(f"Error: {exc}")
-        print("Usage: python 343.py [n]")
-        print("Example: python 343.py 100")
-
-
-if __name__ == "__main__":  # pragma: no cover - CLI entry
-    import sys
-
-    _main(sys.argv)
+if __name__ == "__main__":
+    print(solve())

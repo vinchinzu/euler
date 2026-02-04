@@ -1,134 +1,95 @@
-"""Project Euler Problem 334: Spilling the Beans
+#!/usr/bin/env python3
+"""Project Euler Problem 334 - Spilling the Beans
 
-Problem summary (verbatim from Project Euler, with formatting adapted):
+Uses the quadratic potential function approach for the 1D abelian sandpile.
 
-Max is putting together his own \"Erdos-Bacon\" style game with beans.
-He puts some bowls in a straight line on a table, numbered from 1 up to N.
-He then randomly distributes beans into the bowls.
+Key insight: Each toppling at position i (remove 2, add 1 to neighbors) changes
+the potential Phi = sum(j^2 * beans(j)) by exactly +2.
+Therefore: total_topplings = (Phi_final - Phi_initial) / 2.
 
-Every move, Max chooses a bowl with at least two beans, say bowl i with k ≥ 2:
-- He removes 2 * floor(k / 2) beans from bowl i.
-- He then adds floor(k / 2) beans to bowl i - 1, and floor(k / 2) beans to bowl i + 1.
-- Bowls outside [1, N] are allowed, and act like bowls containing 0 beans.
+The final configuration is uniquely determined by:
+- Total beans B (conserved)
+- Moment M = sum(j * beans(j)) (conserved, since each topple changes it by 0)
+- The final config has at most 1 bean per position
 
-A configuration is stable if every bowl contains at most one bean.
-
-For this problem, a specific pseudo-random sequence is used to generate the
-initial bean counts b_i, and one is asked to determine the total number of
-moves required to reach a stable configuration.
-
-This implementation:
-
-- Implements the officially defined PRNG and bean sequence b_i:
-  - t_0 = 123456
-  - If t_{i-1} is even: t_i = t_{i-1} // 2
-  - If t_{i-1} is odd:  t_i = (t_{i-1} // 2) XOR 926252
-  - b_i = (t_i mod 2^11) + 1   for i = 1..N
-
-- Uses the invariant that the process terminates with exactly:
-    total_moves = (sum(b_i) - number_of_odd_positions) // 2
-  for the given 1D-neighbor move rule with symmetric splitting.
-  This closed form follows from:
-    - Each move reduces the total \"excess over parity\" by 2.
-    - The parity (odd/even) of each position is preserved modulo the effect
-      of symmetric transfers.
-    - The unique stable configuration has 0 or 1 bean per position while
-      preserving parity constraints implied by moves.
-
-- Avoids naive step-by-step simulation, which is far too slow and is the root
-  cause of the previous timeout.
-
-Note:
-- The constant 2^11 and XOR mask 926252 come directly from the problem
-  definition (not from Solutions.txt).
-- The final numeric answer is computed algorithmically, not hard-coded.
+If M - B*(B-1)/2 is divisible by B: contiguous block at [s, s+B-1].
+Otherwise: block at [s, s+B] with one gap at position g.
 """
+import subprocess, tempfile, os
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
 
-from typing import List
+#define NPOS 1500
 
+typedef __int128 i128;
 
-def generate_b(n: int) -> List[int]:
-    """Generate bean counts b_i for i in [1, n] using the specified PRNG."""
-    t = 123_456
-    result: List[int] = []
+long long b[NPOS+2];
 
-    for _ in range(n):
-        if t % 2 == 0:
-            t //= 2
-        else:
-            t = (t // 2) ^ 926_252
-        b_i = (t % (1 << 11)) + 1
-        result.append(b_i)
+void generate_b() {
+    long long t = 123456;
+    for (int i = 1; i <= NPOS; i++) {
+        if (t % 2 == 0) t /= 2;
+        else t = (t / 2) ^ 926252;
+        b[i] = (t % (1 << 11)) + 1;
+    }
+}
 
-    return result
+int main(void) {
+    generate_b();
 
+    long long B = 0;
+    long long M = 0;
+    i128 Phi_init = 0;
+    for (int j = 1; j <= NPOS; j++) {
+        B += b[j];
+        M += (long long)j * b[j];
+        Phi_init += (i128)j * j * b[j];
+    }
 
-def compute_moves(bowls: List[int]) -> int:
-    """Compute the total moves using an invariant-based closed form.
+    long long half_BB = B * (B - 1) / 2;
+    long long s_num = M - half_BB;
+    i128 Phi_final;
 
-    Let:
-      S = sum(bowls)
-      O = count of indices i with bowls[i] % 2 == 1
+    if (s_num % B == 0) {
+        /* Contiguous block at [s, s+B-1] */
+        long long s = s_num / B;
+        i128 ss = s;
+        i128 BB = B;
+        Phi_final = BB * ss * ss + ss * BB * (BB - 1) + BB * (BB - 1) * (2*BB - 1) / 6;
+    } else {
+        /* Block [s, s+B] with one gap at position g */
+        long long s = s_num / B;
+        if (s_num < 0 && s_num % B != 0) s--;
 
-    For this process (symmetric splitting to neighbors in 1D),
-    the total number of moves until all bowls have 0 or 1 bean is:
+        long long g = (B + 1) * s + B * (B + 1) / 2 - M;
 
-        (S - O) // 2
+        i128 a = s;
+        i128 e = s + B;
+        i128 sum_sq = e * (e + 1) * (2*e + 1) / 6 - (a - 1) * a * (2*a - 1) / 6;
+        Phi_final = sum_sq - (i128)g * g;
+    }
 
-    This formula is derived from:
-    - Each move removes 2k beans from some bowl and distributes k left and k right.
-      The total bean count S is preserved.
-    - Each individual move reduces the sum of floor(b_i / 2) over all i by k,
-      and the process stops exactly when all b_i ∈ {0, 1}.
-    - The parity pattern (odd/even) of positions constrains the final single-bean
-      configuration; the number of positions with a bean is O.
-    - Tracking the \"excess over parity\" shows that each move reduces it by 2.
+    i128 total = (Phi_final - Phi_init) / 2;
+    printf("%lld\n", (long long)total);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_file = f.name
 
-    The correctness of this invariant-based formula is a known property of this
-    specific bean game and is independent of any particular simulation order.
-    """
-    # Use dictionary to handle bowls outside [1, N]
-    bowls_dict = {}
-    for i, count in enumerate(bowls, start=1):
-        if count > 0:
-            bowls_dict[i] = count
+    exe_file = c_file.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe_file, c_file, '-lm'],
+                      check=True, capture_output=True)
+        result = subprocess.run([exe_file], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe_file):
+            os.unlink(exe_file)
 
-    moves = 0
-    while True:
-        # Find leftmost bowl with at least 2 beans
-        target = None
-        for i in sorted(bowls_dict.keys()):
-            if bowls_dict[i] >= 2:
-                target = i
-                break
-
-        if target is None:
-            break
-
-        # Remove 2 beans from target, add 1 to each neighbor
-        bowls_dict[target] -= 2
-        if bowls_dict[target] == 0:
-            del bowls_dict[target]
-
-        bowls_dict[target - 1] = bowls_dict.get(target - 1, 0) + 1
-        bowls_dict[target + 1] = bowls_dict.get(target + 1, 0) + 1
-
-        moves += 1
-
-    return moves
-
-
-def solve() -> int:
-    """Return the required number of moves for the Project Euler 334 setup.
-
-    The problem uses N = 1500 bowls.
-    """
-    n = 1500
-    bowls = generate_b(n)
-    return compute_moves(bowls)
-
-
-if __name__ == "__main__":
-    print(solve())
+solve()

@@ -10,8 +10,15 @@ octagon by rhombi" for the formula implemented here.
 from __future__ import annotations
 
 from itertools import product
-from math import comb
+from math import comb as _comb
 from typing import List
+
+
+def nCr(n: int, k: int) -> int:
+    """Binomial coefficient that returns 0 for invalid inputs."""
+    if k < 0 or n < 0 or k > n:
+        return 0
+    return _comb(n, k)
 
 
 def det(matrix: List[List[int]]) -> int:
@@ -65,11 +72,11 @@ def solve() -> int:
 
             for i in range(1, B + 1):
                 for j in range(1, B + 1):
-                    M[i - 1][j - 1] = comb(
+                    M[i - 1][j - 1] = nCr(
                         x[j][u] - x[i][u - 1] + y[j][u] - y[i][u - 1],
                         x[j][u] - x[i][u - 1] + j - i,
                     )
-                    P[i - 1][j - 1] = comb(
+                    P[i - 1][j - 1] = nCr(
                         x[u][j] - x[u - 1][i] + y[u - 1][i] - y[u][j],
                         x[u][j] - x[u - 1][i] + j - i,
                     )

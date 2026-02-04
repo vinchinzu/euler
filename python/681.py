@@ -1,121 +1,155 @@
 """Project Euler Problem 681: Maximal Area.
 
-Find the sum a+b+c+d of all integer quadruples a≤b≤c≤d such that the maximum
-area of a quadrilateral with sides a,b,c,d is an integer at most N.
+Find SP(10^6): sum of a+b+c+d over all a<=b<=c<=d such that the maximum
+area M(a,b,c,d) of a quadrilateral with those sides is a positive integer <= N.
 
-The maximum area of a quadrilateral with sides a,b,c,d is that of a cyclic
-quadrilateral, whose area is given by Brahmagupta's Formula:
-K = √(s-a)(s-b)(s-c)(s-d). We can iterate over each value of K, and find four
-values s-d ≤ s-c ≤ s-b ≤ s-a that multiply to K². We do this by first iterating
-over divisors (s-d, s-c), and then noting the following restrictions on s-a.
+M(a,b,c,d) = sqrt((s-a)(s-b)(s-c)(s-d)) where s=(a+b+c+d)/2 (Brahmagupta).
+Let w=s-d, x=s-c, y=s-b, z=s-a with w<=x<=y<=z, w>=1, z<w+x+y.
+Then wxyz = K^2 where K = M, and a+b+c+d = w+x+y+z.
 
-First, s-a must be at least large enough such that s-b ≤ s-a =>
-s-a ≥ √K²/((s-c)(s-d)).
-Second, s-a must not be so large that s-b = K²/((s-a)(s-c)(s-d)) becomes
-smaller than s-c.
-Finally, s-a must not be so large that the quadrilateral no longer satisfies
-the "triangle" inequality, s-a ≤ (s-b) + (s-c) + (s-d).
+Split into two cases:
+- D=0 (z=y): wx must be a perfect square. Closed-form sum per (w,x) pair.
+- D>0 (z>y): For each K, enumerate divisor triples of K^2. Parallelized.
 
-Finally, we have the parity constraint, so (s-a) + (s-b) + (s-c) + (s-d) must
-be even. Given these requirements, it is straightforward to sum a+b+c+d over all
-such quadrilaterals.
+Implemented in C with OpenMP for performance.
 """
 
 from __future__ import annotations
 
-from collections import Counter
-from math import ceil, sqrt
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def build_spf(limit: int) -> list[int]:
-    """Build smallest prime factor array."""
-    spf = list(range(limit + 1))
-    for i in range(2, int(limit**0.5) + 1):
-        if spf[i] == i:
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
-
-
-def prime_factor(n: int, spf: list[int]) -> dict[int, int]:
-    """Get prime factorization."""
-    factors: dict[int, int] = {}
-    while n > 1:
-        p = spf[n]
-        count = 0
-        while n % p == 0:
-            n //= p
-            count += 1
-        factors[p] = count
-    return factors
-
-
-def all_divisors(n: int, prime_factors: set[int]) -> list[int]:
-    """Get all divisors given prime factors."""
-    factor_counts = Counter(prime_factors)
-    divisors = [1]
-    for prime, count in factor_counts.items():
-        new_divisors = []
-        for d in divisors:
-            power = 1
-            for _ in range(count + 1):
-                new_divisors.append(d * power)
-                power *= prime
-        divisors = new_divisors
-    return sorted(set(divisors))
-
-
-def fcb(n: int) -> int:
-    """Cube of n."""
-    return n * n * n
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
-    """Solve Problem 681."""
-    N = 1000000
-    spf = build_spf(N)
-    ans = 0
+    """Solve Problem 681 using compiled C."""
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <omp.h>
 
-    for K in range(1, N + 1):
-        k_sq = sq(K)
-        factors = prime_factor(k_sq, spf)
-        divisors = all_divisors(k_sq, set(factors.keys()))
-        divisors.sort()
+#define MAXN 1000001
+static int spf[MAXN];
 
-        for di, d in enumerate(divisors):
-            if d**4 > k_sq:
-                break
-            for ci in range(di, len(divisors)):
-                c = divisors[ci]
-                if d * fcb(c) > k_sq:
-                    break
-                ab = k_sq // (c * d)
-                if ab * c * d != k_sq:
-                    continue
-                start_val = ceil(sqrt(ab))
-                start_ai = 0
-                for i, div in enumerate(divisors):
-                    if div >= start_val:
-                        start_ai = i
-                        break
-                for ai in range(start_ai, len(divisors)):
-                    a = divisors[ai]
-                    if ab % a != 0:
-                        continue
-                    b = ab // a
-                    total_sum = a + b + c + d
-                    if b < c or total_sum <= 2 * a:
-                        break
-                    if a * b == ab and total_sum % 2 == 0:
-                        ans += total_sum
+void sieve(void) {
+    for (int i = 0; i < MAXN; i++) spf[i] = i;
+    for (int i = 2; i * i < MAXN; i++)
+        if (spf[i] == i)
+            for (int j = i * i; j < MAXN; j += i)
+                if (spf[j] == j) spf[j] = i;
+}
 
-    return ans
+int main(void) {
+    long long N = 1000000;
+    long long N2 = N * N;
+    sieve();
+
+    /* Case 1: D=0 (z=y). Then wxyz = wxy^2 must be perfect square, */
+    /* so wx must be perfect square. Sum = w+x+2y, must be even => w+x even. */
+    /* K = y*sqrt(wx) <= N => y <= N/sqrt(wx). Closed form sum. */
+    long long ans = 0;
+    for (long long w = 1; w*w*w*w <= N2; w++) {
+        for (long long x = w; w*x*x*x <= N2; x++) {
+            long long wx = w * x;
+            long long swx = (long long)sqrt((double)wx);
+            if (swx * swx != wx) continue;
+            if ((w + x) & 1) continue;
+            long long y_max = N / swx;
+            if (y_max < x) continue;
+            long long count = y_max - x + 1;
+            ans += count * (w + x + x + y_max);
+        }
+    }
+
+    /* Case 2: D>0 (z>y). For each K, enumerate (w,x,y) divisor triples */
+    /* of K^2 with w<=x<=y, z=K^2/(wxy) > y, z < w+x+y. */
+    long long ans_dpos = 0;
+
+    #pragma omp parallel reduction(+:ans_dpos)
+    {
+        long long divs[4096];
+
+        #pragma omp for schedule(dynamic, 32) nowait
+        for (int K = 4; K <= N; K++) {
+            if (spf[K] == K) continue; /* skip primes: they contribute nothing */
+
+            int prms[20], exps[20], np = 0;
+            int tmp = K;
+            while (tmp > 1) {
+                int p = spf[tmp];
+                prms[np] = p; exps[np] = 0;
+                while (tmp % p == 0) { tmp /= p; exps[np]++; }
+                exps[np] *= 2;
+                np++;
+            }
+
+            long long k2 = (long long)K * K;
+            int nd = 0;
+            divs[nd++] = 1;
+            for (int i = 0; i < np; i++) {
+                int old = nd;
+                long long pp = 1;
+                for (int e = 0; e < exps[i]; e++) {
+                    pp *= prms[i];
+                    for (int j = 0; j < old; j++)
+                        divs[nd++] = divs[j] * pp;
+                }
+            }
+            /* Insertion sort */
+            for (int i = 1; i < nd; i++) {
+                long long key = divs[i];
+                int j = i - 1;
+                while (j >= 0 && divs[j] > key) { divs[j+1] = divs[j]; j--; }
+                divs[j+1] = key;
+            }
+
+            for (int i = 0; i < nd; i++) {
+                long long w = divs[i];
+                if (w*w*w*w > k2) break;
+                long long r1 = k2 / w;
+                for (int j = i; j < nd; j++) {
+                    long long x = divs[j];
+                    if (x*x*x > r1) break;
+                    if (r1 % x != 0) continue;
+                    long long r2 = r1 / x;
+                    for (int l = j; l < nd; l++) {
+                        long long y = divs[l];
+                        if (y*y > r2) break;
+                        if (r2 % y != 0) continue;
+                        long long z = r2 / y;
+                        if (z <= y) continue;
+                        if (z >= w+x+y) continue;
+                        long long total = w+x+y+z;
+                        if (total & 1) continue;
+                        ans_dpos += total;
+                    }
+                }
+            }
+        }
+    }
+
+    printf("%lld\n", ans + ans_dpos);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O3', '-march=native', '-fopenmp',
+                       '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                check=True, timeout=27)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
 def main() -> int:

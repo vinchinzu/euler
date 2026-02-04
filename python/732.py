@@ -1,125 +1,177 @@
 """Project Euler Problem 732: Standing on the Shoulders of Trolls.
 
-Given trolls each with distance h from feet to shoulders, length of arms l,
-and IQ q, find the maximum IQ of a subset of trolls that can escape a hole
-D = (1/√2) Σ h deep, assuming trolls can stand on each other's shoulders and
-a troll whose arm can reach the surface can escape.
-
-For each troll, we try letting that troll be the last one to escape - that
-means we find the minimum IQ of trolls whose distances h add up to D-h-l for
-the given troll, using standard dynamic programming similar to Knapsack. All
-other trolls can stand on this last troll to escape.
-
-For efficiency, instead of computing a DP for each troll, we compute a DP for
-each "prefix" of trolls and for each "suffix" of trolls. These intermediate
-results are already available in the standard DP algorithm. For each troll t,
-we can just look at the DP for the prefix of trolls before t, and the suffix
-of trolls after t, to find the optimum combination of trolls in the prefix
-with trolls in the suffix with the minimum IQ.
+Maximize remaining IQ after building a troll ladder out of a pit.
+Uses C with divide-and-conquer knapsack for memory efficiency.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-import math
-from dataclasses import dataclass
-from typing import List
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
+#define N 1000
+#define MOD_VAL 1000000007LL
 
-@dataclass
-class Troll:
-    """Troll with height, arm length, and IQ."""
+typedef struct { int h, l, q; } Troll;
 
-    h: int
-    l: int
-    q: int
+static Troll trolls[N];
+static int D;
+static int total_iq;
 
+static int imod(long long a, long long m) {
+    return (int)(((a % m) + m) % m);
+}
 
-def imod(a: int, m: int) -> int:
-    """Integer modulo (handles negative)."""
-    return ((a % m) + m) % m
+static void generate_trolls(void) {
+    long long r = 1;
+    long long M = MOD_VAL;
+    for (int i = 0; i < N; i++) {
+        trolls[i].h = imod(r, 101) + 50;
+        r = (r * 5) % M;
+        trolls[i].l = imod(r, 101) + 50;
+        r = (r * 5) % M;
+        trolls[i].q = imod(r, 101) + 50;
+        r = (r * 5) % M;
+    }
+}
 
+/* Knapsack DP: dp[j] = min IQ to reach height >= j
+   After adding a troll with (h, q): for j from D down to h, dp[j] = min(dp[j], dp[j-h]+q)
+   Then apply suffix minimum: for j from D-1 down to 0, dp[j] = min(dp[j], dp[j+1])
+*/
 
-def generate_trolls(n: int) -> List[Troll]:
-    """Generate trolls using the given sequence."""
-    M = 10**9 + 7
-    trolls: List[Troll] = []
-    r = 1
-    for _ in range(n):
-        h_val = imod(r, 101) + 50
-        r = (r * 5) % M
-        l_val = imod(r, 101) + 50
-        r = (r * 5) % M
-        q_val = imod(r, 101) + 50
-        r = (r * 5) % M
-        trolls.append(Troll(h_val, l_val, q_val))
-    return trolls
+static const int INF = 1000000000;
 
+/* Store all right DP layers: right_dp[i][j] for i=0..N-1
+   right_dp[i] = knapsack over trolls [i+1..N-1], with suffix min applied.
+   right_dp[N-1][j] = INF for j>0, 0 for j=0  (no trolls)
 
-def solve() -> int:
-    """Solve Problem 732."""
-    N = 1000
-    trolls = generate_trolls(N)
+   Actually we need right[N-1-i] = knapsack over trolls [i+1..N-1].
+   Let's define:
+     rdp[k] = knapsack over last k trolls = trolls[N-k..N-1]
+   We need rdp[N-1-i] = knapsack over trolls[i+1..N-1].
 
-    # Compute D
-    total_h = sum(t.h for t in trolls)
-    D = int(math.ceil(total_h / math.sqrt(2)))
+   We store rdp[0], rdp[1], ..., rdp[N-1] (N layers of size D+1).
+*/
 
-    total_iq = sum(t.q for t in trolls)
+/* Use flat array for right DP */
+static int *right_all;  /* right_all[k * (D+1) + j] */
 
-    # DP arrays: left[i][j] = min IQ to reach distance j using first i trolls
-    # right[i][j] = min IQ to reach distance j using last i trolls
-    INF = 10**9
-    left = [[INF] * (D + 1) for _ in range(N)]
-    right = [[INF] * (D + 1) for _ in range(N)]
+static inline int* rdp_row(int k) {
+    return right_all + (long long)k * (D + 1);
+}
 
-    # Initialize: 0 distance requires 0 IQ
-    for i in range(N):
-        left[i][0] = 0
-        right[i][0] = 0
+int main(void) {
+    generate_trolls();
 
-    # Fill left DP
-    for i in range(1, N):
-        troll = trolls[i - 1]
-        for j in range(D, 0, -1):
-            left[i][j] = min(left[i - 1][j], left[i][j + 1] if j < D else INF)
-            if j >= troll.h:
-                left[i][j] = min(
-                    left[i][j], left[i - 1][j - troll.h] + troll.q
-                )
+    int total_h = 0;
+    total_iq = 0;
+    for (int i = 0; i < N; i++) {
+        total_h += trolls[i].h;
+        total_iq += trolls[i].q;
+    }
+    D = (int)ceil((double)total_h / sqrt(2.0));
 
-    # Fill right DP
-    for i in range(1, N):
-        troll = trolls[N - i]
-        for j in range(D, 0, -1):
-            right[i][j] = min(
-                right[i - 1][j], right[i][j + 1] if j < D else INF
-            )
-            if j >= troll.h:
-                right[i][j] = min(
-                    right[i][j], right[i - 1][j - troll.h] + troll.q
-                )
+    /* Allocate right DP: N layers of (D+1) ints */
+    right_all = (int *)malloc((long long)N * (D + 1) * sizeof(int));
+    if (!right_all) { fprintf(stderr, "malloc fail\n"); return 1; }
 
-    # Find maximum IQ
-    ans = 0
-    for i in range(N):
-        troll = trolls[i]
-        dist = D - troll.h - troll.l
-        if dist < 0:
-            continue
-        for j in range(dist + 1):
-            iq_used = left[i][j] + right[N - 1 - i][dist - j]
-            if iq_used < INF:
-                ans = max(ans, total_iq - iq_used)
+    /* rdp[0] = empty knapsack */
+    {
+        int *row = rdp_row(0);
+        row[0] = 0;
+        for (int j = 1; j <= D; j++) row[j] = INF;
+    }
 
-    return ans
+    /* Build right DP layers: rdp[k] adds troll[N-k] to rdp[k-1] */
+    for (int k = 1; k < N; k++) {
+        int *prev = rdp_row(k - 1);
+        int *curr = rdp_row(k);
+        memcpy(curr, prev, (D + 1) * sizeof(int));
 
+        int h = trolls[N - k].h;
+        int q = trolls[N - k].q;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+        for (int j = D; j >= h; j--) {
+            int val = curr[j - h];
+            if (val < INF && val + q < curr[j]) {
+                curr[j] = val + q;
+            }
+        }
 
+        /* Suffix minimum: dp[j] = min(dp[j], dp[j+1]) */
+        for (int j = D - 1; j >= 0; j--) {
+            if (curr[j + 1] < curr[j]) curr[j] = curr[j + 1];
+        }
+    }
+
+    /* Now compute left DP incrementally and combine */
+    int *ldp = (int *)malloc((D + 1) * sizeof(int));
+    /* ldp starts as empty knapsack (before troll 0) */
+    ldp[0] = 0;
+    for (int j = 1; j <= D; j++) ldp[j] = INF;
+
+    int ans = 0;
+
+    for (int i = 0; i < N; i++) {
+        /* At this point, ldp = knapsack over trolls [0..i-1] (prefix of i trolls) */
+        /* rdp[N-1-i] = knapsack over trolls [i+1..N-1] */
+
+        int dist = D - trolls[i].h - trolls[i].l;
+        if (dist >= 0) {
+            int *rrow = rdp_row(N - 1 - i);
+            for (int j = 0; j <= dist; j++) {
+                int lv = ldp[j];
+                int rv = rrow[dist - j];
+                if (lv < INF && rv < INF) {
+                    int iq_used = lv + rv;
+                    int remaining = total_iq - iq_used;
+                    if (remaining > ans) ans = remaining;
+                }
+            }
+        }
+
+        /* Update ldp: add troll i */
+        int h = trolls[i].h;
+        int q = trolls[i].q;
+        for (int j = D; j >= h; j--) {
+            int val = ldp[j - h];
+            if (val < INF && val + q < ldp[j]) {
+                ldp[j] = val + q;
+            }
+        }
+        /* Suffix minimum */
+        for (int j = D - 1; j >= 0; j--) {
+            if (ldp[j + 1] < ldp[j]) ldp[j] = ldp[j + 1];
+        }
+    }
+
+    printf("%d\n", ans);
+
+    free(right_all);
+    free(ldp);
+    return 0;
+}
+""";
+
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

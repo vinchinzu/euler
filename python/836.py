@@ -9,22 +9,31 @@ import re
 
 
 def solve() -> str:
-    """Solve Problem 836."""
-    # Read the problem statement and extract bolded words
-    # This is a simple text processing problem
-    text = """
-    <b>April</b> <b>Fools</b> <b>Joke</b>
+    """Solve Problem 836.
+
+    The problem is an April Fools joke (published 2023-04-01).
+    It presents mathematical jargon with specific bolded words/phrases:
+      - affine plane
+      - radically integral local field
+      - open oriented line section
+      - jacobian
+      - orthogonal kernel embedding
+    The answer is the concatenation of the first letters of each bolded word.
     """
+    # The problem statement contains these bolded phrases in order.
+    # We extract the first letter of each individual word within them.
+    text = (
+        '<b>affine plane</b> over a <b>radically integral local field</b> '
+        '<b>open oriented line section</b> '
+        '<b>jacobian</b> associated to the <b>orthogonal kernel embedding</b>'
+    )
     pattern = re.compile(r"<b>([^<]*)</b>")
     ans = ""
-    for line in text.split("\n"):
-        matches = pattern.finditer(line)
-        for match in matches:
-            parts = match.group(1).split()
-            for part in parts:
-                if part:
-                    ans += part[0]
-    return ans.lower()
+    for match in pattern.finditer(text):
+        for word in match.group(1).split():
+            if word:
+                ans += word[0]
+    return ans
 
 
 def main() -> str:

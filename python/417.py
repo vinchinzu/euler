@@ -1,159 +1,178 @@
+#!/usr/bin/env python3
 """Project Euler Problem 417: Reciprocal cycles II.
 
-Let L(n) be the length of the repeating decimal of 1/n. Find sum_{n=3}^N L(n).
+Compute sum_{n=3}^{10^8} L(n) where L(n) is the period length of 1/n.
 
-If n is divisible by 2, then L(n) = L(n/2). Similarly, if n is divisible by 5,
-then L(n) = L(n/5). So we only need to compute L(n) when GCD(n, 10) = 1.
+Approach: For n coprime to 10, L(n) = multiplicative order of 10 mod n.
+L(2^a * 5^b * m) = L(m) where gcd(m,10) = 1.
 
-If GCD(n, 10) = 1, then L(n) is the order of 10 modulo n. For n = a*b where
-a and b are relatively prime, this is L(n) = LCM(L(a), L(b)). For n a prime
-power p^e, we can use the relation L(n) = L(p) or p L(p), and simply check
-whether 10^L(p) ≡ 1. Finally, if n is a prime, then the order must divide
-n - 1. We start with n - 1 and repeatedly try dividing out factors of n - 1.
-The final number must be the order L(n).
+For primes p coprime to 10: L(p) = ord_10(p), computed using SPF sieve
+to factor p-1 quickly.
+
+For the final sum, we compute L(n) for each n by factoring n (via SPF)
+and taking LCM of L(p^e) values.
+
+The key optimization: use SPF to factor p-1 in O(log p) time instead of
+O(sqrt(p)) trial division.
+
+Uses C compiled with -O3 for performance.
+"""
+import os
+import subprocess
+import tempfile
+
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define NMAX 100000001
+
+typedef long long ll;
+typedef unsigned long long ull;
+typedef __uint128_t u128;
+
+/* Use byte-packed SPF: store the index of the smallest prime factor */
+/* For numbers up to 10^8, smallest prime factor is at most 10^4 */
+/* But we need the actual factor, not just an index */
+/* Use int array */
+static int spf[NMAX];
+static int ord10[NMAX];  /* ord_10(p) for primes p, else 0 */
+
+/* Fast pow_mod for mod < 2^31: use 64-bit for intermediate products */
+static inline unsigned int pow_mod_32(unsigned int base, unsigned int exp, unsigned int mod) {
+    ull result = 1;
+    ull b = base % mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * b % mod;
+        b = b * b % mod;
+        exp >>= 1;
+    }
+    return (unsigned int)result;
+}
+
+/* pow_mod for larger moduli */
+static inline ll pow_mod_big(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = (u128)result * base % mod;
+        base = (u128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+static inline ll gcd_ll(ll a, ll b) { while (b) { ll t = b; b = a % b; a = t; } return a; }
+static inline ll lcm_ll(ll a, ll b) { if (a == 0) return b; if (b == 0) return a; return a / gcd_ll(a, b) * b; }
+
+int main() {
+    int N = 100000000;
+
+    /* Sieve smallest prime factors */
+    /* Initialize with 0 (meaning "is prime" if still 0 after sieve, except 0 and 1) */
+    memset(spf, 0, sizeof(spf));
+    for (int i = 2; (ll)i * i <= N; i++) {
+        if (spf[i] == 0) {  /* i is prime */
+            for (int j = i * i; j <= N; j += i) {
+                if (spf[j] == 0) spf[j] = i;
+            }
+        }
+    }
+    /* spf[p] == 0 means p is prime (for p >= 2) */
+    /* For composites, spf gives the smallest prime factor */
+
+    /* Compute ord_10(p) for all primes p != 2, 5 */
+    memset(ord10, 0, sizeof(ord10));
+    for (int p = 3; p <= N; p++) {
+        if (spf[p] != 0 || p == 2 || p == 5) continue; /* skip composites and 2, 5 */
+
+        /* Factor p-1 using spf */
+        unsigned int result = (unsigned int)(p - 1);
+        int temp = p - 1;
+        while (temp > 1) {
+            int q;
+            if (spf[temp] == 0) q = temp;
+            else q = spf[temp];
+
+            while (temp % q == 0) temp /= q;
+            while (result % q == 0 && pow_mod_32(10, result / q, p) == 1)
+                result /= q;
+        }
+        ord10[p] = (int)result;
+    }
+
+    /* Compute sum of L(n) for n = 3..N */
+    ll total = 0;
+    for (int n = 3; n <= N; n++) {
+        int temp = n;
+        while (temp % 2 == 0) temp /= 2;
+        while (temp % 5 == 0) temp /= 5;
+        if (temp <= 1) continue;
+
+        /* If temp is prime, use cached order */
+        if (spf[temp] == 0) {
+            total += ord10[temp];
+            continue;
+        }
+
+        /* Factor temp, compute LCM of L(p^e) */
+        ll result = 0;
+        int t = temp;
+        while (t > 1) {
+            int p;
+            if (spf[t] == 0) p = t;
+            else p = spf[t];
+
+            int e = 0;
+            while (t % p == 0) { t /= p; e++; }
+
+            ll Lp = ord10[p];
+            if (Lp == 0) continue;
+
+            ll Lpe = Lp;
+            if (e >= 2) {
+                ll pp = (ll)p * p;
+                if (pow_mod_big(10, Lp, pp) == 1) {
+                    int e0 = 2;
+                    ll ppow = pp;
+                    for (int i = 3; i <= e; i++) {
+                        ppow *= p;
+                        if (pow_mod_big(10, Lp, ppow) == 1) e0 = i; else break;
+                    }
+                    for (int i = e0; i < e; i++) Lpe *= p;
+                } else {
+                    for (int i = 1; i < e; i++) Lpe *= p;
+                }
+            }
+            result = lcm_ll(result, Lpe);
+        }
+        total += result;
+    }
+
+    printf("%lld\n", total);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p417.c")
+    exe_file = os.path.join(tmpdir, "p417")
 
-from math import gcd, isqrt
-from typing import Dict, List
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
+    subprocess.run(
+        ["gcc", "-O3", "-march=native", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-def sieve_spf(limit: int) -> List[int]:
-    """Sieve to find smallest prime factor (SPF) for each number."""
-    spf = list(range(limit + 1))
-    spf[0] = spf[1] = 0
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] == i:  # i is prime
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
-
-
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes to find all primes up to limit."""
-    if limit < 2:
-        return []
-    sieve = [True] * (limit + 1)
-    sieve[0] = sieve[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if sieve[i]:
-            for j in range(i * i, limit + 1, i):
-                sieve[j] = False
-    return [i for i in range(2, limit + 1) if sieve[i]]
-
-
-def lcm(a: int, b: int) -> int:
-    """Compute least common multiple of a and b."""
-    if a == 0 or b == 0:
-        return 0
-    return a * b // gcd(a, b)
-
-
-def multiplicative_order(base: int, p: int) -> int:
-    """Find the multiplicative order of base modulo prime p."""
-    if gcd(base, p) != 1:
-        return 0
-    
-    # Factor p - 1
-    phi = p - 1
-    factors: Dict[int, int] = {}
-    temp = phi
-    d = 2
-    while d * d <= temp:
-        if temp % d == 0:
-            count = 0
-            while temp % d == 0:
-                temp //= d
-                count += 1
-            factors[d] = count
-        d += 1
-    if temp > 1:
-        factors[temp] = 1
-    
-    order = phi
-    for q, exp in factors.items():
-        q_pow = q ** exp
-        while order % q == 0 and pow(base, order // q, p) == 1:
-            order //= q
-    
-    return order
-
-
-def compute_l(n: int, orders: Dict[int, int], spf: List[int]) -> int:
-    """Compute L(n) using precomputed orders and SPF."""
-    # Remove factors of 2 and 5
-    temp = n
-    while temp % 2 == 0:
-        temp //= 2
-    while temp % 5 == 0:
-        temp //= 5
-    
-    if temp == 1:
-        return 0
-    
-    # Get distinct primes
-    distinct_primes: List[int] = []
-    t = temp
-    while t > 1:
-        p = spf[t]
-        if p not in distinct_primes:
-            distinct_primes.append(p)
-        while t % p == 0:
-            t //= p
-    
-    # LCM of orders of distinct primes
-    result = 1
-    for p in distinct_primes:
-        if p not in orders:
-            return 0  # Should not happen if precomputed correctly
-        result = lcm(result, orders[p])
-    
-    return result
-
-
-def decimal_cycle_lengths(n_max: int, base: int = 10) -> List[int]:
-    """Compute decimal cycle lengths for all numbers up to n_max."""
-    spf = sieve_spf(n_max)
-    primes = sieve_primes(n_max)
-    
-    # Precompute multiplicative orders for primes (excluding 2 and 5)
-    orders: Dict[int, int] = {}
-    for p in primes:
-        if p != 2 and p != 5:
-            orders[p] = multiplicative_order(base, p)
-    
-    lengths = [0] * (n_max + 1)
-    
-    # Compute lengths for all numbers
-    for n in range(2, n_max + 1):
-        if n % 2 == 0:
-            lengths[n] = lengths[n // 2]
-        elif n % 5 == 0:
-            lengths[n] = lengths[n // 5]
-        else:
-            lengths[n] = compute_l(n, orders, spf)
-    
-    return lengths
-
-
-def solve() -> int:
-    """Solve Problem 417."""
-    N = 10**8
-    B = 10
-    
-    lengths = decimal_cycle_lengths(N, B)
-    result = sum(lengths[n] for n in range(3, N + 1))
-    return result
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True,
+        timeout=60
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

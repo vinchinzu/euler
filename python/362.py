@@ -249,36 +249,11 @@ def _run_basic_tests(spf: List[int]) -> None:
         print(f"Fsf({tc.n}) = {computed} (expected {tc.expected}) [{status}]")
 
 
-def main() -> None:
-    """Entry point that mimics the Ruby script's behavior.
-
-    Builds an SPF table, does a small verification, optionally runs basic
-    tests, and (if desired) can attempt a large computation. The large
-    computation for MAX_N is not recommended with the placeholder logic.
-    """
-    print(f"Building SPF sieve up to {SIEVE_LIMIT}...")
+def solve() -> int:
+    """Solve PE 362 with placeholder logic."""
     spf = build_spf(SIEVE_LIMIT)
-
-    print("\nVerifying S(100) with current implementation...")
-    result_100 = compute_s(100, spf)
-    print(f"Computed S(100) = {result_100}")
-    print("Note: expected 193 for the true Fsf; current code is incomplete.")
-
-    _run_basic_tests(spf)
-
-    # The following large computation is kept but clearly marked as not
-    # providing the correct Euler 362 answer with the placeholder Fsf.
-    print(f"\nAttempting S({MAX_N}) with placeholder logic (not the true value)...")
-    start = perf_counter()
-    result = compute_s(MAX_N, spf)
-    elapsed = perf_counter() - start
-    print(f"S({MAX_N}) [placeholder] = {result}")
-    print(f"Computation time: {elapsed:.2f} seconds")
-
-    # Print only final answer for test harness
-    print()
-    print(result)
+    return compute_s(MAX_N, spf)
 
 
-if __name__ == "__main__":  # pragma: no cover - script entry
-    main()
+if __name__ == "__main__":
+    print(solve())

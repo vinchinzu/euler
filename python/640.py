@@ -1,57 +1,93 @@
 """Project Euler Problem 640: Shut the Box.
 
-Bob starts with cards (1, 2, ... 2N) face up on a table. At every turn, Bob
-rolls two N-sided dice to get (x, y) and must flip either card x, y, or x+y.
-Find the expected number of turns to flip all cards face down given an optimal
-strategy.
-
-We iteratively improve the expected number of turns starting from each of the
-2^(2N) states of cards, until the probabilities do not change.
+Bob has cards 1..12 face-up. Each turn rolls two 6-sided dice (x,y),
+must toggle exactly one card from {x, y, x+y}. Optimal strategy.
+Uses value iteration with in-place updates (Gauss-Seidel).
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
 
-def solve() -> float:
-    """Solve Problem 640."""
-    N = 6
-    L = 1 << (2 * N)
+def solve():
+    # Use C for speed - value iteration over 4096 states
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
 
-    X = [0.0] * L
+#define N 6
+#define CARDS 12
+#define GOAL ((1 << CARDS) - 1)
+#define NUM_STATES (1 << CARDS)
 
-    while True:
-        new_X = [0.0] * L
-        for i in range(L - 1):
-            new_X[i] = 1.0
-            for x in range(1, N + 1):
-                for y in range(x, N + 1):
-                    card_to_flip = x - 1
-                    best_prob = X[i ^ (1 << card_to_flip)]
+double E[NUM_STATES];
 
-                    prob = X[i ^ (1 << (y - 1))]
-                    if prob < best_prob:
-                        card_to_flip = y - 1
-                        best_prob = prob
+int main() {
+    int s, x, y, c, iteration;
+    double total, best, val, new_val, max_change;
 
-                    prob_xy = X[i ^ (1 << (x + y - 1))]
-                    if prob_xy < best_prob:
-                        card_to_flip = x + y - 1
+    // Initialize
+    for (s = 0; s < NUM_STATES; s++) {
+        E[s] = (s == GOAL) ? 0.0 : 100.0;
+    }
 
-                    multiplier = 1.0 if x == y else 2.0
-                    new_X[i] += X[i ^ (1 << card_to_flip)] / (N * N) * multiplier
+    for (iteration = 0; iteration < 1000000; iteration++) {
+        max_change = 0.0;
+        for (s = 0; s < NUM_STATES; s++) {
+            if (s == GOAL) continue;
 
-        if all(abs(X[i] - new_X[i]) < 1e-10 for i in range(L)):
-            break
-        X = new_X
+            total = 0.0;
+            for (x = 1; x <= N; x++) {
+                for (y = 1; y <= N; y++) {
+                    // Options: flip card x, y, or x+y (toggle)
+                    int opts[3] = {x, y, x + y};
+                    best = 1e18;
+                    for (int i = 0; i < 3; i++) {
+                        c = opts[i];
+                        if (c >= 1 && c <= CARDS) {
+                            val = E[s ^ (1 << (c - 1))];
+                            if (val < best) best = val;
+                        }
+                    }
+                    total += best;
+                }
+            }
 
-    return X[0]
+            new_val = 1.0 + total / (N * N);
+            double change = fabs(new_val - E[s]);
+            if (change > max_change) max_change = change;
+            E[s] = new_val;
+        }
+
+        if (max_change < 1e-12) break;
+    }
+
+    printf("%.6f\n", E[0]);
+    return 0;
+}
+"""
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                      check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True,
+                              timeout=30)
+        return result.stdout.strip()
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
-def main() -> float:
-    """Main entry point."""
+def main():
     result = solve()
-    print(f"{result:.6f}")
-    return result
+    print(result)
 
 
 if __name__ == "__main__":

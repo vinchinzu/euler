@@ -1,69 +1,95 @@
 """Project Euler Problem 400: Fibonacci Tree Game.
 
-Consider a Fibonacci tree where T(0) is empty, T(1) consists of one node,
-and T(k) consists of a node with T(k-1) and T(k-2) as children. If two
-players play a game where each player removes a node and all that node's
-children, then find the number of winning first moves for the first player
-when playing with T(N).
+Compute number of winning first moves g(N, 1) for N=10000.
 
-Define f(T) to be the Nim value of the game consisting of the tree T with
-an additional node above the root, i.e. the Nim value of the game with T(k)
-is f(T_k) - 1. According to the Colon Principle in Hackenbush theory, if
-T has subtrees T1 and T2, then f(T) = (f(T1) ^ f(T2)) + 1.
+f(k) = (f(k-1) XOR f(k-2)) + 1, f(0)=0, f(1)=1.
+g(k, n) counts moves from T_k resulting in Nim value n.
+Recurrence:
+  g(k, (n XOR f(k-2)) + 1) += g(k-1, n)  for all n
+  g(k, (f(k-1) XOR n) + 1) += g(k-2, n)  for all n
+  g(k, 0) = 1  (clip entire tree)
 
-Define g(k, n) to be the number of moves from T_k that results in a tree T
-with f(T) = n. Note there are g(k-1, n) moves that clip the left subtree
-into something with Nim value n. This means that the entire clipped tree
-will have Nim value (n ^ f(T_{k-2})) + 1, and we can increment g(k,
-(n ^ f(T_{k-2})) + 1) by that amount. Similarly, we can increment g(k,
-(f(T_{k-1}) ^ n) + 1) by g(k-2, n) for all n. Finally, it is possible to
-clip the entire tree into an empty tree with Nim value 0, so g(k, 0) = 1.
-
-The answer is g(N, 1), because a winning move results in a tree T with
-f(T) - 1 = 0.
+Answer is g(10000, 1) mod 10^18.
+Uses C for speed since the inner loops are large.
 """
+import subprocess, os, tempfile
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#define N 10000
+#define L 8192  /* max Nim value is 8191 */
+#define MOD 1000000000000000000LL  /* 10^18 */
 
-def iceil_pow(n: int, exp: int) -> int:
-    """Return smallest power of 2 >= n."""
-    result = 1
-    while result < n:
-        result <<= 1
-    return result
+typedef long long ll;
 
+/* We only need g[k-1] and g[k-2] at any time */
+ll g_prev[L + 1];   /* g[k-1] */
+ll g_prev2[L + 1];  /* g[k-2] */
+ll g_cur[L + 1];    /* g[k] */
 
-def solve() -> int:
-    """Solve Problem 400."""
-    N = 10000
-    L = iceil_pow(N, 2)
-    M = 10**18
+int f[N + 1];
 
-    f = [0] * (N + 1)
-    f[1] = 1
-    g = [[0] * (L + 1) for _ in range(N + 1)]
-    g[1][0] = 1
+int main() {
+    /* Compute f values */
+    f[0] = 0;
+    f[1] = 1;
+    for (int k = 2; k <= N; k++)
+        f[k] = (f[k-1] ^ f[k-2]) + 1;
 
-    for k in range(2, N + 1):
-        f[k] = (f[k - 1] ^ f[k - 2]) + 1
-        for n in range(L):
-            g[k][(n ^ f[k - 2]) + 1] += g[k - 1][n]
-        for n in range(L):
-            g[k][(f[k - 1] ^ n) + 1] += g[k - 2][n]
-        g[k][0] = 1
-        for i in range(L + 1):
-            g[k][i] %= M
+    /* Initialize g[0] and g[1] */
+    /* g[0]: T(0) is empty, only move is "no move" -> not applicable */
+    /* Actually g[0] is never used since T(0) is empty */
+    /* g[1]: T(1) is one node. Moves: clip the node -> empty tree -> Nim value 0 */
+    /* So g[1][0] = 1, rest = 0 */
+    memset(g_prev2, 0, sizeof(g_prev2));  /* g[0] - all zeros */
+    memset(g_prev, 0, sizeof(g_prev));    /* g[1] */
+    g_prev[0] = 1;
 
-    return g[N][1]
+    for (int k = 2; k <= N; k++) {
+        memset(g_cur, 0, sizeof(g_cur));
 
+        /* From left subtree T(k-1): g(k, (n ^ f(k-2)) + 1) += g(k-1, n) */
+        int fk2 = f[k-2];
+        for (int n = 0; n < L; n++) {
+            if (g_prev[n] == 0) continue;
+            int target = (n ^ fk2) + 1;
+            if (target <= L)
+                g_cur[target] = (g_cur[target] + g_prev[n]) % MOD;
+        }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+        /* From right subtree T(k-2): g(k, (f(k-1) ^ n) + 1) += g(k-2, n) */
+        int fk1 = f[k-1];
+        for (int n = 0; n < L; n++) {
+            if (g_prev2[n] == 0) continue;
+            int target = (fk1 ^ n) + 1;
+            if (target <= L)
+                g_cur[target] = (g_cur[target] + g_prev2[n]) % MOD;
+        }
 
+        /* Clip entire tree -> Nim value 0 */
+        g_cur[0] = (g_cur[0] + 1) % MOD;
+
+        /* Rotate: g_prev2 <- g_prev, g_prev <- g_cur */
+        memcpy(g_prev2, g_prev, sizeof(g_prev));
+        memcpy(g_prev, g_cur, sizeof(g_cur));
+    }
+
+    printf("%lld\n", g_cur[1]);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol400.c")
+    exe = os.path.join(tmpdir, "sol400")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=30)
+    print(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    solve()

@@ -1,38 +1,27 @@
 """Project Euler Problem 528: Constrained Sums.
 
-Let S(n, k, b) be the number of solutions to x_1 + x_2 + ... + x_k ≤ n,
-where 0 ≤ x_m ≤ b^m for all m. Find Σ_{L≤k≤H} S(10^k, k, k).
+Let S(n, k, b) be the number of solutions to x_1 + x_2 + ... + x_k <= n,
+where 0 <= x_m <= b^m for all m. Find sum_{L<=k<=H} S(10^k, k, k).
 """
 
 from __future__ import annotations
 
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Fast exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp % 2 == 1:
-            result = (result * base) % mod
-        exp >>= 1
-        base = (base * base) % mod
-    return result
-
-
 def ncr_mod(n: int, k: int, mod: int) -> int:
-    """nCr modulo mod."""
+    """nCr modulo mod for large n, small k."""
     if k < 0 or k > n:
         return 0
-    if k == 0 or k == n:
+    if k == 0:
         return 1
-
+    # For large n and small k, compute n*(n-1)*...*(n-k+1) / k!
     result = 1
-    for i in range(min(k, n - k)):
-        result = (result * (n - i)) % mod
-        # Modular inverse of (i+1)
-        inv = pow(i + 1, mod - 2, mod)
-        result = (result * inv) % mod
-
+    for i in range(k):
+        result = result * ((n - i) % mod) % mod
+    # Divide by k!
+    denom = 1
+    for i in range(1, k + 1):
+        denom = denom * i % mod
+    result = result * pow(denom, mod - 2, mod) % mod
     return result
 
 
@@ -48,12 +37,11 @@ def S(n: int, k: int, b: int, mod: int) -> int:
         d = 0
         for i in range(k):
             if (subset & (1 << i)) != 0:
-                d += pow_mod(b, i + 1, mod) + 1
+                d += pow(b, i + 1) + 1
         if n - d + k >= 0:
             bit_count = bin(subset).count("1")
-            result = (
-                result + parity(bit_count) * ncr_mod(n - d + k, k, mod)
-            ) % mod
+            term = parity(bit_count) * ncr_mod(n - d + k, k, mod)
+            result = (result + term) % mod
     return result
 
 
@@ -66,7 +54,7 @@ def solve() -> int:
 
     ans = 0
     for k in range(L, H + 1):
-        n = pow_mod(B, k, M)
+        n = pow(B, k)  # Actual value, not modular
         ans = (ans + S(n, k, k, M)) % M
 
     return ans

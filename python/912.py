@@ -1,155 +1,150 @@
-"""
-Project Euler Problem 912: Binary Sequences without Three Consecutive Ones
+MOD = 10**9 + 7
 
-Let s_n be the n-th positive integer that does not contain three consecutive ones
-in its binary representation. For example, s_1 = 1 and s_7 = 8.
+def solve():
+    N = 10**16
 
-Define F(N) to be the sum of n^2 for all n <= N where s_n is odd.
-You are given F(10) = 199.
+    # For a given state s (trailing 1s: 0,1,2) and r remaining bits to fill,
+    # compute (count, odd_count, sum_odd_pos, sum_odd_pos_sq) mod MOD
+    # where positions are 1-based among all valid completions
 
-Find F(10^16) giving your answer modulo 10^9+7.
-
-Solution approach:
-- Use digit DP to count valid numbers without "111" in binary
-- Track statistics of odd numbers and their squared ranks
-- Time complexity: O(log^2 N) for digit DP
-
-Time complexity: O(log^2 N)
-Space complexity: O(log N)
-"""
-
-MOD = 1_000_000_007
-
-
-class Stats:
-    """Statistics tracker for digit DP"""
-    
-    def __init__(self):
-        self.total_count = 0
-        self.odd_count = 0
-        self.sum_r = 0
-        self.sum_r2 = 0
-    
-    def apply_offset(self, offset, mod):
-        """Apply rank offset to statistics"""
-        new_sum_r = (self.sum_r + (self.odd_count * (offset % mod)) % mod) % mod
-        
-        offset_mod = offset % mod
-        offset_sq = (offset_mod * offset_mod) % mod
-        cross_term = (2 * self.sum_r * offset_mod) % mod
-        quadratic_term = (self.odd_count * offset_sq) % mod
-        
-        new_sum_r2 = (self.sum_r2 + cross_term + quadratic_term) % mod
-        
-        result = Stats()
-        result.total_count = self.total_count
-        result.odd_count = self.odd_count
-        result.sum_r = new_sum_r
-        result.sum_r2 = new_sum_r2
-        return result
-    
-    def combine(self, other, offset, mod):
-        """Combine two stats with offset"""
-        other_offset = other.apply_offset(offset, mod)
-        
-        result = Stats()
-        result.total_count = (self.total_count + other_offset.total_count) % mod
-        result.odd_count = (self.odd_count + other_offset.odd_count) % mod
-        result.sum_r = (self.sum_r + other_offset.sum_r) % mod
-        result.sum_r2 = (self.sum_r2 + other_offset.sum_r2) % mod
-        return result
-    
-    def add_single_odd(self, rank, mod):
-        """Add a single odd number with given rank"""
-        rank_mod = rank % mod
-        rank_sq = (rank_mod * rank_mod) % mod
-        
-        self.odd_count = (self.odd_count + 1) % mod
-        self.sum_r = (self.sum_r + rank_mod) % mod
-        self.sum_r2 = (self.sum_r2 + rank_sq) % mod
-        self.total_count = (self.total_count + 1) % mod
-
-
-def binary_digits(n):
-    """Convert n to binary digit array"""
-    if n == 0:
-        return []
-    digits = []
-    temp = n
-    while temp > 0:
-        digits.append(temp % 2)
-        temp //= 2
-    return list(reversed(digits))
-
-
-def f_n_digit_dp(n, mod):
-    """Compute F(N) using digit DP"""
-    if n < 1:
-        return 0
-    
-    bin_n = binary_digits(n)
-    length = len(bin_n)
     memo = {}
-    
-    def dp(pos, tight, consec, started):
-        """Digit DP helper"""
-        if pos == length:
-            return Stats()
-        
-        key = (pos, tight, consec, 1 if started else 0)
-        if key in memo:
-            return memo[key]
-        
-        result = Stats()
-        max_digit = bin_n[pos] if tight == 1 else 1
-        current_offset = 0
-        
-        for digit in range(max_digit + 1):
-            new_tight = 1 if (tight == 1 and digit == max_digit) else 0
-            new_consec = 0 if digit == 0 else min(consec + 1, 2)
-            new_started = started or (digit == 1)
-            
-            if new_consec < 3 or pos == length - 1:
-                sub_stats = dp(pos + 1, new_tight, new_consec, new_started)
-                
-                if pos == length - 1:
-                    if digit == 1 and new_started:  # Odd number
-                        rank = current_offset + 1
-                        result.add_single_odd(rank, mod)
-                    if new_started:
-                        result.total_count = (result.total_count + 1) % mod
-                else:
-                    if new_started:
-                        adjusted_sub = sub_stats.apply_offset(current_offset, mod)
-                        result.total_count = (result.total_count + adjusted_sub.total_count) % mod
-                        result.odd_count = (result.odd_count + adjusted_sub.odd_count) % mod
-                        result.sum_r = (result.sum_r + adjusted_sub.sum_r) % mod
-                        result.sum_r2 = (result.sum_r2 + adjusted_sub.sum_r2) % mod
-                
-                branch_total = 1 if new_started else 0
-                if pos < length - 1:
-                    branch_total = sub_stats.total_count
-                current_offset += branch_total
-        
-        memo[key] = result
+
+    def dp(s, r):
+        """Returns (count, odd_count, sum_odd_pos, sum_odd_pos_sq) for state s with r bits remaining."""
+        if (s, r) in memo:
+            return memo[(s, r)]
+
+        if r == 0:
+            # All bits filled. Odd if s >= 1 (last bit was 1)
+            is_odd = 1 if s >= 1 else 0
+            result = (1, is_odd, is_odd, is_odd)  # count=1, if odd: pos=1, pos^2=1
+            memo[(s, r)] = result
+            return result
+
+        # Branch on next bit = 0
+        cnt_L, odd_L, sop_L, sopq_L = dp(0, r - 1)
+
+        # Branch on next bit = 1
+        if s < 2:
+            cnt_R, odd_R, sop_R, sopq_R = dp(s + 1, r - 1)
+        else:
+            cnt_R, odd_R, sop_R, sopq_R = 0, 0, 0, 0
+
+        cnt = (cnt_L + cnt_R) % MOD
+        odd = (odd_L + odd_R) % MOD
+        sop = (sop_L + sop_R + cnt_L % MOD * odd_R) % MOD
+        sopq = (sopq_L + sopq_R + 2 * (cnt_L % MOD) * sop_R + (cnt_L % MOD) * (cnt_L % MOD) % MOD * odd_R) % MOD
+
+        result = (cnt, odd, sop, sopq)
+        memo[(s, r)] = result
         return result
-    
-    initial_stats = dp(0, 1, 0, False)
-    return initial_stats.sum_r2
 
+    # We need F(N) = sum of n^2 for n <= N where s_n is odd
+    # Process bit-lengths from 1 upward
+    # For bit-length b, valid numbers start with 1, then b-1 more bits
+    # State after MSB=1 is s=1, remaining bits = b-1
 
-def main():
-    """Main entry point"""
-    import sys
-    
-    if len(sys.argv) > 1:
-        N = int(sys.argv[1])
-    else:
-        N = 10**16
-    
-    result = f_n_digit_dp(N, MOD)
-    print(result)
+    # First, find how many total valid numbers exist for each bit-length
+    # and accumulate until we reach N
 
+    remaining_N = N  # how many more numbers we need to process
+    R_offset = 0     # global rank offset
+
+    ans = 0
+
+    # For exact counts, we need the actual counts (not mod)
+    # But counts can be huge (tribonacci growth ~ 1.84^b)
+    # For b ~ 60, count ~ 1.84^60 ~ 10^16, which fits in Python int
+
+    # Let's compute exact counts separately
+    # c[s][r] = exact count (no mod)
+    exact_count = {}
+
+    def exact_dp(s, r):
+        if (s, r) in exact_count:
+            return exact_count[(s, r)]
+        if r == 0:
+            exact_count[(s, r)] = 1
+            return 1
+        result = exact_dp(0, r - 1)
+        if s < 2:
+            result += exact_dp(s + 1, r - 1)
+        exact_count[(s, r)] = result
+        return result
+
+    # Precompute exact counts for bit-lengths 1..80
+    for b in range(1, 80):
+        exact_dp(1, b - 1)
+
+    for b in range(1, 80):
+        # Count of valid b-bit numbers
+        total_b = exact_dp(1, b - 1)
+
+        if total_b <= remaining_N:
+            # Process all valid b-bit numbers
+            cnt, odd_cnt_mod, sop_mod, sopq_mod = dp(1, b - 1)
+            # But we need to use exact odd_count for the middle computation
+            # Actually, since we're working mod MOD, we need to be careful
+
+            # Global contribution: sum of (R_offset + pos)^2 for odd positions
+            # = sum(R_offset^2 + 2*R_offset*pos + pos^2) for odd
+            # = odd_count * R_offset^2 + 2*R_offset*sum_pos + sum_pos^2
+
+            R_off_mod = R_offset % MOD
+            contribution = (odd_cnt_mod * R_off_mod % MOD * R_off_mod +
+                          2 * R_off_mod % MOD * sop_mod + sopq_mod) % MOD
+            ans = (ans + contribution) % MOD
+
+            R_offset += total_b
+            remaining_N -= total_b
+        else:
+            # Process only 'remaining_N' valid b-bit numbers (partial)
+            # Need to enumerate using digit DP from MSB
+            # The b-bit numbers start with 1, then b-1 more bits
+            # We process the remaining bits one by one
+
+            s = 1  # state after MSB=1
+            local_offset = 0  # position within b-bit numbers
+
+            for bit_pos in range(b - 2, -1, -1):  # remaining b-1 bits, from high to low
+                # Try bit = 0 first (these come first in ordering)
+                cnt_0 = exact_dp(0, bit_pos)
+
+                if remaining_N <= cnt_0:
+                    # All remaining numbers are in the 0-branch
+                    s = 0
+                    continue
+                else:
+                    # All of the 0-branch is included, plus some from 1-branch
+                    # Add contribution from 0-branch
+                    if cnt_0 > 0:
+                        cnt_0_mod, odd_0, sop_0, sopq_0 = dp(0, bit_pos)
+
+                        R_off_mod = (R_offset + local_offset) % MOD
+                        contribution = (odd_0 * R_off_mod % MOD * R_off_mod +
+                                      2 * R_off_mod % MOD * sop_0 + sopq_0) % MOD
+                        ans = (ans + contribution) % MOD
+
+                    remaining_N -= cnt_0
+                    local_offset += cnt_0
+
+                    # Go into 1-branch
+                    if s >= 2:
+                        break  # invalid, can't place 1
+                    s = s + 1
+
+            if remaining_N > 0:
+                # We've reached the last bit. There's exactly 1 number at this position.
+                # It's the number we've been building. Is it odd?
+                is_odd = 1 if s >= 1 else 0
+                if is_odd:
+                    rank = R_offset + local_offset + 1
+                    ans = (ans + rank % MOD * (rank % MOD) % MOD) % MOD
+                remaining_N -= 1
+
+            break
+
+    print(ans % MOD)
 
 if __name__ == "__main__":
-    main()
+    solve()

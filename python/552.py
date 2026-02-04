@@ -1,93 +1,96 @@
-"""Project Euler Problem 552: Chinese Remainder Theorem.
+"""Project Euler Problem 552: Chinese Remainder Theorem / Garner's algorithm.
 
-Let A_n be the smallest positive integer satisfying A_n ≡ i (mod p_i) for 1≤i≤n.
-Find the sum of all primes up to N that divide some A_n.
-
-Clearly p_i can only divide A_n for n < i. So for each p_i, we compute A_n in
-Garner form: 1 + 2g_1 + 6g_2 + 30g_3 + ..., where each coefficient is product
-of the first k primes. If any cumulative sum is zero, then that p_i divides an
-A_n. We can iteratively compute each g_k by solving A_k + (Πp_i)g_k ≡ k+1
-(mod p_k).
+For each prime p_i, check if any partial CRT reconstruction A_n (n < i) is divisible by p_i.
+Uses C extension for the O(L^2) inner loop to meet the time constraint.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os, ctypes, struct
 
-from math import gcd
-from typing import List, Tuple
-
-
-def extended_gcd(a: int, b: int) -> Tuple[int, int, int]:
-    """Extended Euclidean algorithm.
-
-    Returns (gcd, x, y) such that a*x + b*y = gcd(a, b).
-    """
-    if b == 0:
-        return (a, 1, 0)
-    g, x1, y1 = extended_gcd(b, a % b)
-    return (g, y1, x1 - (a // b) * y1)
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Return modular inverse of a modulo m."""
-    g, x, _y = extended_gcd(a, m)
-    if g != 1:
-        raise ValueError(f"Modular inverse does not exist: gcd({a}, {m}) = {g}")
-    return (x % m + m) % m
-
-
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit using Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
+def sieve(limit):
+    is_prime = bytearray(b'\x01') * (limit + 1)
+    is_prime[0] = is_prime[1] = 0
     for i in range(2, int(limit**0.5) + 1):
         if is_prime[i]:
             for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
+                is_prime[j] = 0
     return [i for i in range(limit + 1) if is_prime[i]]
 
-
-def solve() -> int:
-    """Solve Problem 552."""
+def solve():
     N = 300000
-
     primes = sieve(N)
     L = len(primes)
-    garner = [0] * L
-    ans = 0
 
-    for i in range(L):
-        p = primes[i]
-        prod_primes = 1
-        A = 0
-        good = False
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-        for j in range(i):
-            A = (A + prod_primes * garner[j]) % p
-            prod_primes = (prod_primes * primes[j]) % p
-            if A == 0:
-                good = True
+int main(int argc, char *argv[]) {
+    int L;
+    if (scanf("%d", &L) != 1) return 1;
 
-        # Compute garner[i] such that A + prod_primes * garner[i] ≡ i+1 (mod p)
-        # So: prod_primes * garner[i] ≡ (i+1 - A) (mod p)
-        if prod_primes % p != 0:
-            garner[i] = ((i + 1 - A) * mod_inverse(prod_primes, p)) % p
-        else:
-            garner[i] = 0
+    long long *primes = (long long *)malloc(L * sizeof(long long));
+    for (int i = 0; i < L; i++) {
+        scanf("%lld", &primes[i]);
+    }
 
-        if good:
-            ans += p
+    long long *garner = (long long *)calloc(L, sizeof(long long));
+    long long ans = 0;
 
-    return ans
+    for (int i = 0; i < L; i++) {
+        long long p = primes[i];
+        long long prod = 1;
+        long long A = 0;
+        int good = 0;
 
+        for (int j = 0; j < i; j++) {
+            A = (A + prod % p * (garner[j] % p)) % p;
+            prod = prod % p * (primes[j] % p) % p;
+            if (A == 0 && j > 0) {  /* j>0: A_1=1, skip trivial */
+                good = 1;
+            }
+        }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+        /* Compute garner[i] */
+        if (prod % p != 0) {
+            long long need = ((i + 1 - A) % p + p) % p;
+            /* modular inverse of prod mod p using Fermat's little theorem */
+            /* p is prime, so inv = prod^(p-2) mod p */
+            long long base = prod % p;
+            long long exp = p - 2;
+            long long inv = 1;
+            while (exp > 0) {
+                if (exp & 1) inv = inv * base % p;
+                base = base * base % p;
+                exp >>= 1;
+            }
+            garner[i] = need * inv % p;
+        } else {
+            garner[i] = 0;
+        }
 
+        if (good) {
+            ans += p;
+        }
+    }
+
+    printf("%lld\n", ans);
+    free(primes);
+    free(garner);
+    return 0;
+}
+"""
+    # Write, compile, and run C code
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "sol.c")
+        exe = os.path.join(tmpdir, "sol")
+        with open(src, "w") as f:
+            f.write(c_code)
+        subprocess.run(["gcc", "-O2", "-o", exe, src], check=True, capture_output=True)
+
+        input_data = f"{L}\n" + " ".join(str(p) for p in primes) + "\n"
+        result = subprocess.run([exe], input=input_data, capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

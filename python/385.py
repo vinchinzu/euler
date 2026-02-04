@@ -132,41 +132,10 @@ def compute_a(n: int, *, sqrt13: Optional[Decimal] = None) -> int:
     return int(sum_a.to_integral_value(rounding="ROUND_FLOOR"))
 
 
-def _run_cli(n: int) -> None:
-    """Run a simple CLI for computing A(n) and optional brute-force check."""
-
-    n = max(1, int(n))
-    print(f"Computing A({n})...")
-
-    if n <= 1000:
-        print("Verifying with brute force...")
-        t0 = perf_counter()
-        brute_result = brute_force_a(n)
-        t1 = perf_counter()
-        print(f"Brute force A({n}) = "
-              f"{int(brute_result.to_integral_value(rounding='ROUND_FLOOR'))}")
-        print(f"Brute force time: {t1 - t0:.6f}s")
-
-    t0 = perf_counter()
-    result = compute_a(n)
-    t1 = perf_counter()
-    print(f"A({n}) = {result}")
-    print(f"Computation time: {t1 - t0:.6f}s")
-
-    # Print only final answer for test harness
-    print()
-    print(result)
+def solve() -> int:
+    """Solve PE 385."""
+    return compute_a(DEFAULT_N)
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI utility
-    import sys
-
-    if len(sys.argv) > 1:
-        try:
-            arg_n = int(sys.argv[1])
-        except ValueError:  # Fallback to default if invalid input
-            arg_n = DEFAULT_N
-    else:
-        arg_n = DEFAULT_N
-
-    _run_cli(arg_n)
+if __name__ == "__main__":
+    print(solve())

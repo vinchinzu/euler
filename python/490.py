@@ -1,59 +1,175 @@
 """Project Euler Problem 490: Jumping frog.
 
-Let f(n) be the number of ways that a frog can jump on n stones from 1 to n,
-starting on stone 1, ending on stone n, jumping on each stone exactly once,
-and never jumping more than K stones away. Find Σ_{n=1}^N f(n)³.
+Let f(n) be the number of Hamiltonian paths from stone 1 to stone n on
+n stones arranged in a line, where each jump covers at most 3 positions.
+Compute S(L) = sum_{n=1}^{L} f(n)^3 mod 10^9 for L = 10^14.
+
+Approach:
+1. f(n) satisfies a linear recurrence of order 8:
+   f(n) = 2f(n-1) - f(n-2) + 2f(n-3) + f(n-4) + f(n-5) - f(n-7) - f(n-8)
+
+2. f(n)^3 satisfies a linear recurrence of order 120 (mod 10^9),
+   found via Berlekamp-Massey on exact values computed from the f(n) recurrence.
+
+3. S(n) = S(n-1) + f(n)^3 can be incorporated into the same recurrence
+   via an augmented state vector of dimension 121.
+
+4. Matrix exponentiation on the 121x121 transition matrix computes
+   S(10^14) mod 10^9 in O(121^3 * log(10^14)) ~ 0.1 seconds.
+
+Coefficients and initial state were computed using Berlekamp-Massey + CRT
+with multiple large primes to recover exact integer coefficients mod 10^9.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List
+import os
+import subprocess
+import tempfile
 
 
 def solve() -> int:
-    """Solve Problem 490."""
-    N = 10**14
-    K = 3
-    M = 10**9
+    """Solve Problem 490 using compiled C with matrix exponentiation."""
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    def f(n: int) -> int:
-        """Number of ways."""
-        if n <= 1:
-            return 1 if n == 1 else 0
+#define DIM 121
+#define MOD 1000000000LL
 
-        # Memoization
-        cache: Dict[int, int] = {}
+typedef long long ll;
 
-        def helper(stone: int, remaining: List[int]) -> int:
-            """Helper function."""
-            if len(remaining) == 0:
-                return 1 if stone == n else 0
+typedef struct { ll m[DIM][DIM]; } Mat;
 
-            key = (stone, tuple(remaining))
-            if key in cache:
-                return cache[key]
+Mat mat_mul(Mat *A, Mat *B) {
+    Mat C;
+    memset(&C, 0, sizeof(C));
+    for (int i = 0; i < DIM; i++) {
+        for (int k = 0; k < DIM; k++) {
+            if (A->m[i][k] == 0) continue;
+            for (int j = 0; j < DIM; j++) {
+                C.m[i][j] = (C.m[i][j] + A->m[i][k] * B->m[k][j]) % MOD;
+            }
+        }
+    }
+    return C;
+}
 
-            result = 0
-            for next_stone in remaining:
-                if abs(next_stone - stone) <= K:
-                    new_remaining = [s for s in remaining if s != next_stone]
-                    result = (result + helper(next_stone, new_remaining)) % M
+void mat_vec(Mat *A, ll *v, ll *out) {
+    for (int i = 0; i < DIM; i++) {
+        ll s = 0;
+        for (int j = 0; j < DIM; j++) {
+            s = (s + A->m[i][j] * v[j]) % MOD;
+        }
+        out[i] = s;
+    }
+}
 
-            cache[key] = result
-            return result
+Mat mat_pow(Mat *A, long long e) {
+    Mat result;
+    memset(&result, 0, sizeof(result));
+    for (int i = 0; i < DIM; i++) result.m[i][i] = 1;
 
-        return helper(1, list(range(2, n + 1)))
+    Mat base = *A;
+    while (e > 0) {
+        if (e & 1) result = mat_mul(&result, &base);
+        base = mat_mul(&base, &base);
+        e >>= 1;
+    }
+    return result;
+}
 
-    # Compute sum for small n, then extrapolate
-    # For large N, use recurrence relation
-    ans = 0
-    for n in range(1, min(N + 1, 100)):
-        fn = f(n)
-        ans = (ans + pow(fn, 3, M)) % M
+int main(void) {
+    /* Recurrence coefficients for f(n)^3 mod 10^9, order 120 */
+    ll coeffs[120] = {6, 9, 119, 776, 2928, 999999859, 999947224, 999685922,
+        999532226, 1006034, 3403103, 3091675, 18854028, 41939739, 994839428,
+        123907888, 686578570, 538510631, 463875565, 593907319, 775112607,
+        862799442, 826799722, 323568068, 272946171, 865736624, 849803095,
+        311419118, 805102114, 339105472, 456964300, 305937016, 337515567,
+        230568131, 989586447, 512038563, 610224796, 175130668, 153437041,
+        542540920, 50625753, 340116729, 88372743, 907746334, 593763395,
+        370623486, 270466732, 598807528, 985040772, 299982216, 940789720,
+        619684566, 241159230, 555403477, 447351797, 516881602, 369898831,
+        728139066, 653295692, 399706398, 677312837, 974991247, 434754226,
+        941011599, 119818263, 453982603, 899907409, 501223070, 213814420,
+        937503575, 348572247, 422813235, 912044703, 988284254, 627070716,
+        197746192, 763985855, 402499115, 193039987, 116884499, 386287404,
+        506735768, 560044596, 134890008, 826753664, 554299492, 726711998,
+        124504874, 979617447, 769179585, 964951155, 201335039, 391976502,
+        964735427, 16230901, 520533199, 281250193, 800363863, 100229687,
+        972206742, 12790510, 994869589, 1367679, 999105321, 1188015,
+        999184849, 110016, 999999166, 3761, 162, 1064, 999998439, 2081,
+        999999722, 7, 6, 999999999, 999999998, 0, 999999999};
 
-    # Extrapolation for large N (simplified)
-    # In practice, would use linear recurrence detection
-    return ans
+    /* Initial state: [f3(120), f3(119), ..., f3(1), S(120)] */
+    ll state[121] = {108475375, 199896031, 931687936, 702009464, 714606784,
+        266999125, 155539000, 420988719, 720702269, 433917201, 103102296,
+        841260071, 148478597, 673860672, 275943000, 145433664, 517075976,
+        796818392, 659506375, 581452328, 133701347, 220769000, 533832875,
+        158625000, 163559688, 49094879, 173342528, 133133824, 279836979,
+        301229176, 639670651, 737905891, 344982296, 218953000, 996223521,
+        995491576, 128395544, 610594424, 82826952, 616671875, 831294792,
+        337037632, 879337000, 324556983, 732813625, 284586816, 640748631,
+        730263624, 15337869, 261630737, 824684707, 225590449, 478279633,
+        815873909, 93712153, 175142936, 850923968, 360327168, 409331263,
+        506745561, 516656879, 749053847, 106505728, 969129472, 614533621,
+        553166237, 795894829, 563408152, 252528683, 759473000, 149105816,
+        249057352, 122210271, 671427736, 357983592, 592954569, 608818931,
+        579422939, 772966179, 113444875, 36210176, 650033625, 218515456,
+        341269843, 465287488, 873529125, 659090427, 6592000, 414158769,
+        294164427, 845019456, 99129291, 833571136, 91407928, 983217139,
+        481670875, 642957656, 805769125, 284731347, 817479875, 897713875,
+        840788536, 172441623, 912144001, 95811431, 141267272, 632545224,
+        841287201, 481544000, 158340421, 16387064, 1643032, 175616, 21952,
+        2744, 216, 8, 1, 1, 1, 828475848};
+
+    /* Build 121x121 transition matrix */
+    /* Row 0: f3(n) = sum coeffs[j] * f3(n-1-j) */
+    /* Rows 1-119: shift (state[i] = old state[i-1]) */
+    /* Row 120: S(n) = S(n-1) + f3(n) */
+    static Mat T;
+    memset(&T, 0, sizeof(T));
+
+    for (int j = 0; j < 120; j++)
+        T.m[0][j] = coeffs[j];
+
+    for (int i = 1; i < 120; i++)
+        T.m[i][i-1] = 1;
+
+    for (int j = 0; j < 120; j++)
+        T.m[120][j] = coeffs[j];
+    T.m[120][120] = 1;
+
+    /* Advance from n=120 to n=10^14 */
+    long long target = 100000000000000LL;
+    long long steps = target - 120;
+
+    Mat Tp = mat_pow(&T, steps);
+
+    ll result[DIM];
+    mat_vec(&Tp, state, result);
+
+    printf("%lld\n", result[120]);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O3', '-march=native',
+                       '-o', bin_path, c_path],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                check=True, timeout=27)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
 def main() -> int:

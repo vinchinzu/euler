@@ -139,22 +139,10 @@ def compute_s_mod(n: int, mod: int = MOD_7_10) -> int:
     raise NotImplementedError(msg)
 
 
-def main() -> None:
-    """Entry point mirroring the Ruby placeholder behavior.
-
-    Prints a placeholder message; does not attempt to solve the problem.
-    Proper implementation requires Sprague-Grundy theory and proven
-    number-theoretic characterization of losing positions.
-    """
-
-    print("Problem 325 placeholder implementation.")
-    print("NOTE: Full implementation requires game theory algorithm (not yet implemented).")
-
-    # Return placeholder value for test harness
-    result = 0
-    print()
-    print(result)
+def solve() -> int:
+    """Solve PE 325. Placeholder - not yet implemented."""
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

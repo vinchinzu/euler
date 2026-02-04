@@ -1,130 +1,169 @@
 """Project Euler Problem 646: Bounded Divisors.
 
-Define the Liouville function λ(n) to be 1 if the number of prime factors of
-n (with multiplicity) is even, and -1 otherwise. Find the sum of λ(d) * d
-over all divisors d | N! where L ≤ d ≤ H.
-
-We split the prime factors of N! into two groups such that the number of
-factors using only primes of the left and right groups are roughly equal.
+Sum of lambda(d)*d over divisors d of N! where L <= d <= H,
+with lambda = Liouville function. Meet-in-the-middle with binary search.
+Uses C with long double for sufficient precision in boundary checks.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from collections import defaultdict
-from dataclasses import dataclass
-from itertools import product
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-from sympy import primerange
+#define MOD 1000000007LL
 
+static long long pow_mod(long long base, long long exp, long long mod) {
+    long long result = 1;
+    base = ((base % mod) + mod) % mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-@dataclass
-class PrimeFactor:
-    """Prime factor with exponent."""
+static int primes[] = {2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67};
+static int num_primes = 19;
+static int exponents[19];
 
-    p: int
-    e: int
+static int num_factors_in_factorial(int n, int p) {
+    int count = 0;
+    long long power = p;
+    while (power <= n) {
+        count += n / (int)power;
+        power *= p;
+    }
+    return count;
+}
 
+typedef struct {
+    long double log_val;
+    long long lio;
+} Divisor;
 
-def num_factors_in_factorial(n: int, p: int) -> int:
-    """Count how many times p divides n!."""
-    count = 0
-    power = p
-    while power <= n:
-        count += n // power
-        power *= p
-    return count
+static int cmp_divisor(const void *a, const void *b) {
+    long double da = ((const Divisor *)a)->log_val;
+    long double db = ((const Divisor *)b)->log_val;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
 
+static Divisor *gen_divisors(int start, int end, int *out_count) {
+    long long total = 1;
+    for (int i = start; i < end; i++) total *= (exponents[i] + 1);
+    *out_count = (int)total;
+    Divisor *divs = (Divisor *)malloc(total * sizeof(Divisor));
+    if (!divs) { fprintf(stderr, "malloc fail\n"); exit(1); }
+    divs[0].log_val = 0.0L;
+    divs[0].lio = 1;
+    int count = 1;
+    for (int fi = start; fi < end; fi++) {
+        int p = primes[fi];
+        int e_max = exponents[fi];
+        long double log_p = logl((long double)p);
+        int old_count = count;
+        for (int e = 1; e <= e_max; e++) {
+            long long neg_p_e = pow_mod(MOD - p, e, MOD);
+            long double log_pe = e * log_p;
+            for (int j = 0; j < old_count; j++) {
+                divs[count].log_val = divs[j].log_val + log_pe;
+                divs[count].lio = divs[j].lio * neg_p_e % MOD;
+                count++;
+            }
+        }
+    }
+    return divs;
+}
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+int main(void) {
+    int N = 70;
+    long double log_L = 20.0L * logl(10.0L);
+    long double log_H = 60.0L * logl(10.0L);
 
+    for (int i = 0; i < num_primes; i++) {
+        exponents[i] = num_factors_in_factorial(N, primes[i]);
+    }
 
-def get_divisors(factors: list[PrimeFactor], M: int) -> dict[float, int]:
-    """Get all divisors with Liouville values."""
-    divisors = {}
-    axes = [list(range(factor.e + 1)) for factor in factors]
+    long long total_factors = 1;
+    for (int i = 0; i < num_primes; i++) total_factors *= (exponents[i] + 1);
 
-    for exponents in product(*axes):
-        val = 1.0
-        liouville = 1
-        for i, factor in enumerate(factors):
-            p = factor.p
-            e = exponents[i]
-            val *= pow(p, e)
-            liouville = (liouville * pow_mod(-p, e, M)) % M
-        divisors[val] = liouville
+    int half_index = 0;
+    long long nf = 1;
+    while (nf * nf < total_factors) {
+        nf *= (exponents[half_index] + 1);
+        half_index++;
+    }
 
-    return divisors
+    int left_count, right_count;
+    Divisor *left = gen_divisors(0, half_index, &left_count);
+    Divisor *right = gen_divisors(half_index, num_primes, &right_count);
 
+    qsort(left, left_count, sizeof(Divisor), cmp_divisor);
 
-def solve() -> int:
-    """Solve Problem 646."""
-    N = 70
-    L = 10**20
-    H = 10**60
-    M = 10**9 + 7
+    long long *prefix = (long long *)malloc((left_count + 1) * sizeof(long long));
+    prefix[0] = 0;
+    for (int i = 0; i < left_count; i++) {
+        prefix[i + 1] = (prefix[i] + left[i].lio) % MOD;
+    }
 
-    factors = []
-    for p in primerange(2, N + 1):
-        e = num_factors_in_factorial(N, p)
-        factors.append(PrimeFactor(p, e))
+    long double *left_logs = (long double *)malloc(left_count * sizeof(long double));
+    for (int i = 0; i < left_count; i++) left_logs[i] = left[i].log_val;
 
-    # Split factors
-    total_factors = 1
-    for factor in factors:
-        total_factors *= factor.e + 1
+    long double EPS = 1e-14L;
+    long long ans = 0;
 
-    half_index = 0
-    num_factors = 1
-    while num_factors * num_factors < total_factors:
-        num_factors *= factors[half_index].e + 1
-        half_index += 1
+    for (int ri = 0; ri < right_count; ri++) {
+        long double log_r = right[ri].log_val;
+        long long lio_r = right[ri].lio;
+        long double lo = log_L - log_r - EPS;
+        long double hi = log_H - log_r + EPS;
 
-    left_divisors = get_divisors(factors[:half_index], M)
-    right_divisors = get_divisors(factors[half_index:], M)
+        int a = 0, b_lo = left_count;
+        while (a < b_lo) {
+            int mid = (a + b_lo) / 2;
+            if (left_logs[mid] <= lo) a = mid + 1;
+            else b_lo = mid;
+        }
 
-    # Sort left divisors
-    sorted_left = sorted(left_divisors.items())
-    cumul_liouvilles = {}
-    cumul = 0
-    cumul_liouvilles[0.0] = 0
-    for val, liouville in sorted_left:
-        cumul = (cumul + liouville) % M
-        cumul_liouvilles[val] = cumul
+        int b = a, b_hi = left_count;
+        while (b < b_hi) {
+            int mid = (b + b_hi) / 2;
+            if (left_logs[mid] <= hi) b = mid + 1;
+            else b_hi = mid;
+        }
 
-    ans = 0
-    for val_r, liouville_r in right_divisors.items():
-        max_left = H / val_r
-        min_left = L / val_r
+        long long range_sum = (prefix[b] - prefix[a] + MOD) % MOD;
+        ans = (ans + lio_r * range_sum) % MOD;
+    }
 
-        # Find cumulative sums
-        max_sum = 0
-        min_sum = 0
-        for val_l, cumul in sorted(cumul_liouvilles.items()):
-            if val_l <= max_left:
-                max_sum = cumul
-            if val_l < min_left:
-                min_sum = cumul
+    ans = (ans % MOD + MOD) % MOD;
+    printf("%lld\n", ans);
 
-        ans = (ans + liouville_r * (max_sum - min_sum)) % M
+    free(left); free(right); free(prefix); free(left_logs);
+    return 0;
+}
+""";
 
-    return ans
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

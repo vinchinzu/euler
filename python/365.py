@@ -210,35 +210,19 @@ def _simple_primes_up_to(limit: int) -> List[int]:
     return [i for i in range(2, limit + 1) if sieve[i]]
 
 
-def main() -> int:
-    """Execute the Project Euler 365 computation and print progress info.
-
-    Returns the final sum as an integer.
-    """
-
+def solve() -> int:
+    """Solve PE 365."""
     primes = [p for p in _simple_primes_up_to(MAX_PRIME) if p > MIN_PRIME]
-    print(
-        f"Generated {len(primes)} primes between {MIN_PRIME} and {MAX_PRIME}",
-        flush=True,
-    )
 
     fact_cache = FactorialCache()
     for p in primes:
         fact_cache.compute_for_prime(p)
-    print("Precomputed factorials for all primes", flush=True)
 
-    # KEY OPTIMIZATION: Precompute lucas_mod(N, K, p) for each prime once
-    print("Precomputing lucas_mod values for all primes...", flush=True)
     lucas_values = {}
     for p in primes:
         lucas_values[p] = lucas_mod(N, K, p, fact_cache)
-    print("Precomputation complete", flush=True)
 
     total_sum = 0
-    count = 0
-    start_time = perf_counter()
-
-    # Triple nested loops with index management to ensure p < q < r.
     plen = len(primes)
     for i, p in enumerate(primes[:-2]):
         ap = lucas_values[p]
@@ -248,31 +232,10 @@ def main() -> int:
             for k_idx in range(j + 1, plen):
                 r = primes[k_idx]
                 ar = lucas_values[r]
-
-                # Use precomputed lucas values with CRT
-                result = crt_three(ap, p, aq, q, ar, r)
-                total_sum += result
-                count += 1
-
-                if count % 100_000 == 0:
-                    elapsed = perf_counter() - start_time
-                    rate = count / elapsed if elapsed > 0 else float("inf")
-                    print(
-                        "Processed" f" {count} triplets, sum = {total_sum}, "
-                        f"rate = {int(rate)}/sec",
-                        flush=True,
-                    )
-
-    elapsed = perf_counter() - start_time
-    avg_rate = count / elapsed if elapsed > 0 else float("inf")
-
-    print(f"\nProcessed {count} triplets in {elapsed:.2f} seconds", flush=True)
-    print(f"Average rate: {avg_rate:.0f} triplets/second", flush=True)
-    print(f"Final result: {total_sum}", flush=True)
+                total_sum += crt_three(ap, p, aq, q, ar, r)
 
     return total_sum
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry point
-    result_ = main()
-    print(f"\nThe final answer is: {result_}")
+if __name__ == "__main__":
+    print(solve())

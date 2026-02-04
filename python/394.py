@@ -127,33 +127,10 @@ def compute_e(x: float, config: DiscretizationConfig | None = None) -> float:
     return dp[n]
 
 
-def main() -> None:
-    """Run a basic demonstration and sample checks.
-
-    Prints E(40) and verifies the provided sample values for E(1), E(2),
-    and E(7.5) using the same discretization scheme.
-    """
-
-    x = 40.0
-    result = compute_e(x)
-    print(f"E(40) = {result:.10f}")
-
-    print("\n# Verification with given samples:")
-    print(f"# E(1) = {compute_e(1.0):.10f} (expected 1.0000000000)")
-    print(f"# E(2) = {compute_e(2.0):.10f} (expected 1.2676536759)")
-    print(f"# E(7.5) = {compute_e(7.5):.10f} (expected 2.1215732071)")
-
-    # Skip convergence test to avoid timeout
-    # print("\n# Convergence test (using different discretizations):")
-    # for test_n in (500, 1000, 1500, 2000):
-    #     test_config = DiscretizationConfig(n=test_n, h=1.0 / test_n)
-    #     test_result = compute_e(40.0, config=test_config)
-    #     print(f"# N={test_n}: E(40) ≈ {test_result:.10f}")
-
-    # Print only final answer for test harness
-    print()
-    print(result)
+def solve() -> float:
+    """Solve PE 394."""
+    return compute_e(40.0)
 
 
-if __name__ == "__main__":  # pragma: no cover - manual execution entrypoint
-    main()
+if __name__ == "__main__":
+    print(solve())

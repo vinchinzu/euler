@@ -7,96 +7,98 @@ the other points in its interior.
 Using dynamic programming, we find for each triplet of points (p_A, p2, p3) the
 maximum area f(p_A, p2, p3) of a convex hole with leftmost point p_A and
 containing the segment (p2, p3).
+
+Algorithm from "Searching for Empty Convex Polygons" by Dobkin, Edelsbrunner, Overmars.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import defaultdict, deque
 from math import atan2
-from typing import Dict, List, Tuple
 
 
-@dataclass(frozen=True)
-class Point:
-    """2D point."""
-
-    x: int
-    y: int
-
-    def angle_to(self, other: "Point") -> float:
-        """Angle from this point to other."""
-        return atan2(other.y - self.y, other.x - self.x)
-
-
-def shoelace(p1: Point, p2: Point, p3: Point) -> float:
-    """Compute signed area using shoelace formula."""
-    return abs(
-        (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y))
-        / 2.0
-    )
-
-
-def turn(p1: Point, p2: Point, p3: Point) -> float:
-    """Compute turn direction."""
-    return (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
-
-
-def blum_blum_shub(seed: int, n: int) -> List[Point]:
+def blum_blum_shub(seed, n):
     """Generate points using Blum Blum Shub."""
-    points: List[Point] = []
+    points = []
     x = seed
     for _ in range(n):
         x = (x * x) % 50515093
         x_val = x % 2000 - 1000
         x = (x * x) % 50515093
         y_val = x % 2000 - 1000
-        points.append(Point(x_val, y_val))
+        points.append((x_val, y_val))
     return points
 
 
-def solve() -> float:
+def turn(p1, p2, p3):
+    """Compute turn direction (cross product)."""
+    return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
+
+
+def shoestring(p1, p2, p3):
+    """Compute signed area * 2 using shoelace/shoestring formula."""
+    return abs(p1[0] * (p2[1] - p3[1]) + p2[0] * (p3[1] - p1[1]) + p3[0] * (p1[1] - p2[1]))
+
+
+def solve():
     """Solve Problem 252."""
     N = 500
-    points = blum_blum_shub(1, N)
-    points.sort(key=lambda p: (p.x, p.y))
+    points = blum_blum_shub(290797, N)
+    points.sort()
 
-    areas: Dict[Tuple[Point, Point, Point], float] = {}
-
-    # Simplified implementation - full version would build visibility graph
-    # and use DP as described in the Java code
-    max_area = 0.0
+    areas = {}
 
     for k in range(N):
-        p_a = points[k]
-        remaining = points[k + 1 :]
-        remaining.sort(key=lambda p: p_a.angle_to(p))
+        p_A = points[k]
+        remaining = points[k + 1:]
+        remaining.sort(key=lambda p: atan2(p[1] - p_A[1], p[0] - p_A[0]))
 
-        # Build simplified visibility structure
-        # Full implementation would use queues and visibility graph
-        for i, p2 in enumerate(remaining):
-            for p3 in remaining[i + 1 :]:
-                area = shoelace(p_a, p2, p3)
-                if area > max_area:
-                    # Check if it's a valid convex hole
-                    valid = True
-                    for p in remaining:
-                        if p != p2 and p != p3:
-                            # Check if p is inside triangle p_a, p2, p3
-                            t1 = turn(p_a, p2, p)
-                            t2 = turn(p2, p3, p)
-                            t3 = turn(p3, p_a, p)
-                            # All turns should have the same sign (all positive or all negative)
-                            if (t1 > 0 and t2 > 0 and t3 > 0) or (t1 < 0 and t2 < 0 and t3 < 0):
-                                valid = False
-                                break
-                    if valid:
-                        max_area = max(max_area, area)
-                        areas[(p_a, p2, p3)] = area
+        n = len(remaining)
+        # Map points to indices for fast lookup
+        point_to_idx = {p: i for i, p in enumerate(remaining)}
 
-    return max_area
+        # Build visibility graph using the proceed algorithm
+        # Q[i] is a deque of points visible from remaining[i]
+        Q = [deque() for _ in range(n)]
+        # VG: outgoing[i] = list of indices j such that (i, j) is an edge
+        # VG: incoming[i] = list of indices j such that (j, i) is an edge
+        outgoing = [[] for _ in range(n)]
+        incoming = [[] for _ in range(n)]
+
+        def proceed(pi_idx, pj_idx):
+            pi = remaining[pi_idx]
+            pj = remaining[pj_idx]
+            while Q[pi_idx] and turn(remaining[Q[pi_idx][0]], pi, pj) > 0:
+                pk_idx = Q[pi_idx].popleft()
+                proceed(pk_idx, pj_idx)
+            outgoing[pi_idx].append(pj_idx)
+            incoming[pj_idx].append(pi_idx)
+            Q[pj_idx].append(pi_idx)
+
+        for i in range(n - 1):
+            proceed(i, i + 1)
+
+        # DP: for each p2, iterate over outgoing p3 in order
+        for p2_idx in range(n):
+            p2 = remaining[p2_idx]
+            p1s = list(incoming[p2_idx])  # indices of incoming points
+            max_area = 0.0
+            for p3_idx in outgoing[p2_idx]:
+                p3 = remaining[p3_idx]
+                key = (p_A, p2, p3)
+                if key not in areas:
+                    while p1s and turn(remaining[p1s[0]], p2, p3) > 0:
+                        p1_idx = p1s.pop(0)
+                        p1 = remaining[p1_idx]
+                        area = areas.get((p_A, p1, p2), 0.0)
+                        if area > max_area:
+                            max_area = area
+                    areas[key] = max_area + shoestring(p_A, p2, p3) / 2.0
+
+    return max(areas.values())
 
 
-def main() -> None:
+def main():
     """Main entry point."""
     result = solve()
     print(f"{result:.1f}")

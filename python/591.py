@@ -49,14 +49,14 @@ def solve() -> int:
             continue
 
         sqrt_d = Decimal(d).sqrt()
-        u = Vector(sqrt_d, 1, 0)
+        u = Vector(sqrt_d, 0, 1)
         v = Vector(Decimal(1), 1, 0)
 
         I = -1
         min_error = Decimal(1)
 
         while abs(u.ai) <= N:
-            q = int((u.x / v.x).to_integral_value())
+            q = int(u.x / v.x)
             r = Vector(
                 u.x - Decimal(q) * v.x,
                 u.ai - q * v.ai,

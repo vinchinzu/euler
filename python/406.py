@@ -1,197 +1,90 @@
-"""Project Euler Problem 406: Guessing game.
+"""Project Euler Problem 406: Guessing Game.
 
-Let C(n, a, b) be the minimum worst-case cost of an optimal strategy to guess
-a number from 1 to n, if any guess lower than the correct number incurs a
-cost of a, and any guess greater than the correct number incurs a cost of b.
-Find sum_{k=1}^K C(N, √k, √F_k), where F_k is the k'th Fibonacci number.
+C(n, a, b) = minimum worst-case cost to guess a number in [1, n].
+f(c) = max n guessable with budget c = 1 + f(c-a) + f(c-b).
 
-Let f(c) be the largest n such that it is possible to guess any number from 1
-to n with cost at most c. If c is negative, then we let f(c) = 0, i.e. it is
-impossible to guess any number. Then for any c, we have f(c) = 1 + f(c - a)
-+ f(c - b), because if our guess g is too low, we can still guess up to
-f(c - a) numbers above g, and if our guess is too high, we can guess up to
-f(c - b) numbers below.
-
-We can iteratively find all c where f(c) changes value, in increasing order
-of c. These c are all the linear combinations of a and b, which we can build
-up lazily. For each c, we can use the above recurrence to reliably compute
-f(c), because we have already found all smaller c where f(c) changes value.
-Finally, the minimum cost C(n, a, b) is the smallest c such that f(c) ≥ N.
+Compute sum_{k=1}^{30} C(10^12, sqrt(k), sqrt(F_k)).
 """
+from math import sqrt
+import bisect
 
-from __future__ import annotations
-
-from collections import defaultdict
-from dataclasses import dataclass
-from math import gcd, isqrt
-from typing import Dict
-
-
-def prime_factorization(n: int) -> list[tuple[int, int]]:
-    """Return prime factorization as list of (prime, exponent)."""
-    if n <= 1:
-        return []
-    factors: list[tuple[int, int]] = []
-    count = 0
-
-    # Factor out 2s
-    while n % 2 == 0:
-        n //= 2
-        count += 1
-    if count:
-        factors.append((2, count))
-
-    # Odd factors
-    p = 3
-    limit = isqrt(n)
-    while p <= limit and n > 1:
-        if n % p == 0:
-            count = 0
-            while n % p == 0:
-                n //= p
-                count += 1
-            factors.append((p, count))
-            limit = isqrt(n)
-        p += 2
-
-    if n > 1:
-        factors.append((n, 1))
-
-    return factors
-
-
-@dataclass(frozen=True)
-class RadicalSum:
-    """Represents Σ c√r over all entries (r, c) in the map."""
-
-    radical_to_coefficients: Dict[int, int]
-
-    def __init__(self, radical_to_coefficients: Dict[int, int]) -> None:
-        """Initialize RadicalSum, simplifying radicals."""
-        simplified: Dict[int, int] = {}
-        for r, c in radical_to_coefficients.items():
-            if r > 0 and c != 0:
-                # Factor out perfect squares
-                factors = prime_factorization(r)
-                coeff = 1
-                remaining = 1
-                for p, e in factors:
-                    coeff *= p ** (e // 2)
-                    remaining *= p ** (e % 2)
-                simplified[remaining] = simplified.get(remaining, 0) + c * coeff
-
-        # Remove zeros
-        object.__setattr__(
-            self,
-            "radical_to_coefficients",
-            {r: c for r, c in simplified.items() if c != 0},
-        )
-
-    @staticmethod
-    def sqrt(n: int) -> RadicalSum:
-        """Create RadicalSum representing √n."""
-        return RadicalSum({n: 1})
-
-    def double_value(self) -> float:
-        """Compute the numeric value as a float."""
-        result = 0.0
-        for r, c in self.radical_to_coefficients.items():
-            result += c * isqrt(r)
-        return result
-
-    def add(self, other: RadicalSum) -> RadicalSum:
-        """Add two RadicalSums."""
-        new_map: Dict[int, int] = dict(self.radical_to_coefficients)
-        for r, c in other.radical_to_coefficients.items():
-            new_map[r] = new_map.get(r, 0) + c
-        return RadicalSum(new_map)
-
-    def negate(self) -> RadicalSum:
-        """Negate this RadicalSum."""
-        new_map = {r: -c for r, c in self.radical_to_coefficients.items()}
-        return RadicalSum(new_map)
-
-    def subtract(self, other: RadicalSum) -> RadicalSum:
-        """Subtract another RadicalSum."""
-        return self.add(other.negate())
-
-    def __lt__(self, other: RadicalSum) -> bool:
-        """Compare by numeric value."""
-        return self.double_value() < other.double_value()
-
-    def __le__(self, other: RadicalSum) -> bool:
-        """Compare by numeric value."""
-        return self.double_value() <= other.double_value()
-
-
-def fibonacci(n: int) -> int:
-    """Compute nth Fibonacci number."""
-    if n <= 1:
-        return n
-    a, b = 0, 1
-    for _ in range(2, n + 1):
+def fibonacci(k):
+    """Compute k-th Fibonacci number (F_1=F_2=1)."""
+    if k <= 2:
+        return 1
+    a, b = 1, 1
+    for _ in range(k - 2):
         a, b = b, a + b
     return b
 
+def C_func(n, a_val, b_val):
+    """Compute C(n, a, b) where a and b are float values.
 
-def C(n: int, a: RadicalSum, b: RadicalSum) -> float:
-    """Compute C(n, a, b) - minimum worst-case cost."""
-    # Use a sorted set (simulated with sorted list) for c values
-    cs: list[RadicalSum] = [RadicalSum({})]
-    # f maps c to f(c)
-    f: Dict[RadicalSum, int] = {a.add(b).negate(): 0}
+    Build sorted list of cost values c = i*a + j*b for non-negative i, j.
+    For each c (in order), compute f(c) = 1 + f(c-a) + f(c-b).
+    f(c-a) is the largest f-value for some c' <= c-a.
+    Return smallest c where f(c) >= n.
+    """
+    # Generate all candidate cost values c = i*a + j*b up to a budget limit
+    # We need f(c) >= n = 10^12. f grows roughly exponentially.
+    # Max c needed is approximately log_phi(n) * max(a, b) ~ 60 * max(a, b)
+    max_budget = 80.0 * max(a_val, b_val)
 
-    while True:
-        # Get smallest c
-        cs.sort()
-        c = cs.pop(0)
+    # Generate sorted list of (cost, i, j) tuples
+    costs = set()
+    i = 0
+    while i * a_val <= max_budget:
+        j = 0
+        while i * a_val + j * b_val <= max_budget:
+            costs.add(i * a_val + j * b_val)
+            j += 1
+        i += 1
 
-        # Add c+a and c+b to candidate set
-        cs.append(c.add(a))
-        cs.append(c.add(b))
+    sorted_costs = sorted(costs)
 
-        # Compute f(c) using recurrence
-        c_minus_a = c.subtract(a)
-        c_minus_b = c.subtract(b)
+    # For each cost value, compute f using binary search on previous values
+    # f_vals[k] = f(sorted_costs[k])
+    f_vals = []
+    eps = 1e-9
 
-        # Find floor entries
-        f_c_minus_a = 0
-        f_c_minus_b = 0
+    for idx, c in enumerate(sorted_costs):
+        if c < -eps:
+            f_vals.append(0)
+            continue
 
-        for prev_c, prev_f in sorted(f.items()):
-            if prev_c <= c_minus_a:
-                f_c_minus_a = prev_f
-            if prev_c <= c_minus_b:
-                f_c_minus_b = prev_f
+        # f(c-a): find largest c' <= c - a in sorted_costs
+        target_a = c - a_val + eps
+        pos_a = bisect.bisect_right(sorted_costs, target_a, 0, idx + 1) - 1
+        fa = f_vals[pos_a] if pos_a >= 0 else 0
 
-        length = 1 + f_c_minus_a + f_c_minus_b
+        # f(c-b): find largest c' <= c - b in sorted_costs
+        target_b = c - b_val + eps
+        pos_b = bisect.bisect_right(sorted_costs, target_b, 0, idx + 1) - 1
+        fb = f_vals[pos_b] if pos_b >= 0 else 0
 
-        if length >= n:
-            return c.double_value()
+        f_c = 1 + fa + fb
 
-        f[c] = length
+        # Early termination check
+        if f_c >= n:
+            return c
 
+        f_vals.append(f_c)
 
-def solve() -> float:
-    """Solve Problem 406."""
-    N = 10**12
-    K = 30
+    # Should not reach here if max_budget is large enough
+    return sorted_costs[-1]
 
-    ans = 0.0
-    for k in range(1, K + 1):
-        a = RadicalSum.sqrt(k)
-        b = RadicalSum.sqrt(fibonacci(k))
-        ans += C(N, a, b)
+def solve():
+    n = 10**12
+    total = 0.0
 
-    return ans
+    for k in range(1, 31):
+        a = sqrt(k)
+        b = sqrt(fibonacci(k))
+        c = C_func(n, a, b)
+        total += c
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.8f}")
-    return int(result * 100000000)  # For comparison
-
+    return total
 
 if __name__ == "__main__":
-    main()
+    result = solve()
+    print(f"{result:.8f}")

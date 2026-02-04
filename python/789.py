@@ -57,7 +57,7 @@ def solve() -> int:
                 cost = values[prod] + values[inv]
                 if cost < min_cost:
                     min_cost = cost
-                    ans = (prod * inv) % N
+                    ans = prod * inv
 
         cost_bound *= 2
 

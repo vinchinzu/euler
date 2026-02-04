@@ -1,75 +1,83 @@
 """Project Euler Problem 730: Shifted Pythagorean Triples.
 
 Find the number of k-shifted Pythagorean triples, which are triples (p,q,r)
-where p²+q²+k=r², GCD(p,q,r)=1, 1≤p≤q≤r, p+q+r≤N, and 0≤k≤K.
+where p^2+q^2+k=r^2, GCD(p,q,r)=1, 1<=p<=q<=r, p+q+r<=N, and 0<=k<=K.
 
-From https://en.wikipedia.org/wiki/Tree_of_primitive_Pythagorean_triples, we
-can generate all primitive Pythagorean triples by applying the three Barning
-matrices repeatedly to the base triple (3,4,5). These matrices when applied
-to (p,q,r) keep p²+q²-r² constant, so given base solutions to p²+q²+k=r² for
-any k, we can generate other solutions. So we use brute force to compute the
-base solutions for each k, and for each one recursively apply the Barning
-matrices to get all solutions for k.
+Uses inline C for performance with recursive DFS on Barning matrices.
 """
 
 from __future__ import annotations
 
-from math import gcd, isqrt
-
-
-def is_sq(n: int) -> bool:
-    """Check if n is a perfect square."""
-    root = isqrt(n)
-    return root * root == n
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
+import os
+import subprocess
+import tempfile
 
 
 def solve() -> int:
     """Solve Problem 730."""
-    n = 10**8
-    k_max = 100
-    l = 200
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdbool.h>
 
-    used = [[[False] * l for _ in range(l)] for _ in range(k_max + 1)]
-    ans = 0
+#define N 100000000
+#define K 100
+#define L 200
 
-    def helper(k: int, a: int, b: int, c: int) -> None:
-        """Recursively generate triples using Barning matrices."""
-        nonlocal ans
-        if a + b + c > n:
-            return
-        if a > b:
-            helper(k, b, a, c)
-            return
-        if a < l and b < l and k <= k_max:
-            if used[k][a][b]:
-                return
-            used[k][a][b] = True
-        ans += 1
-        # Apply three Barning matrices
-        helper(k, a - 2 * b + 2 * c, 2 * a - b + 2 * c, 2 * a - 2 * b + 3 * c)
-        helper(k, a + 2 * b + 2 * c, 2 * a + b + 2 * c, 2 * a + 2 * b + 3 * c)
-        if a != b:
-            helper(
-                k,
-                -a + 2 * b + 2 * c,
-                -2 * a + b + 2 * c,
-                -2 * a + 2 * b + 3 * c,
-            )
+int gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
 
-    # Find base solutions
-    for k in range(k_max + 1):
-        for p in range(1, l):
-            for q in range(p, l):
-                r2 = sq(p) + sq(q) + k
-                if is_sq(r2):
-                    r = isqrt(r2)
-                    if p + q + r <= n and gcd(gcd(p, q), r) == 1:
-                        helper(k, p, q, r)
+bool used[K+1][L][L];
+long long ans = 0;
+
+void helper(int k, int a, int b, int c) {
+    if (a + b + c > N) return;
+    if (a > b) { helper(k, b, a, c); return; }
+    if (a < L && b < L && k <= K) {
+        if (used[k][a][b]) return;
+        used[k][a][b] = true;
+    }
+    ans++;
+    helper(k, a - 2*b + 2*c, 2*a - b + 2*c, 2*a - 2*b + 3*c);
+    helper(k, a + 2*b + 2*c, 2*a + b + 2*c, 2*a + 2*b + 3*c);
+    if (a != b)
+        helper(k, -a + 2*b + 2*c, -2*a + b + 2*c, -2*a + 2*b + 3*c);
+}
+
+int main() {
+    for (int k = 0; k <= K; k++)
+        for (int p = 1; p < L; p++)
+            for (int q = p; q < L; q++) {
+                long long r2 = (long long)p*p + (long long)q*q + k;
+                int r = (int)sqrt((double)r2);
+                while ((long long)r*r < r2) r++;
+                while ((long long)r*r > r2) r--;
+                if ((long long)r*r == r2 && p+q+r <= N && gcd(gcd(p,q),r) == 1)
+                    helper(k, p, q, r);
+            }
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p730.c")
+    exe_file = os.path.join(tmpdir, "p730")
+
+    with open(c_file, "w") as f:
+        f.write(c_code)
+
+    subprocess.run(["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+                   check=True, capture_output=True)
+
+    result = subprocess.run([exe_file], capture_output=True, text=True, check=True)
+    ans = int(result.stdout.strip())
+
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
 
     return ans
 

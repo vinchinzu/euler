@@ -15,9 +15,10 @@ def solve() -> int:
     N = 10**8
     L = isqrt(N // 3)
 
-    # Precompute GCDs
+    # Precompute GCDs (note: gcd(m, 0) = m, needed when n % m == 0)
     gcds = [[0] * (i + 1) for i in range(L + 1)]
     for i in range(1, L + 1):
+        gcds[i][0] = i
         for j in range(1, i + 1):
             gcds[i][j] = gcd(i, j)
 

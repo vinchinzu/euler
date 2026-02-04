@@ -1,29 +1,51 @@
-"""Project Euler Problem 163: Cross-hatched triangles."""
+"""Project Euler Problem 163 - Cross-hatched triangles.
 
+Count all triangles in a cross-hatched triangular grid of size N=36.
 
-def count_triangles(n: int) -> int:
-    """Count triangles in cross-hatched grid."""
-    if not isinstance(n, int) or n < 1:
-        raise ValueError("n must be a positive integer (n >= 1)")
+Represent each line by two intersection points on the outer triangle perimeter
+numbered 0 to 6N-1. Three lines form a triangle if they pairwise intersect
+inside the outer triangle. Subtract over-counted points where 3+ lines meet.
+"""
 
-    total = 0
-    # Upward triangles of size k
-    for k in range(1, n + 1):
-        rows = n - k + 1
-        cols_per_row = k
-        total += rows * cols_per_row
-    # Downward triangles of size k
-    for k in range(1, n):
-        rows = n - k
-        cols_per_row = k
-        total += rows * cols_per_row
-    return total
+def solve():
+    N = 36
 
+    # Generate all lines
+    lines = []
+    for base in range(3):
+        for i in range(N + 1):
+            s = (2 * N * base + 2 * i) % (6 * N)
+            e = (2 * N * base - 2 * i) % (6 * N)
+            lines.append((min(s, e), max(s, e)))
+        for i in range(2 * N + 1):
+            s = (2 * N * base + 2 * i) % (6 * N)
+            e = (2 * N * base - i) % (6 * N)
+            lines.append((min(s, e), max(s, e)))
 
-def main() -> int:
-    """Main function."""
-    return count_triangles(36)
+    def intersect(l1, l2):
+        s1, e1 = l1
+        s2, e2 = l2
+        return (s1 <= s2 <= e1 <= e2) or (s2 <= s1 <= e2 <= e1)
 
+    # Count triplets of mutually intersecting lines
+    n_lines = len(lines)
+    ans = 0
+    for i in range(n_lines):
+        for j in range(i + 1, n_lines):
+            if intersect(lines[i], lines[j]):
+                for k in range(j + 1, n_lines):
+                    if intersect(lines[i], lines[k]) and intersect(lines[j], lines[k]):
+                        ans += 1
+
+    # Subtract over-counted intersection points
+    # tr(N+1) interior intersection points where 6 lines meet: C(6,3)=20 each
+    # N^2 points where 3 cross-hatched lines meet: counted once extra
+    def tr(n):
+        return n * (n + 1) // 2
+
+    ans -= 20 * tr(N + 1) + N * N
+
+    return ans
 
 if __name__ == "__main__":
-    print(main())
+    print(solve())

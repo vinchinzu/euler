@@ -76,10 +76,10 @@ def solve() -> int:
     ans = 0
     for i in range(1, B + 1):
         if not all_factors[i]:
-            # A + i - 1 is prime
-            n = A + i - 1
+            # A + i is prime, so p = A + i and p - 1 = A + i - 1
+            n = A + i - 1  # n = p - 1
             res = 1
-            factors = prime_factorize(n - 1, all_factors[i - 1])
+            factors = prime_factorize(n, all_factors[i - 1])
             for p, e in factors.items():
                 term = (
                     pow(p, 3 * e, M)

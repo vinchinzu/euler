@@ -123,29 +123,12 @@ def _verify_solution(binoms: List[List[int]]) -> None:
     assert abs(result3 - expected3) < 1e-10, f"k=3 failed: {result3}"
 
 
-def main() -> None:
-    """Compute and print the expected number of steps for 32-bit integers.
-
-    Prints the result with 10 digits after the decimal point.
-    """
-
-    print(f"Precomputing binomial coefficients for up to {BITS} bits...")
+def solve() -> str:
+    """Compute the expected number of steps for 32-bit integers."""
     binoms = precompute_binomials(BITS)
-
-    _verify_solution(binoms)
-
-    print(f"Computing expected steps for {BITS} bits...")
     result = expected_steps_for_unset_bits(BITS, binoms)
-
-    print(f"Expected value of N for {BITS}-bit numbers: {result:.10f}")
-    print()
-    print(f"The expected number of steps until all {BITS} bits are set to 1 is:")
-    print(f"{result:.10f}")
+    return f"{result:.10f}"
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI behavior
-    try:
-        main()
-    except Exception as exc:  # Match Ruby script's top-level error handling
-        print(f"Error: {exc}")
-        raise
+if __name__ == "__main__":
+    print(solve())

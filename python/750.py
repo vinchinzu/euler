@@ -1,55 +1,82 @@
 """Project Euler Problem 750: Optimal Card Stacking.
 
-Let N cards be arranged in a row such that the nth card is 3^{n+1} (mod N+1).
-Find the minimum sum of the distances to move the cards such that a card is
-always placed on top of the card above it, and we end with a single stack of
-all cards from 1 to N.
+Cards at position n have value 3^n mod (N+1). Find minimal total drag distance
+to combine all cards into a single sequential stack.
 
-We use dynamic programming, where dp[s][e] is the minimum sum of distances
-to bring the cards from s to e (inclusive) together. Then it is easy to
-compute dp[s][e] by trying all possible splits where the last two stacks
-are brought together. The answer is dp[1][N].
+Uses interval DP in C for performance: dp[s][e] = min cost to merge cards s..e
+into one stack. For each interval, try all split points.
 """
 
 from __future__ import annotations
 
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Fast exponentiation modulo mod."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
-    """Solve Problem 750."""
-    n = 976
-    pos = [0] * n
-    for i in range(n):
-        card_val = pow_mod(3, i + 1, n + 1) - 1
-        pos[card_val] = i
+    """Solve Problem 750 using compiled C for O(N^3) DP."""
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    dp = [[0] * (n + 1) for _ in range(n)]
+#define N 976
 
-    for length in range(2, n + 1):
-        for start in range(n - length + 1):
-            end = start + length
-            dp[start][end] = float("inf")
-            for mid in range(start + 1, end):
-                cost = (
-                    abs(pos[mid - 1] - pos[end - 1])
-                    + dp[start][mid]
-                    + dp[mid][end]
-                )
-                if cost < dp[start][end]:
-                    dp[start][end] = cost
+static long long dp[N][N+1];  /* dp[s][e] = min cost to merge cards s..e-1 */
+static int pos[N];            /* pos[v] = position of card with value v+1 */
 
-    return int(dp[0][n])
+int main(void) {
+    /* Generate card positions: card at position n has value 3^n mod (N+1) */
+    /* pos[v] = position of card v (0-indexed: card value v+1 at pos[v]) */
+    long long p = 1;
+    int i, s, length, mid, end;
+    for (i = 0; i < N; i++) {
+        p = (p * 3) % (N + 1);
+        pos[(int)p - 1] = i;  /* card value p is at position i */
+    }
+
+    /* Initialize DP */
+    memset(dp, 0, sizeof(dp));
+
+    /* Interval DP: dp[s][s+len] for increasing lengths */
+    for (length = 2; length <= N; length++) {
+        for (s = 0; s <= N - length; s++) {
+            end = s + length;
+            long long best = -1;
+            for (mid = s + 1; mid < end; mid++) {
+                /* Cost to merge [s..mid) and [mid..end) plus distance between
+                   the "top" cards of each sub-stack. The top of [s..mid) is
+                   card mid-1 (0-indexed value), and top of [mid..end) is
+                   card end-1. When we merge, we move one stack to the other.
+                   The cost is |pos[mid-1] - pos[end-1]| */
+                long long cost = dp[s][mid] + dp[mid][end]
+                    + abs(pos[mid - 1] - pos[end - 1]);
+                if (best < 0 || cost < best)
+                    best = cost;
+            }
+            dp[s][end] = best;
+        }
+    }
+
+    printf("%lld\n", dp[0][N]);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 
 def main() -> int:

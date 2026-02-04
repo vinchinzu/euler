@@ -1,92 +1,54 @@
 """Project Euler Problem 835: Supernatural Triangles.
 
 Find the sum of the perimeters of all supernatural triangles (triangles
-where two sides are consecutive integers) with perimeter ≤ 10^N.
+where two sides are consecutive integers) with perimeter <= 10^N.
 
 First suppose one of the legs and the hypotenuse are consecutive, so the
-side lengths are a, b, b+1. Then a²=2b+1, so the sides are parameterized
-as a=2t+1, b=2t²+2t for t≥1. The perimeter is 4t²+6t+2, and we the
-quadratic formula tells us the maximum t is (√(1+4*10^N) - 3) / 4, which
-for even N is 10^{N/2})/2 - 1.
+side lengths are a, b, b+1. Then a^2=2b+1, so the sides are parameterized
+as a=2t+1, b=2t^2+2t for t>=1. The perimeter is 4t^2+6t+2, and the
+quadratic formula tells us the maximum t is (sqrt(1+4*10^N) - 3) / 4,
+which for even N is 10^{N/2}/2 - 1.
 
 Now suppose the two legs are consecutive, so the side lengths are a, a+1, c.
-Then we have the Pell equation a²+(a+1)²=c² => (2a+1)²-2c²=-1, and the
-perimeter is (2a+1)+c. Since this is a Pell equation, the solutions
-satisfy a recurrence, which we can find is p_t = 6p_{t-1}-p_{t-2}. We can
-also solve for the closed form formula
-p(t) = ((3+2√2)^t - (3-2√2)^t) / 2√2. This converges to (3+2√2)^t / 2√2,
-so we can compute the maximum t where the perimeter is at most 10^N. From
-this total we subtract 2 (for the degenerate triangle 0,1,1) and 12 (for
-the triangle 3,4,5, which is already counted in the first case).
+Then we have the Pell equation a^2+(a+1)^2=c^2 => (2a+1)^2-2c^2=-1, and
+the perimeter is (2a+1)+c. Since this is a Pell equation, the solutions
+satisfy a recurrence p_t = 6p_{t-1}-p_{t-2} with p_1=2. The prefix sum
+S(n) = sum(p_1..p_n) satisfies S(n) = 7S(n-1) - 7S(n-2) + S(n-3),
+which we evaluate via matrix exponentiation. We subtract 2 (degenerate
+triangle 0,1,1) and 12 (triangle 3,4,5 already counted in first case).
 """
 
 from __future__ import annotations
 
 import math
-from typing import Callable
 
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base = base % mod
+def mat_mul(A: list, B: list, mod: int) -> list:
+    """Multiply two matrices modulo mod."""
+    n = len(A)
+    m = len(B[0])
+    k = len(B)
+    C = [[0] * m for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            s = 0
+            for l in range(k):
+                s += A[i][l] * B[l][j]
+            C[i][j] = s % mod
+    return C
+
+
+def mat_pow(M_mat: list, exp: int, mod: int) -> list:
+    """Matrix exponentiation modulo mod."""
+    n = len(M_mat)
+    result = [[1 if i == j else 0 for j in range(n)] for i in range(n)]
+    base = [row[:] for row in M_mat]
     while exp > 0:
         if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
+            result = mat_mul(result, base, mod)
+        base = mat_mul(base, base, mod)
         exp >>= 1
     return result
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse."""
-    return pow(a, -1, m)
-
-
-def sum_powers(n: int, k: int, mod: int) -> int:
-    """Sum of k-th powers from 1 to n mod mod."""
-    if k == 0:
-        return n % mod
-    if k == 1:
-        return (n * (n + 1) // 2) % mod
-    if k == 2:
-        return (n * (n + 1) * (2 * n + 1) // 6) % mod
-    # For higher powers, use Faulhaber's formula (simplified)
-    result = 0
-    for i in range(1, n + 1):
-        result = (result + pow_mod(i, k, mod)) % mod
-    return result
-
-
-def triangular(n: int, mod: int) -> int:
-    """Triangular number n(n+1)/2 mod mod."""
-    return (n * (n + 1) // 2) % mod
-
-
-def lagrange_extrapolation(
-    f: Callable[[int], int], n_points: int, mod: int
-) -> Callable[[int], int]:
-    """Extrapolate function using Lagrange interpolation."""
-    values = []
-    for i in range(1, n_points + 1):
-        values.append(f(i) % mod)
-
-    def interpolate(x: int) -> int:
-        """Interpolate at point x."""
-        result = 0
-        for i in range(n_points):
-            term = values[i]
-            for j in range(n_points):
-                if i != j:
-                    denom = (i + 1 - (j + 1)) % mod
-                    if denom == 0:
-                        continue
-                    inv = pow(denom, mod - 2, mod)
-                    term = (term * (x - (j + 1)) * inv) % mod
-            result = (result + term) % mod
-        return result
-
-    return interpolate
 
 
 def solve() -> int:
@@ -95,38 +57,49 @@ def solve() -> int:
     M = 1234567891
     B = 10
 
+    inv2 = pow(2, -1, M)
+    inv6 = pow(6, -1, M)
+
     ans = 0
 
     # First case: leg and hypotenuse consecutive
-    limit1 = (pow_mod(B, N // 2, M) * mod_inverse(2, M) % M - 1) % M
-    ans = (
-        ans
-        + 4 * sum_powers(limit1, 2, M)
-        + 6 * triangular(limit1, M)
-        + 2 * limit1
-    ) % M
+    # limit1 = 10^(N/2) / 2 - 1, computed mod M
+    limit1 = (pow(B, N // 2, M) * inv2 - 1) % M
+
+    # sum of 4t^2+6t+2 for t=1..limit1, mod M
+    # = 4 * sum(t^2) + 6 * sum(t) + 2 * limit1
+    # sum(t^2) = n(n+1)(2n+1)/6 mod M (using modular inverse)
+    # sum(t) = n(n+1)/2 mod M
+    n = limit1
+    sum_t = n * (n + 1) % M * inv2 % M
+    sum_t2 = n * (n + 1) % M * (2 * n + 1) % M * inv6 % M
+
+    ans = (4 * sum_t2 + 6 * sum_t + 2 * n) % M
 
     # Second case: two legs consecutive (Pell equation)
+    # p_t = 6*p_{t-1} - p_{t-2}, p_0=0, p_1=2
+    # S(n) = sum(p_1..p_n) satisfies S(n) = 7S(n-1) - 7S(n-2) + S(n-3)
+    # S(0)=0, S(1)=2, S(2)=14
+
     sqrt2 = math.sqrt(2)
     log_base = math.log(3 + 2 * sqrt2)
     limit2 = int((N * math.log(B) + math.log(2 * sqrt2)) / log_base)
 
-    def p_sequence(n: int) -> int:
-        """Compute p(n) using recurrence."""
-        if n == 0:
-            return 0
-        p = [0] * (n + 2)
-        p[1] = 2
-        for i in range(2, n + 1):
-            p[i] = (6 * p[i - 1] - p[i - 2]) % M
-        # Sum prefix
-        result = 0
-        for i in range(1, n + 1):
-            result = (result + p[i]) % M
-        return result
+    if limit2 == 0:
+        S_limit2 = 0
+    elif limit2 == 1:
+        S_limit2 = 2
+    elif limit2 == 2:
+        S_limit2 = 14
+    else:
+        # Matrix exponentiation for the recurrence
+        # [S(n), S(n-1), S(n-2)] = M_rec^(n-2) * [S(2), S(1), S(0)]
+        rec_mat = [[7, -7, 1], [1, 0, 0], [0, 1, 0]]
+        result = mat_pow(rec_mat, limit2 - 2, M)
+        S_limit2 = (result[0][0] * 14 + result[0][1] * 2) % M
 
-    extrap = lagrange_extrapolation(p_sequence, 2, M)
-    ans = (ans + extrap(limit2) - 14) % M
+    # Subtract 2 (degenerate 0,1,1) and 12 (triangle 3,4,5 counted in first case)
+    ans = (ans + S_limit2 - 14) % M
 
     return ans
 

@@ -401,23 +401,10 @@ class PythagoreanTree:
         prev_area = 0.0
         current_area = 0.0
 
-        print(
-            "Computing Pythagorean tree bounding area with convergence "
-            "checking...",
-        )
-        print(f"Target precision: {precision}")
-        print("-" * 60)
-
         for iteration in range(1, max_iter + 1):
             self.generate(iteration)
             bounds = self.bounding_rectangle()
             current_area = bounds["area"]
-
-            print(
-                f"Iteration {iteration}, "
-                f"Height={bounds['height']:.6f}, "
-                f"Area={current_area:.12f}",
-            )
 
             if current_area > 0.0:
                 delta = abs(current_area - prev_area)
@@ -429,23 +416,10 @@ class PythagoreanTree:
             if iteration > 3 and (
                 delta < precision or relative_delta < precision
             ):
-                print(f"\nConverged at iteration {iteration}")
-                print(
-                    "Final delta: "
-                    f"{delta:.15f}, Relative delta: {relative_delta:.15f}",
-                )
                 break
 
             prev_area = current_area
-        else:
-            # Loop completed without break: we still return current_area.
-            pass
 
-        print("-" * 60)
-        print(
-            "Final result (rounded to 10 decimal places): "
-            f"{current_area:.10f}",
-        )
         return current_area
 
     # ---- Lightweight self-tests ----------------------------------------
@@ -507,27 +481,12 @@ class PythagoreanTree:
         print()
 
 
-def _main() -> None:
-    """Entry point for command-line execution."""
-
-    PythagoreanTree.run_tests()
-
+def solve() -> str:
+    """Solve PE 395."""
     tree = PythagoreanTree()
     final_area = tree.compute_converged_area(20, 1e-12)
-
-    print("\n" + "=" * 60)
-    print("PROJECT EULER PROBLEM 395 SOLUTION")
-    print("=" * 60)
-    print(
-        "The smallest area of the bounding rectangle for the Pythagorean "
-        f"tree is:\n{final_area:.10f}",
-    )
-    print("=" * 60)
-
-    # Print only final answer for test harness
-    print()
-    print(f"{final_area:.10f}")
+    return f"{final_area:.10f}"
 
 
 if __name__ == "__main__":
-    _main()
+    print(solve())

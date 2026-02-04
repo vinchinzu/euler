@@ -22,10 +22,10 @@ then Σ ϕ(i) - E(S*).
 
 from __future__ import annotations
 
-from decimal import Decimal, getcontext
 from typing import List
 
-getcontext().prec = 50
+import mpmath
+mpmath.mp.dps = 50
 
 
 def pre_phi(limit: int) -> List[int]:
@@ -48,17 +48,21 @@ def solve() -> str:
     for i in range(1, N + 1):
         sum_phis[i] = sum_phis[i - 1] + phi[i]
 
-    d = Decimal(K) / Decimal(N)
-    ans = Decimal(sum_phis[N])
+    d = mpmath.mpf(K) / mpmath.mpf(N)
+    ans = mpmath.mpf(sum_phis[N])
 
     for i in range(1, N + 1):
-        diff = d * Decimal(sum_phis[N] - sum_phis[i - 1])
-        if abs(diff) < Decimal("1e-10"):
+        diff = d * mpmath.mpf(sum_phis[N] - sum_phis[i - 1])
+        if abs(float(diff)) == 0.0:
             break
-        d = d * Decimal(N - K - i + 1) / Decimal(N - i)
+        d = d * mpmath.mpf(N - K - i + 1) / mpmath.mpf(N - i)
         ans = ans - diff
 
-    return f"{ans:.6f}"
+    # Format to 6 decimal places
+    s = mpmath.nstr(ans, 15, strip_zeros=False)
+    # Find the decimal point and take 6 digits after it
+    dot = s.index('.')
+    return s[:dot + 7]
 
 
 def main() -> str:

@@ -1,157 +1,169 @@
-"""Project Euler Problem 545: Von Staudt-Clausen Denominator.
+"""Project Euler Problem 545: Faulhaber's Formulas.
 
-The sum of the kth powers of the first n integers is a polynomial f(n). Let
-D(k) be the denominator of the coefficient of n (in reduced terms). Find the
-Nth value of m for which D(m) = K.
-
-By the Von Staudt-Clausen theorem, D(k) is the product of all primes p for
-which p-1 divides k. So in order for D(m) = K, we must have (1) m be
-divisible by p-1 for all p|K, and (2) no other divisor of m be 1 more than
-a prime.
+D(k) = product of primes p where (p-1)|k (von Staudt-Clausen theorem).
+Find F(10^5) = the 100000th value of k where D(k) = 20010.
+20010 = 2*3*5*23*29, so the required primes have (p-1) in {1,2,4,22,28}.
+lcm(1,2,4,22,28) = 308. So k = 308*m for valid m.
+m is valid if no divisor d of m satisfies: d*g+1 is prime (and not in our set) for some g|308.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from math import gcd, isqrt
-from typing import List
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+typedef long long ll;
+typedef unsigned long long ull;
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+/* Divisors of 308 = 2^2 * 7 * 11 */
+static const int divs308[] = {1,2,4,7,11,14,22,28,44,77,154,308};
+static const int ndivs = 12;
 
+/* Good primes: these are the primes whose product is 20010 */
+static int is_good_prime(ll p) {
+    return p==2||p==3||p==5||p==23||p==29;
+}
 
-def pre_smallest_prime_factor(limit: int) -> List[int]:
-    """Precompute smallest prime factor."""
-    spf = list(range(limit + 1))
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] == i:
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
+int main(void) {
+    const int TARGET = 100000;
+    const int BASE = 308;
+    const int L = 5000000;
 
+    /* We need to check, for each d in [2,L], whether d*g+1 is prime for any g|308.
+     * The maximum value to check is L * 308 + 1 ≈ 1.54 * 10^9.
+     * We'll use a segmented approach: for each g, collect values d*g+1 and check primality.
+     *
+     * Better approach: sieve primes up to L*308+1, then for each prime p,
+     * compute d = (p-1)/gcd(p-1,308) and if d <= L, mark d as forbidden.
+     *
+     * Sieving up to 1.54*10^9 is expensive in memory (~200MB for a bitset).
+     * Instead, use a segmented sieve.
+     */
 
-def prime_factorization(n: int) -> dict[int, int]:
-    """Get prime factorization."""
-    factors: dict[int, int] = {}
-    d = 2
-    while d * d <= n:
-        while n % d == 0:
-            factors[d] = factors.get(d, 0) + 1
-            n //= d
-        d += 1
-    if n > 1:
-        factors[n] = factors.get(n, 0) + 1
-    return factors
+    /* Alternative: for each divisor g of 308, we need to check if d*g+1 is prime
+     * for d in [2, L]. The candidate primes are in arithmetic progression:
+     * g+1, 2g+1, 3g+1, ..., L*g+1.
+     * For each such AP, sieve primes in that AP using a standard sieve.
+     * Actually, it's easier to just sieve all primes up to max(L*g+1) and look them up.
+     *
+     * Max value = L * 308 + 1 = 1,540,000,001.
+     * Segmented sieve with sqrt(1.54e9) ≈ 39244 small primes.
+     */
 
+    ll MAX_P = (ll)L * 308 + 2;
 
-def all_divisors(n: int) -> List[int]:
-    """Get all divisors of n."""
-    factors = prime_factorization(n)
-    divisors = [1]
-    for p, e in factors.items():
-        new_divisors = []
-        for d in divisors:
-            for i in range(1, e + 1):
-                new_divisors.append(d * pow(p, i))
-        divisors.extend(new_divisors)
-    return sorted(set(divisors))
+    /* Sieve small primes up to sqrt(MAX_P) */
+    int sqrt_max = 40000;
+    char *small_sieve = (char*)calloc(sqrt_max + 1, 1);
+    memset(small_sieve, 1, sqrt_max + 1);
+    small_sieve[0] = small_sieve[1] = 0;
+    for (int i = 2; (ll)i*i <= sqrt_max; i++) {
+        if (small_sieve[i]) {
+            for (int j = i*i; j <= sqrt_max; j += i)
+                small_sieve[j] = 0;
+        }
+    }
+    int *sprimes = (int*)malloc(sqrt_max * sizeof(int));
+    int nsprimes = 0;
+    for (int i = 2; i <= sqrt_max; i++)
+        if (small_sieve[i]) sprimes[nsprimes++] = i;
+    free(small_sieve);
 
+    /* forbidden[d] = 1 means d is a forbidden divisor */
+    char *forbidden = (char*)calloc(L + 1, 1);
 
-def lcm(a: int, b: int) -> int:
-    """Least common multiple."""
-    return a * b // gcd(a, b)
+    /* Segmented sieve to find all primes up to MAX_P */
+    /* For each prime p found, compute d = (p-1)/gcd(p-1,308) and mark forbidden */
+    const int SEG_SIZE = 1 << 20; /* ~1M */
+    char *seg = (char*)malloc(SEG_SIZE);
 
+    for (ll lo = 2; lo < MAX_P; lo += SEG_SIZE) {
+        ll hi = lo + SEG_SIZE - 1;
+        if (hi >= MAX_P) hi = MAX_P - 1;
+        int len = (int)(hi - lo + 1);
 
-def imod_inv(a: int, p: int) -> int:
-    """Modular inverse."""
-    return pow(a, p - 2, p) if p > 1 else 0
+        memset(seg, 1, len);
 
+        for (int i = 0; i < nsprimes; i++) {
+            int p = sprimes[i];
+            ll start = ((lo + p - 1) / p) * p;
+            if (start == p) start += p; /* don't mark p itself */
+            if (start < lo) start = lo; /* shouldn't happen */
+            for (ll j = start; j <= hi; j += p)
+                seg[(int)(j - lo)] = 0;
+        }
 
-def imod(a: int, m: int) -> int:
-    """Integer modulo."""
-    return ((a % m) + m) % m
+        /* Process primes in this segment */
+        for (int i = 0; i < len; i++) {
+            if (!seg[i]) continue;
+            ll p = lo + i;
+            if (is_good_prime(p)) continue;
 
+            /* Compute gcd(p-1, 308) */
+            ll pm1 = p - 1;
+            ll g = pm1;
+            ll b = 308;
+            while (b) { ll t = b; b = g % b; g = t; }
+            /* g = gcd(pm1, 308) */
 
-def solve() -> int:
-    """Solve Problem 545."""
-    N = 100000
-    K = 20010
+            ll d = pm1 / g;
+            if (d >= 2 && d <= L) {
+                forbidden[d] = 1;
+            }
+        }
+    }
+    free(seg);
+    free(sprimes);
 
-    # Compute LCM of p-1 for all p|K
-    k_factors = prime_factorization(K)
-    lcm_val = 1
-    for p in k_factors.keys():
-        lcm_val = lcm(lcm_val, p - 1)
+    /* Now sieve valid array: valid[m] = 1 if no forbidden d divides m */
+    char *valid = (char*)malloc(L + 1);
+    memset(valid, 1, L + 1);
 
-    divisors = all_divisors(lcm_val)
+    for (int d = 2; d <= L; d++) {
+        if (forbidden[d]) {
+            for (int j = d; j <= L; j += d)
+                valid[j] = 0;
+        }
+    }
+    free(forbidden);
 
-    # Binary search for L
-    L = 2
-    while True:
-        limit = max(isqrt(L * lcm_val), L)
-        spf = pre_smallest_prime_factor(limit)
-        primes = sieve_primes(isqrt(limit))
+    /* Count valid m values */
+    int count = 0;
+    for (int m = 1; m <= L; m++) {
+        if (valid[m]) {
+            count++;
+            if (count == TARGET) {
+                printf("%lld\n", (ll)m * BASE);
+                free(valid);
+                return 0;
+            }
+        }
+    }
 
-        # Build G array
-        G = [[False] * L for _ in range(len(divisors))]
-        for i, d in enumerate(divisors):
-            for p in primes:
-                if d % p != 0:
-                    j_start = imod(-imod_inv(d, p), p)
-                    j = j_start
-                    while j < L:
-                        if j * d + 1 != p:
-                            G[i][j] = True
-                        j += p
-            for j in range(L):
-                if K % (d * j + 1) == 0:
-                    G[i][j] = True
-
-        # Build bad array
-        bad = [False] * L
-        for i in range(len(divisors)):
-            for j in range(L):
-                if not G[i][j]:
-                    bad[j] = True
-
-        for j in range(L):
-            n = j
-            while n > 1:
-                p = spf[n] if n < len(spf) else n
-                if bad[j // p]:
-                    bad[j] = True
-                n //= p
-
-        # Count valid values
-        count = 0
-        j = 0
-        while count < N and j < L:
-            if not bad[j]:
-                count += 1
-            j += 1
-
-        if j < L:
-            return j * lcm_val
-
-        L *= 2
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    fprintf(stderr, "Need larger L! Found %d valid values out of %d\n", count, L);
+    free(valid);
+    return 1;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as src:
+        src.write(c_code)
+        src_path = src.name
+    bin_path = src_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, src_path, '-lm'], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, check=True, timeout=28)
+        print(result.stdout.strip())
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e.stderr}", flush=True)
+        raise
+    finally:
+        os.unlink(src_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

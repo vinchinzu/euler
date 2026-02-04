@@ -260,32 +260,10 @@ def clear_memo() -> None:
     is_losing_position.cache_clear()
 
 
-def main() -> None:
-    """Entry point when run as a script.
-
-    Runs basic tests, verifies small sums, performs pattern analysis, and then
-    invokes the heuristic large-n computation.
-    """
-
-    print("Project Euler Problem 366 Solution (Heuristic Draft)")
-    print("=" * 40)
-
-    run_tests()
-    verify_small_sum()
-
-    # Skip expensive pattern analysis - it's too slow
-    # analyze_patterns()
-
-    limit = 10**18
-    print(f"\nComputing sum M(n) for n <= {limit} (heuristic)...")
-    result = compute_large_sum_efficient(limit)
-
-    print(f"Final heuristic result (modulo {MOD}): {result}")
-
-    # Print only the final answer for the test harness
-    print()
-    print(result)
+def solve() -> int:
+    """Solve PE 366."""
+    return compute_large_sum_efficient(10**18)
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

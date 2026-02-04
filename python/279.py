@@ -1,84 +1,93 @@
-"""Project Euler Problem 279: Triangles with Integral Angles.
+"""Project Euler Problem 279: Triangles with Integral Sides and an Integral Angle.
 
-Find the number of integer sided triangles with perimeter at most N and at
-least one integral angle in degrees.
+How many triangles are there with integral sides, at least one integral angle
+(measured in degrees), and a perimeter that does not exceed 10^8?
 
-By the Law of Cosines, the angle must be 60°, 90°, or 120°. Pythagorean
-triples are generated in the standard way, and the parameterizations for 60°
-and 120° triangles are described in problems 195 and 143 respectively.
+By Niven's theorem, the only integer degree angles with rational cosine are
+60, 90, and 120 degrees. We enumerate primitive triangles for each family
+using known parameterizations (m > n > 0, gcd(m,n) = 1):
 
-As an optimization, we precompute GCDs up to √(N/2), the upper bound for n,
-and compute gcd(n, m % n) to stay within the bound. This means we need to
-count equilateral triangles separately (there are ⌊N/3⌋ of them) because the
-1-1-1 primitive triangle is generated from m = 1, n = 0.
+  Equilateral:     perimeter = 3
+  60-deg Type I:   (m-n) % 3 != 0, perimeter = 2m^2 + 2n^2 + 5mn
+  60-deg Type II:  (m-n) % 3 != 0, perimeter = 3m^2 + 3mn
+  120-deg:         (m-n) % 3 != 0, perimeter = 2m^2 + n^2 + 3mn
+  90-deg:          (m-n) odd,       perimeter = 2m^2 + 2mn
+
+For each primitive with perimeter p, there are floor(N/p) similar triangles.
+No triangle belongs to more than one family (no integer-sided triangle can
+simultaneously have two of these angles), so we simply sum all contributions.
 """
-
-from __future__ import annotations
 
 from math import gcd, isqrt
 
 
-def ipow(base: int, exp: int) -> int:
-    """Integer power."""
-    return base**exp
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
 def solve() -> int:
-    """Solve Problem 279."""
-    N = ipow(10, 8)
+    N = 100000000  # 10^8
 
-    # Precompute GCDs
-    limit = isqrt(N // 2)
-    gcds: list[list[int]] = [[0] * (i + 1) for i in range(limit + 1)]
-    for i in range(1, limit + 1):
-        for j in range(1, i + 1):
-            gcds[i][j] = gcd(i, j)
+    ans = N // 3  # equilateral triangles
 
-    ans = N // 3  # Equilateral triangles
+    m_limit = isqrt(N >> 1) + 2
+    _gcd = gcd
 
-    # 60° triangles: parameterization from problem 143
-    for n in range(1, limit + 1):
-        if 6 * sq(n) > 3 * N:
+    # 60-degree Type I: perimeter = 2m^2 + 2n^2 + 5mn
+    for m in range(2, m_limit + 1):
+        mm2 = 2 * m * m
+        m5 = 5 * m
+        if mm2 + m5 + 2 > N:
             break
-        for m in range(2 * n + 1, limit + 1):
-            if 3 * m * (m - n) > 3 * N:
+        bad3 = m % 3
+        for n in range(1, m):
+            p = mm2 + 2 * n * n + m5 * n
+            if p > N:
                 break
-            if gcds[n][m % n] == 1:
-                factor = 3 if (m + n) % 3 != 0 else 1
-                ans += N // (factor * m * (m - n))
+            if n % 3 != bad3 and _gcd(m, n) == 1:
+                ans += N // p
 
-    # 90° triangles: Pythagorean triples
-    for n in range(1, limit + 1):
-        if 4 * sq(n) > N:
+    # 60-degree Type II: perimeter = 3m(m+n)
+    for m in range(2, m_limit + 1):
+        m3 = 3 * m
+        if m3 * (m + 1) > N:
             break
-        for m in range(n + 1, limit + 1, 2):
-            if 2 * m * (m + n) > N:
+        bad3 = m % 3
+        for n in range(1, m):
+            p = m3 * (m + n)
+            if p > N:
                 break
-            if gcds[n][m % n] == 1:
-                ans += N // (2 * m * (m + n))
+            if n % 3 != bad3 and _gcd(m, n) == 1:
+                ans += N // p
 
-    # 120° triangles: parameterization from problem 195
-    for n in range(1, limit + 1):
-        if 2 * sq(n) > N:
+    # 120-degree: perimeter = 2m^2 + n^2 + 3mn
+    for m in range(2, m_limit + 1):
+        mm2 = 2 * m * m
+        m3 = 3 * m
+        if mm2 + m3 + 1 > N:
             break
-        for m in range(n + 1, 2 * n):
-            if m * (m + n) > N:
+        bad3 = m % 3
+        for n in range(1, m):
+            p = mm2 + n * n + m3 * n
+            if p > N:
                 break
-            if (m + n) % 3 != 0 and gcds[n][m % n] == 1:
-                ans += N // (m * (m + n))
+            if n % 3 != bad3 and _gcd(m, n) == 1:
+                ans += N // p
+
+    # 90-degree (Pythagorean): perimeter = 2m(m+n), (m-n) must be odd
+    for m in range(2, m_limit + 1):
+        m2 = 2 * m
+        if m2 * (m + 1) > N:
+            break
+        n_start = 2 if m & 1 else 1
+        for n in range(n_start, m, 2):
+            p = m2 * (m + n)
+            if p > N:
+                break
+            if _gcd(m, n) == 1:
+                ans += N // p
 
     return ans
 
 
 def main() -> None:
-    """Main entry point."""
-    result = solve()
-    print(result)
+    print(solve())
 
 
 if __name__ == "__main__":

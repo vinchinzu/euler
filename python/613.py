@@ -24,12 +24,15 @@ import math
 
 
 def integrate(f, a: float, b: float, n: int) -> float:
-    """Numerical integration using trapezoidal rule."""
+    """Numerical integration using Simpson's rule."""
+    if n % 2 == 1:
+        n += 1
     h = (b - a) / n
-    result = (f(a) + f(b)) / 2
+    result = f(a) + f(b)
     for i in range(1, n):
-        result += f(a + i * h)
-    return result * h
+        coeff = 4 if i % 2 == 1 else 2
+        result += coeff * f(a + i * h)
+    return result * h / 3
 
 
 def solve() -> float:
@@ -39,8 +42,8 @@ def solve() -> float:
 
     ans = (
         math.pi / 2
-        + integrate(lambda x: 1 - B * math.tan(x) / A, 0, math.atan2(A, B), 1000)
-        + integrate(lambda x: 1 - A * math.tan(x) / B, 0, math.atan2(B, A), 1000)
+        + integrate(lambda x: 1 - B * math.tan(x) / A, 0, math.atan2(A, B), 10000)
+        + integrate(lambda x: 1 - A * math.tan(x) / B, 0, math.atan2(B, A), 10000)
     ) / (2 * math.pi)
     return ans
 

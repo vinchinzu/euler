@@ -1,136 +1,213 @@
 """Project Euler Problem 636: Restricted Factorisations.
 
-Find the number of ways that N! can be written as the product of one natural
-number, two squares, three cubes, and four fourth powers, such that all bases
-are distinct.
+F(n) = number of ways to write n = a * b1^2 * b2^2 * c1^3 * c2^3 * c3^3 * d1^4 * d2^4 * d3^4 * d4^4
+with all 10 bases distinct. Find F(10^6!) mod 10^9+7.
 
-If N! = Π (p_i)^(e_i), then the number of ways to assign the exponents of
-each p_i is the number of solutions to a+2b+3c+4d = e_i, and we multiply the
-number of solutions over all p_i.
+Approach: inclusion-exclusion over partitions of the 10 positions into groups
+where same-group positions share the same base. Each partition type gives a
+"jump profile" (multiset of coin values for unbounded knapsack), and we compute
+the product over all primes of the coin-change count for that prime's exponent.
 """
 
-from __future__ import annotations
-
+import subprocess, tempfile, os
 from collections import Counter
-from itertools import product
-
+from math import factorial
 from sympy import primerange
 
 
-def num_factors_in_factorial(n: int, p: int) -> int:
-    """Count how many times p divides n!."""
-    count = 0
-    power = p
-    while power <= n:
-        count += n // power
-        power *= p
-    return count
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def factorial(n: int, mod: int) -> int:
-    """Compute n! modulo mod."""
-    result = 1
-    for i in range(1, n + 1):
-        result = (result * i) % mod
-    return result
-
-
-def triangular(n: int) -> int:
-    """Triangular number."""
-    return n * (n + 1) // 2
-
-
-def parity(n: int) -> int:
-    """Return 1 if even, -1 if odd."""
-    return 1 if n % 2 == 0 else -1
-
-
-def solve() -> int:
-    """Solve Problem 636."""
+def solve():
     N = 10**6
-    K = 4
-    M = 10**9 + 7
+    MOD = 10**9 + 7
 
+    # Enumerate group compositions: (n1, n2, n3, n4) = how many of type 1,2,3,4
+    group_comps = []
+    for n1 in range(2):
+        for n2 in range(3):
+            for n3 in range(4):
+                for n4 in range(5):
+                    if n1 + n2 + n3 + n4 > 0:
+                        group_comps.append((n1, n2, n3, n4))
+
+    def enum_parts(remaining, min_idx, current):
+        n1_r, n2_r, n3_r, n4_r = remaining
+        if n1_r == 0 and n2_r == 0 and n3_r == 0 and n4_r == 0:
+            yield tuple(sorted(current))
+            return
+        for idx in range(min_idx, len(group_comps)):
+            gc = group_comps[idx]
+            if gc[0] <= n1_r and gc[1] <= n2_r and gc[2] <= n3_r and gc[3] <= n4_r:
+                new_rem = (n1_r - gc[0], n2_r - gc[1], n3_r - gc[2], n4_r - gc[3])
+                yield from enum_parts(new_rem, idx, current + [gc])
+
+    parts = set()
+    for p in enum_parts((1, 2, 3, 4), 0, []):
+        parts.add(p)
+
+    def multinomial(n, groups):
+        r = factorial(n)
+        for g in groups:
+            r //= factorial(g)
+        return r
+
+    jump_profiles = {}
+    for part in parts:
+        jumps = tuple(sorted([g[0] + 2*g[1] + 3*g[2] + 4*g[3] for g in part]))
+        m = len(part)
+        sign = (-1) ** (10 - m)
+        bf = 1
+        for g in part:
+            bf *= factorial(sum(g) - 1)
+        ways = 1
+        for t, tot in enumerate([1, 2, 3, 4]):
+            ways *= multinomial(tot, [g[t] for g in part])
+        bc = Counter(part)
+        for v in bc.values():
+            ways //= factorial(v)
+        coeff = sign * bf * ways
+        jump_profiles[jumps] = jump_profiles.get(jumps, 0) + coeff
+
+    jump_profiles = {k: v for k, v in jump_profiles.items() if v != 0}
+
+    # Compute prime exponents in N!
     primes = list(primerange(2, N + 1))
-    es = [num_factors_in_factorial(N, p) for p in primes]
+    exp_counts = Counter()
+    for p in primes:
+        e = 0
+        pk = p
+        while pk <= N:
+            e += N // pk
+            if pk > N // p:
+                break
+            pk *= p
+        exp_counts[e] += 1
 
-    cache = {}
+    max_e = max(exp_counts.keys())
+    distinct_exps = sorted(exp_counts.keys())
+    exp_multiplicities = [exp_counts[e] for e in distinct_exps]
 
-    def helper(max_group: int, pattern: list[int]) -> int:
-        """Recursive helper."""
-        if len(pattern) == triangular(K):
-            mult = 1
-            jumps = Counter()
-            groups = Counter(pattern)
+    # Prepare data for C
+    profiles = sorted(jump_profiles.items())
 
-            for group in range(max_group + 1):
-                group_size = groups[group]
-                jump = 0
-                for j in range(1, K + 1):
-                    for k in range(1, j + 1):
-                        idx = triangular(j - 1) + k - 1
-                        if idx < len(pattern) and pattern[idx] == group:
-                            jump += j
-                mult = (
-                    mult * parity(group_size) * factorial(group_size - 1, M)
-                ) % M
-                jumps[jump] += 1
+    # Build input for C program
+    lines = []
+    lines.append(f"{len(profiles)} {len(distinct_exps)} {max_e} {MOD}")
+    for jumps, coeff in profiles:
+        lines.append(f"{coeff} {len(jumps)} " + " ".join(str(j) for j in jumps))
+    for e in distinct_exps:
+        lines.append(str(e))
+    for m in exp_multiplicities:
+        lines.append(str(m))
 
-            key = tuple(sorted(jumps.items()))
-            if key in cache:
-                return cache[key]
+    input_data = "\n".join(lines) + "\n"
 
-            total = es[0] if es else 0
-            dp = [0] * (total + 1)
-            dp[0] = 1
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-            for jump in jumps:
-                for i in range(jump, total + 1):
-                    dp[i] = (dp[i] + dp[i - jump]) % M
+typedef long long ll;
+typedef unsigned int u32;
 
-            result = 1
-            for e in es:
-                result = (result * dp[e]) % M
+ll power(ll base, ll exp, ll mod) {
+    ll r = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) r = r * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return r;
+}
 
-            cache[key] = result
-            return (mult * result) % M
+int main() {
+    int num_profiles, num_exps, max_e;
+    ll MOD;
+    scanf("%d %d %d %lld", &num_profiles, &num_exps, &max_e, &MOD);
+    u32 M = (u32)MOD;
 
-        result = 0
-        for group in range(max_group + 2):
-            new_pattern = pattern + [group]
-            result = (result + helper(max(max_group, group), new_pattern)) % M
-        return result
+    /* Read profiles */
+    ll *coeffs = (ll *)malloc(num_profiles * sizeof(ll));
+    int *num_coins = (int *)malloc(num_profiles * sizeof(int));
+    int **coins = (int **)malloc(num_profiles * sizeof(int *));
 
-    ans = helper(-1, []) % M
-    for i in range(1, K + 1):
-        ans = (ans * mod_inverse(factorial(i, M), M)) % M
+    for (int i = 0; i < num_profiles; i++) {
+        scanf("%lld %d", &coeffs[i], &num_coins[i]);
+        coins[i] = (int *)malloc(num_coins[i] * sizeof(int));
+        for (int j = 0; j < num_coins[i]; j++) {
+            scanf("%d", &coins[i][j]);
+        }
+    }
 
-    return ans
+    /* Read distinct exponents and multiplicities */
+    int *exps = (int *)malloc(num_exps * sizeof(int));
+    int *mults = (int *)malloc(num_exps * sizeof(int));
+    for (int i = 0; i < num_exps; i++) scanf("%d", &exps[i]);
+    for (int i = 0; i < num_exps; i++) scanf("%d", &mults[i]);
 
+    /* For each profile, compute coin-change DP and evaluate product */
+    /* Use u32 for dp to reduce memory bandwidth (halves cache pressure) */
+    u32 *dp = (u32 *)malloc((max_e + 1) * sizeof(u32));
+    ll answer = 0;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    for (int pi = 0; pi < num_profiles; pi++) {
+        /* Initialize DP */
+        memset(dp, 0, (max_e + 1) * sizeof(u32));
+        dp[0] = 1;
+
+        for (int ci = 0; ci < num_coins[pi]; ci++) {
+            int c = coins[pi][ci];
+            for (int i = c; i <= max_e; i++) {
+                u32 v = dp[i] + dp[i - c];
+                dp[i] = v >= M ? v - M : v;
+            }
+        }
+
+        /* Compute product over distinct exponents */
+        ll prod = 1;
+        for (int ei = 0; ei < num_exps; ei++) {
+            ll val = dp[exps[ei]];
+            prod = prod % MOD * power(val, mults[ei], MOD) % MOD;
+        }
+
+        /* Add coeff * prod to answer */
+        ll c = coeffs[pi] % MOD;
+        if (c < 0) c += MOD;
+        answer = (answer + c * prod) % MOD;
+    }
+
+    /* Divide by 1!*2!*3!*4! = 288 */
+    ll div_val = 1;
+    for (int i = 1; i <= 4; i++) {
+        ll f = 1;
+        for (int j = 2; j <= i; j++) f *= j;
+        div_val *= f;
+    }
+    answer = answer % MOD * power(div_val, MOD - 2, MOD) % MOD;
+
+    printf("%lld\n", answer);
+
+    free(dp);
+    for (int i = 0; i < num_profiles; i++) free(coins[i]);
+    free(coins); free(num_coins); free(coeffs);
+    free(exps); free(mults);
+    return 0;
+}
+"""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "sol.c")
+        exe = os.path.join(tmpdir, "sol")
+        with open(src, "w") as f:
+            f.write(c_code)
+        r = subprocess.run(["gcc", "-O2", "-o", exe, src], capture_output=True, text=True)
+        if r.returncode != 0:
+            import sys; sys.stderr.write("Compile: " + r.stderr + "\n"); return -1
+        result = subprocess.run([exe], input=input_data, capture_output=True, text=True, timeout=28)
+        if result.returncode != 0:
+            import sys; sys.stderr.write("Runtime: " + result.stderr + "\n"); return -1
+        return int(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

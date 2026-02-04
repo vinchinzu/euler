@@ -1,317 +1,323 @@
-"""Project Euler Problem 368 (improved version).
+"""Project Euler Problem 368: A Kempner-like series.
 
-This module computes the sum of 1/n over all positive integers n whose decimal
-representation contains at least three equal consecutive digits. This is the
-"omitted" part of the harmonic series for the problem's definition.
+Sum 1/n for all n whose decimal representation does NOT contain 3 or more
+consecutive equal digits.
 
-The code is a Pythonic port of the provided Ruby implementation, using the
-standard library only. It is structured to be:
-
-- Python 3.12 compatible
-- Fully typed
-- Reasonably efficient for exploratory / educational use
-
-Note: This implementation preserves the original Ruby script's approximate
-approach, including a heuristic tail estimation. It is suitable for reproducing
-the given solution-style behavior, but it is not a formally proven, rigorously
-optimized solver.
+Uses Baillie's method with moment corrections:
+- Solve linear system for T(s) = sum count(s,r)/10^r (generating function)
+- Also track M1(s) = sum S1(s,r)/10^(2r) and M2(s) = sum S2(s,r)/10^(3r)
+- Enumerate k-digit prefixes and use T, M1, M2 for tail correction
 """
-
-from __future__ import annotations
-
-from dataclasses import dataclass
-from decimal import Decimal, getcontext
-from time import perf_counter
-from typing import Callable, Iterable, List, Optional
-
-# Global configuration constants (mirroring the Ruby script's intent)
-
-MAX_DIGITS: int = 20
-"""Maximum digits to consider when generating numbers.
-
-Numbers larger than 10 ** MAX_DIGITS contribute terms < 1e-20, which are
-negligible for our target precision.
-"""
-
-PRECISION: float = 1e-12
-"""Target precision threshold for convergence (currently informational only)."""
-
-TAIL_THRESHOLD: float = 1e-12
-"""Threshold below which individual terms are ignored in explicit generation."""
-
-MAX_GENERATION_TIME: float = 60.0
-"""Maximum allowed generation time in seconds before warning the user."""
-
-# Configure Decimal precision high enough for our needs.
-getcontext().prec = 50
-
-
-def has_three_consecutive_digits(s: str) -> bool:
-    """Return True if s contains three equal consecutive digits.
-
-    For example:
-    - "111" -> True
-    - "1211" -> False
-    - "1110" -> True
-    """\
-
-    if len(s) < 3:
-        return False
-
-    # Simple sliding window over characters
-    for i in range(len(s) - 2):
-        if s[i] == s[i + 1] == s[i + 2]:
-            return True
-    return False
-
-
-def _generate_bad_numbers_recursive(
-    current: str,
-    length_limit: int,
-    collector: List[int],
-    callback: Optional[Callable[[int], None]] = None,
-) -> None:
-    """Recursive generator for numbers with three equal consecutive digits.
-
-    This mirrors the recursive Ruby approach. It explores all digit strings
-    up to ``length_limit`` and:
-    - whenever a string with three equal consecutive digits is found, its
-      integer value is recorded/returned via ``collector`` and ``callback``.
-
-    The search is naive and will be expensive for large ``length_limit``; it is
-    kept here to stay faithful to the original script.
-    """
-
-    if len(current) > length_limit:
-        return
-
-    if has_three_consecutive_digits(current) and current:
-        n = int(current)
-        if n != 0:  # Skip zero to avoid division by zero
-            if callback is not None:
-                callback(n)
-            else:
-                # For potential testing or analysis when no callback is supplied.
-                collector.append(n)
-
-    if len(current) == length_limit:
-        return
-
-    for digit in "0123456789":
-        new_num = current + digit
-        _generate_bad_numbers_recursive(new_num, length_limit, collector, callback)
-
-
-def generate_bad_numbers(
-    length_limit: int,
-    callback: Optional[Callable[[int], None]] = None,
-) -> List[int]:
-    """Generate all integers with at least three equal consecutive digits.
-
-    Parameters
-    ----------
-    length_limit:
-        Maximum number of digits in the generated numbers.
-    callback:
-        If provided, called for each generated integer. When ``callback`` is
-        given, the returned list will still contain all generated integers for
-        convenience; in performance-sensitive use, you may want a more
-        streaming-oriented design.
-    """
-
-    collector: List[int] = []
-
-    def _store(n: int) -> None:
-        collector.append(n)
-        if callback is not None:
-            callback(n)
-
-    _generate_bad_numbers_recursive("", length_limit, collector, _store)
-    collector = sorted(set(collector))
-    return collector
-
-
-def estimate_tail_sum(start_n: int, max_digits: int) -> float:
-    """Estimate the tail sum of 1/n for "bad" numbers starting from ``start_n``.
-
-    This is a heuristic based on an extremely simple density estimate and
-    bounded by the harmonic tail from ``start_n`` to 10**max_digits.
-
-    Note: This is not mathematically rigorous; kept to match the Ruby code's
-    behavior. For precise work, replace with a proper analytic or DP-based
-    estimate tailored to the digit pattern.
-    """
-
-    if start_n <= 0:
-        raise ValueError("start_n must be positive")
-
-    upper_bound = (10**max_digits).bit_length()  # placeholder, see below
-    # TODO: The original Ruby uses Math.log(10**max_digits) - Math.log(start_n).
-    # Using bit_length here would be incorrect; we preserve behavior below with
-    # logs from math. This line remains only to document the porting concern.
-
-    from math import log
-
-    upper_bound = log(10**max_digits) - log(start_n)
-    density_factor = 0.01
-    estimated_tail = upper_bound * density_factor
-    return float(min(estimated_tail, upper_bound))
-
-
-def compute_bad_sum(max_digits: int = MAX_DIGITS) -> Decimal:
-    """Compute an approximate sum of 1/n over all "bad" numbers.
-
-    "Bad" numbers are those with at least three equal consecutive digits in
-    their decimal representation. The algorithm:
-
-    - Generates such numbers up to 10**max_digits (naively).
-    - Accumulates 1/n using Decimal until terms fall below TAIL_THRESHOLD.
-    - Adds a heuristic tail estimate beyond the last generated value.
-    """
-
-    start_time = perf_counter()
-
-    bad_numbers: List[int] = []
-    total = Decimal(0)
-
-    def on_bad(n: int) -> None:
-        nonlocal total
-        term = Decimal(1) / Decimal(n)
-        if term < Decimal(TAIL_THRESHOLD):
-            return
-        total += term
-
-    # Generate numbers and accumulate via callback.
-    bad_numbers = generate_bad_numbers(max_digits, callback=on_bad)
-
-    last_n = bad_numbers[-1] if bad_numbers else 10**max_digits
-    tail = estimate_tail_sum(last_n, max_digits + 5)
-    total += Decimal(str(tail))
-
-    elapsed = perf_counter() - start_time
-    print(
-        f"Generated {len(bad_numbers)} bad numbers in "
-        f"{elapsed:.2f} seconds",
-    )
-
-    if elapsed > MAX_GENERATION_TIME:
-        print(
-            "Warning: generation took too long; consider reducing MAX_DIGITS "
-            "or using a digit DP approach.",
-        )
-
-    return total
-
-
-@dataclass
-class ValidationCase:
-    n: int
-    expected_bad_count: int
-    expected_sum_approx: float
-
-
-def validate_partial_sums() -> None:
-    """Run simple validation checks against small ranges.
-
-    These tests mirror the Ruby code's intent but fix its formatting issues.
-    """
-
-    cases: Iterable[ValidationCase] = (
-        ValidationCase(n=1000, expected_bad_count=10, expected_sum_approx=0.009),
-        ValidationCase(n=2000, expected_bad_count=20, expected_sum_approx=0.018),
-    )
-
-    print("Running validation tests...")
-
-    from math import isclose
-
-    for i, case in enumerate(cases, start=1):
-        bad_count = 0
-        partial_sum = Decimal(0)
-
-        for x in range(1, case.n + 1):
-            if has_three_consecutive_digits(str(x)):
-                bad_count += 1
-                partial_sum += Decimal(1) / Decimal(x)
-
-        sum_ok = isclose(
-            float(partial_sum),
-            case.expected_sum_approx,
-            rel_tol=0.0,
-            abs_tol=1e-3,
-        )
-        count_ok = bad_count == case.expected_bad_count
-        status = "PASS" if (sum_ok and count_ok) else "FAIL"
-
-        print(
-            f"Test {i} (n={case.n}) - "
-            f"Count: {bad_count} (exp {case.expected_bad_count}), "
-            f"Sum: {float(partial_sum):.3f} (exp {case.expected_sum_approx:.3f}) - "
-            f"{status}",
-        )
-
-
-@dataclass
-class UnitTestCase:
-    value: int
-    expected: bool
-    desc: str
-
-
-def run_unit_tests() -> None:
-    """Run unit tests for has_three_consecutive_digits."""
-
-    print("Running unit tests...")
-
-    cases: List[UnitTestCase] = [
-        UnitTestCase(1, False, "single digit"),
-        UnitTestCase(12, False, "two digits"),
-        UnitTestCase(111, True, "three consecutive"),
-        UnitTestCase(1211, False, "no three consecutive"),
-        UnitTestCase(1111, True, "four consecutive"),
-        UnitTestCase(123111, True, "three consecutive in middle"),
-        UnitTestCase(9999, True, "four 9's"),
-        UnitTestCase(1000, False, "1000 (no three consecutive)"),
-        UnitTestCase(1110, True, "1110 from problem example"),
-    ]
-
-    for case in cases:
-        result = has_three_consecutive_digits(str(case.value))
-        status = "PASS" if result == case.expected else "FAIL"
-        print(
-            f"Test {case.value} ({case.desc}): {status} "
-            f"(got {result}, expected {case.expected})",
-        )
-
-
-def main() -> None:
-    """Entry point mirroring the Ruby script's CLI behavior."""
-
-    print("=" * 60)
-    print("Project Euler Problem 368 Solution (Python)")
-    print("=" * 60)
-    print("Computing sum of 1/n for all n with 3+ consecutive equal digits")
-    print("Rounded to 10 decimal places")
-    print()
-
-    run_unit_tests()
-    print()
-    validate_partial_sums()
-    print()
-
-    print(f"Computing full solution with MAX_DIGITS = {MAX_DIGITS}...")
-    total_sum = compute_bad_sum(MAX_DIGITS)
-
-    float_sum = float(total_sum)
-    rounded_sum = round(float_sum, 10)
-
-    print("=" * 60)
-    print("FINAL RESULT:")
-    print(f"Sum = {rounded_sum}")
-    print(f"Raw computation: {float_sum}")
-    print("Using Decimal precision with tail estimation")
-    print("=" * 60)
-
-
-if __name__ == "__main__":  # pragma: no cover - CLI behavior
-    main()
+import subprocess, os, tempfile
+
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include <stdlib.h>
+
+/*
+ * Kempner-like series: sum 1/n for n without 3+ consecutive equal digits.
+ *
+ * Algorithm:
+ * 1. Enumerate all valid k-digit numbers exactly (sum 1/n).
+ * 2. For each valid k-digit prefix p in state s, compute tail:
+ *    tail(p) = sum_{r=1}^{inf} sum over valid r-digit suffixes x of 1/(p*10^r + x)
+ *
+ * For the tail, use:
+ *    1/(p*10^r + x) = (1/(p*10^r)) * sum_{j=0}^{J} (-x/(p*10^r))^j + O(...)
+ *                   = sum_{j=0}^{J} (-1)^j * x^j / (p*10^r)^{j+1}
+ *
+ * So: tail(p) = sum_{r=1}^{inf} sum_{j=0}^{J} (-1)^j / (p*10^r)^{j+1} * Sj(s,r)
+ *    where Sj(s,r) = sum over valid r-digit suffixes x of x^j.
+ *
+ * Regroup by j:
+ * tail(p) = sum_{j=0}^{J} (-1)^j / p^{j+1} * sum_{r=1}^{inf} Sj(s,r) / 10^{r*(j+1)}
+ *         = sum_{j=0}^{J} (-1)^j / p^{j+1} * Tj(s)
+ *
+ * where Tj(s) = sum_{r=1}^{inf} Sj(s,r) / 10^{r*(j+1)}.
+ *
+ * For j=0: T0(s) = sum count(s,r)/10^r. (Same as before.)
+ * For j=1: T1(s) = sum S1(s,r)/10^{2r}.
+ * For j=2: T2(s) = sum S2(s,r)/10^{3r}.
+ *
+ * These can be computed by solving linear systems!
+ *
+ * For S0(s,r) = count(s,r):
+ *   count(s, r) = sum over valid d' of count(s', r-1)
+ *   T0(s) = (1/10) * sum_{d'} T0(s')  + ... wait, let me redo.
+ *
+ * Actually: a suffix of length r starting in state s begins with digit d',
+ * then the remaining r-1 digits form a suffix starting in state s' = trans(s, d').
+ * The suffix value x = d' * 10^{r-1} + x'  where x' is the (r-1)-digit suffix.
+ *
+ * So:
+ *   count(s, r) = sum_{d' valid} count(s', r-1)     [base: count(s,0) = 1]
+ *   S1(s, r) = sum_{d'} [d' * 10^{r-1} * count(s', r-1) + S1(s', r-1)]
+ *   S2(s, r) = sum_{d'} [(d')^2 * 10^{2(r-1)} * count(s', r-1) + 2*d'*10^{r-1}*S1(s',r-1) + S2(s',r-1)]
+ *
+ * Now for T0:
+ *   T0(s) = sum_{r=1}^inf count(s,r)/10^r
+ *         = sum_{r=1}^inf (1/10^r) * sum_{d'} count(s', r-1)
+ *         = (1/10) * sum_{d'} sum_{r=1}^inf count(s', r-1)/10^{r-1}
+ *         = (1/10) * sum_{d'} [count(s',0) + T0(s')]
+ *         = (1/10) * sum_{d'} [1 + T0(s')]
+ *
+ * So: T0(s) = (N_valid(s)/10) + (1/10)*sum_{d'} T0(s')
+ * where N_valid(s) = number of valid transitions from s.
+ *
+ * This gives: T0(s) - (1/10)*sum T0(s') = N_valid(s)/10.
+ *
+ * For T1:
+ *   T1(s) = sum_{r=1}^inf S1(s,r)/10^{2r}
+ *   S1(s,r) = sum_{d'} [d'*10^{r-1}*count(s',r-1) + S1(s',r-1)]
+ *   S1(s,r)/10^{2r} = sum_{d'} [d'*count(s',r-1)/(10^{r+1}) + S1(s',r-1)/10^{2r}]
+ *
+ *   sum_{r=1}^inf S1(s,r)/10^{2r}
+ *   = sum_{d'} sum_{r=1}^inf [d'*count(s',r-1)/(10^{r+1}) + S1(s',r-1)/10^{2r}]
+ *   = sum_{d'} [d'/100 * sum_{r=0}^inf count(s',r)/10^r + (1/100)*sum_{r=0}^inf S1(s',r)/10^{2r}]
+ *   = sum_{d'} [d'/100 * (1+T0(s')) + (1/100) * (0 + T1(s'))]
+ *   [since S1(s',0) = 0 because suffix of length 0 has value 0]
+ *
+ *   T1(s) = (1/100) * sum_{d'} [d'*(1+T0(s')) + T1(s')]
+ *
+ * For T2:
+ *   S2(s,r) = sum_{d'} [(d')^2*10^{2(r-1)}*count(s',r-1) + 2*d'*10^{r-1}*S1(s',r-1) + S2(s',r-1)]
+ *   S2(s,r)/10^{3r} = sum_{d'} [(d')^2*count(s',r-1)/10^{r+2} + 2*d'*S1(s',r-1)/10^{2r+1} + S2(s',r-1)/10^{3r}]
+ *
+ *   T2(s) = sum_{d'} [(d')^2/1000 * (1+T0(s')) + 2*d'/1000 * (0 + T1(s')) + (1/1000)*T2(s')]
+ *   [since S1(s',0)=0, S2(s',0)=0]
+ *
+ *   T2(s) = (1/1000)*sum_{d'} [(d')^2*(1+T0(s')) + 2*d'*T1(s') + T2(s')]
+ *
+ * So we solve T0 first (20x20 system), then T1 (20x20 using T0), then T2 (20x20 using T0, T1).
+ *
+ * Final formula:
+ * tail(p,s) = T0(s)/p - T1(s)/p^2 + T2(s)/p^3 - ...
+ *
+ * Total = sum over 1..k-digit good numbers of 1/n
+ *       + sum over k-digit good prefixes p with state s of tail(p,s)
+ */
+
+#define NSTATES 20
+#define ENC(d, c) ((d) * 2 + (c) - 1)
+#define DIG(s) ((s) / 2)
+#define CON(s) ((s) % 2 + 1)
+
+static inline int trans(int s, int nd) {
+    int d = DIG(s), c = CON(s);
+    if (nd == d) {
+        if (c + 1 > 2) return -1;
+        return ENC(nd, c + 1);
+    }
+    return ENC(nd, 1);
+}
+
+/* Gaussian elimination for 20x20 system */
+static void gauss(double A[NSTATES][NSTATES+1], double x[NSTATES]) {
+    int n = NSTATES;
+    for (int col = 0; col < n; col++) {
+        int pivot = col;
+        for (int row = col+1; row < n; row++)
+            if (fabs(A[row][col]) > fabs(A[pivot][col])) pivot = row;
+        for (int j = 0; j <= n; j++) {
+            double tmp = A[col][j]; A[col][j] = A[pivot][j]; A[pivot][j] = tmp;
+        }
+        for (int row = col+1; row < n; row++) {
+            double f = A[row][col] / A[col][col];
+            for (int j = col; j <= n; j++) A[row][j] -= f * A[col][j];
+        }
+    }
+    for (int row = n-1; row >= 0; row--) {
+        double s = A[row][n];
+        for (int j = row+1; j < n; j++) s -= A[row][j] * x[j];
+        x[row] = s / A[row][row];
+    }
+}
+
+static double T0[NSTATES], T1[NSTATES], T2[NSTATES], T3[NSTATES], T4[NSTATES];
+static long double direct_sum, tail_sum;
+
+/* Valid transitions from state s: returns count and fills trans_states and trans_digits */
+static int valid_trans(int s, int ns[10], int nd_arr[10]) {
+    int cnt = 0;
+    for (int nd = 0; nd < 10; nd++) {
+        int t = trans(s, nd);
+        if (t >= 0) { ns[cnt] = t; nd_arr[cnt] = nd; cnt++; }
+    }
+    return cnt;
+}
+
+static void compute_T0(void) {
+    double A[NSTATES][NSTATES+1];
+    memset(A, 0, sizeof(A));
+    for (int s = 0; s < NSTATES; s++) {
+        A[s][s] = 1.0;
+        int nv = 0;
+        for (int nd = 0; nd < 10; nd++) {
+            int t = trans(s, nd);
+            if (t >= 0) { A[s][t] -= 0.1; nv++; }
+        }
+        A[s][NSTATES] = nv / 10.0;
+    }
+    gauss(A, T0);
+}
+
+static void compute_T1(void) {
+    /* T1(s) = (1/100) * sum_{d'} [d'*(1+T0(s')) + T1(s')] */
+    /* T1(s) - (1/100)*sum T1(s') = (1/100)*sum d'*(1+T0(s')) */
+    double A[NSTATES][NSTATES+1];
+    memset(A, 0, sizeof(A));
+    for (int s = 0; s < NSTATES; s++) {
+        A[s][s] = 1.0;
+        double rhs = 0;
+        for (int nd = 0; nd < 10; nd++) {
+            int t = trans(s, nd);
+            if (t < 0) continue;
+            A[s][t] -= 0.01;
+            rhs += nd * (1.0 + T0[t]);
+        }
+        A[s][NSTATES] = rhs / 100.0;
+    }
+    gauss(A, T1);
+}
+
+static void compute_T2(void) {
+    /* T2(s) = (1/1000)*sum_{d'} [(d')^2*(1+T0(s')) + 2*d'*T1(s') + T2(s')] */
+    double A[NSTATES][NSTATES+1];
+    memset(A, 0, sizeof(A));
+    for (int s = 0; s < NSTATES; s++) {
+        A[s][s] = 1.0;
+        double rhs = 0;
+        for (int nd = 0; nd < 10; nd++) {
+            int t = trans(s, nd);
+            if (t < 0) continue;
+            A[s][t] -= 0.001;
+            rhs += (double)nd*nd * (1.0 + T0[t]) + 2.0*nd*T1[t];
+        }
+        A[s][NSTATES] = rhs / 1000.0;
+    }
+    gauss(A, T2);
+}
+
+static void compute_T3(void) {
+    /* Sj(s,r) for j=3 follows pattern:
+     * S3(s,r) = sum_{d'} [d'^3*10^{3(r-1)}*count + 3*d'^2*10^{2(r-1)}*S1 + 3*d'*10^{r-1}*S2 + S3]
+     * T3(s) = sum S3(s,r)/10^{4r}
+     *       = (1/10000)*sum_{d'} [d'^3*(1+T0) + 3*d'^2*T1 + 3*d'*T2 + T3]
+     */
+    double A[NSTATES][NSTATES+1];
+    memset(A, 0, sizeof(A));
+    for (int s = 0; s < NSTATES; s++) {
+        A[s][s] = 1.0;
+        double rhs = 0;
+        for (int nd = 0; nd < 10; nd++) {
+            int t = trans(s, nd);
+            if (t < 0) continue;
+            double d = nd;
+            A[s][t] -= 1e-4;
+            rhs += d*d*d*(1.0+T0[t]) + 3*d*d*T1[t] + 3*d*T2[t];
+        }
+        A[s][NSTATES] = rhs * 1e-4;
+    }
+    gauss(A, T3);
+}
+
+static void compute_T4(void) {
+    /* T4(s) = (1/10^5)*sum_{d'} [d'^4*(1+T0) + 4*d'^3*T1 + 6*d'^2*T2 + 4*d'*T3 + T4] */
+    double A[NSTATES][NSTATES+1];
+    memset(A, 0, sizeof(A));
+    for (int s = 0; s < NSTATES; s++) {
+        A[s][s] = 1.0;
+        double rhs = 0;
+        for (int nd = 0; nd < 10; nd++) {
+            int t = trans(s, nd);
+            if (t < 0) continue;
+            double d = nd;
+            A[s][t] -= 1e-5;
+            rhs += d*d*d*d*(1.0+T0[t]) + 4*d*d*d*T1[t] + 6*d*d*T2[t] + 4*d*T3[t];
+        }
+        A[s][NSTATES] = rhs * 1e-5;
+    }
+    gauss(A, T4);
+}
+
+/* Enumerate valid k-digit numbers */
+static void enumerate(long long prefix, int state, int digits_left) {
+    if (digits_left == 0) {
+        if (prefix <= 0) return;
+        /* Direct sum */
+        direct_sum += 1.0L / (long double)prefix;
+        /* Tail: T0/p - T1/p^2 + T2/p^3 - T3/p^4 + T4/p^5 - ... */
+        long double p = (long double)prefix;
+        long double inv_p = 1.0L / p;
+        long double tail = (long double)T0[state] * inv_p
+                         - (long double)T1[state] * inv_p * inv_p
+                         + (long double)T2[state] * inv_p * inv_p * inv_p
+                         - (long double)T3[state] * inv_p * inv_p * inv_p * inv_p
+                         + (long double)T4[state] * inv_p * inv_p * inv_p * inv_p * inv_p;
+        tail_sum += tail;
+        return;
+    }
+
+    for (int nd = 0; nd < 10; nd++) {
+        if (prefix == 0 && nd == 0) continue;
+        int ns;
+        if (state < 0) ns = ENC(nd, 1);
+        else { ns = trans(state, nd); if (ns < 0) continue; }
+        enumerate(prefix * 10 + nd, ns, digits_left - 1);
+    }
+}
+
+/* Enumerate shorter numbers (exact computation) */
+static void enumerate_short(long long prefix, int state, int digits_left) {
+    if (digits_left == 0) {
+        if (prefix > 0) direct_sum += 1.0L / (long double)prefix;
+        return;
+    }
+    for (int nd = 0; nd < 10; nd++) {
+        if (prefix == 0 && nd == 0) continue;
+        int ns;
+        if (state < 0) ns = ENC(nd, 1);
+        else { ns = trans(state, nd); if (ns < 0) continue; }
+        enumerate_short(prefix * 10 + nd, ns, digits_left - 1);
+    }
+}
+
+int main(void) {
+    int PREFIX_LEN = 7;
+
+    compute_T0();
+    compute_T1();
+    compute_T2();
+    compute_T3();
+    compute_T4();
+
+    direct_sum = 0.0L;
+    tail_sum = 0.0L;
+
+    /* Exact sum for 1 to PREFIX_LEN-1 digit numbers */
+    for (int d = 1; d < PREFIX_LEN; d++)
+        enumerate_short(0, -1, d);
+
+    /* PREFIX_LEN digit numbers: direct sum + tail */
+    enumerate(0, -1, PREFIX_LEN);
+
+    long double total = direct_sum + tail_sum;
+    printf("%.10Lf\n", total);
+    return 0;
+}
+""";
+
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol368.c")
+    exe = os.path.join(tmpdir, "sol368")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O3", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=30)
+    print(result.stdout.strip())
+
+if __name__ == "__main__":
+    solve()

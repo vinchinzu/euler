@@ -1,350 +1,145 @@
-"""Project Euler Problem 356 (Python translation).
+#!/usr/bin/env python3
+"""Project Euler Problem 356 - Largest Roots of Cubic Polynomials
 
-This module computes the last eight digits of the sum
+For each i, g(x) = x^3 - 2^i * x^2 + i = 0.
+a_i is the largest root. Compute sum floor(a_i^K) mod 10^8 for K=987654321, i=1..30.
 
-    sum_{i=1}^{30} floor(a_i ** 987654321),
+Key insight: S_k = a^k + b^k + c^k satisfies S_k = 2^i * S_{k-1} - i * S_{k-3}
+and S_k is always an integer. Since |b|,|c| < 1 for i >= 2,
+floor(a^K) = S_K - 1 if b^K+c^K > 0, else S_K.
 
-where a_i is the largest real root of g(x) = x^3 - 2^i * x^2 + i.
-
-Notes
------
-- Implemented for Python 3.12 using only the standard library.
-- Uses Decimal for high-precision root finding and exponent handling.
-- Public API:
-    - compute_solution() -> str
-    - verify_small_exponents() -> None
+Use matrix exponentiation mod 10^8 for each i.
 """
 
-from __future__ import annotations
+MOD = 100_000_000
+K = 987_654_321
 
-from dataclasses import dataclass
-from decimal import Decimal, getcontext
-from typing import Iterable, List, Sequence
+def mat_mul(A, B, mod):
+    """Multiply two 3x3 matrices mod m."""
+    n = 3
+    C = [[0]*n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            s = 0
+            for k in range(n):
+                s += A[i][k] * B[k][j]
+            C[i][j] = s % mod
+    return C
 
-
-# Constants
-K: int = 987_654_321
-MOD: int = 100_000_000
-BIGDEC_PRECISION: int = 100  # decimal digits
-EPSILON: Decimal = Decimal("1e-50")
-MAX_BINOMIAL_TERMS: int = 20
-
-getcontext().prec = BIGDEC_PRECISION
-
-MOD2: int = 256  # 2**8
-MOD5: int = 390_625  # 5**8
-PHI_MOD5: int = 312_500  # phi(5**8) = 5**8 * (1 - 1/5)
-
-
-def _binomial(n: int, k: int) -> int:
-    """Return C(n, k) for 0 <= k <= n using an integer-safe multiplicative form."""
-    if k < 0 or k > n:
-        return 0
-    if k == 0 or k == n:
-        return 1
-    k = min(k, n - k)
-    result = 1
-    for i in range(1, k + 1):
-        result = result * (n - i + 1) // i
+def mat_pow(M, p, mod):
+    """Compute M^p mod m using fast exponentiation."""
+    n = 3
+    # Identity matrix
+    result = [[1 if i==j else 0 for j in range(n)] for i in range(n)]
+    base = [row[:] for row in M]
+    while p > 0:
+        if p & 1:
+            result = mat_mul(result, base, mod)
+        base = mat_mul(base, base, mod)
+        p >>= 1
     return result
 
+def compute_SK_mod(i, K, mod):
+    """Compute S_K mod m where S_k = 2^i * S_{k-1} - i * S_{k-3}.
 
-def _int_power_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation for integer base and exponent."""
-    if mod == 1:
-        return 0
-    base %= mod
-    result = 1
-    e = exp
-    while e > 0:
-        if e & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        e >>= 1
-    return result
+    S_0 = 3, S_1 = 2^i, S_2 = (2^i)^2 = 2^(2i) (since S_2 = 2^i * S_1 - 0 * S_0 - i * S_{-1}...)
 
-
-def power_mod(base: Decimal | int, exp: int, mod: int) -> int:
-    """Compute base**exp modulo mod.
-
-    - If base is effectively integral, use fast integer modular exponentiation.
-    - Otherwise, compute the high-precision power with Decimal and reduce mod.
-
-    This mirrors the Ruby behavior: it primarily supports our use cases inside
-    this module and is not intended as a fully generic Decimal modular power.
+    Actually: S_0 = 3, S_1 = p = 2^i, S_2 = p^2 - 2q = (2^i)^2 - 0 = 2^(2i).
+    Wait, for x^3 - px^2 + qx - r with p=2^i, q=0, r=-i:
+    S_0 = 3
+    S_1 = p = 2^i
+    S_2 = p*S_1 - 2q = (2^i)^2
+    General: S_k = p*S_{k-1} - q*S_{k-2} + r*S_{k-3} = 2^i * S_{k-1} - i * S_{k-3}
     """
+    p = pow(2, i, mod)
+    mi = i % mod  # i mod m (for the -i coefficient)
 
-    if isinstance(base, Decimal):
-        base_int = int(base)
-        if (base - Decimal(base_int)).copy_abs() < Decimal("1e-10"):
-            base = base_int
-        else:
-            # Fallback: direct Decimal exponentiation, then floor and mod.
-            # Acceptable here because it is used only in limited contexts.
-            result = Decimal(1)
-            b = base
-            e = exp
-            while e > 0:
-                if e & 1:
-                    result *= b
-                b *= b
-                e >>= 1
-            return int(result.to_integral_value(rounding="ROUND_FLOOR")) % mod
+    if K == 0:
+        return 3 % mod
+    if K == 1:
+        return p
+    if K == 2:
+        return (p * p) % mod
 
-    if isinstance(base, int):
-        return _int_power_mod(base, exp, mod)
+    # State vector: [S_k, S_{k-1}, S_{k-2}]
+    # Transition: [S_{k+1}, S_k, S_{k-1}] = [[2^i, 0, -i], [1, 0, 0], [0, 1, 0]] * [S_k, S_{k-1}, S_{k-2}]
 
-    # In practice, we should not get here. Keep a minimal safe fallback.
-    b_int = int(base)
-    return _int_power_mod(b_int, exp, mod)
+    S0 = 3 % mod
+    S1 = p
+    S2 = (p * p) % mod
 
+    # Matrix [[2^i, 0, -i], [1, 0, 0], [0, 1, 0]]
+    # But -i mod m:
+    neg_i = (-i) % mod
 
-def _floor_power_via_binomial(m: int, frac: Decimal, k: int) -> int:
-    """Approximate floor((m + frac) ** k) using a truncated binomial series.
+    M = [[p, 0, neg_i],
+         [1, 0, 0],
+         [0, 1, 0]]
 
-    This is a translation of the Ruby routine. It is tailored for the
-    numeric ranges in Project Euler 356 and not a general-purpose routine.
+    # We have state at k=2: [S2, S1, S0]
+    # After multiplying by M^(K-2), we get state at k=K: [SK, S_{K-1}, S_{K-2}]
+
+    Mpow = mat_pow(M, K - 2, mod)
+
+    # Result = Mpow * [S2, S1, S0]^T
+    SK = (Mpow[0][0] * S2 + Mpow[0][1] * S1 + Mpow[0][2] * S0) % mod
+
+    return SK
+
+def sign_of_bc_power(i, K):
+    """Determine the sign of b^K + c^K for cubic x^3 - 2^i x^2 + i.
+
+    For i >= 2: b and c are real with |b|, |c| < 1 (for i >= 3 this is clear,
+    for i=2 need to check).
+
+    b + c = 2^i - a_i (small positive)
+    b * c = -i / a_i (negative)
+
+    So one root is positive and one is negative.
+    Let b > 0 > c with b > |c| (since b+c > 0).
+
+    For K odd: b^K + c^K. Since b > |c| and K is odd, b^K > |c|^K, so b^K + c^K > 0.
+
+    For i = 1: roots are (1+sqrt(5))/2, 1, (1-sqrt(5))/2.
+    b = 1, c = (1-sqrt(5))/2 ≈ -0.618.
+    b^K + c^K = 1 + (-0.618)^K.
+    For K odd: 1 - 0.618^K > 0. So positive.
+
+    Actually wait, for i=1, |b|=1 which is not < 1. So b^K doesn't go to 0.
+    b^K + c^K = 1 + ((1-sqrt(5))/2)^K.
+    For K odd (very large): ((1-sqrt(5))/2)^K ≈ 0 (alternating, decreasing).
+    So b^K + c^K ≈ 1. Then a^K = S_K - (1 + c^K) ≈ S_K - 1.
+    floor(a^K) = S_K - 1 - floor_adj where floor_adj depends on fractional part.
+
+    Hmm, for i=1 we need more careful analysis.
+
+    Returns +1 if b^K + c^K > 0, -1 if < 0, 0 if = 0.
     """
+    # For all i from 1 to 30, and K odd:
+    # The sum b^K + c^K > 0.
+    #
+    # Proof sketch for i >= 2:
+    # b + c > 0 and b*c < 0, so |b| > |c|, b > 0 > c.
+    # K is odd, so b^K > 0 > c^K, and |b^K| > |c^K|.
+    # Hence b^K + c^K > 0.
+    #
+    # For i=1: b=1, c=(1-sqrt(5))/2. b^K + c^K = 1 + c^K.
+    # |c| < 1 so |c^K| < 1. Since K is odd, c^K < 0. So 0 < b^K + c^K < 1.
+    # Actually c^K < 0 since c < 0 and K is odd. And |c^K| < 1. So b^K + c^K = 1 + c^K in (0, 1).
 
-    if k == 0:
-        return 0
-    if k == 1:
-        return m
+    return 1  # positive for all i=1..30 with K odd
 
-    # Precompute powers of m up to k.
-    m_powers: List[Decimal] = [Decimal(1)]
-    m_dec = Decimal(m)
-    for _ in range(1, k + 1):
-        m_powers.append(m_powers[-1] * m_dec)
-
-    result = Decimal(0)
-    j = 0
-    while j <= k and j < MAX_BINOMIAL_TERMS:
-        binom_coeff = _binomial(k, j)
-        current_term = (
-            Decimal(binom_coeff) * m_powers[k - j] * (frac ** j)
-        )
-        result += current_term
-        if current_term.copy_abs() < Decimal("1e-10"):
-            break
-        j += 1
-
-    return int(result.to_integral_value(rounding="ROUND_FLOOR"))
-
-
-def _complementary_power(m: int, epsilon: Decimal, k: int) -> int:
-    """Handle (m - epsilon) ** k for very small epsilon.
-
-    If epsilon is extremely small, use a first-order correction.
-    Otherwise, fall back to the truncated-binomial helper.
-    """
-
-    if k == 0:
-        return 0
-
-    m_dec = Decimal(m)
-    if epsilon.copy_abs() < Decimal("1e-10"):
-        base = m_dec ** k
-        first_order = Decimal(k) * (m_dec ** (k - 1)) * epsilon
-        value = base - first_order
-        return int(value.to_integral_value(rounding="ROUND_FLOOR"))
-
-    # Fallback: use the same approximation route.
-    return _floor_power_via_binomial(m, -epsilon, k)
-
-
-def floor_power(x: Decimal, k: int) -> int:
-    """Return floor(x ** k) using tailored approximations.
-
-    The original Ruby code represents x = m + f with m = floor(x) and
-    applies binomial-based approximations. We preserve that structure. This
-    function is specific to the ranges used in this problem.
-    """
-
-    if k == 0:
-        return 0
-    if k == 1:
-        return int(x.to_integral_value(rounding="ROUND_FLOOR"))
-
-    m = int(x)  # floor
-    frac = x - Decimal(m)
-
-    if m == 0:
-        return 0
-
-    # Handle the case where x is extremely close to the next integer.
-    if frac > Decimal("0.999999999"):
-        eps = Decimal(1) - frac
-        return _complementary_power(m + 1, eps, k)
-
-    return _floor_power_via_binomial(m, frac, k)
-
-
-def _cubic_value(x: Decimal, pow2n: Decimal, n: int) -> Decimal:
-    """Evaluate g(x) = x^3 - 2^n x^2 + n at x with given 2^n."""
-
-    return x**3 - pow2n * (x**2) + Decimal(n)
-
-
-def find_largest_root(n: int) -> Decimal:
-    """Find the largest real root of x^3 - 2^n x^2 + n via bisection."""
-
-    pow2n = Decimal(2) ** n
-    a = pow2n - Decimal(1)
-    b = pow2n + Decimal(1)
-
-    max_iterations = 200
-    iterations = 0
-
-    while (b - a).copy_abs() > EPSILON and iterations < max_iterations:
-        mid = (a + b) / 2
-        poly_val = _cubic_value(mid, pow2n, n)
-        if poly_val > 0:
-            b = mid
-        else:
-            a = mid
-        iterations += 1
-
-    root = (a + b) / 2
-    _validate_root(root, n)
-    return root
-
-
-def _validate_root(root: Decimal, n: int) -> None:
-    """Validate that root nearly satisfies the cubic equation.
-
-    Raises ValueError if the root is not within the required tolerance.
-    """
-
-    pow2n = Decimal(2) ** n
-    poly_val = _cubic_value(root, pow2n, n)
-    if poly_val.copy_abs() >= Decimal("1e-40"):
-        raise ValueError(f"Root validation failed for n={n}")
-
-
-def find_root_analytical(n: int) -> Decimal:
-    """Return an a_i value using any known analytical / cached forms.
-
-    For n = 1, this defers to numeric root finding.
-    For n = 2, we reuse the given approximate root from the Ruby code.
-    For all other n, we fall back to numeric root finding.
-    """
-
-    if n == 1:
-        return find_largest_root(1)
-    if n == 2:
-        return Decimal("3.86619826")
-    return find_largest_root(n)
-
-
-def _modular_inverse(a: int, m: int) -> int:
-    """Return modular inverse of a modulo m using extended Euclidean algo.
-
-    For modulus 5**8, use Euler's theorem with precomputed phi(MOD5).
-    """
-
-    a %= m
-    if m == MOD5:
-        # Assumes gcd(a, m) == 1.
-        return _int_power_mod(a, PHI_MOD5 - 1, m)
-
-    t, new_t = 0, 1
-    r, new_r = m, a
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def _crt(remainders: Sequence[int], moduli: Sequence[int], target_mod: int) -> int:
-    """Chinese remainder theorem for pairwise coprime moduli.
-
-    This implementation is sufficient for MOD2 and MOD5 used here.
-    """
-
-    if len(moduli) == 1:
-        return remainders[0] % target_mod
-
-    M = 1
-    for m in moduli:
-        M *= m
-
-    total = 0
-    for r_i, m_i in zip(remainders, moduli):
-        M_i = M // m_i
-        inv = _modular_inverse(M_i, m_i)
-        total = (total + r_i * M_i * inv) % M
-
-    return total % target_mod
-
-
-def power_mod_crt(a: int, k: int, mod: int) -> int:
-    """Compute a**k modulo mod, using CRT when mod == MOD.
-
-    For mod == MOD (2**8 * 5**8), compute residues modulo 2**8 and 5**8, then
-    reconstruct via CRT. Otherwise, fall back to standard modular exponent.
-    """
-
-    if mod == 1:
-        return 0
-
-    if mod == MOD:
-        a_mod2 = a % MOD2
-        a_mod5 = a % MOD5
-
-        pow_mod2 = _int_power_mod(a_mod2, k, MOD2)
-        pow_mod5 = _int_power_mod(a_mod5, k, MOD5)
-
-        return _crt([pow_mod2, pow_mod5], [MOD2, MOD5], MOD)
-
-    return _int_power_mod(a, k, mod)
-
-
-def compute_solution() -> str:
-    """Compute the last 8 digits of the Project Euler 356 expression.
-
-    Returns the result as an 8-character zero-padded string.
-    """
-
+def solve():
     total = 0
     for i in range(1, 31):
-        # For i <= 2, we optionally use analytical / cached roots.
-        if i <= 2:
-            a_i = find_root_analytical(i)
+        SK = compute_SK_mod(i, K, MOD)
+        sgn = sign_of_bc_power(i, K)
+        if sgn > 0:
+            floor_aK = (SK - 1) % MOD
         else:
-            a_i = find_largest_root(i)
+            floor_aK = SK
+        total = (total + floor_aK) % MOD
+    return total
 
-        power_term = floor_power(a_i, K) % MOD
-        total = (total + power_term) % MOD
-
-    return f"{total:08d}"
-
-
-def verify_small_exponents() -> None:
-    """Sanity-check floor_power against direct Decimal exponentiation.
-
-    Tests small exponents for a few i to ensure our approximation is
-    consistent with direct computation at high precision.
-    """
-
-    test_exponents = [1, 2, 3]
-    for i in range(1, 6):
-        a_i = find_largest_root(i)
-        for k in test_exponents:
-            approx = floor_power(a_i, k)
-            direct = int((a_i**k).to_integral_value(rounding="ROUND_FLOOR"))
-            if approx != direct:
-                raise AssertionError(
-                    f"Verification failed for i={i}, k={k}:"
-                    f" approx={approx}, direct={direct}"
-                )
-
-
-if __name__ == "__main__":  # pragma: no cover
-    verify_small_exponents()
-    print(compute_solution())
+if __name__ == "__main__":
+    print(solve())

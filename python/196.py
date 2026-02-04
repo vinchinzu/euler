@@ -1,163 +1,126 @@
-"""Project Euler Problem 196: Prime triplets."""
+"""Project Euler Problem 196 - Prime triplets.
 
-from typing import Dict, List
-import math
+Find sum of primes in rows 5678027 and 7208785 that are part of prime triplets.
+Uses segmented sieve with odd-only optimization.
+"""
+from math import isqrt
 
-TARGET_ROWS = [5_678_027, 7_208_785]
+def solve():
+    TARGET_ROWS = [5678027, 7208785]
 
+    def tr(n):
+        return n * (n + 1) // 2
 
-def first_of_row(n: int) -> int:
-    """First number in row n."""
-    return (n * (n - 1)) // 2 + 1
+    def sum_good_primes(row):
+        start = tr(row - 3) + 1
+        end = tr(row + 2)
 
+        # Odd-only segmented sieve
+        base = start + 1 if start % 2 == 0 else start
+        sieve_len = (end - base) // 2 + 1
 
-def last_of_row(n: int) -> int:
-    """Last number in row n."""
-    return n * (n + 1) // 2
+        sieve_limit = isqrt(end)
 
+        # Fast small primes generation using slice assignment
+        small_sieve = bytearray(sieve_limit + 1)
+        small_sieve[0] = small_sieve[1] = 1
+        for i in range(2, isqrt(sieve_limit) + 1):
+            if not small_sieve[i]:
+                n = len(range(i * i, sieve_limit + 1, i))
+                small_sieve[i * i::i] = b'\x01' * n
 
-def simple_sieve(limit: int) -> List[int]:
-    """Simple sieve for primes."""
-    sieve = [True] * (limit + 1)
-    sieve[0] = sieve[1] = False
-    max_val = int(math.sqrt(limit))
-    for p in range(2, max_val + 1):
-        if not sieve[p]:
-            continue
-        step_start = p * p
-        for multiple in range(step_start, limit + 1, p):
-            sieve[multiple] = False
-    primes = []
-    for n in range(2, limit + 1):
-        if sieve[n]:
-            primes.append(n)
-    return primes
+        # Main sieve - mark composites
+        is_composite = bytearray(sieve_len)
+        for p in range(3, sieve_limit + 1, 2):
+            if small_sieve[p]:
+                continue
+            # Find first odd multiple of p >= max(p*p, base)
+            first = p * p
+            if first < base:
+                k = (base + p - 1) // p
+                if k % 2 == 0:
+                    k += 1
+                first = p * k
+            if first > end:
+                continue
+            idx = (first - base) // 2
+            # Use slice assignment for speed
+            n = len(range(idx, sieve_len, p))
+            is_composite[idx::p] = b'\x01' * n
 
+        # Helper to check primality
+        def is_prime_num(num):
+            if num < 2:
+                return False
+            if num == 2:
+                return True
+            if num % 2 == 0:
+                return False
+            idx = (num - base) // 2
+            if idx < 0 or idx >= sieve_len:
+                return False
+            return not is_composite[idx]
 
-MAX_ROW = max(TARGET_ROWS) + 1
-MAX_VALUE = last_of_row(MAX_ROW)
-BASE_PRIMES = simple_sieve(int(math.sqrt(MAX_VALUE)) + 1)
+        # Build row info (5 rows: row-2..row+2, indexed 0-4)
+        row_starts = [tr(row - 3 + i) + 1 for i in range(5)]
+        row_lens = [row - 2 + i for i in range(5)]
 
+        dirs = [(-1, -1), (-1, 0), (-1, 1), (1, -1), (1, 0), (1, 1)]
 
-def primes_for_row(row: int, base_primes: List[int]) -> Dict[str, int | List[bool]]:
-    """Get primes for a specific row."""
-    if row < 1:
-        return {"start": 0, "primes": []}
+        # Pre-build primality arrays for each row to avoid repeated function calls
+        is_p = []
+        for ri in range(5):
+            rlen = row_lens[ri]
+            rs = row_starts[ri]
+            arr = bytearray(rlen)
+            for j in range(rlen):
+                if is_prime_num(rs + j):
+                    arr[j] = 1
+            is_p.append(arr)
 
-    start_value = first_of_row(row)
-    finish_value = start_value + row - 1
-    length = row
+        # Compute isCentralPrime for rows 1, 2, 3
+        central = [None] * 5
+        for ri in range(1, 4):
+            c = bytearray(row_lens[ri])
+            rlen = row_lens[ri]
+            for j in range(rlen):
+                if not is_p[ri][j]:
+                    continue
+                count = 0
+                for di, dj in dirs:
+                    ni, nj = ri + di, j + dj
+                    if 0 <= ni < 5 and 0 <= nj < row_lens[ni]:
+                        if is_p[ni][nj]:
+                            count += 1
+                            if count >= 2:
+                                break
+                if count >= 2:
+                    c[j] = 1
+            central[ri] = c
 
-    sieve = [True] * length
-    for p in base_primes:
-        square = p * p
-        if square > finish_value:
-            break
+        # Sum good primes in target row (ri=2)
+        total = 0
+        target_ri = 2
+        target_start = row_starts[target_ri]
+        target_len = row_lens[target_ri]
 
-        first_multiple = square
-        if first_multiple < start_value:
-            remainder = start_value % p
-            if remainder == 0:
-                first_multiple = start_value
-            else:
-                first_multiple = start_value + (p - remainder)
+        for j in range(target_len):
+            if not is_p[target_ri][j]:
+                continue
+            good = central[target_ri][j]
+            if not good:
+                for di, dj in dirs:
+                    ni, nj = target_ri + di, j + dj
+                    if 1 <= ni <= 3 and 0 <= nj < row_lens[ni]:
+                        if central[ni][nj]:
+                            good = True
+                            break
+            if good:
+                total += target_start + j
 
-        idx = first_multiple - start_value
-        while idx < length:
-            sieve[idx] = False
-            idx += p
+        return total
 
-    if start_value <= 1:
-        index = 1 - start_value
-        if 0 <= index < length:
-            sieve[index] = False
-
-    return {"start": start_value, "primes": sieve}
-
-
-def prime_at(rows: Dict[int, Dict], row: int, pos: int) -> bool:
-    """Check if position in row is prime."""
-    if row < 1:
-        return False
-
-    data = rows.get(row)
-    if not data:
-        return False
-
-    primes = data["primes"]
-    if pos < 0 or pos >= len(primes):
-        return False
-
-    return primes[pos]
-
-
-def prime_neighbor_count(rows: Dict[int, Dict], row: int, pos: int) -> int:
-    """Count prime neighbors."""
-    row_length = len(rows[row]["primes"]) if row in rows else None
-    if not row_length or pos >= row_length or pos < 0:
-        return 0
-
-    count = 0
-
-    # Same row left/right
-    if pos > 0 and prime_at(rows, row, pos - 1):
-        count += 1
-    if pos < row_length - 1 and prime_at(rows, row, pos + 1):
-        count += 1
-
-    # Upper row
-    if row > 1:
-        upper_length = len(rows[row - 1]["primes"]) if row - 1 in rows else None
-        if pos > 0 and upper_length and upper_length > pos - 1:
-            if prime_at(rows, row - 1, pos - 1):
-                count += 1
-        if upper_length and upper_length > pos:
-            if prime_at(rows, row - 1, pos):
-                count += 1
-
-    # Lower row
-    if row + 1 in rows:
-        lower_length = len(rows[row + 1]["primes"])
-        if lower_length > pos:
-            if prime_at(rows, row + 1, pos):
-                count += 1
-        if pos + 1 < lower_length:
-            if prime_at(rows, row + 1, pos + 1):
-                count += 1
-
-    return count
-
-
-def in_triplet(rows: Dict[int, Dict], row: int, pos: int) -> bool:
-    """Check if prime is in triplet."""
-    return prime_at(rows, row, pos) and prime_neighbor_count(rows, row, pos) >= 2
-
-
-def sum_for_row(row: int, base_primes: List[int]) -> int:
-    """Sum primes in triplets for a row."""
-    rows: Dict[int, Dict] = {}
-    for r in [row - 1, row, row + 1]:
-        if r < 1:
-            continue
-        rows[r] = primes_for_row(r, base_primes)
-
-    base_value = rows[row]["start"]
-    primes = rows[row]["primes"]
-
-    total = 0
-    for pos, is_prime in enumerate(primes):
-        if not is_prime:
-            continue
-        if in_triplet(rows, row, pos):
-            total += base_value + pos
-    return total
-
-
-def main() -> int:
-    """Main function."""
-    answer = sum(sum_for_row(row, BASE_PRIMES) for row in TARGET_ROWS)
-    return answer
-
+    return sum_good_primes(TARGET_ROWS[0]) + sum_good_primes(TARGET_ROWS[1])
 
 if __name__ == "__main__":
-    print(main())
+    print(solve())

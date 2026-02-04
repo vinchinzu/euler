@@ -1,165 +1,161 @@
+#!/usr/bin/env python3
 """Project Euler Problem 408: Admissible paths through a square grid.
 
-Find the number of paths from (0, 0) to (n, n) that are non-decreasing in x
-and y, and do not pass through any point (x, y) such that x, y, and x+y are
-all perfect squares.
+Find the number of admissible paths from (0,0) to (N,N).
+A point (x,y) is inadmissible if x, y, and x+y are all perfect squares.
+Uses inclusion-exclusion with modular binomial coefficients.
+Implemented in C for performance.
+"""
+import ctypes
+import os
+import subprocess
+import sys
+import tempfile
 
-First we can compute all such (x, y) by iterating over Pythagorean triples.
-Then, we use Dynamic Programming / Inclusion Exclusion to compute the number
-of paths from (0, 0) to each inadmissible point. The number of paths from
-(0, 0) to a point p is equal to nCr(p.x + p.y, p.x), minus the number of
-paths whose first inadmissible point is q, for each point q inside the
-rectangle with corners at (0, 0) and p. This is just the number of
-admissible paths to q, times the number of all paths from q to p.
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+#define N 10000000
+#define MOD 1000000007LL
+#define MAX_PTS 10000
+#define MAX_FACT (2*N+1)
+
+static long long fact[MAX_FACT];
+static long long inv_fact[MAX_FACT];
+
+long long power(long long base, long long exp, long long mod) {
+    long long result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+void precompute() {
+    fact[0] = 1;
+    for (int i = 1; i < MAX_FACT; i++)
+        fact[i] = fact[i-1] * i % MOD;
+    inv_fact[MAX_FACT-1] = power(fact[MAX_FACT-1], MOD-2, MOD);
+    for (int i = MAX_FACT-2; i >= 0; i--)
+        inv_fact[i] = inv_fact[i+1] * (i+1) % MOD;
+}
+
+long long nCr(int n, int r) {
+    if (r < 0 || r > n) return 0;
+    return fact[n] % MOD * inv_fact[r] % MOD * inv_fact[n-r] % MOD;
+}
+
+int gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
+
+typedef struct { int x, y; } Point;
+
+int cmp_points(const void *a, const void *b) {
+    const Point *pa = (const Point *)a;
+    const Point *pb = (const Point *)b;
+    if (pa->x != pb->x) return pa->x - pb->x;
+    return pa->y - pb->y;
+}
+
+int main() {
+    precompute();
+
+    Point pts[MAX_PTS];
+    int npts = 0;
+
+    /* Generate inadmissible points via Pythagorean triples */
+    int sq_limit = (int)sqrt((double)N);
+    int m_limit = (int)sqrt(4.0 * sq_limit) + 1;
+
+    for (int m = 2; m <= m_limit; m++) {
+        for (int n = 1; n < m; n++) {
+            if ((m + n) % 2 == 1 && gcd(m, n) == 1) {
+                int a = m*m - n*n;
+                int b = 2*m*n;
+                int c = m*m + n*n;
+                for (int k = 1; (long long)k*c <= 4*sq_limit; k++) {
+                    long long ax = (long long)(k*a)*(k*a);
+                    long long bx = (long long)(k*b)*(k*b);
+                    if (ax <= N && bx <= N) {
+                        pts[npts].x = (int)ax;
+                        pts[npts].y = (int)bx;
+                        npts++;
+                    }
+                    if (bx <= N && ax <= N) {
+                        pts[npts].x = (int)bx;
+                        pts[npts].y = (int)ax;
+                        npts++;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Remove duplicates */
+    qsort(pts, npts, sizeof(Point), cmp_points);
+    int unique = 0;
+    for (int i = 0; i < npts; i++) {
+        if (i == 0 || pts[i].x != pts[i-1].x || pts[i].y != pts[i-1].y) {
+            pts[unique++] = pts[i];
+        }
+    }
+    npts = unique;
+
+    /* Add destination point (N, N) at the end */
+    pts[npts].x = N;
+    pts[npts].y = N;
+    npts++;
+
+    /* Sort again */
+    qsort(pts, npts, sizeof(Point), cmp_points);
+
+    /* Inclusion-exclusion: for each point p, compute admissible paths from (0,0) to p */
+    long long *adm = (long long *)calloc(npts, sizeof(long long));
+
+    for (int pi = 0; pi < npts; pi++) {
+        long long total = nCr(pts[pi].x + pts[pi].y, pts[pi].x);
+        for (int qi = 0; qi < pi; qi++) {
+            if (pts[qi].x <= pts[pi].x && pts[qi].y <= pts[pi].y) {
+                int dx = pts[pi].x - pts[qi].x;
+                int dy = pts[pi].y - pts[qi].y;
+                total = (total - adm[qi] % MOD * nCr(dx + dy, dx) % MOD + MOD) % MOD;
+            }
+        }
+        adm[pi] = (total % MOD + MOD) % MOD;
+    }
+
+    printf("%lld\n", adm[npts-1]);
+    free(adm);
+    return 0;
+}
 """
 
-from __future__ import annotations
+def solve():
+    # Write C code to temp file, compile, and run
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p408.c")
+    exe_file = os.path.join(tmpdir, "p408")
 
-from dataclasses import dataclass
-from math import gcd, isqrt
-from typing import Dict, List
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
+    subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        check=True, capture_output=True
+    )
 
-@dataclass(frozen=True, order=True)
-class IPoint:
-    """Integer point with x and y coordinates."""
-
-    x: int
-    y: int
-
-
-def sq(n: int) -> int:
-    """Return n squared."""
-    return n * n
-
-
-def is_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    root = isqrt(n)
-    return root * root == n
-
-
-def pythagorean_triples(limit: int) -> List[tuple[int, int, int]]:
-    """Generate all Pythagorean triples with c <= limit."""
-    triples: List[tuple[int, int, int]] = []
-    m_limit = isqrt(limit)
-
-    for m in range(2, m_limit + 1):
-        for n in range(1, m):
-            if (m + n) % 2 == 1 and gcd(m, n) == 1:
-                a = m * m - n * n
-                b = 2 * m * n
-                c = m * m + n * n
-
-                if c > limit:
-                    break
-
-                # Generate all multiples
-                k = 1
-                while k * c <= limit:
-                    triples.append((k * a, k * b, k * c))
-                    triples.append((k * b, k * a, k * c))
-                    k += 1
-
-    return triples
-
-
-class Zp:
-    """Modular arithmetic helper for binomial coefficients."""
-
-    def __init__(self, max_n: int, mod: int) -> None:
-        """Initialize with maximum n and modulus."""
-        self.mod = mod
-        self.max_n = max_n
-        self._factorials: List[int] = []
-        self._inv_factorials: List[int] = []
-        self._precompute()
-
-    def _precompute(self) -> None:
-        """Precompute factorials and inverse factorials."""
-        self._factorials = [1] * (self.max_n + 1)
-        for i in range(1, self.max_n + 1):
-            self._factorials[i] = (self._factorials[i - 1] * i) % self.mod
-
-        self._inv_factorials = [1] * (self.max_n + 1)
-        self._inv_factorials[self.max_n] = pow(
-            self._factorials[self.max_n], self.mod - 2, self.mod
-        )
-        for i in range(self.max_n - 1, -1, -1):
-            self._inv_factorials[i] = (
-                self._inv_factorials[i + 1] * (i + 1)
-            ) % self.mod
-
-    def nCr(self, n: int, r: int) -> int:
-        """Return C(n, r) mod mod."""
-        if r < 0 or r > n:
-            return 0
-        if n > self.max_n:
-            # Compute directly for large n
-            result = 1
-            for i in range(r):
-                result = (result * (n - i)) % self.mod
-            return (
-                result * pow(self.factorial(r), self.mod - 2, self.mod)
-            ) % self.mod
-        return (
-            self._factorials[n]
-            * self._inv_factorials[r]
-            * self._inv_factorials[n - r]
-        ) % self.mod
-
-    def factorial(self, n: int) -> int:
-        """Return n! mod mod."""
-        if n > self.max_n:
-            raise ValueError(f"n={n} exceeds max_n={self.max_n}")
-        return self._factorials[n]
-
-
-def solve() -> int:
-    """Solve Problem 408."""
-    N = 10**7
-    M = 10**9 + 7
-
-    # Find all inadmissible points
-    last = IPoint(N, N)
-    points: List[IPoint] = [last]
-
-    # Generate Pythagorean triples and find points where x, y, x+y are squares
-    triples = pythagorean_triples(4 * isqrt(N))
-    for a, b, _c in triples:
-        a_sq = sq(a)
-        b_sq = sq(b)
-        if a_sq <= N and b_sq <= N:
-            points.append(IPoint(a_sq, b_sq))
-            points.append(IPoint(b_sq, a_sq))
-
-    # Sort points by x, then y
-    points.sort()
-
-    # Compute paths using inclusion-exclusion
-    zp = Zp(2 * N, M)
-    all_num_paths_from: Dict[IPoint, int] = {}
-
-    for p in points:
-        num_paths_from = zp.nCr(p.x + p.y, p.x)
-        for q in points:
-            if q.x <= p.x and q.y <= p.y and p != q:
-                num_paths_from = (
-                    num_paths_from
-                    - all_num_paths_from[q]
-                    * zp.nCr(p.x - q.x + p.y - q.y, p.x - q.x)
-                ) % M
-        all_num_paths_from[p] = num_paths_from % M
-
-    return all_num_paths_from[last]
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    result = subprocess.run(
+        [exe_file], capture_output=True, text=True, check=True
+    )
+    return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

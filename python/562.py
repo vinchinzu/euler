@@ -1,93 +1,130 @@
 """Project Euler Problem 562: Maximal Triangle Perimeter.
 
-Find the triangle with lattice point vertices within or on a circle of radius N, no other
-lattice points on or in its boundary, and with maximum perimeter.
+Find the triangle with lattice point vertices within or on a circle of radius N,
+no other lattice points on or in its boundary, and with maximum perimeter.
+T(N) = R/N where R = abc/2 is the circumradius (area = 1/2 by Pick's theorem).
 
-By Pick's formula, the area of the triangle is 1/2.
-
-Suppose the longest side of such a triangle is a. Then the height is 1/a, and the maximum
-possible perimeter is if the triangle is isosceles with legs of length √((a/2)²+(1/a)²).
-
-We can now try all line segments (x1, y1), (x2, y2) inside the circle with length close to
-2N. To find (x3, y3), we use the Shoestring Formula and solve the resulting
-linear Diophantine equation.
+Uses C code for performance with N=10^7.
 """
 
-from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
 
-from dataclasses import dataclass
-from math import gcd, hypot, isqrt, sqrt
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+typedef long long ll;
+
+static ll N_val = 10000000LL;
+static int L = 20;
+
+static ll sq(ll n) { return n * n; }
+
+static ll gcd_func(ll a, ll b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
+
+/* Extended Euclidean: find x,y such that a*x + b*y = gcd(a,b) */
+static void ext_gcd(ll a, ll b, ll *x, ll *y) {
+    if (b == 0) { *x = 1; *y = 0; return; }
+    ll x1, y1;
+    ext_gcd(b, a % b, &x1, &y1);
+    *x = y1;
+    *y = x1 - (a / b) * y1;
+}
+
+static double max_possible_perim(double a) {
+    return a + 2.0 * hypot(a / 2.0, 1.0 / a);
+}
+
+int main(void) {
+    ll N = N_val;
+    double max_perim = 0.0;
+    double best_abc = 0.0;
+    ll isqrt_half = (ll)sqrt((double)sq(N) / 2.0);
+
+    for (ll x1 = 0; x1 <= isqrt_half; x1++) {
+        ll y1 = (ll)sqrt((double)(sq(N) - sq(x1)));
+        while (sq(x1) + sq(y1) > sq(N)) y1--;
+
+        double h1 = hypot((double)x1, (double)y1);
+        if (max_possible_perim(N + h1) < max_perim) continue;
+
+        ll x2_lo = -x1 - L;
+        ll x2_hi_raw = -x1 + L;
+        if (x2_hi_raw >= x1) x2_hi_raw = x1 - 1;
+
+        for (ll x2 = x2_lo; x2 <= x2_hi_raw; x2++) {
+            ll y2_lo = -y1 - L;
+            ll y2_hi_raw = -y1 + L;
+            if (y2_hi_raw >= y1) y2_hi_raw = y1 - 1;
+
+            for (ll y2 = y2_lo; y2 <= y2_hi_raw; y2++) {
+                if (sq(x2) + sq(y2) > sq(N)) continue;
+
+                double a = hypot((double)(x1 - x2), (double)(y1 - y2));
+                if (max_possible_perim(a) < max_perim) continue;
+                if (gcd_func(x1 - x2, y1 - y2) != 1) continue;
+
+                ll ex, ey;
+                ext_gcd(y1 - y2, x2 - x1, &ex, &ey);
+                ll x3 = x2 + ex;
+                ll y3 = y2 + ey;
+
+                if (sq(x3) + sq(y3) <= sq(N)) {
+                    double b = hypot((double)(x1 - x3), (double)(y1 - y3));
+                    double c = hypot((double)(x2 - x3), (double)(y2 - y3));
+                    double perim = a + b + c;
+                    if (perim > max_perim) {
+                        max_perim = perim;
+                        best_abc = a * b * c;
+                    }
+                }
+            }
+        }
+    }
+
+    ll ans = llround(best_abc / 2.0 / (double)N);
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
 
 
-N = 10**7
-L = 20
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p562.c")
+    exe_file = os.path.join(tmpdir, "p562")
 
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-@dataclass(frozen=True)
-class LPoint:
-    """Lattice point."""
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
 
-    x: int
-    y: int
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=25
+    )
 
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
 
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def lin_comb(a: int, b: int) -> LPoint:
-    """Find solution to ax + by = gcd(a,b) using extended Euclidean algorithm.
-
-    Returns (x, y) such that ax + by = gcd(a,b).
-    """
-    if b == 0:
-        return LPoint(1, 0)
-    x1, y1 = lin_comb(b, a % b)
-    q = a // b
-    return LPoint(y1, x1 - q * y1)
-
-
-def max_possible_perim(a: float) -> float:
-    """Maximum possible perimeter for triangle with longest side a."""
-    return a + 2 * hypot(a / 2, 1 / a)
-
-
-def solve() -> int:
-    """Solve Problem 562."""
-    max_perim = 0.0
-    ans = 0
-    for x1 in range(isqrt(sq(N) // 2) + 1):
-        y1 = isqrt(sq(N) - sq(x1))
-        if max_possible_perim(N + hypot(x1, y1)) < max_perim:
-            continue
-        for x2 in range(-x1 - L, min(-x1 + L + 1, x1)):
-            for y2 in range(-y1 - L, min(-y1 + L + 1, y1)):
-                if hypot(x2, y2) <= N:
-                    a = hypot(x1 - x2, y1 - y2)
-                    if max_possible_perim(a) < max_perim:
-                        continue
-                    if gcd(x1 - x2, y1 - y2) != 1:
-                        continue
-                    diff = lin_comb(y1 - y2, x2 - x1)
-                    x3 = x2 + diff.x
-                    y3 = y2 + diff.y
-                    if hypot(x3, y3) <= N:
-                        b = hypot(x1 - x3, y1 - y3)
-                        c = hypot(x2 - x3, y2 - y3)
-                        perim = a + b + c
-                        if perim > max_perim:
-                            max_perim = perim
-                            ans = round(a * b * c / 2 / N)
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

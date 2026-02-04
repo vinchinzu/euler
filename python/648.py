@@ -1,57 +1,86 @@
 """Project Euler Problem 648: Skipping Squares.
 
-Let f(ρ) be the expected number of perfect squares skipped over if we start
-at 0 and repeatedly increment by 1 with probability ρ and increment by 2 with
-probability 1-ρ. If f(ρ) is expressed as a power series in ρ, find the sum
-of the coefficients f_0, f_1, ... f_N.
-
-Let f^s(ρ) be the expected number of perfect squares if we start at s, so
-f(ρ) = f^0(ρ). Then if s is a perfect square, then f^s(ρ) = (√s - 1);
-otherwise, f^s(ρ) = ρ f^{s+1}(ρ) + (1-ρ) f^{s+2}(ρ).
+Power series expansion of expected number of perfect squares skipped.
+Sum of first N+1 coefficients. Uses C for speed.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os
 
-from math import isqrt
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
 
+#define NN 1000
+#define MOD 1000000000LL
 
-def is_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    root = isqrt(n)
-    return root * root == n
+static long long jump1[NN+1], jump2[NN+1], f[NN+1];
 
+static int is_square(int n) {
+    int r = (int)sqrt((double)n);
+    while (r * r > n) r--;
+    while ((r+1)*(r+1) <= n) r++;
+    return r * r == n;
+}
 
-def solve() -> int:
-    """Solve Problem 648."""
-    N = 1000
-    M = 10**9
+static int isqrt_val(int n) {
+    int r = (int)sqrt((double)n);
+    while (r * r > n) r--;
+    while ((r+1)*(r+1) <= n) r++;
+    return r;
+}
 
-    jump1 = [0] * (N + 1)
-    jump2 = [0] * (N + 1)
+int main(void) {
+    int max_s = (NN / 2) * (NN / 2);
 
-    max_s = (N // 2) ** 2
-    for s in range(max_s, -1, -1):
-        f = [0] * (N + 1)
-        if s > 0 and is_square(s):
-            f[0] = isqrt(s) - 1
-        else:
-            f[0] = jump2[0]
-            for k in range(1, N + 1):
-                f[k] = (jump2[k] + jump1[k - 1] - jump2[k - 1]) % M
+    memset(jump1, 0, sizeof(jump1));
+    memset(jump2, 0, sizeof(jump2));
 
-        jump2 = jump1[:]
-        jump1 = f[:]
+    for (int s = max_s; s >= 0; s--) {
+        memset(f, 0, sizeof(f));
 
-    ans = sum(jump1) % M
-    return ans
+        if (s > 0 && is_square(s)) {
+            f[0] = isqrt_val(s) - 1;
+        } else {
+            /* f^s(rho) = rho * f^{s+1}(rho) + (1-rho) * f^{s+2}(rho)
+               Coefficient k: f[k] = jump2[k] + jump1[k-1] - jump2[k-1]
+               where jump1 = f^{s+1}, jump2 = f^{s+2}
+            */
+            f[0] = jump2[0];
+            for (int k = 1; k <= NN; k++) {
+                f[k] = ((jump2[k] + jump1[k-1] - jump2[k-1]) % MOD + MOD) % MOD;
+            }
+        }
 
+        /* shift: jump2 = jump1, jump1 = f */
+        memcpy(jump2, jump1, sizeof(jump1));
+        memcpy(jump1, f, sizeof(f));
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    long long ans = 0;
+    for (int k = 0; k <= NN; k++) {
+        ans = (ans + jump1[k]) % MOD;
+    }
+    printf("%lld\n", ans);
+    return 0;
+}
+""";
 
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'], check=True,
+                       capture_output=True, text=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True, timeout=30)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_path)
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
 
 if __name__ == "__main__":
-    main()
+    solve()

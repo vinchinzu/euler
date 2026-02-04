@@ -1,0 +1,611 @@
+Loading answers from solutions.txt...
+Loaded 978 answers
+Found 300 Python solutions
+Already validated: 0 passed problems
+
+======================================================================
+First Pass: Testing 300 problems (timeout: 30s)
+======================================================================
+
+[1/300] Problem 1... PASSED (0.018s)
+
+[2/300] Problem 2... PASSED (0.016s)
+
+[3/300] Problem 3... PASSED (0.017s)
+
+[4/300] Problem 4... PASSED (0.019s)
+
+[5/300] Problem 5... PASSED (0.017s)
+
+[6/300] Problem 6... PASSED (0.015s)
+
+[7/300] Problem 7... PASSED (0.030s)
+
+[8/300] Problem 8... PASSED (0.017s)
+
+[9/300] Problem 9... PASSED (0.028s)
+
+[10/300] Problem 10... PASSED (0.310s)
+
+[11/300] Problem 11... PASSED (0.017s)
+
+[12/300] Problem 12... PASSED (0.200s)
+
+[13/300] Problem 13... PASSED (0.032s)
+
+[14/300] Problem 14... PASSED (1.129s)
+
+[15/300] Problem 15... PASSED (0.015s)
+
+[16/300] Problem 16... PASSED (0.016s)
+
+[17/300] Problem 17... PASSED (0.017s)
+
+[18/300] Problem 18... PASSED (0.015s)
+
+[19/300] Problem 19... PASSED (0.017s)
+
+[20/300] Problem 20... PASSED (0.024s)
+
+[21/300] Problem 21... PASSED (0.042s)
+
+[22/300] Problem 22... ERROR (0.034s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/022.py", line 37, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/022.py", line 26, i...
+
+[23/300] Problem 23... PASSED (1.295s)
+
+[24/300] Problem 24... PASSED (0.015s)
+
+[25/300] Problem 25... PASSED (0.016s)
+
+[26/300] Problem 26... PASSED (0.032s)
+
+[27/300] Problem 27... PASSED (0.142s)
+
+[28/300] Problem 28... PASSED (0.015s)
+
+[29/300] Problem 29... PASSED (0.020s)
+
+[30/300] Problem 30... PASSED (0.357s)
+
+[31/300] Problem 31... PASSED (0.024s)
+
+[32/300] Problem 32... PASSED (0.159s)
+
+[33/300] Problem 33... PASSED (0.017s)
+
+[34/300] Problem 34... PASSED (1.839s)
+
+[35/300] Problem 35... PASSED (0.184s)
+
+[36/300] Problem 36... PASSED (0.224s)
+
+[37/300] Problem 37... PASSED (1.981s)
+
+[38/300] Problem 38... PASSED (0.207s)
+
+[39/300] Problem 39... PASSED (0.032s)
+
+[40/300] Problem 40... PASSED (0.056s)
+
+[41/300] Problem 41... PASSED (0.017s)
+
+[42/300] Problem 42... ERROR (0.050s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/042.py", line 40, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/042.py", line 29, i...
+
+[43/300] Problem 43... PASSED (2.156s)
+
+[44/300] Problem 44... PASSED (0.769s)
+
+[45/300] Problem 45... PASSED (0.035s)
+
+[46/300] Problem 46... PASSED (0.174s)
+
+[47/300] Problem 47... PASSED (0.581s)
+
+[48/300] Problem 48... PASSED (0.027s)
+
+[49/300] Problem 49... PASSED (0.062s)
+
+[50/300] Problem 50... PASSED (3.284s)
+
+[51/300] Problem 51... PASSED (0.495s)
+
+[52/300] Problem 52... PASSED (0.175s)
+
+[53/300] Problem 53... PASSED (0.016s)
+
+[54/300] Problem 54... ERROR (0.041s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/054.py", line 65, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/054.py", line 54, i...
+
+[55/300] Problem 55... PASSED (0.039s)
+
+[56/300] Problem 56... PASSED (0.116s)
+
+[57/300] Problem 57... PASSED (0.018s)
+
+[58/300] Problem 58... PASSED (0.401s)
+
+[59/300] Problem 59... ERROR (0.035s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/059.py", line 22, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/059.py", line 8, in...
+
+[60/300] Problem 60... PASSED (4.261s)
+
+[61/300] Problem 61... PASSED (0.036s)
+
+[62/300] Problem 62... PASSED (0.027s)
+
+[63/300] Problem 63... PASSED (0.015s)
+
+[64/300] Problem 64... PASSED (0.055s)
+
+[65/300] Problem 65... PASSED (0.017s)
+
+[66/300] Problem 66... PASSED (0.025s)
+
+[67/300] Problem 67... FAILED (0.027s)
+    Expected: 7273
+    Got:      Error: triangle.txt not found
+
+[68/300] Problem 68... PASSED (1.981s)
+
+[69/300] Problem 69... PASSED (0.016s)
+
+[70/300] Problem 70... PASSED (0.175s)
+
+[71/300] Problem 71... PASSED (0.015s)
+
+[72/300] Problem 72... PASSED (1.244s)
+
+[73/300] Problem 73... PASSED (3.578s)
+
+[74/300] Problem 74... PASSED (1.190s)
+
+[75/300] Problem 75... PASSED (0.271s)
+
+[76/300] Problem 76... PASSED (0.017s)
+
+[77/300] Problem 77... PASSED (0.016s)
+
+[78/300] Problem 78... PASSED (2.923s)
+
+[79/300] Problem 79... ERROR (0.033s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/079.py", line 79, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/079.py", line 17, i...
+
+[80/300] Problem 80... PASSED (0.036s)
+
+[81/300] Problem 81... FAILED (0.029s)
+    Expected: 427337
+    Got:      Error: matrix.txt not found
+
+[82/300] Problem 82... FAILED (0.037s)
+    Expected: 260324
+    Got:      Error: matrix.txt not found
+
+[83/300] Problem 83... FAILED (0.029s)
+    Expected: 425185
+    Got:      Error: matrix.txt not found
+
+[84/300] Problem 84... PASSED (5.735s)
+
+[85/300] Problem 85... PASSED (0.017s)
+
+[86/300] Problem 86... PASSED (0.687s)
+
+[87/300] Problem 87... PASSED (0.412s)
+
+[88/300] Problem 88... PASSED (0.169s)
+
+[89/300] Problem 89... ERROR (0.035s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/089.py", line 76, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/089.py", line 60, i...
+
+[90/300] Problem 90... PASSED (0.037s)
+
+[91/300] Problem 91... PASSED (1.595s)
+
+[92/300] Problem 92... PASSED (0.038s)
+
+[93/300] Problem 93... PASSED (1.123s)
+
+[94/300] Problem 94... PASSED (0.015s)
+
+[95/300] Problem 95... PASSED (3.228s)
+
+[96/300] Problem 96... ERROR (0.039s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/096.py", line 125, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/096.py", line 110,...
+
+[97/300] Problem 97... PASSED (0.015s)
+
+[98/300] Problem 98... ERROR (0.049s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/098.py", line 105, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/098.py", line 19, ...
+
+[99/300] Problem 99... ERROR (0.036s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/099.py", line 34, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/099.py", line 17, i...
+
+[100/300] Problem 100... PASSED (0.015s)
+
+[101/300] Problem 101... PASSED (0.023s)
+
+[102/300] Problem 102... PASSED (0.025s)
+
+[103/300] Problem 103... PASSED (0.026s)
+
+[104/300] Problem 104... PASSED (1.491s)
+
+[105/300] Problem 105... PASSED (2.395s)
+
+[106/300] Problem 106... PASSED (0.108s)
+
+[107/300] Problem 107... FAILED (0.030s)
+    Expected: 259679
+    Got:      0
+
+[108/300] Problem 108... PASSED (0.022s)
+
+[109/300] Problem 109... PASSED (0.041s)
+
+[110/300] Problem 110... PASSED (0.042s)
+
+[111/300] Problem 111... PASSED (0.557s)
+
+[112/300] Problem 112... PASSED (2.053s)
+
+[113/300] Problem 113... PASSED (0.016s)
+
+[114/300] Problem 114... PASSED (0.023s)
+
+[115/300] Problem 115... PASSED (0.050s)
+
+[116/300] Problem 116... PASSED (0.026s)
+
+[117/300] Problem 117... PASSED (0.033s)
+
+[118/300] Problem 118... PASSED (8.725s)
+
+[119/300] Problem 119... PASSED (0.024s)
+
+[120/300] Problem 120... PASSED (0.016s)
+
+[121/300] Problem 121... PASSED (0.022s)
+
+[122/300] Problem 122... PASSED (0.259s)
+
+[123/300] Problem 123... PASSED (0.373s)
+
+[124/300] Problem 124... PASSED (0.500s)
+
+[125/300] Problem 125... PASSED (0.139s)
+
+[126/300] Problem 126... PASSED (0.975s)
+
+[127/300] Problem 127... PASSED (4.961s)
+
+[128/300] Problem 128... PASSED (0.144s)
+
+[129/300] Problem 129... PASSED (7.732s)
+
+[130/300] Problem 130... PASSED (0.706s)
+
+[131/300] Problem 131... PASSED (0.315s)
+
+[132/300] Problem 132... PASSED (0.482s)
+
+[133/300] Problem 133... PASSED (0.461s)
+
+[134/300] Problem 134... PASSED (1.301s)
+
+[135/300] Problem 135... PASSED (0.487s)
+
+[136/300] Problem 136... PASSED (26.905s)
+
+[137/300] Problem 137... PASSED (0.016s)
+
+[138/300] Problem 138... PASSED (0.017s)
+
+[139/300] Problem 139... PASSED (6.890s)
+
+[140/300] Problem 140... PASSED (0.031s)
+
+[141/300] Problem 141... PASSED (2.856s)
+
+[142/300] Problem 142... PASSED (2.478s)
+
+[143/300] Problem 143... PASSED (0.253s)
+
+[144/300] Problem 144... PASSED (0.024s)
+
+[145/300] Problem 145... PASSED (16.105s)
+
+[146/300] Problem 146... PASSED (27.940s)
+
+[147/300] Problem 147... PASSED (0.016s)
+
+[148/300] Problem 148... PASSED (0.017s)
+
+[149/300] Problem 149... PASSED (4.504s)
+
+[150/300] Problem 150... TIMEOUT (30.0s)
+
+[151/300] Problem 151... PASSED (0.024s)
+
+[152/300] Problem 152... PASSED (4.603s)
+
+[153/300] Problem 153... PASSED (11.135s)
+
+[154/300] Problem 154... TIMEOUT (30.0s)
+
+[155/300] Problem 155... PASSED (16.222s)
+
+[156/300] Problem 156... PASSED (0.467s)
+
+[157/300] Problem 157... PASSED (0.042s)
+
+[158/300] Problem 158... PASSED (0.015s)
+
+[159/300] Problem 159... PASSED (5.119s)
+
+[160/300] Problem 160... PASSED (0.027s)
+
+[161/300] Problem 161... PASSED (10.098s)
+
+[162/300] Problem 162... PASSED (0.016s)
+
+[163/300] Problem 163... FAILED (0.016s)
+    Expected: 343047
+    Got:      16206
+
+[164/300] Problem 164... PASSED (0.017s)
+
+[165/300] Problem 165... PASSED (8.774s)
+
+[166/300] Problem 166... PASSED (8.382s)
+
+[167/300] Problem 167... PASSED (4.065s)
+
+[168/300] Problem 168... FAILED (0.026s)
+    Expected: 59206
+    Got:      55005
+
+[169/300] Problem 169... PASSED (0.016s)
+
+[170/300] Problem 170... PASSED (12.787s)
+
+[171/300] Problem 171... PASSED (0.073s)
+
+[172/300] Problem 172... PASSED (2.975s)
+
+[173/300] Problem 173... PASSED (0.015s)
+
+[174/300] Problem 174... PASSED (0.498s)
+
+[175/300] Problem 175... PASSED (0.023s)
+
+[176/300] Problem 176... PASSED (0.038s)
+
+[177/300] Problem 177... TIMEOUT (30.0s)
+
+[178/300] Problem 178... PASSED (0.033s)
+
+[179/300] Problem 179... PASSED (4.116s)
+
+[180/300] Problem 180... PASSED (1.007s)
+
+[181/300] Problem 181... PASSED (0.171s)
+
+[182/300] Problem 182... PASSED (0.997s)
+
+[183/300] Problem 183... PASSED (0.037s)
+
+[184/300] Problem 184... PASSED (0.077s)
+
+[185/300] Problem 185... PASSED (0.718s)
+
+[186/300] Problem 186... PASSED (3.837s)
+
+[187/300] Problem 187... PASSED (25.652s)
+
+[188/300] Problem 188... PASSED (0.024s)
+
+[189/300] Problem 189... FAILED (0.069s)
+    Expected: 10834893628237824
+    Got:      6
+
+[190/300] Problem 190... PASSED (0.025s)
+
+[191/300] Problem 191... PASSED (0.024s)
+
+[192/300] Problem 192... FAILED (2.676s)
+    Expected: 57060635927998347
+    Got:      84843949009562896
+
+[193/300] Problem 193... PASSED (13.829s)
+
+[194/300] Problem 194... FAILED (0.016s)
+    Expected: 61190912
+    Got:      18390016
+
+[195/300] Problem 195... FAILED (11.958s)
+    Expected: 75085391
+    Got:      78735788
+
+[196/300] Problem 196... FAILED (12.622s)
+    Expected: 322303240771079935
+    Got:      46125378096029291
+
+[197/300] Problem 197... PASSED (0.015s)
+
+[198/300] Problem 198... PASSED (0.727s)
+
+[199/300] Problem 199... PASSED (0.039s)
+
+[200/300] Problem 200... PASSED (0.390s)
+
+[201/300] Problem 201... TIMEOUT (30.0s)
+
+[202/300] Problem 202... PASSED (0.023s)
+
+[203/300] Problem 203... PASSED (2.587s)
+
+[204/300] Problem 204... PASSED (1.570s)
+
+[205/300] Problem 205... PASSED (0.068s)
+
+[206/300] Problem 206... TIMEOUT (30.0s)
+
+[207/300] Problem 207... PASSED (0.062s)
+
+[208/300] Problem 208... PASSED (3.119s)
+
+[209/300] Problem 209... PASSED (0.021s)
+
+[210/300] Problem 210... PASSED (22.250s)
+
+[211/300] Problem 211... TIMEOUT (30.0s)
+
+[212/300] Problem 212... PASSED (5.293s)
+
+[213/300] Problem 213... PASSED (19.462s)
+
+[214/300] Problem 214... TIMEOUT (30.0s)
+
+[215/300] Problem 215... PASSED (0.995s)
+
+[216/300] Problem 216... TIMEOUT (30.0s)
+
+[217/300] Problem 217... PASSED (0.806s)
+
+[218/300] Problem 218... PASSED (0.016s)
+
+[219/300] Problem 219... PASSED (0.022s)
+
+[220/300] Problem 220... ERROR (0.129s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/220.py", line 92, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/220.py", line 86, i...
+
+[221/300] Problem 221... PASSED (5.020s)
+
+[222/300] Problem 222... PASSED (0.025s)
+
+[223/300] Problem 223... TIMEOUT (30.0s)
+
+[224/300] Problem 224... PASSED (5.780s)
+
+[225/300] Problem 225... PASSED (0.470s)
+
+[226/300] Problem 226... PASSED (0.017s)
+
+[227/300] Problem 227... PASSED (3.780s)
+
+[228/300] Problem 228... PASSED (0.084s)
+
+[229/300] Problem 229... TIMEOUT (30.0s)
+
+[230/300] Problem 230... PASSED (0.023s)
+
+[231/300] Problem 231... PASSED (9.933s)
+
+[232/300] Problem 232... PASSED (0.053s)
+
+[233/300] Problem 233... FAILED (4.533s)
+    Expected: 271204031455541309
+    Got:      252349692932038059
+
+[234/300] Problem 234... PASSED (0.833s)
+
+[235/300] Problem 235... PASSED (0.016s)
+
+[236/300] Problem 236... PASSED (1.942s)
+
+[237/300] Problem 237... PASSED (0.021s)
+
+[238/300] Problem 238... TIMEOUT (30.0s)
+
+[239/300] Problem 239... PASSED (0.022s)
+
+[240/300] Problem 240... PASSED (0.595s)
+
+[241/300] Problem 241... PASSED (0.576s)
+
+[242/300] Problem 242... PASSED (0.016s)
+
+[243/300] Problem 243... ERROR (0.033s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/243.py", line 59, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/243.py", line 53, i...
+
+[244/300] Problem 244... PASSED (0.933s)
+
+[245/300] Problem 245... TIMEOUT (30.0s)
+
+[246/300] Problem 246... PASSED (0.029s)
+
+[247/300] Problem 247... ERROR (0.049s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/247.py", line 86, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/247.py", line 80, i...
+
+[248/300] Problem 248... ERROR (0.093s)
+    Return code 1: Traceback (most recent call last):
+  File "/home/v/01_projects/euler/euler/python/248.py", line 109, in <module>
+    main()
+    ~~~~^^
+  File "/home/v/01_projects/euler/euler/python/248.py", line 103,...
+
+[249/300] Problem 249... TIMEOUT (30.0s)
+
+[250/300] Problem 250... PASSED (11.919s)
+
+[251/300] Problem 251... TIMEOUT (30.0s)
+
+[252/300] Problem 252... FAILED (5.203s)
+    Expected: 104924.0
+    Got:      0.0
+
+[253/300] Problem 253... PASSED (0.030s)
+
+[254/300] Problem 254... PASSED (6.749s)
+
+[255/300] Problem 255... 

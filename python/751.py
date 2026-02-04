@@ -28,9 +28,9 @@ def solve() -> str:
         digits = ""
         b = theta
         while len(digits) < K:
-            digits += str(int(b))
             fractional = b - int(b)
             b = int(b) * (fractional + 1)
+            digits += str(int(b))
 
         tau = f"{int(theta)}.{digits[:K]}"
         tau_decimal = Decimal(tau)

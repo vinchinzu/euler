@@ -3,69 +3,116 @@
 There is a sequence of N numbers, and 2 players take turns removing either
 the first or last number. Find the maximum score of the first player if both
 players play optimally.
+
+Uses the reduction algorithm: if a number b is larger than its neighbors a
+and c, they can be replaced with a-b+c without changing the optimal score
+difference. After reduction, greedy works.
+
+Uses inline C for performance.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List
+import os
+import subprocess
+import tempfile
 
 
-def sq(n: int) -> int:
-    """Square."""
-    return n * n
-
-
-def imod(a: int, m: int) -> int:
-    """Modulo."""
-    return a % m
-
-
-def F(numbers: List[int]) -> int:
-    """Compute optimal score difference."""
-    # Simplified: greedy algorithm when largest is at ends
-    # For full solution, would need to implement the reduction algorithm
-    if not numbers:
-        return 0
-    if len(numbers) == 1:
-        return numbers[0]
-
-    # Greedy: take larger end
-    if numbers[0] > numbers[-1]:
-        return numbers[0] - F(numbers[1:])
-    else:
-        return numbers[-1] - F(numbers[:-1])
-
-
-def solve() -> int:
+def solve() -> str:
     """Solve Problem 477."""
-    N = 10**8
-    M = 10**9 + 7
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
 
-    # Find period
-    seen: Dict[int, int] = {}
-    s = 0
-    period = 0
-    for i in range(M + 1):
-        if s in seen:
-            period = i - seen[s]
-            break
-        seen[s] = i
-        s = imod(sq(s) + 45, M)
+typedef long long ll;
+typedef __int128 lll;
 
-    # Generate numbers for one period
-    numbers: List[int] = []
-    s = 0
-    for _ in range(min(N, period)):
-        numbers.append(s)
-        s = imod(sq(s) + 45, M)
+#define M 1000000007LL
+#define N 100000000LL
 
-    total = sum(numbers)
-    diff = F(numbers)
-    ans = (total + diff) // 2
-    return ans % M
+int main() {
+    /* Generate the sequence */
+    ll *nums = (ll*)malloc(N * sizeof(ll));
+    if (!nums) { fprintf(stderr, "malloc failed\n"); return 1; }
+
+    ll s = 0;
+    for (ll i = 0; i < N; i++) {
+        nums[i] = s;
+        s = (s * s + 45) % M;
+    }
+
+    /* Reduce: replace peaks a <= b >= c with a-b+c */
+    ll *reduced = (ll*)malloc(N * sizeof(ll));
+    int idx = 0;
+    lll sum = 0;
+
+    for (ll i = 0; i < N; i++) {
+        sum += nums[i];
+        reduced[idx++] = nums[i];
+        while (idx >= 3 && reduced[idx-3] <= reduced[idx-2] && reduced[idx-2] >= reduced[idx-1]) {
+            reduced[idx-3] += reduced[idx-1] - reduced[idx-2];
+            idx -= 2;
+        }
+    }
+
+    free(nums);
+
+    /* Greedy on reduced sequence, matching Java:
+       for (int start = 0, end = index - 1; start <= end;) {
+           long score = reduced[start] > reduced[end] ? reduced[start++] : reduced[end--];
+           reducedScore += parity(start + end) * score;
+       }
+       parity(n) = (n % 2 == 0) ? 1 : -1
+       Note: start++ / end-- happens BEFORE parity is evaluated */
+    lll reducedScore = 0;
+    int start = 0, end = idx - 1;
+    while (start <= end) {
+        ll score;
+        if (reduced[start] > reduced[end])
+            score = reduced[start++];
+        else
+            score = reduced[end--];
+        /* parity computed AFTER start/end modification */
+        int parity = ((start + end) % 2 == 0) ? 1 : -1;
+        reducedScore += (lll)parity * score;
+    }
+
+    free(reduced);
+
+    lll ans = (sum + reducedScore) / 2;
+
+    /* Print __int128 */
+    ll hi = (ll)(ans / 1000000000000000LL);
+    ll lo = (ll)(ans % 1000000000000000LL);
+    if (hi > 0)
+        printf("%lld%015lld\n", hi, lo);
+    else
+        printf("%lld\n", lo);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p477.c")
+    exe_file = os.path.join(tmpdir, "p477")
+
+    with open(c_file, "w") as f:
+        f.write(c_code)
+
+    subprocess.run(["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+                   check=True, capture_output=True)
+
+    result = subprocess.run([exe_file], capture_output=True, text=True, check=True,
+                           timeout=25)
+    output = result.stdout.strip()
+
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
+
+    return output
 
 
-def main() -> int:
+def main():
     """Main entry point."""
     result = solve()
     print(result)

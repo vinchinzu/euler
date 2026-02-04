@@ -1,150 +1,147 @@
 """Project Euler Problem 564: Expected Maximal Polygon Area.
 
-If a segment of length 2n-3 is divided into n integer-length segments such that each
-division is equally likely, and the segments are arranged into an n-sided polygon with
-maximal area, then let E(n) be the expected maximal area. Find Σ_{n=3}^N E(n).
+Enumerate all compositions of n sides summing to 2n-3, compute the maximal
+cyclic polygon area for each, weight by multinomial count, and average over
+C(2n-4, n-1) total compositions. Sum E(n) for n=3..50.
 
-We can recurse over all possible unordered sets of n segments. For each unordered set,
-the maximal area is achieved when the polygon is cyclic, so we use binary search to
-compute the diameter of the circumcircle. (Note that if using the largest side as the
-diameter still results in all chords spanning over 2π, then the diameter is even larger,
-and the center of the circle is outside the polygon. In that case, we have to compute the
-angle, and later on the area, slightly differently.) With the diameter, we can then
-compute the area and multiply by the number of ordered sets. By balls and bins, there are
-nCr(2n-4,n-1) total divisions, so we divide the sum of all areas by that value to get E(n).
+Uses C code for performance.
 """
 
-from __future__ import annotations
+import os
+import subprocess
+import sys
+import tempfile
 
-import math
-from dataclasses import dataclass
-from typing import List
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
+#define MAXN 51
+#define MAXSIDES 50
 
-N = 50
+typedef struct { int val; int count; } Side;
 
+static double ffactorial(int n) {
+    double r = 1.0;
+    for (int i = 2; i <= n; i++) r *= i;
+    return r;
+}
 
-@dataclass(frozen=True)
-class Side:
-    """Side of polygon."""
+static double fnCr(int n, int r) {
+    if (r < 0 || r > n) return 0.0;
+    if (r == 0 || r == n) return 1.0;
+    if (r > n - r) r = n - r;
+    double result = 1.0;
+    for (int i = 0; i < r; i++)
+        result = result * (n - i) / (i + 1);
+    return result;
+}
 
-    val: int
-    count: int
+static int feq(double a, double b) {
+    return fabs(a - b) < 1e-10;
+}
 
+static double fsq(double x) { return x * x; }
 
-def feq(a: float, b: float, eps: float = 1e-10) -> bool:
-    """Check if two floats are approximately equal."""
-    return abs(a - b) < eps
+static int center_outside(Side *sides, int nsides) {
+    if (sides[nsides-1].count > 1) return 0;
+    double angle = 0.0;
+    double max_side = sides[nsides-1].val;
+    for (int i = 0; i < nsides; i++)
+        angle += sides[i].count * asin((double)sides[i].val / max_side);
+    return angle < M_PI;
+}
 
+static double ans;
 
-def ffactorial(n: int) -> float:
-    """Float factorial."""
-    result = 1.0
-    for i in range(2, n + 1):
-        result *= i
-    return result
+static void helper(int n, int rem_sides, int rem_perim, Side *sides, int nsides) {
+    if (rem_sides == 0) {
+        if (rem_perim != 0) return;
 
+        int co = center_outside(sides, nsides);
+        double low = (double)sides[nsides-1].val;
+        double high = 2.0 * n;
+        double prev = 0.0;
 
-def fnCr(n: int, r: int) -> float:
-    """Float binomial coefficient."""
-    if r < 0 or r > n:
-        return 0.0
-    if r == 0 or r == n:
-        return 1.0
-    result = 1.0
-    for i in range(min(r, n - r)):
-        result = result * (n - i) / (i + 1)
-    return result
+        while (!feq(low, high)) {
+            double mid = (low + high) / 2.0;
+            double angle = 0.0;
+            for (int i = 0; i < nsides; i++) {
+                prev = sides[i].count * asin((double)sides[i].val / mid);
+                angle += prev;
+            }
+            if (co) angle = M_PI + 2 * prev - angle;
+            if (angle > M_PI) low = mid; else high = mid;
+        }
 
+        double area = 0.0;
+        for (int i = 0; i < nsides; i++) {
+            prev = sides[i].count * sides[i].val * sqrt(fsq(low) - fsq(sides[i].val)) / 4.0;
+            area += prev;
+        }
+        if (co) area -= 2 * prev;
 
-def fsq(x: float) -> float:
-    """Square of float."""
-    return x * x
+        area *= ffactorial(n);
+        for (int i = 0; i < nsides; i++)
+            area /= ffactorial(sides[i].count);
+        ans += area / fnCr(2 * n - 4, n - 1);
+        return;
+    }
 
+    int start_val = (nsides == 0) ? 1 : sides[nsides-1].val + 1;
+    for (int val = start_val; val <= rem_perim / rem_sides; val++) {
+        for (int count = 1; count <= rem_sides; count++) {
+            if (val * count <= rem_perim) {
+                sides[nsides].val = val;
+                sides[nsides].count = count;
+                helper(n, rem_sides - count, rem_perim - val * count, sides, nsides + 1);
+            }
+        }
+    }
+}
 
-def last(lst: List[Side]) -> Side:
-    """Get last element of list."""
-    return lst[-1]
+int main(void) {
+    ans = 0.0;
+    Side sides[MAXSIDES];
 
+    for (int n = 3; n <= 50; n++) {
+        helper(n, n, 2 * n - 3, sides, 0);
+    }
 
-def remove_last(lst: List[Side]) -> None:
-    """Remove last element of list."""
-    lst.pop()
-
-
-def center_outside_polygon(sides: List[Side]) -> bool:
-    """Check if center is outside polygon."""
-    if last(sides).count > 1:
-        return False
-    angle = 0.0
-    max_side = last(sides).val
-    for side in sides:
-        angle += side.count * math.asin(1.0 * side.val / max_side)
-    return angle < math.pi
-
-
-ans = 0.0
-
-
-def helper(n: int, remaining_sides: int, remaining_perim: int, sides: List[Side]) -> None:
-    """Recursive helper to enumerate all possible side combinations."""
-    global ans
-    if remaining_sides == 0:
-        if remaining_perim == 0:
-            center_outside = center_outside_polygon(sides)
-            low = float(last(sides).val)
-            high = 2.0 * n
-            prev = 0.0
-            while not feq(low, high):
-                mid = (low + high) / 2.0
-                angle = 0.0
-                for side in sides:
-                    angle += prev = side.count * math.asin(side.val / mid)
-                if center_outside:
-                    angle = math.pi + 2 * prev - angle
-                if angle > math.pi:
-                    low = mid
-                else:
-                    high = mid
-            area = 0.0
-            for side in sides:
-                area += prev = (
-                    side.count
-                    * side.val
-                    * math.sqrt(fsq(low) - fsq(side.val))
-                    / 4
-                )
-            if center_outside:
-                area -= 2 * prev
-            area *= ffactorial(n)
-            for side in sides:
-                area /= ffactorial(side.count)
-            ans += area / fnCr(2 * n - 4, n - 1)
-        return
-
-    start_val = 1 if not sides else last(sides).val + 1
-    for val in range(start_val, remaining_perim // remaining_sides + 1):
-        for count in range(1, remaining_sides + 1):
-            if val * count <= remaining_perim:
-                sides.append(Side(val, count))
-                helper(n, remaining_sides - count, remaining_perim - val * count, sides)
-                remove_last(sides)
+    printf("%.6f\n", ans);
+    return 0;
+}
+"""
 
 
-def solve() -> float:
-    """Solve Problem 564."""
-    global ans
-    ans = 0.0
-    for n in range(3, N + 1):
-        helper(n, n, 2 * n - 3, [])
-    return ans
+def solve():
+    tmpdir = tempfile.mkdtemp()
+    c_file = os.path.join(tmpdir, "p564.c")
+    exe_file = os.path.join(tmpdir, "p564")
 
+    with open(c_file, "w") as f:
+        f.write(C_CODE)
 
-def main() -> None:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.6f}")
+    result = subprocess.run(
+        ["gcc", "-O2", "-o", exe_file, c_file, "-lm"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Compile error: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    result = subprocess.run(
+        [exe_file],
+        capture_output=True, text=True, timeout=25
+    )
+
+    os.unlink(c_file)
+    os.unlink(exe_file)
+    os.rmdir(tmpdir)
+
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

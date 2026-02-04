@@ -1,13 +1,13 @@
 """Project Euler Problem 656: Palindromic sequences.
 
-Define S_α(n) = ⌊α * n⌋ - ⌊α * (n-1)⌋, and let H_g(α) be the sum of the first
-g values of n such that S_α(1), S_α(2), ... S_α(n) is a palindrome. Find
-sum_β H_100(√β) for all non-squares β ≤ N.
+Define S_alpha(n) = floor(alpha * n) - floor(alpha * (n-1)), and let H_g(alpha) be the sum of the first
+g values of n such that S_alpha(1), S_alpha(2), ... S_alpha(n) is a palindrome. Find
+sum_beta H_100(sqrt(beta)) for all non-squares beta <= N.
 
 According to https://www.fq.math.ca/Scanned/39-1/komatsu.pdf, the sequence
-S_α(1) ... S_α(n) is a palindrome for n ∈ { 1,2,...q1, q2+q1,2*q2+q1,...q3,
+S_alpha(1) ... S_alpha(n) is a palindrome for n in { 1,2,...q1, q2+q1,2*q2+q1,...q3,
 q4+q3,2*q4+q3,...q5, ... }, where q_k are the denominators in the continued
-fraction approximants for α.
+fraction approximants for alpha.
 """
 
 from __future__ import annotations
@@ -21,23 +21,48 @@ def is_square(n: int) -> bool:
     return root * root == n
 
 
-def pell_pqa(P0: int, Q0: int, D: int):
-    """Generate continued fraction expansion for √D."""
-    P = P0
-    Q = Q0
-    a0 = int((P0 + isqrt(D)) / Q0)
-    yield (a0, P, Q)
+def cf_sqrt(D: int):
+    """Generate continued fraction coefficients for sqrt(D).
 
-    seen = set()
+    Yields a0, a1, a2, ... (the periodic part repeats).
+    """
+    a0 = isqrt(D)
+    yield a0
+
+    if a0 * a0 == D:
+        return
+
+    P = a0
+    Q = D - a0 * a0
+
     while True:
-        P = a0 * Q - P
+        a = (a0 + P) // Q
+        yield a
+        P = a * Q - P
         Q = (D - P * P) // Q
-        a0 = int((P + isqrt(D)) / Q)
-        state = (P, Q, a0)
-        if state in seen:
+        if Q == 0:
             break
-        seen.add(state)
-        yield (a0, P, Q)
+
+
+def H(beta: int, K: int, M: int) -> int:
+    """Compute H_K(sqrt(beta))."""
+    qs = [1, 0]
+    ns = [0]
+
+    for a in cf_sqrt(beta):
+        if len(qs) % 2 == 1:
+            for _ in range(a):
+                ns.append((ns[-1] + qs[-1]) % M)
+                if len(ns) > K:
+                    break
+        qs.append((qs[-1] * a + qs[-2]) % M)
+        if len(ns) > K:
+            break
+
+    result = 0
+    for i in range(1, min(K + 1, len(ns))):
+        result = (result + ns[i]) % M
+    return result
 
 
 def solve() -> int:
@@ -50,24 +75,7 @@ def solve() -> int:
     for beta in range(1, N + 1):
         if is_square(beta):
             continue
-
-        qs = [1, 0]
-        ns = [0]
-
-        for step in pell_pqa(0, beta, 1):
-            a = step[0]
-            if len(qs) % 2 == 1:
-                for _ in range(a):
-                    ns.append((ns[-1] + qs[-1]) % M)
-            qs.append((qs[-1] * a + qs[-2]) % M)
-            if len(ns) > K:
-                break
-
-        H = 0
-        for i in range(1, K + 1):
-            if i < len(ns):
-                H = (H + ns[i]) % M
-        ans = (ans + H) % M
+        ans = (ans + H(beta, K, M)) % M
 
     return ans
 
