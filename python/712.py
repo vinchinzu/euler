@@ -1,127 +1,59 @@
-"""Project Euler Problem 712: Exponent difference.
-
-Let ν_p(n) be the largest r where p^r | n, and let
-D(n, m) = Σ_{p prime} |ν_p(n) - ν_p(m)|.
-Find S(N) = Σ_{1 ≤ n,m ≤ N} D(n, m).
-
-We can write
-S(N) = Σ_{n=1}^N Σ_{m=1}^N Σ_{p prime} |ν_p(n) - ν_p(m)|
-     = Σ_{p prime} Σ_{n=1}^N Σ_{m=1}^N |ν_p(n) - ν_p(m)|.
-
-For each prime p, ν = ν_p(n) can range from 0 to the highest power of p less
-than N. There are ⌊N / p^ν⌋ - ⌊N / p^{ν+1}⌋ numbers with a given ν. So for
-small p, we can iterate over all possible ν_p(n) and ν_p(m) to compute the sum.
-
-For large p, ν_p(n) is at most 1. So the only contribution to the sum is
-ν_p(n) = 1 and ν_p(m) = 0, or vice versa. These terms simplify to
-Σ_{n=1}^N Σ_{m=1}^N (N - ⌊N/p⌋) (⌊N/p⌋). We can use the standard trick to sum
-over all terms with the same ⌊N/p⌋.
-"""
-
-from __future__ import annotations
+"""Project Euler Problem 712: Exponent difference."""
 
 from math import isqrt
 
-from sympy import primerange
+def prime_count_table(N):
+    """
+    Lucy_Hedgehog algorithm to compute pi(n/k) for all distinct quotients.
+    Returns a function get(v) that gives pi(v) for any v that is either <= sqrt(N) or N//k for some k.
+    """
+    r = isqrt(N)
+    # V contains all distinct values of N // i
+    V = [N // i for i in range(1, r + 1)]
+    V += list(range(V[-1] - 1, 0, -1))
 
+    # S[v] = count of integers 2..v (initially v - 1)
+    S = {v: v - 1 for v in V}
 
-class QuotientValues:
-    """Helper for quotient-based prime counting."""
-
-    def __init__(self, n: int, big: list[int], small: list[int]):
-        """Initialize."""
-        self.n = n
-        self.big = big
-        self.small = small
-        self.L = len(small) - 1
-
-    def div(self, x: int) -> int:
-        """Get number of primes for quotient n/x."""
-        if x <= self.L:
-            return self.small[x]
-        idx = self.n // x
-        return self.big[idx] if idx < len(self.big) else 0
-
-
-def sum_prime_powers(n: int, power: int, mod: int) -> QuotientValues:
-    """Sum of prime powers (for power=0, counts primes)."""
-    L = isqrt(n)
-    big = [0] * (L + 1)
-    small = [0] * (L + 1)
-
-    # Compute π(x) for x ≤ L
-    primes_list = list(primerange(2, L + 1))
-    count = 0
-    prime_idx = 0
-    for i in range(1, L + 1):
-        if prime_idx < len(primes_list) and primes_list[prime_idx] == i:
-            count += 1
-            prime_idx += 1
-        small[i] = count
-
-    # For large values, compute π(n/i) for i ≤ L
-    # We need to count primes ≤ n/i
-    for i in range(1, L + 1):
-        q = n // i
-        if q <= L:
-            big[i] = small[q]
-        else:
-            # Count primes up to q using segmented approach
-            count = 0
-            for p in primes_list:
-                if p > q:
+    for p in range(2, r + 1):
+        if S[p] > S[p - 1]:  # p is prime
+            sp = S[p - 1]
+            p2 = p * p
+            for v in V:
+                if v < p2:
                     break
-                count += 1
-            # Also count primes in [L+1, q] if q > L
-            if q > L:
-                # Use segmented sieve
-                segment_size = max(L, 10000)
-                low = L + 1
-                while low <= q:
-                    high = min(low + segment_size - 1, q)
-                    is_prime_seg = [True] * (high - low + 1)
-                    for p in primes_list:
-                        if p * p > high:
-                            break
-                        start = max(p * p, ((low + p - 1) // p) * p)
-                        for j in range(start, high + 1, p):
-                            if j >= low:
-                                is_prime_seg[j - low] = False
-                    for idx in range(high - low + 1):
-                        if is_prime_seg[idx]:
-                            count += 1
-                    low = high + 1
-            big[i] = count
+                S[v] -= S[v // p] - sp
 
-    return QuotientValues(n, big, small)
+    return S
 
 
-def pow_int(base: int, exp: int) -> int:
-    """Compute base^exp (for small values)."""
-    result = 1
-    for _ in range(exp):
-        result *= base
-    return result
-
-
-def solve() -> int:
-    """Solve Problem 712."""
+def solve():
     N = 10**12
     M = 10**9 + 7
     L = isqrt(N)
 
+    # Sieve primes up to N/L ~ sqrt(N)
+    limit = N // L + 1
+    sieve = [True] * (limit + 1)
+    sieve[0] = sieve[1] = False
+    for i in range(2, isqrt(limit) + 1):
+        if sieve[i]:
+            for j in range(i * i, limit + 1, i):
+                sieve[j] = False
+    primes_list = [i for i in range(2, limit + 1) if sieve[i]]
+
     ans = 0
 
-    # Process small primes
-    primes_list = list(primerange(2, int(N // L) + 1))
+    # Process small primes (p <= N/L ~ sqrt(N))
     for p in primes_list:
-        counts: list[int] = []
+        counts = []
         e = 0
-        while pow_int(p, e) <= N:
-            p_e = pow_int(p, e)
-            p_e_plus_1 = pow_int(p, e + 1)
-            count = (N // p_e - N // p_e_plus_1) % M
-            counts.append(count)
+        pe = 1
+        while pe <= N:
+            pe_next = pe * p
+            cnt = (N // pe - N // pe_next) % M
+            counts.append(cnt)
+            pe = pe_next
             e += 1
 
         # Sum over all pairs (vn, vm)
@@ -131,24 +63,44 @@ def solve() -> int:
                 contribution = diff * counts[vn] % M * counts[vm] % M
                 ans = (ans + contribution) % M
 
-    # Process large primes
-    num_primes = sum_prime_powers(N, 0, M)
+    # Process large primes using prime counting
+    # For large p (p > sqrt(N)), v_p(n) <= 1, so only contributions are
+    # when v_p(n) = 1, v_p(m) = 0 or vice versa.
+    # Number of n with v_p(n) = 0: N - N//p
+    # Number of n with v_p(n) = 1: N//p - N//p^2 ~ N//p for large p
+    # Contribution: 2 * (N - N//p) * (N//p) per prime
+
+    # Sum over primes p where N//p takes value q
+    # Number of such primes = pi(N/q) - pi(N/(q+1))
+    S = prime_count_table(N)
+
+    # We need to exclude small primes we already processed
+    num_small_primes = len(primes_list)
+
     for q in range(1, L):
-        num_primes_q = num_primes.div(q)
-        num_primes_q_plus_1 = num_primes.div(q + 1)
-        num_primes_in_range = (num_primes_q - num_primes_q_plus_1) % M
+        # pi(N/q) counts primes p with p <= N/q, i.e., N/p >= q, i.e., floor(N/p) >= q
+        # pi(N/(q+1)) counts primes p with p <= N/(q+1)
+        # Difference = primes with q <= floor(N/p) < q+1, i.e., floor(N/p) = q
+        pi_q = S.get(N // q, 0) if N // q > 0 else 0
+        pi_q_plus_1 = S.get(N // (q + 1), 0) if N // (q + 1) > 0 else 0
+
+        # But we need primes > limit (already handled small primes)
+        if N // q <= limit:
+            pi_q = min(pi_q, num_small_primes)
+        if N // (q + 1) <= limit:
+            pi_q_plus_1 = min(pi_q_plus_1, num_small_primes)
+
+        num_primes_in_range = (pi_q - pi_q_plus_1) % M
+
+        # For each prime p with floor(N/p) = q:
+        # v_p(n) = 0 for N - q numbers, v_p(n) >= 1 for q numbers
+        # Actually for large p, v_p(n) = 1 for exactly q numbers
+        # Contribution: 2 * (N - q) * q per prime
         contribution = 2 * (N - q) % M * q % M * num_primes_in_range % M
         ans = (ans + contribution) % M
 
     return ans
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

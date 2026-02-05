@@ -21,16 +21,26 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 
-def load_expected_answers(filepath: str = "solutions_b.txt") -> Dict[int, str]:
-    """Load expected answers from solutions_b.txt or Solutions.txt."""
+def load_expected_answers() -> Dict[int, str]:
+    """Load expected answers from available answer files."""
     answers = {}
 
-    if not Path(filepath).exists():
-        print(f"Warning: {filepath} not found, trying Solutions.txt...")
-        filepath = "Solutions.txt"
+    # Try multiple locations for answer files
+    answer_files = [
+        Path("data/answers.txt"),           # Local answers
+        Path("../solutions_b.txt"),          # Parent solutions_b.txt
+        Path("../Solutions.txt"),            # Parent Solutions.txt
+    ]
 
-    if not Path(filepath).exists():
-        print(f"Error: No answer file found!")
+    filepath = None
+    for f in answer_files:
+        if f.exists():
+            filepath = f
+            break
+
+    if filepath is None:
+        print("Error: No answer file found!")
+        print("  Looked in: " + ", ".join(str(f) for f in answer_files))
         return answers
 
     print(f"Loading answers from {filepath}...")
@@ -408,7 +418,7 @@ def main():
         sys.exit(1)
 
     # Load expected answers
-    expected_answers = load_expected_answers("solutions_b.txt")
+    expected_answers = load_expected_answers()
     if not expected_answers:
         sys.exit(1)
 
@@ -423,7 +433,7 @@ def main():
     print(f"Found {len(solutions)} Python solutions")
 
     # Load existing results
-    output_file = Path("validation_results.json")
+    output_file = Path("data/validation_results.json")
     results = load_existing_results(output_file)
     
     # If using target_problems, force re-validate them

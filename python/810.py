@@ -1,65 +1,65 @@
-"""Project Euler Problem 810: XOR-Primes.
+"""Project Euler Problem 810: XOR-Primes."""
 
-Let the XOR product x ⊗ y be the bitwise XOR of x and y, where the columns
-in long multiplication are XORed instead of added with carry. Find the Nth
-XOR-prime, a number not the XOR product of two integers greater than 1.
+import subprocess
+import tempfile
+import os
 
-This can be computed with a sieve in the same as way as normal primes.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 
-from __future__ import annotations
+#define N 5000000
+#define L (1 << 27)  // 134217728
 
-from typing import List
+int main() {
+    // Sieve for XOR-primes
+    char *sieve = calloc(L, 1);
+    for (int i = 2; i < L; i++) sieve[i] = 1;
 
+    for (int i = 2; i < L; i++) {
+        if (sieve[i]) {
+            // Mark composites: for j >= i, mark xor_product(i, j)
+            for (long long j = i; j < L; j++) {
+                // XOR product i ⊗ j
+                // Optimized: m = XOR of j*(k & -k) for each set bit k in i
+                long long m = 0;
+                for (int k = i; k > 0; k -= k & -k)
+                    m ^= j * (k & -k);
+                if (m >= L) break;
+                sieve[(int)m] = 0;
+            }
+        }
+    }
 
-def xor_product(x: int, y: int) -> int:
-    """Compute XOR product x ⊗ y."""
-    result = 0
-    while y > 0:
-        if y & 1:
-            result ^= x
-        x <<= 1
-        y >>= 1
-    return result
+    // Count XOR-primes
+    int count = 0;
+    int ans = 0;
+    for (int i = 2; count < N; i++) {
+        if (sieve[i]) {
+            count++;
+            ans = i;
+        }
+    }
 
+    printf("%d\n", ans);
+    free(sieve);
+    return 0;
+}
+'''
 
-def solve() -> int:
-    """Solve Problem 810."""
-    N = 5 * 10**6
-    L = 1 << 27
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    sieve = [True] * L
-    sieve[0] = sieve[1] = False
-
-    for i in range(2, L):
-        if sieve[i]:
-            j = i
-            while j < L:
-                m = xor_product(i, j)
-                if m >= L:
-                    break
-                if m > 1:
-                    sieve[m] = False
-                j += 1
-
-    count = 0
-    ans = 0
-    for i in range(2, L):
-        if sieve[i]:
-            count += 1
-            if count == N:
-                ans = i
-                break
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

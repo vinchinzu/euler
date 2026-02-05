@@ -1,230 +1,175 @@
 """Project Euler Problem 302: Strong Achilles Numbers
 
-Count Strong Achilles numbers below 10^18.
+An Achilles number is a number that is powerful but not a perfect power.
+A powerful number is a positive integer where for every prime p dividing it, p^2 also divides it.
+A Strong Achilles number is one where both the number and its totient are Achilles numbers.
 
-A number is powerful if all prime factors have exponent >= 2.
-A number is Achilles if it's powerful but not a perfect power.
-A number is Strong Achilles if both it and its totient are Achilles.
+Find the count of Strong Achilles numbers up to 10^18.
 
-APPROACH ANALYSIS:
-The current implementation generates all powerful numbers below the limit,
-then checks which ones are Achilles and have Achilles totients. This works
-for smaller limits but becomes inefficient for 10^18 due to the large number
-of powerful numbers (~1.17 million).
-
-BEST APPROACH:
-1. Use the mathematical property that Strong Achilles numbers can be generated
-   more directly by considering numbers of the form a^2 * b^3 where gcd(a,b)=1
-   and both a^2*b^3 and φ(a^2*b^3) satisfy the Achilles conditions.
-
-2. Alternatively, use a sieve-like approach that marks numbers that could be
-   totients of powerful numbers, then checks the conditions.
-
-3. For optimal performance, implement a hybrid approach that generates
-   candidates systematically without storing all powerful numbers in memory.
-
-The current recursive generation approach has exponential complexity and
-doesn't scale well to 10^18. A more direct mathematical enumeration would
-be preferable.
+Algorithm (from Java):
+- Generate candidates recursively by maintaining factorizations of n and phi(n)
+- Modify dictionaries in-place, then restore them after recursion
+- If phi(n) has a prime with exponent 1, try to fix it
+- Otherwise, check if both n and phi(n) are Achilles numbers
 """
 
-from __future__ import annotations
+def sieve_primes(limit):
+    """Generate primes up to limit using sieve."""
+    if limit < 2:
+        return []
+    is_prime = [True] * (limit + 1)
+    is_prime[0] = is_prime[1] = False
+    for i in range(2, int(limit**0.5) + 1):
+        if is_prime[i]:
+            for j in range(i*i, limit + 1, i):
+                is_prime[j] = False
+    return [i for i in range(2, limit + 1) if is_prime[i]]
 
-from math import gcd, isqrt, log2, ceil
-from typing import Dict
+def smallest_prime_factor(limit):
+    """Compute smallest prime factor for all numbers up to limit."""
+    spf = list(range(limit + 1))
+    for i in range(2, int(limit**0.5) + 1):
+        if spf[i] == i:
+            for j in range(i*i, limit + 1, i):
+                if spf[j] == j:
+                    spf[j] = i
+    return spf
 
+def gcd(a, b):
+    """Compute greatest common divisor."""
+    while b:
+        a, b = b, a % b
+    return a
 
-def factorize(n: int) -> Dict[int, int]:
-    """Return prime factorization as {prime: exponent}."""
-    if n <= 1:
-        return {}
-
-    factors: Dict[int, int] = {}
-
-    while n % 2 == 0:
-        factors[2] = factors.get(2, 0) + 1
-        n //= 2
-
-    f = 3
-    while f * f <= n:
-        while n % f == 0:
-            factors[f] = factors.get(f, 0) + 1
-            n //= f
-        f += 2
-
-    if n > 1:
-        factors[n] = factors.get(n, 0) + 1
-
-    return factors
-
-
-def is_perfect_power(n: int) -> bool:
-    """Check if n = a^b for some a > 1, b >= 2 using optimized algorithms."""
-    if n <= 1:
-        return False
-
-    # Check small exponents with direct computation
-    for exp in range(2, 6):
-        # Compute integer root
-        root = round(n ** (1.0 / exp))
-        if root ** exp == n and root > 1:
-            return True
-
-    # For larger exponents, use logarithmic bounds
-    # Maximum possible exponent is log2(n)
-    max_exp = int(log2(n)) + 1
-
-    for exp in range(6, min(max_exp, 64)):
-        # Use floating point approximation to find candidate base
-        root_float = n ** (1.0 / exp)
-        root = round(root_float)
-
-        # Check a few candidates around the approximation
-        for candidate in [root - 1, root, root + 1]:
-            if candidate > 1:
-                try:
-                    power = candidate ** exp
-                    if power == n:
-                        return True
-                    elif power > n:
-                        break  # candidates are increasing
-                except OverflowError:
-                    continue
-
-    return False
-
-
-def gcd_list(nums: list[int]) -> int:
-    """Return GCD of a list of numbers."""
-    result = nums[0]
-    for num in nums[1:]:
-        result = gcd(result, num)
-        if result == 1:
-            return 1
+def gcd_list(values):
+    """Compute GCD of a list of values."""
+    result = 0
+    for v in values:
+        result = gcd(result, v)
     return result
 
-
-def is_achilles(factors: Dict[int, int]) -> bool:
-    """Check if number with given factorization is Achilles."""
-    if not factors:
+def is_prime_check(n):
+    """Check if n is prime."""
+    if n < 2:
         return False
-
-    # Must be powerful (all exponents >= 2)
-    if any(exp < 2 for exp in factors.values()):
+    if n == 2:
+        return True
+    if n % 2 == 0:
         return False
+    for i in range(3, int(n**0.5) + 1, 2):
+        if n % i == 0:
+            return False
+    return True
 
-    # Must not be perfect power (GCD of exponents must be 1)
-    exponents = list(factors.values())
-    return gcd_list(exponents) == 1
+def solve():
+    N = 10**18
+    L = int(N**(1/3)) + 1
 
+    primes = sieve_primes(L)
+    spf = smallest_prime_factor(L)
+    achilles_set = set()
 
-def totient_from_factors(n: int, factors: Dict[int, int]) -> int:
-    """Compute Euler totient from factorization."""
-    phi = n
-    for p in factors:
-        phi = phi // p * (p - 1)
-    return phi
+    def helper(n, factors, phi, max_p):
+        """Recursively generate Strong Achilles numbers."""
+        # Find largest prime in phi with exponent 1
+        bad_p = 0
+        for p, exp in phi.items():
+            if exp == 1 and p > bad_p:
+                bad_p = p
 
+        if bad_p == 0:
+            # No prime with exponent 1 in phi
+            # Check if both n and phi(n) are Achilles
+            if factors:
+                factor_exps = list(factors.values())
+                phi_exps = list(phi.values())
+                if gcd_list(factor_exps) == 1 and gcd_list(phi_exps) == 1:
+                    achilles_set.add(n)
 
-def generate_powerful_numbers(limit: int) -> list[int]:
-    """Generate all powerful numbers below limit efficiently.
+            # Try adding primes already in phi
+            for p in list(phi.keys()):
+                if p < max_p:
+                    add_prime(n, p, 2, factors, phi, p)
 
-    A powerful number has all prime factors with exponent >= 2.
-    For large limits like 10^18, we use an optimized enumeration approach.
-    """
-    powerful = set()
-
-    # Generate primes up to cube root of limit (for p^3 <= limit)
-    primes = []
-    n = 2
-    max_prime = int(limit ** (1/3)) + 1
-    while n <= max_prime:
-        is_prime = True
-        for p in primes:
-            if p * p > n:
-                break
-            if n % p == 0:
-                is_prime = False
-                break
-        if is_prime:
-            primes.append(n)
-        n += 1 if n == 2 else 2
-
-    # Generate powerful numbers by combining prime powers
-    # Use a recursive function with early termination
-    def add_powerful(current: int, start_idx: int, max_factors: int) -> None:
-        if current >= limit:
-            return
-
-        # Add current if it has the right properties
-        if current > 1:
-            factors = factorize(current)
-            if all(exp >= 2 for exp in factors.values()):
-                powerful.add(current)
-
-        # Stop if we've used too many prime factors (rare for large numbers)
-        if max_factors <= 0:
-            return
-
-        # Try adding more prime powers
-        for i in range(start_idx, len(primes)):
-            p = primes[i]
-            exp = 2
-            power = p * p  # Start with p^2
-
-            while current * power < limit:
-                add_powerful(current * power, i + 1, max_factors - 1)
-                exp += 1
-                power *= p
-
-                # Prevent excessive exponents
-                if exp > 40:  # 2^40 is about 10^12, too big for higher primes
+            # Try adding new primes (with exponent >= 3)
+            for p in primes:
+                if p >= max_p or n * p**3 >= N:
                     break
+                if p not in phi:
+                    add_prime(n, p, 3, factors, phi, p)
 
-    # Generate with different maximum numbers of prime factors
-    # For large limits, allow more prime factors
-    max_prime_factors = 3 if limit <= 10**6 else 6
-    for max_factors in range(1, max_prime_factors + 1):
-        add_powerful(1, 0, max_factors)
+        elif n * bad_p**2 < N:
+            # Try to fix bad_p by adding it
+            add_prime(n, bad_p, 2, factors, phi, max_p)
 
-    return sorted(list(powerful))
+            # Add primes q where bad_p | (q-1)
+            p = bad_p + 1
+            while p < max_p and n * p**2 < N:
+                if p % bad_p == 1 and is_prime_check(p):
+                    add_prime(n, p, 2, factors, phi, max_p)
+                p += bad_p
 
+    def add_prime(n, p, min_e, factors, phi, max_p):
+        """Add prime p with various exponents. Modifies dicts in place."""
+        if p in factors:
+            return
 
-def count_strong_achilles(limit: int) -> int:
-    """Count Strong Achilles numbers below limit using optimized generation."""
-    count = 0
+        # Save previous phi[p]
+        prev_e = phi.get(p)
 
-    # Generate all powerful numbers efficiently
-    powerful_numbers = generate_powerful_numbers(limit)
+        # Update phi for adding p^(min_e-1)
+        phi[p] = phi.get(p, 0) + min_e - 1
 
-    for n in powerful_numbers:
-        if n >= limit:
-            break
+        # Factor p-1 and add to phi
+        phi_p_factors = []
+        temp = p - 1
+        while temp > 1:
+            if temp < len(spf):
+                pf = spf[temp]
+            else:
+                # Find smallest factor manually
+                pf = temp
+                for pr in primes:
+                    if pr * pr > temp:
+                        break
+                    if temp % pr == 0:
+                        pf = pr
+                        break
+            phi_p_factors.append(pf)
+            phi[pf] = phi.get(pf, 0) + 1
+            temp //= pf
 
-        # Get factorization of n
-        factors = factorize(n)
+        # Try different exponents
+        e = min_e
+        power_p = p ** e
+        while n * power_p < N:
+            factors[p] = e
+            helper(n * power_p, factors, phi, max_p)
 
-        # Check if it's Achilles (powerful but not perfect power)
-        if is_achilles(factors):
-            # Check if totient is also Achilles
-            phi = totient_from_factors(n, factors)
-            phi_factors = factorize(phi)
-            if is_achilles(phi_factors):
-                count += 1
+            # Update phi for next exponent
+            phi[p] = phi.get(p, 0) + 1
+            e += 1
+            power_p *= p
 
-    return count
+        # Restore factors
+        if p in factors:
+            del factors[p]
 
+        # Restore phi[p]
+        if prev_e is not None:
+            phi[p] = prev_e
+        else:
+            if p in phi:
+                del phi[p]
 
-def solve() -> int:
-    """Solve PE 302 with reduced limit due to algorithm constraints.
+        # Restore phi for factors of p-1
+        for pf in phi_p_factors:
+            phi[pf] -= 1
+            if phi[pf] == 0:
+                del phi[pf]
 
-    Reduced from 10^18 to 10^4 due to timeout. The current brute-force
-    enumeration of powerful numbers is infeasible for large limits.
-    A proper solution requires a mathematical formula or sieving approach.
-    """
-    # Reduced from 10^18 to 10^4 due to timeout with brute-force approach
-    return count_strong_achilles(10**4)
-
+    helper(1, {}, {}, 10**9)
+    return len(achilles_set)
 
 if __name__ == "__main__":
     print(solve())

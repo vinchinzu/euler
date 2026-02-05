@@ -3,152 +3,218 @@
 Find the number of 16xN matrices such that every entry is 0 or 1, and every
 2xK sub-matrix has exactly K 1s.
 
-Consider the leftmost K columns. If the top row has i 1s, then the second row
-must have K-i 1s, and the third row must have i 1s, etc., alternating i and
-K-i 1s. So there are nCr(K,i) ways to fill each row, and nCr(K,i)^16 ways to
-fill all rows. Since i is arbitrary, the total number of ways to fill K columns
-is f(K) = Σ_{i=0}^K nCr(K,i).
-
-In most cases, when the leftmost K columns are filled, the remaining columns are
-all fixed. As long as a column C has two 1s or two 0s in a row, then the column
-K positions to the right (call it D) must also have two 1s/two 0s, and then
-the other positions in D also become fixed. The exception is if C alternates 1
-and 0 for all 16 rows. In that case, D can also consist of 1s and 0s
-alternated in the opposite way.
-
-So suppose that of the leftmost K columns, i of them consist of alternating 1s
-and 0s. There are nCr(K,i) ways to choose those columns. For each column, there
-are 2^{N/K} ways to fill out all the other columns that are multiple of K
-positions to the right of any of those columns, but we need to subtract 2 for
-the cases where all the columns have the same pattern, which will be double
-counted. Finally, there are f(K-i) ways to fill the remaining K-i rows.
-
-Finally, for performance, we can compute all f(K) efficiently using polynomial
-multiplication of two polynomials with coefficients (1/k!)^16 x^k.
+Uses FFT with long double precision and carry handling for modular convolution.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from typing import List
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
 
+#define MOD 1000000007LL
+#define PI 3.14159265358979323846264338327950288L
 
-class Zp:
-    """Modular arithmetic helper class."""
+typedef __int128 int128;
+typedef long double ldouble;
 
-    def __init__(self, n: int, mod: int) -> None:
-        """Initialize with precomputed factorials."""
-        self.mod = mod
-        self._factorials = [1] * (n + 1)
-        self._inv_factorials = [1] * (n + 1)
+typedef struct {
+    ldouble re, im;
+} Complex;
 
-        for i in range(1, n + 1):
-            self._factorials[i] = (self._factorials[i - 1] * i) % mod
+Complex cmul(Complex a, Complex b) {
+    Complex c;
+    c.re = a.re * b.re - a.im * b.im;
+    c.im = a.re * b.im + a.im * b.re;
+    return c;
+}
 
-        self._inv_factorials[n] = pow(self._factorials[n], mod - 2, mod)
-        for i in range(n - 1, -1, -1):
-            self._inv_factorials[i] = (
-                self._inv_factorials[i + 1] * (i + 1)
-            ) % mod
+Complex cadd(Complex a, Complex b) {
+    Complex c;
+    c.re = a.re + b.re;
+    c.im = a.im + b.im;
+    return c;
+}
 
-    def factorial(self, n: int) -> int:
-        """Return n! mod mod."""
-        return self._factorials[n]
+Complex csub(Complex a, Complex b) {
+    Complex c;
+    c.re = a.re - b.re;
+    c.im = a.im - b.im;
+    return c;
+}
 
-    def inv_factorial(self, n: int) -> int:
-        """Return 1/(n!) mod mod."""
-        return self._inv_factorials[n]
+void fft(Complex* a, int n, int invert) {
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+            Complex t = a[i]; a[i] = a[j]; a[j] = t;
+        }
+    }
 
-    def nCr(self, n: int, k: int) -> int:
-        """Binomial coefficient C(n, k) mod mod."""
-        if k < 0 or k > n:
-            return 0
-        return (
-            self._factorials[n]
-            * self._inv_factorials[k]
-            % self.mod
-            * self._inv_factorials[n - k]
-            % self.mod
-        )
+    for (int len = 2; len <= n; len <<= 1) {
+        ldouble ang = 2 * PI / len * (invert ? -1 : 1);
+        Complex wlen = {cosl(ang), sinl(ang)};
+        for (int i = 0; i < n; i += len) {
+            Complex w = {1, 0};
+            for (int j = 0; j < len / 2; j++) {
+                Complex u = a[i + j];
+                Complex v = cmul(a[i + j + len/2], w);
+                a[i + j] = cadd(u, v);
+                a[i + j + len/2] = csub(u, v);
+                w = cmul(w, wlen);
+            }
+        }
+    }
 
+    if (invert) {
+        for (int i = 0; i < n; i++) {
+            a[i].re /= n;
+            a[i].im /= n;
+        }
+    }
+}
 
-class LPolynomial:
-    """Laurent polynomial."""
+int64_t pow_mod(int64_t base, int64_t exp, int64_t mod) {
+    int64_t result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1)
+            result = (int128)result * base % mod;
+        base = (int128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-    def __init__(self, coeffs: List[int]) -> None:
-        """Initialize with coefficients."""
-        self.coefficients = coeffs[:]
+// Split each coefficient into low and high parts for precision
+// a[i] = a_lo[i] + a_hi[i] * BASE
+#define BASE 32768  // 2^15
 
-    def multiply(self, other: "LPolynomial", mod: int) -> "LPolynomial":
-        """Multiply two polynomials."""
-        n = len(self.coefficients)
-        m = len(other.coefficients)
-        result = [0] * (n + m - 1)
-        for i in range(n):
-            for j in range(m):
-                result[i + j] = (
-                    result[i + j] + self.coefficients[i] * other.coefficients[j]
-                ) % mod
-        return LPolynomial(result)
+void convolve_mod(int64_t* a, int64_t* b, int64_t* result, int n, int64_t mod) {
+    int m = 1;
+    while (m < 2 * n) m *= 2;
 
+    Complex* fa_lo = (Complex*)calloc(m, sizeof(Complex));
+    Complex* fa_hi = (Complex*)calloc(m, sizeof(Complex));
+    Complex* fb_lo = (Complex*)calloc(m, sizeof(Complex));
+    Complex* fb_hi = (Complex*)calloc(m, sizeof(Complex));
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+    for (int i = 0; i < n; i++) {
+        fa_lo[i].re = a[i] % BASE;
+        fa_hi[i].re = a[i] / BASE;
+        fb_lo[i].re = b[i] % BASE;
+        fb_hi[i].re = b[i] / BASE;
+    }
 
+    fft(fa_lo, m, 0);
+    fft(fa_hi, m, 0);
+    fft(fb_lo, m, 0);
+    fft(fb_hi, m, 0);
 
-def solve() -> int:
-    """Solve Problem 767."""
-    N = 10**16
-    K = 10**5
-    T = 16
-    M = 10**9 + 7
+    // result = (a_lo + a_hi*BASE) * (b_lo + b_hi*BASE)
+    //        = a_lo*b_lo + (a_lo*b_hi + a_hi*b_lo)*BASE + a_hi*b_hi*BASE^2
+    Complex* r_ll = (Complex*)calloc(m, sizeof(Complex));
+    Complex* r_lh = (Complex*)calloc(m, sizeof(Complex));
+    Complex* r_hh = (Complex*)calloc(m, sizeof(Complex));
 
-    zp = Zp(K, M)
+    for (int i = 0; i < m; i++) {
+        r_ll[i] = cmul(fa_lo[i], fb_lo[i]);
+        r_lh[i] = cadd(cmul(fa_lo[i], fb_hi[i]), cmul(fa_hi[i], fb_lo[i]));
+        r_hh[i] = cmul(fa_hi[i], fb_hi[i]);
+    }
 
-    # Compute polynomial with coefficients (1/k!)^T
-    coeffs = [0] * (K + 1)
-    for i in range(K + 1):
-        coeffs[i] = pow_mod(zp.inv_factorial(i), T, M)
+    fft(r_ll, m, 1);
+    fft(r_lh, m, 1);
+    fft(r_hh, m, 1);
 
-    p = LPolynomial(coeffs)
-    p2 = p.multiply(p, M)
+    for (int i = 0; i < 2*n-1; i++) {
+        int64_t ll = (int64_t)roundl(r_ll[i].re) % mod;
+        int64_t lh = (int64_t)roundl(r_lh[i].re) % mod;
+        int64_t hh = (int64_t)roundl(r_hh[i].re) % mod;
+        result[i] = (ll + lh * BASE % mod + (int128)hh * BASE % mod * BASE % mod) % mod;
+    }
 
-    # Compute f[i] = i!^T * p2.coefficients[i]
-    f = [0] * (K + 1)
-    for i in range(K + 1):
-        f[i] = (
-            pow_mod(zp.factorial(i), T, M)
-            * p2.coefficients[i]
-            % M
-        )
+    free(fa_lo); free(fa_hi);
+    free(fb_lo); free(fb_hi);
+    free(r_ll); free(r_lh); free(r_hh);
+}
 
-    ans = 0
-    for i in range(K + 1):
-        term = (
-            zp.nCr(K, i)
-            * pow_mod(pow_mod(2, N // K, M) - 2, i, M)
-            % M
-            * f[K - i]
-            % M
-        )
-        ans = (ans + term) % M
+int main() {
+    int64_t N = 10000000000000000LL;  // 10^16
+    int K = 100000;  // 10^5
+    int T = 16;
 
-    return ans % M
+    // Precompute factorials mod MOD
+    int64_t* fact = (int64_t*)malloc((K + 1) * sizeof(int64_t));
+    int64_t* inv_fact = (int64_t*)malloc((K + 1) * sizeof(int64_t));
+    fact[0] = 1;
+    for (int i = 1; i <= K; i++)
+        fact[i] = (int128)fact[i-1] * i % MOD;
+    inv_fact[K] = pow_mod(fact[K], MOD - 2, MOD);
+    for (int i = K - 1; i >= 0; i--)
+        inv_fact[i] = (int128)inv_fact[i + 1] * (i + 1) % MOD;
 
+    // Compute coefficients: (1/k!)^T
+    int64_t* coeffs = (int64_t*)malloc((K + 1) * sizeof(int64_t));
+    for (int i = 0; i <= K; i++)
+        coeffs[i] = pow_mod(inv_fact[i], T, MOD);
 
-def main() -> int:
-    """Main entry point."""
+    // Multiply polynomial by itself
+    int64_t* p2 = (int64_t*)calloc(2 * K + 1, sizeof(int64_t));
+    convolve_mod(coeffs, coeffs, p2, K + 1, MOD);
+
+    // Compute f[i] = i!^T * p2[i]
+    int64_t* f = (int64_t*)malloc((K + 1) * sizeof(int64_t));
+    for (int i = 0; i <= K; i++)
+        f[i] = (int128)pow_mod(fact[i], T, MOD) * p2[i] % MOD;
+
+    // Compute answer
+    int64_t base = pow_mod(2, N / K, MOD);
+    int64_t term = (base - 2 + MOD) % MOD;
+
+    int64_t ans = 0;
+    int64_t term_pow = 1;
+    for (int i = 0; i <= K; i++) {
+        int64_t ncr = (int128)fact[K] * inv_fact[i] % MOD * inv_fact[K - i] % MOD;
+        ans = (ans + (int128)ncr * term_pow % MOD * f[K - i]) % MOD;
+        term_pow = (int128)term_pow * term % MOD;
+    }
+
+    printf("%lld\n", ans);
+
+    free(fact);
+    free(inv_fact);
+    free(coeffs);
+    free(p2);
+    free(f);
+
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
+
+def main():
     result = solve()
     print(result)
     return result
-
 
 if __name__ == "__main__":
     main()

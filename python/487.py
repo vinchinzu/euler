@@ -22,11 +22,52 @@ def is_probable_prime(n: int) -> bool:
 
 
 def sum_powers(n: int, k: int, mod: int) -> int:
-    """Sum of k-th powers from 1 to n modulo mod."""
+    """Sum of k-th powers from 1 to n modulo mod via Lagrange interpolation."""
+    if n <= 0:
+        return 0
+
+    m = k + 1
+    x = n % mod
+
+    # Precompute y[i] = sum_{t=1}^i t^k mod mod for i=0..m
+    y = [0] * (m + 1)
+    pow_vals = [0] * (m + 1)
+    for i in range(1, m + 1):
+        pow_vals[i] = pow(i, k, mod)
+        y[i] = (y[i - 1] + pow_vals[i]) % mod
+
+    if n <= m:
+        return y[n]
+
+    # Precompute factorials and inverse factorials up to m
+    fact = [1] * (m + 1)
+    for i in range(1, m + 1):
+        fact[i] = (fact[i - 1] * i) % mod
+    inv_fact = [1] * (m + 1)
+    inv_fact[m] = pow(fact[m], mod - 2, mod)
+    for i in range(m, 0, -1):
+        inv_fact[i - 1] = (inv_fact[i] * i) % mod
+
+    # Prefix and suffix products of (x - i)
+    pre = [1] * (m + 2)
+    for i in range(0, m + 1):
+        pre[i + 1] = (pre[i] * (x - i)) % mod
+    suf = [1] * (m + 2)
+    for i in range(m, -1, -1):
+        suf[i] = (suf[i + 1] * (x - i)) % mod
+
+    # Lagrange interpolation at x
     result = 0
-    for i in range(1, n + 1):
-        result = (result + pow(i, k, mod)) % mod
-    return result
+    for i in range(0, m + 1):
+        num = pre[i] * suf[i + 1] % mod
+        den = inv_fact[i] * inv_fact[m - i] % mod
+        term = y[i] * num % mod * den % mod
+        if (m - i) & 1:
+            result = (result - term) % mod
+        else:
+            result = (result + term) % mod
+
+    return result % mod
 
 
 def solve() -> int:
@@ -39,8 +80,10 @@ def solve() -> int:
     ans = 0
     for p in range(L, H):
         if is_probable_prime(p):
-            term = ((N + 1) % p * sum_powers(N, K, p) - sum_powers(N, K + 1, p)) % p
-            ans = (ans + term) % p
+            s_k = sum_powers(N, K, p)
+            s_k1 = sum_powers(N, K + 1, p)
+            term = (((N + 1) % p) * s_k - s_k1) % p
+            ans += term
 
     return ans
 

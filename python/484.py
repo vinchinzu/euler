@@ -1,76 +1,126 @@
-"""Project Euler Problem 484: Arithmetic derivative.
+"""Project Euler Problem 484: Arithmetic derivative."""
 
-Compute Σ_{k=2}^N GCD(k, k'), where k' is the arithmetic derivative of k.
-"""
+import subprocess
+import tempfile
+import os
 
-from __future__ import annotations
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-from math import gcd, isqrt
-from typing import List
+typedef __int128 i128;
+typedef int64_t i64;
 
+#define N 5000000000000000LL  // 5 * 10^15
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+int *primes;
+int num_primes;
 
+void sieve_primes(int limit) {
+    char *is_prime = calloc(limit + 1, 1);
+    for (int i = 2; i <= limit; i++) is_prime[i] = 1;
+    for (int i = 2; i * i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int j = i * i; j <= limit; j += i) {
+                is_prime[j] = 0;
+            }
+        }
+    }
+    num_primes = 0;
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) num_primes++;
+    }
+    primes = malloc(num_primes * sizeof(int));
+    int idx = 0;
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) primes[idx++] = i;
+    }
+    free(is_prime);
+}
 
-def euler_totient(n: int) -> int:
-    """Euler's totient function."""
-    result = n
-    p = 2
-    while p * p <= n:
-        if n % p == 0:
-            while n % p == 0:
-                n //= p
-            result = result // p * (p - 1)
-        p += 1
-    if n > 1:
-        result = result // n * (n - 1)
-    return result
+i128 ans = 0;
 
+i64 ipow(i64 base, i64 exp) {
+    i64 result = 1;
+    while (exp > 0) {
+        if (exp & 1) result *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return result;
+}
 
-def solve() -> int:
-    """Solve Problem 484."""
-    N = 5 * 10**15
-    primes = sieve_primes(isqrt(N))
-    ans = 0
+// From Java:
+// void helper(int minIndex, long mult, long n, List<Integer> primes) {
+//     ans += mult * n;
+//     for (int index = minIndex; index < primes.size(); index++) {
+//         int p = primes.get(index);
+//         if (sq(p) > n) break;
+//         for (long e = 2, new_n = n / sq(p); new_n > 0; e++, new_n /= p) {
+//             long newMult = mult * (p - 1) * pow(p, e - 2);
+//             if (e % p == 0) newMult *= p + 1;
+//             if (e % p != 1) helper(index + 1, newMult, new_n, primes);
+//         }
+//     }
+// }
 
-    def helper(min_index: int, mult: int, n: int, primes_list: List[int]) -> None:
-        """Recursive helper."""
-        nonlocal ans
-        ans += mult * n
-        for i in range(min_index, len(primes_list)):
-            p = primes_list[i]
-            if n * p > N:
-                break
-            pe = p
-            e = 1
-            while n * pe <= N:
-                if e % p == 0:
-                    correction = pe * (p + 1)
-                else:
-                    correction = pe // p * euler_totient(p)
-                helper(i + 1, mult * correction, n * pe, primes_list)
-                pe *= p
-                e += 1
+void helper(int minIndex, i64 mult, i64 n) {
+    ans += (i128)mult * n;
 
-    helper(0, 1, 1, primes)
-    ans -= 1  # Subtract k=1
-    return ans
+    for (int index = minIndex; index < num_primes; index++) {
+        i64 p = primes[index];
+        if ((i128)p * p > n) break;
 
+        i64 new_n = n / (p * p);
+        for (i64 e = 2; new_n > 0; e++, new_n /= p) {
+            i64 newMult = mult * (p - 1) * ipow(p, e - 2);
+            if (e % p == 0) newMult *= (p + 1);
+            if (e % p != 1) {
+                helper(index + 1, newMult, new_n);
+            }
+        }
+    }
+}
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+int main() {
+    int limit = (int)sqrtl((long double)N) + 1;
+    sieve_primes(limit);
 
+    helper(0, 1, N);
+    ans--;  // Subtract k=1 term
+
+    // Print i128
+    char buf[50];
+    int idx = 0;
+    i128 temp = ans;
+    if (temp == 0) { buf[idx++] = '0'; }
+    else {
+        while (temp > 0) {
+            buf[idx++] = '0' + (int)(temp % 10);
+            temp /= 10;
+        }
+    }
+    for (int i = idx - 1; i >= 0; i--) putchar(buf[i]);
+    putchar('\n');
+
+    free(primes);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

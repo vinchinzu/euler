@@ -1,90 +1,100 @@
-"""Project Euler Problem 614: Special partitions II.
+"""Project Euler Problem 614: Special partitions II."""
 
-Find Σ_{i=1}^N P(i), where P(n) is the number of partitions of n such that
-all terms are distinct and all even terms are divisible by 4.
+import subprocess
+import tempfile
+import os
 
-We can find that P(i) = a_i + P(i-1) + P(i-3) - P(i-6) - P(i-10) + P(i-15)
-+ ..., where a_i = ±1 if i is twice a triangular number, with +1 if i/2 is
-odd and -1 otherwise, and the differences k in P(i-k) are triangular numbers.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
 
-from __future__ import annotations
+typedef int64_t i64;
+typedef __int128 i128;
 
-from math import isqrt
+#define N 10000000
+#define M 1000000007LL
+#define L (1 << 14)
 
+i64 isqrt(i64 n) {
+    i64 x = (i64)sqrtl((long double)n);
+    while (x * x > n) x--;
+    while ((x+1) * (x+1) <= n) x++;
+    return x;
+}
 
-def is_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    root = isqrt(n)
-    return root * root == n
+int isSq(i64 n) {
+    i64 r = isqrt(n);
+    return r * r == n;
+}
 
+i64 tr(int t) {
+    return (i64)t * (t + 1) / 2;
+}
 
-def triangular(n: int) -> int:
-    """Triangular number n(n+1)/2."""
-    return n * (n + 1) // 2
+int parity(int n) {
+    return (n % 2 == 0) ? 1 : -1;
+}
 
+int main() {
+    i64 *P = (i64*)calloc(N + L, sizeof(i64));
 
-def parity(n: int) -> int:
-    """Return 1 if n is even, -1 if odd."""
-    return 1 if n % 2 == 0 else -1
+    for (int page = 0; page * L < N; page++) {
+        // Process previous pages
+        for (int prevPage = 0; prevPage < page; prevPage++) {
+            int min_t = (int)((sqrtl(8.0 * (page - (prevPage + 1)) * L + 1) + 1) / 2);
+            for (int t = min_t; tr(t) < (i64)(page + 1 - prevPage) * L; t++) {
+                i64 tr_t = tr(t);
+                for (int i = (page * L > prevPage * L + (int)tr_t) ? page * L : prevPage * L + (int)tr_t;
+                     i < (page + 1) * L && i - tr_t < (prevPage + 1) * L;
+                     i++) {
+                    P[i] = (P[i] + (i64)parity((t - 1) / 2) * P[i - tr_t] % M + M) % M;
+                }
+            }
+        }
 
+        // Process current page
+        for (int i = page * L; i <= N && i < (page + 1) * L; i++) {
+            i64 res = 4LL * i + 1;
+            if (isSq(res)) {
+                i64 root = isqrt(res);
+                P[i] = (P[i] + parity((int)((root / 2 + 1) / 2)) + M) % M;
+            }
 
-def solve() -> int:
-    """Solve Problem 614."""
-    N = 10**7
-    M = 10**9 + 7
-    L = 1 << 14
+            for (int t = 1; tr(t) <= i - page * L; t++) {
+                P[i] = (P[i] + (i64)parity((t - 1) / 2) * P[i - tr(t)] % M + M) % M;
+            }
+            P[i] = (P[i] % M + M) % M;
+        }
+    }
 
-    P = [0] * (N + L)
+    i64 ans = 0;
+    for (int i = 1; i <= N; i++) {
+        ans = (ans + P[i]) % M;
+    }
 
-    for page in range((N + L - 1) // L):
-        # Process previous pages
-        for prev_page in range(page):
-            min_t = int(
-                (isqrt(8 * (page - (prev_page + 1)) * L + 1) + 1) / 2
-            )
-            for t in range(
-                min_t, (page + 1 - prev_page) * L + 1
-            ):
-                tr_val = triangular(t)
-                if tr_val >= (page + 1 - prev_page) * L:
-                    break
-                for i in range(
-                    max(page * L, prev_page * L + tr_val),
-                    min((page + 1) * L, N + 1),
-                ):
-                    if i - tr_val >= prev_page * L and i - tr_val < (
-                        prev_page + 1
-                    ) * L:
-                        P[i] = (
-                            P[i] + parity((t - 1) // 2) * P[i - tr_val]
-                        ) % M
+    printf("%lld\n", ans);
 
-        # Process current page
-        for i in range(page * L, min((page + 1) * L, N + 1)):
-            res = 4 * i + 1
-            if is_square(res):
-                root = isqrt(res)
-                P[i] = (
-                    P[i] + parity((root // 2 + 1) // 2)
-                ) % M
+    free(P);
+    return 0;
+}
+'''
 
-            for t in range(1, i - page * L + 1):
-                tr_val = triangular(t)
-                if tr_val > i - page * L:
-                    break
-                P[i] = (P[i] + parity((t - 1) // 2) * P[i - tr_val]) % M
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    ans = sum(P[1 : N + 1]) % M
-    return ans
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
 
+    os.unlink(c_file)
+    os.unlink(exe)
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

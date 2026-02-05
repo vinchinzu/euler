@@ -1,112 +1,132 @@
-"""Project Euler Problem 470: Super Ramvok.
+"""Project Euler Problem 470: Super Ramvok."""
 
-In the game of Ramvok, a player first chooses a positive integer t and pays
-c*t. She can then roll a d-sided die (with sides from 1 to d) up to t times,
-choosing to stop at any time to earn the value of the face-up side. In the
-game of Super-Ramvok, the player repeatedly plays Ramvok, but after each round,
-the number on a random side is either erased or added back. Compute
-Σ_{4≤d≤N} Σ_{0≤c≤n} S(d, c).
-"""
+import subprocess
+import tempfile
+import os
 
-from __future__ import annotations
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-from typing import List
+#define N 20
 
+int ilog2(int n) {
+    int r = 0;
+    while (n > 1) { n >>= 1; r++; }
+    return r;
+}
 
-def ilog2(n: int) -> int:
-    """Integer logarithm base 2."""
-    return n.bit_length() - 1
+int popcount(int x) {
+    int c = 0;
+    while (x) { c += x & 1; x >>= 1; }
+    return c;
+}
 
+double R_func(int subset, double c) {
+    if (c == 0)
+        return 1 + ilog2(subset);
 
-def tridiagonal_system(
-    A: List[float], B: List[float], C: List[float], D: List[float]
-) -> List[float]:
-    """Solve tridiagonal system."""
-    n = len(B)
-    x = [0.0] * n
-    # Thomas algorithm
-    c_prime = [0.0] * n
-    d_prime = [0.0] * n
+    int cnt = popcount(subset);
+    double* vals = (double*)malloc(cnt * sizeof(double));
+    int index = 0;
+    for (int i = 0; i < N; i++)
+        if ((subset & (1 << i)) > 0)
+            vals[index++] = i + 1;
 
-    c_prime[0] = C[0] / B[0]
-    d_prime[0] = D[0] / B[0]
+    double bestExpectedEarning = 0;
+    for (int t = 1; ; t++) {
+        double mean = 0;
+        for (int i = 0; i < cnt; i++)
+            mean += vals[i];
+        mean /= cnt;
 
-    for i in range(1, n):
-        denom = B[i] - A[i] * c_prime[i - 1]
-        c_prime[i] = C[i] / denom if i < n - 1 else 0.0
-        d_prime[i] = (D[i] - A[i] * d_prime[i - 1]) / denom
+        double expectedEarning = mean - c * t;
+        if (expectedEarning < bestExpectedEarning) {
+            free(vals);
+            return bestExpectedEarning;
+        }
+        bestExpectedEarning = expectedEarning;
 
-    x[n - 1] = d_prime[n - 1]
-    for i in range(n - 2, -1, -1):
-        x[i] = d_prime[i] - c_prime[i] * x[i + 1]
+        for (int i = 0; i < cnt; i++)
+            if (vals[i] < mean)
+                vals[i] = mean;
+    }
+}
 
-    return x
+double* tridiagonalSystem(double* A, double* B, double* C, double* D, int n) {
+    double* c_prime = (double*)malloc(n * sizeof(double));
+    double* d_prime = (double*)malloc(n * sizeof(double));
+    double* x = (double*)malloc(n * sizeof(double));
 
+    c_prime[0] = C[0] / B[0];
+    d_prime[0] = D[0] / B[0];
 
-def R(subset: int, c: float, N: int) -> float:
-    """Expected earnings in Ramvok."""
-    if c == 0:
-        return 1 + ilog2(subset)
+    for (int i = 1; i < n; i++) {
+        double denom = B[i] - A[i] * c_prime[i-1];
+        c_prime[i] = (i < n-1) ? C[i] / denom : 0;
+        d_prime[i] = (D[i] - A[i] * d_prime[i-1]) / denom;
+    }
 
-    # Extract values from subset
-    vals: List[float] = []
-    for i in range(N):
-        if subset & (1 << i):
-            vals.append(float(i + 1))
+    x[n-1] = d_prime[n-1];
+    for (int i = n-2; i >= 0; i--)
+        x[i] = d_prime[i] - c_prime[i] * x[i+1];
 
-    if not vals:
-        return 0.0
+    free(c_prime);
+    free(d_prime);
+    return x;
+}
 
-    best_expected = 0.0
-    for t in range(1, 1000):  # Reasonable limit
-        mean = sum(vals) / len(vals)
-        threshold = best_expected
-        expected = sum(max(v, threshold) for v in vals) / len(vals)
-        profit = expected - c * t
-        if profit < best_expected - c * (t - 1):
-            break
-        best_expected = profit
+int main() {
+    double ans = 0;
+    double* R = (double*)malloc((1 << N) * sizeof(double));
 
-    return max(0.0, best_expected)
+    for (int c = 0; c <= N; c++) {
+        for (int subset = 1; subset < (1 << N); subset++)
+            R[subset] = R_func(subset, (double)c);
 
+        for (int d = 4; d <= N; d++) {
+            int size = d + 1;
+            double* A = (double*)calloc(size, sizeof(double));
+            double* B = (double*)calloc(size, sizeof(double));
+            double* C = (double*)calloc(size, sizeof(double));
+            double* D = (double*)calloc(size, sizeof(double));
 
-def solve() -> int:
-    """Solve Problem 470."""
-    N = 20
-    ans = 0.0
+            for (int i = 1; i <= d; i++)
+                A[i] = -(double)(d - i + 1) / d;
+            for (int i = 0; i <= d; i++)
+                B[i] = 1;
+            for (int i = 1; i < d; i++)
+                C[i] = -(double)(i + 1) / d;
+            for (int subset = 1; subset < (1 << d); subset++)
+                D[popcount(subset)] += R[subset];
 
-    for c in range(N + 1):
-        R_vals = [0.0] * (1 << N)
-        for subset in range(1, 1 << N):
-            R_vals[subset] = R(subset, float(c), N)
+            double* x = tridiagonalSystem(A, B, C, D, size);
+            ans += x[d];
 
-        for d in range(4, N + 1):
-            A = [0.0] * (d + 1)
-            B = [1.0] * (d + 1)
-            C = [0.0] * (d + 1)
-            D = [0.0] * (d + 1)
+            free(A); free(B); free(C); free(D); free(x);
+        }
+    }
 
-            for i in range(1, d + 1):
-                A[i] = -(d - i + 1) / d
-            for i in range(1, d):
-                C[i] = -(i + 1) / d
+    free(R);
+    printf("%ld\n", (long)round(ans));
+    return 0;
+}
+'''
 
-            for subset in range(1, 1 << d):
-                bit_count = bin(subset).count("1")
-                D[bit_count] += R_vals[subset]
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-            x = tridiagonal_system(A, B, C, D)
-            ans += x[d]
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
 
-    return int(round(ans))
+    os.unlink(c_file)
+    os.unlink(exe)
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

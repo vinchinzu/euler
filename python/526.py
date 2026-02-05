@@ -140,7 +140,7 @@ def solve() -> int:
             if good:
                 h = 0
                 for i in range(K):
-                    h += int(state.ratios[i] * (num + i))
+                    h += round(state.ratios[i] * (num + i))
                 if h > ans:
                     ans = h
 

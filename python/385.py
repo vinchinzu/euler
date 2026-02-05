@@ -1,141 +1,116 @@
-"""Project Euler Problem 385 translated from Ruby to Python.
+#!/usr/bin/env python3
+"""Project Euler Problem 385 - Ellipse Inside Triangle
 
-This module computes A(n), the sum of areas of integer-coordinate triangles whose
-maximum-area inscribed ellipse has foci at (±sqrt(13), 0).
+Find sum of areas of triangles with integer coordinates ≤ N where the maximal
+inscribed ellipse has foci at (±√13, 0).
 
-Key design notes:
-- Uses Python's built-in integers for exact arithmetic.
-- Uses decimal.Decimal with configurable precision to emulate Ruby BigDecimal.
-- Public APIs:
-  - compute_a(n): efficient computation for large n.
-  - brute_force_a(n): verification routine for small n.
-
-The known answer for A(1_000_000_000) is 3776957309612153700.
+Solution uses Pell equations and Marden's Theorem.
 """
 
-from __future__ import annotations
+from math import isqrt, gcd
 
-from dataclasses import dataclass
-from decimal import Decimal, getcontext
-from time import perf_counter
-from typing import Optional
+def is_perfect_square(n):
+    """Check if n is a perfect square"""
+    if n < 0:
+        return False
+    root = isqrt(n)
+    return root * root == n
 
-# Precision chosen to follow the original Ruby code's intent.
-PRECISION: int = 100
-getcontext().prec = PRECISION
+def solve_pell(D, N_val):
+    """Find solutions to X² - D*Y² = N_val with Y ≤ limit"""
+    solutions = []
 
-SQRT_13: Decimal = Decimal(13).sqrt()
-# Reduced from 1_000_000_000 to 100_000 due to timeout
-DEFAULT_N: int = 100_000
+    if N_val == 0:
+        return solutions
 
+    # Find fundamental solution to x² - D*y² = 1
+    if D == 3:
+        x0, y0 = 2, 1  # 2² - 3*1² = 1
+    else:
+        # General case (simplified for this problem)
+        return solutions
 
-def compute_x_max(y: int, n: int, sqrt13: Decimal) -> int:
-    """Return the maximum integer x satisfying the ellipse constraint for given y.
+    # For negative Pell equation x² - D*y² = N_val
+    # Try small values
+    limit = 10**9
+    for y in range(1, min(100000, limit + 1)):
+        val = N_val + D * y * y
+        if is_perfect_square(val):
+            x = isqrt(val)
+            solutions.append((x, y))
+            # Generate more solutions using fundamental solution
+            for _ in range(10):  # Generate a few more
+                x_new = x * x0 + D * y * y0
+                y_new = x * y0 + y * x0
+                if y_new > limit:
+                    break
+                solutions.append((x_new, y_new))
+                x, y = x_new, y_new
 
-    The formula mirrors the original Ruby logic using Decimal arithmetic.
-    If the constraint cannot be satisfied, returns 0.
-    """
+    return solutions
 
-    y_bd = Decimal(y)
-    y2_plus_13 = y_bd * y_bd + Decimal(13)
-    sqrt_y2_plus_13 = y2_plus_13.sqrt()
+def shoelace_area(x1, y1, x2, y2, x3, y3):
+    """Calculate triangle area using shoelace formula"""
+    return abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) // 2
 
-    numerator = Decimal(n) * sqrt13 - y_bd * sqrt_y2_plus_13
-    if numerator <= 0:
-        return 0
+def solve():
+    N = 10**9
+    K = 13
 
-    # Floor division after scaling by sqrt13, analogous to Ruby's .floor.to_i
-    value = (numerator / sqrt13).to_integral_value(rounding="ROUND_FLOOR")
-    return int(value)
+    triangles = set()
 
+    # Iterate over n from 1 to 12K
+    for n in range(1, 12 * K + 1):
+        # Check if sqrt(3n(12K-n)) is an integer
+        if not is_perfect_square(3 * n * (12 * K - n)):
+            continue
 
-def _triangular_sum(x_max: int) -> int:
-    """Return sum_{x=1}^{x_max} x using integer arithmetic.
+        # Solve Pell equation X² - 3Y² = n
+        solutions = solve_pell(3, n)
 
-    Returns 0 for x_max < 1. Implemented with exact integer math.
-    """
+        for X, Y in solutions:
+            if Y > N:
+                break
 
-    if x_max < 1:
-        return 0
-    return x_max * (x_max + 1) // 2
+            # Check if x1 is an integer
+            num = (12 * K - n) * X * X
+            denom = 3 * n
 
+            if num % denom != 0:
+                continue
 
-def area_contribution(y: int, x_max: int, sqrt13: Decimal) -> Decimal:
-    """Compute the area contribution for a fixed y up to x_max.
+            x1_sq = num // denom
+            if not is_perfect_square(x1_sq):
+                continue
 
-    This encodes the multiplicative factor used in the optimized summation.
-    Returns 0 when x_max < 1.
-    """
+            abs_x1 = isqrt(x1_sq)
 
-    if x_max < 1:
-        return Decimal(0)
+            for x1 in [abs_x1, -abs_x1]:
+                y1 = Y
+                x2 = (X - x1) // 2
+                y2 = -(x2 + 2 * x1) * y1 // X
 
-    y_bd = Decimal(y)
-    triangular = _triangular_sum(x_max)
-    return y_bd * Decimal(triangular) * sqrt13
+                x3 = -(x2 + x1)
+                y3 = -(y2 + y1)
 
+                # Check all coordinates are within bounds
+                coords = [x1, y1, x2, y2, x3, y3]
+                if all(abs(c) <= N for c in coords):
+                    # Store as frozenset of points to avoid duplicates
+                    triangle = frozenset([(x1, y1), (x2, y2), (x3, y3)])
+                    triangles.add(triangle)
 
-def brute_force_a(n: int, *, sqrt13: Optional[Decimal] = None) -> Decimal:
-    """Compute A(n) via direct enumeration.
+    # Sum areas
+    total = 0
+    for triangle in triangles:
+        points = list(triangle)
+        if len(points) == 3:
+            x1, y1 = points[0]
+            x2, y2 = points[1]
+            x3, y3 = points[2]
+            total += shoelace_area(x1, y1, x2, y2, x3, y3)
 
-    This is suitable only for small n (e.g., n <= 1000) and mainly for testing
-    the optimized implementation. It mirrors the Ruby brute_force_a.
-    """
-
-    if n < 1:
-        return Decimal(0)
-
-    sqrt13 = sqrt13 or SQRT_13
-    sum_a = Decimal(0)
-    n_bd = Decimal(n)
-
-    for y in range(1, n + 1):
-        y_bd = Decimal(y)
-        y2_plus_13 = y_bd * y_bd + Decimal(13)
-        sqrt_y2_plus_13 = y2_plus_13.sqrt()
-        term = y_bd * sqrt_y2_plus_13
-
-        x_max = compute_x_max(y, n, sqrt13)
-
-        for x in range(1, min(x_max, n) + 1):
-            x_bd = Decimal(x)
-            left_side = x_bd * sqrt13 + term
-            right_side = n_bd * sqrt13
-            if left_side <= right_side:
-                sum_a += x_bd * y_bd * sqrt13
-
-    return sum_a
-
-
-def compute_a(n: int, *, sqrt13: Optional[Decimal] = None) -> int:
-    """Efficiently compute A(n) using a closed-form style summation.
-
-    Returns the floor of the sum as an int, matching the Ruby implementation.
-    """
-
-    if n < 1:
-        return 0
-
-    n = int(n)
-    sqrt13 = sqrt13 or SQRT_13
-    sum_a = Decimal(0)
-
-    for y in range(1, n + 1):
-        x_max = compute_x_max(y, n, sqrt13)
-        if 1 <= x_max <= n:
-            sum_a += area_contribution(y, x_max, sqrt13)
-
-        # Note: original Ruby printed progress for large y; omitted here
-        # for cleanliness and library usability.
-
-    # Floor to get integer result as in the original problem requirements.
-    return int(sum_a.to_integral_value(rounding="ROUND_FLOOR"))
-
-
-def solve() -> int:
-    """Solve PE 385."""
-    return compute_a(DEFAULT_N)
-
+    return total
 
 if __name__ == "__main__":
     print(solve())

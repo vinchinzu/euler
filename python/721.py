@@ -1,88 +1,88 @@
-"""Project Euler Problem 721: High Powers of Irrational Numbers.
+"""Project Euler Problem 721: High Powers of Irrational Numbers."""
 
-Find Σ_{a=1}^N f(a,a²), where f(a,n) = ⌊ (⌈√a⌉+√a)^n ⌋.
+import subprocess
+import tempfile
+import os
 
-Note that S = (⌈√a⌉+√a)^n + (⌈√a⌉-√a)^n is an integer and the second term
-is less than 1. So if a is a perfect square, than f(a,n) = S, otherwise
-f(a,n) = S-1.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-S can be computed directly in Z[√a]. We encode x+y√a as the vector [x,y],
-and multiplication in Z[√a] corresponds to matrix multiplication. We can
-compute (⌈√a⌉+√a) and then add its conjugate.
-"""
+typedef long long ll;
+typedef unsigned long long ull;
+typedef __int128 lll;
 
-from __future__ import annotations
+#define N 5000000
+#define M 999999937LL
 
-from math import ceil, isqrt
+int is_sq(ll n) {
+    ll r = (ll)sqrt((double)n);
+    while (r * r < n) r++;
+    while (r * r > n) r--;
+    return r * r == n;
+}
 
+// 2x2 matrix represented as [a, b, c, d] for [[a,b],[c,d]]
+void mat_mult(ll *A, ll *B, ll *C) {
+    // C = A * B mod M
+    C[0] = ((lll)A[0] * B[0] + (lll)A[1] * B[2]) % M;
+    C[1] = ((lll)A[0] * B[1] + (lll)A[1] * B[3]) % M;
+    C[2] = ((lll)A[2] * B[0] + (lll)A[3] * B[2]) % M;
+    C[3] = ((lll)A[2] * B[1] + (lll)A[3] * B[3]) % M;
+}
 
-def is_sq(n: int) -> bool:
-    """Check if n is a perfect square."""
-    root = isqrt(n)
-    return root * root == n
+void mat_pow(ll *mat, ll exp, ll *result) {
+    // result = mat^exp mod M
+    result[0] = 1; result[1] = 0; result[2] = 0; result[3] = 1; // identity
+    ll base[4] = {mat[0] % M, mat[1] % M, mat[2] % M, mat[3] % M};
+    ll temp[4];
 
+    while (exp > 0) {
+        if (exp & 1) {
+            mat_mult(result, base, temp);
+            result[0] = temp[0]; result[1] = temp[1];
+            result[2] = temp[2]; result[3] = temp[3];
+        }
+        mat_mult(base, base, temp);
+        base[0] = temp[0]; base[1] = temp[1];
+        base[2] = temp[2]; base[3] = temp[3];
+        exp >>= 1;
+    }
+}
 
-def pow2x2(matrix: list[int], exp: int, mod: int) -> list[int]:
-    """Raise 2x2 matrix to power exp modulo mod.
+ll f(ll a, ll n) {
+    ll c = (ll)ceil(sqrt((double)a));
+    ll mat[4] = {c, a, 1, c};
+    ll result[4];
+    mat_pow(mat, n, result);
+    ll s = (2 * result[0]) % M;
+    if (!is_sq(a)) {
+        s = (s - 1 + M) % M;
+    }
+    return s;
+}
 
-    Matrix is represented as [a, b, c, d] for [[a, b], [c, d]].
-    """
-    a, b, c, d = matrix
-    result = [1, 0, 0, 1]  # Identity matrix
-
-    base = [a % mod, b % mod, c % mod, d % mod]
-    while exp > 0:
-        if exp & 1:
-            # Multiply result by base
-            new_result = [
-                (result[0] * base[0] + result[1] * base[2]) % mod,
-                (result[0] * base[1] + result[1] * base[3]) % mod,
-                (result[2] * base[0] + result[3] * base[2]) % mod,
-                (result[2] * base[1] + result[3] * base[3]) % mod,
-            ]
-            result = new_result
-        # Square base
-        new_base = [
-            (base[0] * base[0] + base[1] * base[2]) % mod,
-            (base[0] * base[1] + base[1] * base[3]) % mod,
-            (base[2] * base[0] + base[3] * base[2]) % mod,
-            (base[2] * base[1] + base[3] * base[3]) % mod,
-        ]
-        base = new_base
-        exp >>= 1
-
-    return result
-
-
-def f(a: int, n: int, mod: int) -> int:
-    """Compute f(a, n)."""
-    c = ceil(a**0.5)
-    # Matrix representation of c + √a: [c, a, 1, c]
-    matrix = [c, a, 1, c]
-    result_matrix = pow2x2(matrix, n, mod)
-    # The first element is the integer part
-    s = 2 * result_matrix[0]
-    if not is_sq(a):
-        s -= 1
-    return s % mod
-
-
-def solve() -> int:
-    """Solve Problem 721."""
-    n = 5 * 10**6
-    m = 999999937
-    ans = 0
-    for a in range(1, n + 1):
-        ans = (ans + f(a, a * a, m)) % m
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
+int main() {
+    ll ans = 0;
+    for (ll a = 1; a <= N; a++) {
+        ans = (ans + f(a, a * a)) % M;
+    }
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-lm', '-o', exe, c_file], check=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     print(result)
-    return result
-
 
 if __name__ == "__main__":
-    main()
+    solve()

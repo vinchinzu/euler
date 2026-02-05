@@ -2,71 +2,100 @@
 
 Let S be the set of all primes less than N. Find the number of subsets of S
 that have a prime sum.
+
+Uses C helper for performance.
 """
 
-from __future__ import annotations
-
-from math import isqrt
-from typing import List
-
-
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
-
-
-def build_spf(limit: int) -> List[int]:
-    """Build smallest prime factor array up to limit."""
-    spf = list(range(limit + 1))
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] == i:
-            for j in range(i * i, limit + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
-    return spf
-
-
-def is_prime(n: int, spf: List[int]) -> bool:
-    """Check if n is prime."""
-    return n > 1 and (n >= len(spf) or spf[n] == n)
-
-
-def sq(n: int) -> int:
-    """Return n squared."""
-    return n * n
+import subprocess
+import tempfile
+import os
 
 
 def solve() -> int:
     """Solve Problem 249."""
-    N = 5000
-    M = 10**16
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    primes_list = sieve(N)
-    max_sum = sq(N)
-    dp = [0] * (max_sum + 1)
-    dp[0] = 1
+#define N 5000
+#define M 10000000000000000ULL
 
-    sum_val = 0
-    for p in primes_list:
-        sum_val += p
-        for i in range(sum_val, p - 1, -1):
-            dp[i] = (dp[i] + dp[i - p]) % M
+int main(void) {
+    // Generate primes up to N using sieve
+    char is_prime_n[N + 1];
+    memset(is_prime_n, 1, sizeof(is_prime_n));
+    is_prime_n[0] = is_prime_n[1] = 0;
+    for (int i = 2; i * i <= N; i++)
+        if (is_prime_n[i])
+            for (int j = i * i; j <= N; j += i)
+                is_prime_n[j] = 0;
 
-    spf = build_spf(sum_val)
-    ans = 0
-    for i in range(sum_val + 1):
-        if is_prime(i, spf):
-            ans = (ans + dp[i]) % M
+    int primes[700];
+    int num_primes = 0;
+    int total_sum = 0;
+    for (int i = 2; i <= N; i++)
+        if (is_prime_n[i]) {
+            primes[num_primes++] = i;
+            total_sum += i;
+        }
 
-    return ans
+    // Allocate DP array
+    unsigned long long *dp = calloc(total_sum + 1, sizeof(unsigned long long));
+    dp[0] = 1;
+
+    int current_sum = 0;
+    for (int pi = 0; pi < num_primes; pi++) {
+        int p = primes[pi];
+        current_sum += p;
+        for (int i = current_sum; i >= p; i--) {
+            dp[i] += dp[i - p];
+            if (dp[i] >= M)
+                dp[i] -= M;
+        }
+    }
+
+    // Generate primes up to total_sum for checking
+    char *is_prime_sum = calloc(total_sum + 1, 1);
+    memset(is_prime_sum, 1, total_sum + 1);
+    is_prime_sum[0] = is_prime_sum[1] = 0;
+    for (int i = 2; (long)i * i <= total_sum; i++)
+        if (is_prime_sum[i])
+            for (int j = i * i; j <= total_sum; j += i)
+                is_prime_sum[j] = 0;
+
+    // Sum dp values at prime indices
+    unsigned long long ans = 0;
+    for (int i = 2; i <= total_sum; i++) {
+        if (is_prime_sum[i]) {
+            ans += dp[i];
+            if (ans >= M)
+                ans -= M;
+        }
+    }
+
+    printf("%llu\n", ans);
+
+    free(dp);
+    free(is_prime_sum);
+    return 0;
+}
+"""
+
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_file = f.name
+
+    exe_file = c_file.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O3', '-o', exe_file, c_file],
+                       check=True, capture_output=True)
+        result = subprocess.run([exe_file], capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe_file):
+            os.unlink(exe_file)
 
 
 def main() -> int:

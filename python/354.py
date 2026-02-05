@@ -1,207 +1,112 @@
-"""Project Euler Problem 354 - Python 3.12 translation.
+"""Project Euler Problem 354 - Honeycomb distance distribution.
 
-This module is an idiomatic Python translation of the provided Ruby draft.
+Given an infinite honeycomb of unit hexagons, B(l) is the number of honeycomb
+centers at distance l from a particular center. Find count of l <= 5*10^11
+such that B(l) = 450.
 
-Notes and limitations
----------------------
-- The original Ruby file contained multiple placeholder segments separated by
-  `__END__`, as well as a stub that simply prints a placeholder message. This
-  Python version focuses on the computational draft found after the final
-  `__END__` marker.
-- The upstream Ruby solution draft itself is incomplete/incorrect in several
-  ways (e.g. odd prime enumeration usage and a brute-force strategy that would
-  be far too slow for the actual constraint of L <= 5e11). This module preserves
-  the core intent of that draft but does not guarantee it reproduces the known
-  correct answer within reasonable time.
-- A small command-line runner is provided so the file is directly executable.
-
-If you intend to use this as a real solver for Problem 354, treat it as a
-starting point and replace the search logic with an efficient number-theoretic
-approach.
+Uses Eisenstein integers and prime factorization modulo 3.
 """
 
-from __future__ import annotations
+def solve():
+    N = 5 * 10**11
+    K = 450
+    L1 = (N / (3**0.5)) ** 2  # (N/sqrt(3))^2
+    L2 = int((L1 / (7**4) / (13**4)) ** 0.5)
 
-from dataclasses import dataclass
-from math import isqrt
-from typing import Dict, Iterable, List, Tuple
+    # Sieve smallest prime factor
+    spf = list(range(L2 + 1))
+    for i in range(2, int(L2**0.5) + 1):
+        if spf[i] == i:
+            for j in range(i*i, L2 + 1, i):
+                if spf[j] == j:
+                    spf[j] = i
 
-
-def hex_distance_squared(i: int, j: int) -> int:
-    """Return squared distance in axial coordinates on the hex grid.
-
-    The formula matches the Ruby implementation:
-    d^2 = 3*i^2 + 3*j^2 + 2*i*j.
-    """
-
-    return 3 * i * i + 3 * j * j + 2 * i * j
-
-
-def get_ring_sizes(max_n: int) -> Dict[int, int]:
-    """Compute multiplicities of reachable squared distances up to max_n.
-
-    For each non-zero pair (i, j) with 0 <= i, j <= max_n, we:
-    - compute d^2 via ``hex_distance_squared``
-    - add 6 to the count for that distance (accounting for hexagon symmetry)
-
-    This replicates the behavior of the Ruby draft, even though it is both
-    redundant and far too slow for very large ``max_n`` in practice.
-    """
-
-    ring_sizes: Dict[int, int] = {}
-    for i in range(max_n + 1):
-        for j in range(max_n + 1):
-            if i == 0 and j == 0:
-                continue
-            d2 = hex_distance_squared(i, j)
-            if d2 > 0:
-                ring_sizes[d2] = ring_sizes.get(d2, 0) + 6
-    return ring_sizes
-
-
-def _prime_sieve(limit: int) -> List[int]:
-    """Return all primes <= limit using a simple sieve of Eratosthenes."""
-
-    if limit < 2:
-        return []
-    sieve = bytearray(b"\x01") * (limit + 1)
-    sieve[0:2] = b"\x00\x00"
-    for p in range(2, isqrt(limit) + 1):
-        if sieve[p]:
-            step = p
-            start = p * p
-            sieve[start : limit + 1 : step] = b"\x00" * (
-                ((limit - start) // step) + 1
-            )
-    return [i for i, is_p in enumerate(sieve) if is_p]
-
-
-def compute_factorizations(max_n: int) -> Dict[int, Dict[int, int]]:
-    """Precompute prime factorizations for 1..max_n.
-
-    This is a faithful and efficient Python interpretation using a sieve-like
-    approach instead of the incorrect/inefficient iteration pattern in the Ruby
-    draft, while keeping behavior aligned.
-    """
-
-    # Smallest prime factor (spf) array for fast factorization
-    spf = list(range(max_n + 1))
-    for p in range(2, isqrt(max_n) + 1):
-        if spf[p] == p:  # p is prime
-            step = p
-            start = p * p
-            for m in range(start, max_n + 1, step):
-                if spf[m] == m:
-                    spf[m] = p
-
-    factorizations: Dict[int, Dict[int, int]] = {1: {}}
-    for n in range(2, max_n + 1):
+    # Check if n is composed only of primes ≡ 2 (mod 3)
+    def is_2mod3_only(n):
+        if n == 1:
+            return True
         temp = n
-        factors: Dict[int, int] = {}
         while temp > 1:
             p = spf[temp]
-            count = 0
-            while temp % p == 0:
-                temp //= p
-                count += 1
-            factors[p] = factors.get(p, 0) + count
-        factorizations[n] = factors
+            if p % 3 != 2:
+                return False
+            temp //= p
+        return True
 
-    return factorizations
+    # Precompute count of numbers composed only of primes ≡ 2 (mod 3)
+    num_2mod3s = [0] * (L2 + 1)
+    for n in range(1, L2 + 1):
+        num_2mod3s[n] = num_2mod3s[n - 1] + (1 if is_2mod3_only(n) else 0)
 
+    # Check if n is prime
+    def is_prime(n):
+        if n < 2:
+            return False
+        if n == 2:
+            return True
+        if n % 2 == 0:
+            return False
+        if n <= L2:
+            return spf[n] == n
+        # For n > L2, do trial division
+        for i in range(3, int(n**0.5) + 1, 2):
+            if n % i == 0:
+                return False
+        return True
 
-def binomial(n: int, k: int) -> int:
-    """Return C(n, k) for integers n, k >= 0."""
+    ans = 0
 
-    if k < 0 or k > n:
-        return 0
-    k = min(k, n - k)
-    result = 1
-    for i in range(1, k + 1):
-        result = result * (n - i + 1) // i
-    return result
+    def find_nums_for_template(index, prod_primes, min_prime, limit, template):
+        """Recursively find numbers matching the template."""
+        nonlocal ans
 
+        if index == len(template):
+            # Add factors of 3 and primes ≡ 2 (mod 3)
+            remaining = limit
+            while remaining > 1:
+                ans += num_2mod3s[int(remaining**0.5)]
+                remaining /= 3
+        else:
+            e = template[index]
+            p = min_prime if min_prime > 1 else 1
+            if p % 3 == 0:
+                p += 1
+            elif p % 3 == 2:
+                p += 2
 
-def get_multiplicity(factors: List[Tuple[int, int]]) -> int:
-    """Compute multiplicity value from a prime factor list.
+            while p ** e <= limit:
+                if prod_primes % p != 0 and is_prime(p):
+                    # Determine next min prime
+                    if index + 1 < len(template) and template[index] == template[index + 1]:
+                        next_min = p + 3
+                    else:
+                        next_min = 1
 
-    This implements the recursive summation pattern from the Ruby draft. The
-    exact intended number-theoretic meaning in the original code is unclear, so
-    we preserve the structure. If you know the closed form, you may replace
-    this for performance.
-    """
+                    find_nums_for_template(
+                        index + 1,
+                        prod_primes * p,
+                        next_min,
+                        limit / (p ** e),
+                        template
+                    )
 
-    if not factors:
-        return 1
+                p += 3
+                while p % 3 != 1:
+                    p += 1
 
-    p, e = factors[0]
-    rest_multiplicity = get_multiplicity(factors[1:])
-    total = 0
-    for k in range(e + 1):
-        total += rest_multiplicity * binomial(e, k)
-    return total
+    def find_nums_for_all_templates(n, max_d, template):
+        """Find all templates by factorizing K/6."""
+        if n == 1:
+            find_nums_for_template(0, 1, 1, L1, template)
+        else:
+            for d in range(2, max_d + 1):
+                if n % d == 0:
+                    template.append(d - 1)
+                    find_nums_for_all_templates(n // d, d, template)
+                    template.pop()
 
-
-def compute_B_values(
-    factorizations: Dict[int, Dict[int, int]],
-) -> Dict[int, int]:
-    """Compute a frequency map of multiplicities B from factorizations.
-
-    Only values n with n % 3 != 0 are considered, mirroring the Ruby code.
-    """
-
-    b_values: Dict[int, int] = {}
-    for n, factors in factorizations.items():
-        if n % 3 == 0:
-            continue
-        # Sort factors to get a deterministic order for get_multiplicity
-        sorted_factors = sorted(factors.items())
-        multiplicity = get_multiplicity(sorted_factors)
-        b_values[multiplicity] = b_values.get(multiplicity, 0) + 1
-    return b_values
-
-
-@dataclass
-class Problem354Config:
-    """Configuration for the brute-force style search.
-
-    Attributes:
-        max_n: Grid extent and factorization bound, following the Ruby draft.
-        target_B: Desired B(L) value.
-        max_L: Maximum distance L to consider.
-    """
-
-    max_n: int = 10**7
-    target_B: int = 450
-    max_L: float = 5.0e11
-
-
-def count_L_with_B(
-    *, max_n: int, target_B: int, max_L: float,
-) -> int:
-    """Count L with B(L) == target_B, emulating the original draft.
-
-    WARNING: For max_n = 10**7 (as in the Ruby draft), this approach is
-    completely impractical in both time and memory and should be treated as a
-    conceptual placeholder rather than a production solution.
-    """
-
-    ring_sizes = get_ring_sizes(max_n)
-    factorizations = compute_factorizations(3 * max_n)
-    _ = compute_B_values(factorizations)  # Not actually used in final count.
-
-    max_L2 = max_L * max_L
-    count = 0
-    for L2, b in ring_sizes.items():
-        if b == target_B and L2 <= max_L2:
-            count += 1
-    return count
-
-
-def solve() -> int:
-    """Solve PE 354. Placeholder - not yet implemented."""
-    return 0
-
+    find_nums_for_all_templates(K // 6, K // 6, [])
+    return ans
 
 if __name__ == "__main__":
     print(solve())

@@ -1,73 +1,108 @@
-"""Project Euler Problem 454: Solutions to 1/x + 1/y = 1/n.
+"""Project Euler Problem 454: Solutions to 1/x + 1/y = 1/n."""
 
-Find the number of solutions to 1/x + 1/y = 1/n for positive integers n and
-x < y ≤ N.
-"""
+import subprocess
+import tempfile
+import os
 
-from __future__ import annotations
+def solve():
+    # Direct port from Java
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-from math import isqrt
+typedef int64_t i64;
 
+#define N 1000000000000LL  // 10^12
 
-def pre_mobius(limit: int) -> list[int]:
-    """Precompute Möbius function."""
-    mu = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
+int L;
+signed char *mobius;
 
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                if j % (i * i) == 0:
-                    mu[j] = 0
-                else:
-                    mu[j] = -mu[j]
-    return mu
+void pre_mobius(int limit) {
+    mobius = calloc(limit + 1, 1);
+    for (int i = 0; i <= limit; i++) mobius[i] = 1;
+    char *is_prime = calloc(limit + 2, 1);
+    for (int i = 0; i <= limit + 1; i++) is_prime[i] = 1;
+    is_prime[0] = is_prime[1] = 0;
 
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int j = i; j <= limit; j += i) is_prime[j] = 0;
+            for (i64 j = (i64)i * i; j <= limit; j += (i64)i * i) mobius[j] = 0;
+            for (int j = i; j <= limit; j += i) mobius[j] = -mobius[j];
+        }
+    }
+    free(is_prime);
+}
 
-def sq(n: int) -> int:
-    """Square."""
-    return n * n
+i64 sq(i64 n) { return n * n; }
+i64 cb(i64 n) { return n * n * n; }
 
+int main() {
+    L = (int)sqrtl((long double)N) + 1;
+    pre_mobius(L + 10);
 
-def cb(n: int) -> int:
-    """Cube."""
-    return n * n * n
+    i64 ans = 0;
 
+    // From Java:
+    // for (int g = 1; g <= L; g++) {
+    //     long n = N / sq(g);
+    //     for (int y = 2; sq(y) <= n; y++)
+    //         if (cb(y) <= n)
+    //             for (int x = 1; x < y; x++)
+    //                 ans += mobius[g] * n / y / (x + y);
+    //         else
+    //             for (int q = (int) Math.max(n / y / (2 * y - 1), 1); true; q++) {
+    //                 long upper = Math.min(n / y / q, 2 * y - 1);
+    //                 long lower = Math.max(n / y / (q + 1), y);
+    //                 ans += mobius[g] * (upper - lower) * q;
+    //                 if (lower == y)
+    //                     break;
+    //             }
+    // }
 
-def solve() -> int:
-    """Solve Problem 454."""
-    N = 10**12
-    L = isqrt(N)
-    mobius = pre_mobius(L)
-    ans = 0
+    for (int g = 1; g <= L; g++) {
+        if (mobius[g] == 0) continue;
+        i64 n = N / sq(g);
 
-    for g_val in range(1, L + 1):
-        n = N // sq(g_val)
-        for y in range(2, isqrt(n) + 1):
-            if cb(y) <= n:
-                for x in range(1, y):
-                    ans += mobius[g_val] * n // y // (x + y)
-            else:
-                q = max(n // y // (2 * y - 1), 1)
-                while True:
-                    upper = min(n // y // q, 2 * y - 1)
-                    lower = max(n // y // (q + 1), y)
-                    ans += mobius[g_val] * (upper - lower) * q
-                    if lower == y:
-                        break
-                    q += 1
+        for (i64 y = 2; sq(y) <= n; y++) {
+            if (cb(y) <= n) {
+                // Brute force for small y
+                for (i64 x = 1; x < y; x++) {
+                    ans += mobius[g] * (n / y / (x + y));
+                }
+            } else {
+                // For large y, group by quotient
+                i64 start_q = n / y / (2 * y - 1);
+                if (start_q < 1) start_q = 1;
+                for (i64 q = start_q; ; q++) {
+                    i64 upper = n / y / q;
+                    if (upper > 2 * y - 1) upper = 2 * y - 1;
+                    i64 lower = n / y / (q + 1);
+                    if (lower < y) lower = y;
+                    ans += mobius[g] * (upper - lower) * q;
+                    if (lower == y) break;
+                }
+            }
+        }
+    }
 
-    return ans
+    printf("%lld\n", (long long)ans);
+    return 0;
+}
+'''
 
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

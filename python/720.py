@@ -1,63 +1,72 @@
-"""Project Euler Problem 720: Unpredictable Permutations.
+"""Project Euler Problem 720: Unpredictable Permutations."""
 
-Find the index of the first permutation of 2^N elements such that no
-subsequence of three elements forms an arithmetic sequence.
+import subprocess
+import tempfile
+import os
 
-For a permutation of 2^N elements, the odd numbers must be in the same order
-as the first valid permutation of 2^{N-1} elements, and similarly for the
-even numbers. It turns out that the odd numbers must all be before the even
-numbers, except the middle 2 and 2^N-1 can be swapped.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-Starting with the first valid permutation of 4 elements, we can interactively
-build up the first valid permutation of 2^N elements. We maintain both the
-elements and their ranks. Then at the end we can use these to compute the
-index of the permutation.
-"""
+#define N 25
+#define M 1000000007LL
+#define L (1 << N)
 
-from __future__ import annotations
+typedef long long ll;
+typedef __int128 lll;
 
+int main() {
+    int *elements = malloc(L * sizeof(int));
+    int *ranks = malloc(L * sizeof(int));
 
-def factorial(n: int, mod: int) -> list[int]:
-    """Precompute factorials modulo mod."""
-    result = [1] * (n + 1)
-    for i in range(1, n + 1):
-        result[i] = (result[i - 1] * i) % mod
-    return result
+    elements[0] = 1; elements[1] = 3; elements[2] = 2; elements[3] = 4;
+    ranks[0] = 1; ranks[1] = 2; ranks[2] = 2; ranks[3] = 4;
 
+    for (int i = 4; i < L; i *= 2) {
+        for (int j = 0; j < i; j++) {
+            ranks[i + j] = ranks[j] + elements[j];
+            elements[i + j] = 2 * elements[j];
+            elements[j] = 2 * elements[j] - 1;
+        }
+        elements[i - 1] = 2;
+        elements[i] = 2 * i - 1;
+        ranks[i - 1] = 2;
+        ranks[i] = i + 1;
+    }
 
-def solve() -> int:
-    """Solve Problem 720."""
-    n = 25
-    m = 10**9 + 7
-    l = 1 << n
+    // Precompute factorials mod M
+    ll *factorials = malloc(L * sizeof(ll));
+    factorials[0] = 1;
+    for (int i = 1; i < L; i++) {
+        factorials[i] = (factorials[i-1] * i) % M;
+    }
 
-    elements = [1, 3, 2, 4] + [0] * (l - 4)
-    ranks = [1, 2, 2, 4] + [0] * (l - 4)
+    ll ans = 1;
+    for (int i = 0; i < L; i++) {
+        ll diff = elements[i] - ranks[i];
+        ans = (ans + factorials[L - 1 - i] * diff) % M;
+        if (ans < 0) ans += M;
+    }
 
-    for i in range(4, l, 2):
-        for j in range(i):
-            ranks[i + j] = ranks[j] + elements[j]
-            elements[i + j] = 2 * elements[j]
-            elements[j] = 2 * elements[j] - 1
-        elements[i - 1] = 2
-        elements[i] = 2 * i - 1
-        ranks[i - 1] = 2
-        ranks[i] = i + 1
+    printf("%lld\n", ans);
 
-    factorials = factorial(l, m)
-    ans = 1
-    for i in range(l):
-        ans = (ans + factorials[l - 1 - i] * (elements[i] - ranks[i])) % m
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
+    free(elements);
+    free(ranks);
+    free(factorials);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-o', exe, c_file], check=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     print(result)
-    return result
-
 
 if __name__ == "__main__":
-    main()
+    solve()

@@ -216,7 +216,9 @@ def order(flip_sizes: List[Rad]) -> int:
         uncut_region = Rad.ONE()
         pos = start_pos
         first = True
-        while first or not (pos.angle.compare_to(start_pos.angle) == 0 and uncut_region.compare_to(Rad.ONE()) == 0):
+        while first or not (
+            pos.angle.compare_to(start_pos.angle) == 0 and pos.flipped == start_pos.flipped
+        ):
             first = False
             for size in flip_sizes:
                 positions.append(pos)

@@ -1,67 +1,66 @@
-"""Project Euler Problem 150."""
+"""Project Euler Problem 150.
 
-from typing import List
+Find the smallest possible sum of a sub-triangle in a 1000-row triangular grid.
 
-MOD = 1 << 20
-MASK = MOD - 1
-OFFSET = 1 << 19
-N = 1_000
-TOTAL = N * (N + 1) // 2
+Algorithm (from Java reference):
+Uses a coordinate system (i, j) for the triangle where you start at top,
+move i steps down-right, then j steps down-left. Precomputes rightSums and
+leftSums arrays for cache-friendly access when computing triangle sums.
+
+The sum of numbers k rows below (i,j) in the equilateral triangle with
+top vertex at (i,j) equals R(i, j+k) - L(j, i+k).
+"""
+
+import numpy as np
+from numba import njit
+
+
+@njit(cache=True)
+def solve():
+    N = 1000
+
+    # Generate sequence S[k] for k in 1..N*(N+1)/2
+    total = N * (N + 1) // 2
+    S = np.zeros(total + 1, dtype=np.int64)
+    t = 0
+    for k in range(1, total + 1):
+        t = (615949 * t + 797807) % (1 << 20)
+        S[k] = t - (1 << 19)
+
+    # rightSums[j][i] and leftSums[i][j] - matching Java array layout
+    rightSums = np.zeros((N, N), dtype=np.int64)
+    leftSums = np.zeros((N, N), dtype=np.int64)
+
+    for i in range(N):
+        for j in range(N - i):
+            row = i + j
+            idx = row * (row + 1) // 2 + i + 1
+            if i > 0:
+                rightSums[j, i] = rightSums[j + 1, i - 1] + S[idx]
+            else:
+                rightSums[j, i] = S[idx]
+
+            if i > 0:
+                leftSums[i, j] = leftSums[i - 1, j + 1] + S[row * (row + 1) // 2 + i]
+            else:
+                leftSums[i, j] = 0
+
+    # Find minimum triangle sum
+    ans = 1 << 62
+    for i in range(N):
+        for j in range(N - i):
+            totalSum = 0
+            for k in range(N - i - j):
+                # Java: rightSums[i][j + k] - leftSums[j][i + k]
+                totalSum += rightSums[i, j + k] - leftSums[j, i + k]
+                if totalSum < ans:
+                    ans = totalSum
+
+    return ans
 
 
 def main() -> int:
-    """Main function."""
-    sequence: List[int] = [0] * TOTAL
-    t = 0
-    index = 0
-    while index < TOTAL:
-        t = (615_949 * t + 797_807) & MASK
-        sequence[index] = t - OFFSET
-        index += 1
-
-    prefix_rows: List[List[int]] = []
-    row = 0
-    seq_index = 0
-    while row < N:
-        length = row + 1
-        prefix = [0] * (length + 1)
-        c = 0
-        while c < length:
-            val = sequence[seq_index]
-            seq_index += 1
-            prefix[c + 1] = prefix[c] + val
-            c += 1
-        prefix_rows.append(prefix)
-        row += 1
-
-    sequence = None
-
-    def range_min(prefix_rows: List[List[int]], start_row: int, end_row: int) -> int:
-        """Find minimum sum in range."""
-        rows = prefix_rows
-        n = len(rows)
-        min_sum = 1 << 62
-        row = start_row
-        while row < end_row:
-            start_col = 0
-            while start_col <= row:
-                current_sum = 0
-                curr_row = row
-                right = start_col + 1
-                while curr_row < n:
-                    curr_prefix = rows[curr_row]
-                    left_val = curr_prefix[start_col]
-                    right_val = curr_prefix[right] if right < len(curr_prefix) else curr_prefix[-1]
-                    current_sum += right_val - left_val
-                    if current_sum < min_sum:
-                        min_sum = current_sum
-                    curr_row += 1
-                    right += 1
-                start_col += 1
-            row += 1
-        return min_sum
-
-    return range_min(prefix_rows, 0, N)
+    return int(solve())
 
 
 if __name__ == "__main__":

@@ -1,224 +1,100 @@
-"""Project Euler Problem 309: Crossing Ladders.
+"""Project Euler Problem 309: Integer Ladders
 
-This module provides a Python 3.12 translation of a Ruby solution searching for
-integer triplets (x, y, h) such that the classic crossing ladders configuration
-produces an integer street width w.
+Find the number of integer triplets (x, y, h) with 0 < x < y < 1000000
+where two ladders of length x and y lean against opposite walls distance w apart,
+and they intersect at height h (all integers).
 
-The relation is:
-    1 / h = 1 / x + 1 / y - 1 / w
-rearranged in the implementation to avoid floating-point arithmetic.
+The intersection height h is the harmonic mean of the heights H1 and H2 where
+the ladders touch the walls: h = H1*H2 / (H1 + H2).
 
-The search implemented here is intentionally direct and mirrors the original
-Ruby code structure while being idiomatic Python:
+For h to be integer, H1*H2 must be divisible by H1+H2.
 
-- Uses integer arithmetic and helper utilities (gcd, divisors).
-- Includes a small-case verifier against the problem's given example.
-- Can run the full search up to a limit (default 1_000_000), but note this is
-  computationally very expensive and not optimized for performance.
-
-The original Ruby code contained a few issues (e.g. a malformed progress
-message and an unused require "prime"); those are cleaned up here.
+Algorithm (from Java):
+1. Generate all Pythagorean triples with one leg < N
+2. For each width w, collect all heights H where (w, H, hypotenuse) forms a Pythagorean triple
+3. For each pair of heights (H1, H2) with same w, check if H1*H2 % (H1+H2) == 0
 """
 
-from __future__ import annotations
+def generate_pythagorean_triples(limit):
+    """Generate all primitive Pythagorean triples with hypotenuse < limit.
 
-from math import gcd as _math_gcd, isqrt
-from time import perf_counter
-from typing import Iterable, List
+    Uses the standard parameterization: a = k(m^2 - n^2), b = k(2mn), c = k(m^2 + n^2)
+    where m > n > 0, gcd(m,n) = 1, m and n not both odd, k >= 1.
 
-
-def gcd(a: int, b: int) -> int:
-    """Compute the greatest common divisor of two integers.
-
-    Uses math.gcd for efficiency and reliability.
+    Returns dict mapping leg -> list of other legs from same triple.
     """
+    from math import gcd
 
-    return _math_gcd(a, b)
+    # Map from leg value to list of other leg values
+    leg_to_heights = {}
 
+    # Generate primitive triples (k=1) then scale
+    m = 2
+    while True:
+        # Check if any triple with this m will fit
+        if m * m + 1 >= limit:
+            break
 
-def divisors(n: int) -> List[int]:
-    """Return all positive divisors of n as a sorted list.
-
-    For n == 0, returns [1] to mirror the original Ruby behavior, although
-    this case is not expected to occur in the search.
-    """
-
-    if n == 0:
-        return [1]
-
-    result: List[int] = []
-    root = isqrt(n)
-    for i in range(1, root + 1):
-        if n % i == 0:
-            result.append(i)
-            if i != n // i:
-                result.append(n // i)
-
-    result.sort()
-    return result
-
-
-def valid_triplet(x: int, y: int, h: int) -> bool:
-    """Return True if (x, y, h) yields an integer street width w > 0.
-
-    Based on the algebraic form used in the Ruby solution:
-        w = (x * y * h) / (h * (x + y) - x * y)
-    All arithmetic is done with integers; any non-integer w is rejected.
-    """
-
-    numerator = x * y * h
-    denominator = h * (x + y) - x * y
-    if denominator <= 0:
-        return False
-    if numerator % denominator != 0:
-        return False
-    w = numerator // denominator
-    return w > 0
-
-
-def _harmonic_mean_ceiling(x: int, y: int) -> int:
-    """Return ceil(harmonic mean of x and y).
-
-    Computes ceil((x * y) / (x + y)) using integer arithmetic.
-    """
-
-    num = x * y
-    den = x + y
-    return (num + den - 1) // den
-
-
-def solve_crossing_ladders(limit: int = 1_000_000,
-                           progress_interval_pairs: int | None = 10_000,
-                           progress_interval_x: int | None = 1_000,
-                           verbose: bool = True) -> int:
-    """Count triplets (x, y, h) with 0 < x < y < limit producing integer w.
-
-    This is a direct and intentionally clear port of the Ruby algorithm. It is
-    not optimized and may be extremely slow for large limits, including the
-    full 1_000_000 search used in the original Project Euler solution.
-
-    Args:
-        limit: Upper bound on y (exclusive); x ranges from 1 to limit-1.
-        progress_interval_pairs: Print a dot every N (x, y) pairs processed if
-            verbose is True. Use None to disable.
-        progress_interval_x: Print row progress every N values of x if verbose
-            is True. Use None to disable.
-        verbose: Whether to emit progress information to stdout.
-
-    Returns:
-        The count of triplets (x, y, h) yielding an integer w.
-    """
-
-    count = 0
-    processed_pairs = 0
-
-    if verbose:
-        print(f"Processing pairs (x, y) with y < {limit}...")
-
-    for x in range(1, limit):
-        for y in range(x + 1, limit):
-            processed_pairs += 1
-
-            if (
-                verbose
-                and progress_interval_pairs
-                and processed_pairs % progress_interval_pairs == 0
-            ):
-                print(".", end="", flush=True)
-
-            if x + y <= 2:
+        for n in range(1, m):
+            # Check conditions for primitive triple
+            if gcd(m, n) != 1:
+                continue
+            if (m % 2) == (n % 2):  # Both odd or both even
                 continue
 
-            d = gcd(x, y)
-            a = x // d
-            b = y // d
+            # Generate primitive triple
+            a = m * m - n * n
+            b = 2 * m * n
+            c = m * m + n * n
 
-            ab_product = a * b
-            sum_ab = a + b
-            d_ab_product = d * ab_product
+            # Generate all multiples
+            k = 1
+            while k * c < limit:
+                ka, kb, kc = k * a, k * b, k * c
 
-            for divisor in divisors(sum_ab):
-                m = sum_ab // divisor
+                # Both (ka, kb) and (kb, ka) are valid orderings
+                # Store as: leg -> [other_leg]
+                if ka not in leg_to_heights:
+                    leg_to_heights[ka] = []
+                if kb not in leg_to_heights:
+                    leg_to_heights[kb] = []
 
-                gcd_m_dab = gcd(m, d_ab_product)
-                reduced_m = m // gcd_m_dab
+                leg_to_heights[ka].append(kb)
+                leg_to_heights[kb].append(ka)
 
-                base_h_num = d_ab_product * reduced_m
-                # In the original Ruby, base_h = (d_ab_product * reduced_m) / sum_ab
-                # That division is integral for the relevant cases; perform it
-                # with integer division here.
-                if base_h_num % sum_ab != 0:
-                    # Skip non-integral base heights; mirrors the integer
-                    # arithmetic intent of the original code.
-                    continue
-                base_h = base_h_num // sum_ab
+                k += 1
 
-                min_xy = x  # since x < y
-                harmonic_mean = _harmonic_mean_ceiling(x, y)
+        m += 1
 
-                current_h = base_h
-                while harmonic_mean <= current_h < min_xy:
-                    if valid_triplet(x, y, current_h):
-                        count += 1
-                    current_h += base_h
+    return leg_to_heights
 
-        if (
-            verbose
-            and progress_interval_x
-            and x % progress_interval_x == 0
-        ):
-            pct = x / limit * 100.0
-            print(f"\nCompleted x = {x} ({pct:.4f}%)")
+def solve():
+    N = 1000000
 
-    if verbose:
-        print(
-            f"\nProcessed {processed_pairs} pairs, "
-            f"found {count} valid triplets."
-        )
+    # Generate all Pythagorean triples
+    # In each triple (a, b, c), a and b are the two legs (one is width, one is height)
+    leg_to_heights = generate_pythagorean_triples(N)
 
-    return count
-
-
-def verify_small_case(limit: int) -> int:
-    """Exhaustively verify the triplet count for small limits.
-
-    This uses a straightforward triple loop over x, y, h using the same
-    validity check as the main solver. It is intended only for small limits
-    (e.g. 200) due to its O(limit^3) complexity.
-
-    Args:
-        limit: Upper bound on y (exclusive); x ranges from 1 to limit - 1.
-
-    Returns:
-        The number of valid triplets found.
-    """
-
-    print(f"Verifying for LIMIT = {limit}...")
     count = 0
-    expected_for_200 = 5
 
-    for x in range(1, limit):
-        for y in range(x + 1, limit):
-            min_xy = x
-            harmonic_approx = _harmonic_mean_ceiling(x, y)
-            for h in range(harmonic_approx, min_xy):
-                if valid_triplet(x, y, h):
+    # For each width w, count pairs of heights
+    for w in range(1, N):
+        if w not in leg_to_heights:
+            continue
+
+        heights = leg_to_heights[w]
+
+        # Count pairs (h1, h2) where h1 < h2 and h1*h2 % (h1+h2) == 0
+        for i in range(len(heights)):
+            for j in range(i + 1, len(heights)):
+                h1 = heights[i]
+                h2 = heights[j]
+
+                # Check if harmonic mean is integer
+                if (h1 * h2) % (h1 + h2) == 0:
                     count += 1
 
-    print(f"For LIMIT = {limit}, found {count} triplets")
-    if limit == 200:
-        if count == expected_for_200:
-            print("\u2713 CORRECT")
-        else:
-            print(f"\u2717 INCORRECT (expected {expected_for_200})")
-
     return count
-
-
-def solve() -> int:
-    """Solve PE 309 with reduced limit."""
-    return solve_crossing_ladders(1_000, verbose=False)
-
 
 if __name__ == "__main__":
     print(solve())

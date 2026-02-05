@@ -1,93 +1,165 @@
-"""Project Euler Problem 787: Bezout's Game.
+"""Project Euler Problem 787: Bezout's Game."""
 
-In Bezout's game, there are two piles of stones with sizes (a,b), and two
-players alternate turns where they take c stones from pile 1 and d stones from
-pile 2 such that ad-bc=±1, and the player who empties a pile wins. Find the
-number of starting pile sizes (a,b), where a,b>0, a+b≤N, and GCD(a,b)=1,
-such that the first player can guarantee a win.
+import subprocess
+import tempfile
+import os
 
-We can see by induction that (a,b) is a winning configuration if min(a,b) is
-odd. For the base case, if the pile sizes are (k,1) then c=k-1, d=1 is a
-valid move that empties the pile of one stone. If the pile sizes are (a,b),
-then by Bezout's identity there are only two solutions, one where ad-bc=+1 and
-the other where ad-bc=-1. These two solutions (c1,d1) and (c2,d2) satisfy
-c1+c2=a and d1+d2=b. We must have c≤d, so the smaller pile will always remain
-the smaller pile. So if the smaller pile is odd, there is at least one move
-where the smaller pile becomes even (a losing configuration for the next
-player). If the smaller pile is even, both moves must result in it becoming
-odd (otherwise ad-bc will be even), hence a winning configuration for the next
-player.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
 
-This means the problem is equivalent to counting (a,b) such that a,b>0,
-a+b≤N, GCD(a,b)=1, and min(a,b) is odd. We use the standard approach to remove
-the GCD condition; for the condition that a+b≤N/g, the conditions clearly
-result in a polynomial expression, which we can determine from small values is
-⌊n(n+1)/4⌋. And since the GCD must be odd, the answer is
-Σ_{g=1}^N µ(g) ⌊(N/g)(N/g+1)/4⌋.
-"""
+typedef int64_t i64;
+typedef __int128 i128;
 
-from __future__ import annotations
+#define N 1000000000LL
 
-from math import isqrt
-from typing import List
+int SIEVE_LIMIT;
+signed char *mobius;
+i64 *mertens_prefix;
+i64 *sum_odd_prefix;
 
+void sieve(int limit) {
+    SIEVE_LIMIT = limit;
+    mobius = calloc(limit + 1, 1);
+    mertens_prefix = calloc(limit + 1, sizeof(i64));
+    sum_odd_prefix = calloc(limit + 1, sizeof(i64));
 
-def pre_mobius(limit: int) -> List[int]:
-    """Precompute Möbius function."""
-    mu = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
+    for (int i = 0; i <= limit; i++) mobius[i] = 1;
+    char *is_prime = calloc(limit + 2, 1);
+    memset(is_prime, 1, limit + 2);
+    is_prime[0] = is_prime[1] = 0;
 
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                if j % (i * i) == 0:
-                    mu[j] = 0
-                else:
-                    mu[j] = -mu[j]
-    return mu
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int j = i; j <= limit; j += i) is_prime[j] = 0;
+            for (i64 j = (i64)i * i; j <= limit; j += (i64)i * i) mobius[j] = 0;
+            for (int j = i; j <= limit; j += i) mobius[j] = -mobius[j];
+        }
+    }
+    free(is_prime);
 
+    mertens_prefix[0] = 0;
+    sum_odd_prefix[0] = 0;
+    for (int i = 1; i <= limit; i++) {
+        mertens_prefix[i] = mertens_prefix[i-1] + mobius[i];
+        sum_odd_prefix[i] = sum_odd_prefix[i-1] + ((i & 1) ? mobius[i] : 0);
+    }
+}
 
-def tr(n: int) -> int:
-    """Triangular number."""
-    return n * (n + 1) // 2
+#define HASH_SIZE 2000003
+i64 mertens_keys[HASH_SIZE];
+i64 mertens_vals[HASH_SIZE];
+char mertens_used[HASH_SIZE];
 
+i64 sum_odd_keys[HASH_SIZE];
+i64 sum_odd_vals[HASH_SIZE];
+char sum_odd_used[HASH_SIZE];
 
-def solve() -> int:
-    """Solve Problem 787."""
-    N = 10**9
-    L = isqrt(N)
+i64 mertens(i64 n);
+i64 sum_odd(i64 n);
 
-    mobius = pre_mobius(N)
+i64 mertens_cached(i64 n) {
+    if (n <= SIEVE_LIMIT) return mertens_prefix[n];
 
-    ans = 0
+    unsigned int idx = (unsigned int)(((unsigned long long)n * 2654435761ULL) % HASH_SIZE);
+    while (mertens_used[idx] && mertens_keys[idx] != n) idx = (idx + 1) % HASH_SIZE;
+    if (mertens_used[idx]) return mertens_vals[idx];
 
-    # Direct computation for odd g
-    for g in range(1, N // L + 1, 2):
-        ans += mobius[g] * (tr(N // g) // 2)
+    i64 val = mertens(n);
+    mertens_keys[idx] = n;
+    mertens_vals[idx] = val;
+    mertens_used[idx] = 1;
+    return val;
+}
 
-    # For ranges with same t=N/g, use Mertens function (simplified)
-    for t in range(1, L):
-        mertens_t = sum(mobius[i] for i in range(1, t + 1))
-        mertens_t_plus_1 = sum(mobius[i] for i in range(1, t + 2))
-        sum_even_t = sum(mobius[i] for i in range(1, t + 1) if i % 2 == 0)
-        sum_even_t_plus_1 = sum(mobius[i] for i in range(1, t + 2) if i % 2 == 0)
+i64 mertens(i64 n) {
+    if (n <= SIEVE_LIMIT) return mertens_prefix[n];
 
-        ans += (
-            ((mertens_t - mertens_t_plus_1) - (sum_even_t - sum_even_t_plus_1))
-            * (tr(t) // 2)
-        )
+    i64 sqrtn = (i64)sqrtl((long double)n);
+    i64 result = 1;
 
-    return ans
+    for (i64 k = 2; k <= n / (sqrtn + 1); k++) {
+        result -= mertens_cached(n / k);
+    }
 
+    for (i64 q = 1; q <= sqrtn; q++) {
+        i64 kmin = n / (q + 1) + 1;
+        i64 kmax = n / q;
+        if (kmin <= n / (sqrtn + 1)) kmin = n / (sqrtn + 1) + 1;
+        if (kmax >= kmin) {
+            result -= (kmax - kmin + 1) * mertens_cached(q);
+        }
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return result;
+}
 
+i64 sum_odd_cached(i64 n) {
+    if (n <= SIEVE_LIMIT) return sum_odd_prefix[n];
+
+    unsigned int idx = (unsigned int)(((unsigned long long)n * 2654435769ULL) % HASH_SIZE);
+    while (sum_odd_used[idx] && sum_odd_keys[idx] != n) idx = (idx + 1) % HASH_SIZE;
+    if (sum_odd_used[idx]) return sum_odd_vals[idx];
+
+    i64 val = sum_odd(n);
+    sum_odd_keys[idx] = n;
+    sum_odd_vals[idx] = val;
+    sum_odd_used[idx] = 1;
+    return val;
+}
+
+i64 sum_odd(i64 n) {
+    if (n <= SIEVE_LIMIT) return sum_odd_prefix[n];
+    // sum_odd(n) = M(n) + sum_odd(n/2)
+    return mertens_cached(n) + sum_odd_cached(n / 2);
+}
+
+i64 tr(i64 n) {
+    return n * (n + 1) / 2;
+}
+
+int main() {
+    int L = (int)sqrtl((long double)N) + 1;
+    sieve(L + 100);
+    memset(mertens_used, 0, sizeof(mertens_used));
+    memset(sum_odd_used, 0, sizeof(sum_odd_used));
+
+    i128 ans = 0;
+
+    // Direct: g from 1 to N/L (odd g only), quotient t = N/g >= L
+    for (i64 g = 1; g <= N / L; g += 2) {
+        i64 t = N / g;
+        ans += (i128)mobius[g] * (tr(t) / 2);
+    }
+
+    // Batch: for quotient t from 1 to L-1
+    // g in (N/(t+1), N/t], each contributes mobius[g] * (tr(t)/2)
+    for (i64 t = 1; t < L; t++) {
+        i64 upper = N / t;
+        i64 lower = N / (t + 1);
+        i64 coeff = sum_odd_cached(upper) - sum_odd_cached(lower);
+        ans += (i128)coeff * (tr(t) / 2);
+    }
+
+    printf("%lld\n", (long long)ans);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

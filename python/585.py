@@ -1,178 +1,189 @@
-"""Project Euler Problem 585: Nested square roots.
+"""Project Euler Problem 585: Nested square roots."""
 
-Find the number of distinct values equal to the sum and/or difference of
-a finite number of square roots of integers, which can be written in the
-form √(x + √y + √z) for positive integers x,y,z, 1≤x≤N, and y,z are
-not perfect squares.
+import subprocess
+import tempfile
+import os
 
-There are two possibilities:
-1. Values of the form √a + √b, where a<b and a*b is not a perfect square
-2. Values of the form √a + √b + √c - √d, where a<b<c<d, ad=bc, etc.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
 
-from __future__ import annotations
+typedef int64_t i64;
 
-from math import gcd, isqrt
+#define N 5000000
 
-from sympy import primerange
+int *ff;  // smallest prime factor
+int *phi;
+char *is_square_free;
 
+void init() {
+    ff = (int*)calloc(N + 1, sizeof(int));
+    phi = (int*)calloc(N + 1, sizeof(int));
+    is_square_free = (char*)calloc(N + 1, sizeof(char));
 
-def is_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    if n < 0:
-        return False
-    root = isqrt(n)
-    return root * root == n
+    // Sieve for smallest prime factor
+    for (int i = 2; i <= N; i++) {
+        if (ff[i] == 0) {
+            ff[i] = i;
+            for (i64 j = (i64)i * i; j <= N; j += i)
+                if (ff[j] == 0) ff[j] = i;
+        }
+    }
 
+    // Compute phi
+    phi[1] = 1;
+    for (int i = 2; i <= N; i++) {
+        int p = ff[i];
+        int temp = i;
+        int pe = 1;
+        while (temp % p == 0) {
+            temp /= p;
+            pe *= p;
+        }
+        if (temp == 1) {
+            // i = p^e
+            phi[i] = pe - pe / p;
+        } else {
+            phi[i] = phi[pe] * phi[temp];
+        }
+    }
 
-def sieve_with_smallest_factor(limit: int) -> list[int]:
-    """Sieve that stores smallest prime factor."""
-    ff = [0] * (limit + 1)
-    for i in range(2, limit + 1):
-        if ff[i] == 0:
-            ff[i] = i
-            for j in range(i * i, limit + 1, i):
-                if ff[j] == 0:
-                    ff[j] = i
-    return ff
+    // Compute square-free flags
+    for (int i = 1; i <= N; i++) is_square_free[i] = 1;
+    for (int i = 2; (i64)i * i <= N; i++) {
+        for (i64 j = (i64)i * i; j <= N; j += (i64)i * i)
+            is_square_free[j] = 0;
+    }
+}
 
+int gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
 
-def euler_totient(n: int, ff: list[int]) -> int:
-    """Compute Euler's totient using smallest factor array."""
-    phi = n
-    temp = n
-    while temp > 1:
-        p = ff[temp]
-        phi = phi // p * (p - 1)
-        while temp % p == 0:
-            temp //= p
-    return phi
+int is_sq(i64 n) {
+    if (n < 0) return 0;
+    i64 r = (i64)sqrt((double)n);
+    while (r * r > n) r--;
+    while ((r+1) * (r+1) <= n) r++;
+    return r * r == n;
+}
 
+int main() {
+    init();
 
-def is_square_free(n: int, ff: list[int]) -> bool:
-    """Check if n is square-free."""
-    temp = n
-    while temp > 1:
-        p = ff[temp]
-        count = 0
-        while temp % p == 0:
-            temp //= p
-            count += 1
-        if count >= 2:
-            return False
-    return True
+    int *f = (int*)calloc(N + 1, sizeof(int));
+    int *fp = (int*)calloc(N + 1, sizeof(int));
 
+    for (int n = 1; n <= N; n++) {
+        f[n] = (n - 1) / 2;
+        fp[n] = phi[n] / 2;
+    }
 
-def multiplicative_function(limit: int, f) -> list[int]:
-    """Compute multiplicative function."""
-    ff = sieve_with_smallest_factor(limit)
-    result = [0] * (limit + 1)
-    result[1] = 1
+    // Subtract cases where a*b is a perfect square
+    for (int k = 1; k <= N; k++) {
+        if (!is_square_free[k]) continue;
+        for (int s = 1; (i64)s * s * k <= N; s++) {
+            for (int t = s + 1; ((i64)s * s + (i64)t * t) * k <= N; t++) {
+                int sum = (s * s + t * t) * k;
+                f[sum]--;
+                if (k == 1 && gcd(s, t) == 1)
+                    fp[sum]--;
+            }
+        }
+    }
 
-    for i in range(2, limit + 1):
-        if ff[i] == i:  # i is prime
-            result[i] = f(i, 1)
-        else:
-            p = ff[i]
-            e = 0
-            temp = i
-            while temp % p == 0:
-                temp //= p
-                e += 1
-            result[i] = result[temp] * f(p, e)
+    // First case: sum of f[n]
+    i64 ans = 0;
+    for (int n = 1; n <= N; n++)
+        ans += f[n];
 
-    return result
+    // Second case
+    i64 res = 0;
+    for (int g_plus_h = 1; g_plus_h <= N; g_plus_h++) {
+        for (int ap_plus_bp = 1; (i64)g_plus_h * ap_plus_bp <= N; ap_plus_bp++) {
+            res += (i64)f[g_plus_h] * fp[ap_plus_bp];
+        }
+    }
 
+    // Compute sizes for each index
+    i64 *sizes = (i64*)calloc(N + 1, sizeof(i64));
+    // sizes[n] = product of (2*e + 1) for each prime power in factorization
+    sizes[1] = 1;
+    for (int i = 2; i <= N; i++) {
+        int p = ff[i];
+        int temp = i;
+        int e = 0;
+        while (temp % p == 0) {
+            temp /= p;
+            e++;
+        }
+        sizes[i] = sizes[temp] * (2 * e + 1);
+    }
 
-def solve() -> int:
-    """Solve Problem 585."""
-    N = 5_000_000
+    int *startIndices = (int*)calloc(N + 2, sizeof(int));
+    for (int i = 1; i <= N; i++)
+        startIndices[i + 1] = startIndices[i] + (int)((sizes[i] + 1) / 2);
 
-    # Precompute utilities
-    ff = sieve_with_smallest_factor(N)
-    phi = [0] * (N + 1)
-    for i in range(1, N + 1):
-        phi[i] = euler_totient(i, ff)
+    int totalSize = startIndices[N + 1];
+    int *currIndices = (int*)malloc((N + 2) * sizeof(int));
+    memcpy(currIndices, startIndices, (N + 2) * sizeof(int));
 
-    # Compute f(n) and f'(n)
-    f = [0] * (N + 1)
-    fp = [0] * (N + 1)
-    for n in range(1, N + 1):
-        f[n] = (n - 1) // 2
-        fp[n] = phi[n] // 2
+    i64 *smalls = (i64*)calloc(totalSize, sizeof(i64));
+    i64 *bigs = (i64*)calloc(totalSize, sizeof(i64));
 
-    # Subtract cases where a*b is a perfect square
-    for k in range(1, N + 1):
-        if not is_square_free(k, ff):
-            continue
-        s = 1
-        while s * s * k <= N:
-            t = s + 1
-            while (s * s + t * t) * k <= N:
-                sum_val = (s * s + t * t) * k
-                f[sum_val] -= 1
-                if k == 1 and gcd(s, t) == 1:
-                    fp[sum_val] -= 1
-                t += 1
-            s += 1
+    for (int k = 1; k <= N; k++) {
+        if (!is_square_free[k]) continue;
+        for (int s = 1; (i64)s * s * k <= N; s++) {
+            for (int t = s; ((i64)s * s + (i64)t * t) * k <= N; t++) {
+                int idx = s * t * k;
+                if (idx <= N && currIndices[idx] < startIndices[idx + 1]) {
+                    smalls[currIndices[idx]] = (i64)s * s * k;
+                    bigs[currIndices[idx]] = (i64)t * t * k;
+                    currIndices[idx]++;
+                }
+            }
+        }
+    }
 
-    # First case: sum of f[n]
-    ans = sum(f[1 : N + 1])
+    for (int i = 0; i <= N; i++) {
+        for (int ad = startIndices[i]; ad < currIndices[i]; ad++) {
+            for (int bc = startIndices[i]; bc < currIndices[i]; bc++) {
+                i64 a = smalls[ad], b = smalls[bc], c = bigs[bc], d = bigs[ad];
+                if (a < b && a + b + c + d <= N && !is_sq(a * b))
+                    res -= (b == c) ? 1 : 2;
+            }
+        }
+    }
 
-    # Second case: compute res
-    res = 0
-    for g_plus_h in range(1, N + 1):
-        for ap_plus_bp in range(1, N + 1):
-            if g_plus_h * ap_plus_bp > N:
-                break
-            res += f[g_plus_h] * fp[ap_plus_bp]
+    ans += res / 2;
 
-    # Subtract cases where g*h*a'*b' is a perfect square
-    sizes = multiplicative_function(N, lambda p, e: 2 * e + 1)
-    start_indices = [0] * (N + 2)
-    for i in range(1, N + 1):
-        start_indices[i + 1] = start_indices[i] + (sizes[i] + 1) // 2
+    printf("%lld\n", ans);
 
-    curr_indices = start_indices[:]
-    total_size = start_indices[N + 1]
-    smalls = [0] * total_size
-    bigs = [0] * total_size
+    free(f); free(fp); free(ff); free(phi); free(is_square_free);
+    free(sizes); free(startIndices); free(currIndices);
+    free(smalls); free(bigs);
 
-    for k in range(1, N + 1):
-        if not is_square_free(k, ff):
-            continue
-        s = 1
-        while s * s * k <= N:
-            t = s
-            while (s * s + t * t) * k <= N:
-                idx = s * t * k
-                if idx < len(curr_indices):
-                    smalls[curr_indices[idx]] = s * s * k
-                    bigs[curr_indices[idx]] = t * t * k
-                    curr_indices[idx] += 1
-                t += 1
-            s += 1
+    return 0;
+}
+'''
 
-    for i in range(N):
-        for ad in range(start_indices[i], curr_indices[i]):
-            for bc in range(start_indices[i], curr_indices[i]):
-                a = smalls[ad]
-                b = smalls[bc]
-                c = bigs[bc]
-                d = bigs[ad]
-                if a < b and a + b + c + d <= N and not is_square(a * b):
-                    res -= 2 if b != c else 1
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    ans += res // 2
-    return ans
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
 
+    os.unlink(c_file)
+    os.unlink(exe)
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

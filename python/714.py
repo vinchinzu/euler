@@ -1,90 +1,96 @@
-"""Project Euler Problem 714: Duodigits.
+"""Project Euler Problem 714: Duodigits."""
 
-A duodigit is a number whose decimal representation uses no more than two
-different digits. Find Σ_{k=1}^N d(k), where d(k) is the smallest positive
-multiple of k that is a duodigit.
+import subprocess
+import tempfile
+import os
 
-We use brute force. For each k, we compute d(k) by looking at numbers with
-increasing numbers of digits. For a given number of digits, we find all
-"templates" of where the first digit should go (the second digit has to be
-in the remaining places) and all combinations of the two digits d1 and d2.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
+#include <float.h>
 
-from __future__ import annotations
+#define N 50000
+#define B 10
 
-from math import isqrt
+typedef long long ll;
 
+long pows_mod[20];
+double pows_f[20];
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Fast exponentiation modulo mod."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+double d_func(int k) {
+    for (int numDigits = 1; ; numDigits++) {
+        // Compute powers of B mod k and as doubles
+        pows_f[0] = 1.0;
+        pows_mod[0] = 1;
+        for (int i = 1; i < numDigits; i++) {
+            pows_f[i] = pows_f[i-1] * B;
+            pows_mod[i] = (pows_mod[i-1] * B) % k;
+        }
 
+        int n = 1 << numDigits;
 
-def d(k: int) -> float:
-    """Find smallest positive multiple of k that is a duodigit."""
-    b = 10
-    num_digits = 1
+        // Allocate arrays
+        double *nums = calloc((size_t)n * B, sizeof(double));
+        long *mods = calloc((size_t)n * B, sizeof(long));
 
-    while True:
-        # Precompute powers of B
-        pows = [b**i for i in range(num_digits)]
-        mod_pows = [pow_mod(b, i, k) for i in range(num_digits)]
+        #define NUMS(bitset, digit) nums[(bitset) * B + (digit)]
+        #define MODS(bitset, digit) mods[(bitset) * B + (digit)]
 
-        n = 1 << num_digits
-        nums = [[0.0] * b for _ in range(n)]
-        mods = [[0] * b for _ in range(n)]
+        for (int bitset = 1; bitset < n; bitset++) {
+            int i = __builtin_ctz(bitset);
+            int prev_bitset = bitset - (bitset & -bitset);
+            double num = NUMS(prev_bitset, 1) + pows_f[i];
+            long mod = MODS(prev_bitset, 1) + pows_mod[i];
+            for (int d = 1; d < B; d++) {
+                NUMS(bitset, d) = d * num;
+                MODS(bitset, d) = d * mod;
+            }
+        }
 
-        # Build all subsets using bitmasks
-        for bitset in range(1, n):
-            # Find the rightmost set bit
-            i = (bitset & -bitset).bit_length() - 1
-            prev_bitset = bitset - (bitset & -bitset)
-            num = nums[prev_bitset][1] + pows[i]
-            mod_val = (mods[prev_bitset][1] + mod_pows[i]) % k
-            for d in range(1, b):
-                nums[bitset][d] = d * num
-                mods[bitset][d] = (d * mod_val) % k
+        double best = DBL_MAX;
+        for (int bitset = 0; bitset < n / 2; bitset++) {
+            for (int d1 = 0; d1 < B; d1++) {
+                for (int d2 = 1; d2 < B; d2++) {
+                    double num = NUMS(bitset, d1) + NUMS(n - 1 - bitset, d2);
+                    long mod = MODS(bitset, d1) + MODS(n - 1 - bitset, d2);
+                    if (num < best && mod % k == 0) {
+                        best = num;
+                    }
+                }
+            }
+        }
 
-        min_d = float("inf")
-        # Try all combinations of two digits
-        for bitset in range(n // 2):
-            for d1 in range(b):
-                for d2 in range(1, b):
-                    num = nums[bitset][d1] + nums[n - 1 - bitset][d2]
-                    mod_val = (
-                        mods[bitset][d1] + mods[n - 1 - bitset][d2]
-                    ) % k
-                    if num < min_d and mod_val == 0:
-                        min_d = num
+        free(nums);
+        free(mods);
 
-        if min_d < float("inf"):
-            return min_d
+        if (best < DBL_MAX)
+            return best;
+    }
+}
 
-        num_digits += 1
-
-
-def solve() -> float:
-    """Solve Problem 714."""
-    n = 50000
-    ans = 0.0
-    for k in range(1, n + 1):
-        ans += d(k)
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.12e}".replace("+", ""))
-    return int(result)
-
+int main() {
+    double ans = 0;
+    for (int k = 1; k <= N; k++) {
+        ans += d_func(k);
+    }
+    printf("%.12e\n", ans);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-lm', '-o', exe, c_file], check=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    # Format: Remove + if present
+    result = result.replace("+", "")
+    print(result)
 
 if __name__ == "__main__":
-    main()
+    solve()

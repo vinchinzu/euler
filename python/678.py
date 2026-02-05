@@ -1,195 +1,241 @@
+#!/usr/bin/env python3
 """Project Euler Problem 678: Fermat-like Equations.
 
 Find the number of positive integer tuples (a,b,c,e,f) such that a^e + b^e = c^f
-for some a<b, e≥2, f≥3, and c^f≤N.
+for some a < b, e >= 2, f >= 3, and c^f <= N.
 
-We can iterate over all possible c^f; there are O(³√N) of them.
-
-For e=2, we can use the standard algorithm to find the number of ways that c^f
-can be written as the sum of two squares.
-
-For e=3, we write c^f = a³+b³ = (a+b)(a²-ab+b²). For each divisor d of c^f,
-if a+b=d and a²-ab+b²=c^f/d, then solving for a gives
-
-a = (1/2) (d - √((4/3) c^f/d - (1/3) d²)).
-
-This means we have a solution if the discriminant is a perfect square, and the
-square root is smaller than d.
-
-For e=4, we can filter the ways that c^f can be written as the sum of two squares.
-
-For e≥5, we precompute at the beginning all the ways that each integer can be
-written as a^e + b^e. There are only O(N^(1/5)) such a^e and b^e, so this part
-takes O(N^(2/5)) total.
+Direct translation from Java reference implementation.
 """
 
-from __future__ import annotations
-
-from collections import Counter, defaultdict
-from dataclasses import dataclass
-from math import isqrt
-from typing import Set
+import math
+from collections import Counter
 
 
-@dataclass(frozen=True)
-class Point:
-    """Integer point."""
-
-    x: int
-    y: int
-
-
-def is_sq(n: int) -> bool:
-    """Check if n is a perfect square."""
-    if n < 0:
-        return False
-    root = isqrt(n)
-    return root * root == n
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def pow_mod(base: int, exp: int, mod: int | None = None) -> int:
-    """Modular exponentiation."""
-    result = 1
-    while exp > 0:
-        if exp & 1:
-            result = result * base
-        base = base * base
-        exp >>= 1
-    return result
-
-
-def sums_of_two_squares(prime_factors: list[int]) -> Set[Point]:
-    """Find all representations of n as sum of two squares.
-
-    Given prime factorization, returns set of (x,y) with x^2+y^2=n and x>0, y>0.
-    """
-    # Simple implementation: iterate over possible x values
-    n = 1
-    for p in prime_factors:
-        n *= p
-
-    result: Set[Point] = set()
-    for x in range(1, isqrt(n) + 1):
-        rem = n - x * x
-        if rem < 0:
-            break
-        y = isqrt(rem)
-        if y * y == rem and y > 0:
-            result.add(Point(min(x, y), max(x, y)))
-    return result
-
-
-def all_divisors(n: int, prime_factors: list[int]) -> list[int]:
-    """Get all divisors of n given prime factorization."""
-    # Use prime factors to generate divisors
-    divisors = [1]
-    factor_counts = Counter(prime_factors)
-    
-    for prime, count in factor_counts.items():
-        new_divisors = []
-        for d in divisors:
-            power = 1
-            for _ in range(count + 1):
-                new_divisors.append(d * power)
-                power *= prime
-        divisors = new_divisors
-    
-    return sorted(set(divisors))
-
-
-def solve() -> int:
-    """Solve Problem 678."""
+def solve():
     N = 10**18
-    
-    # Precompute smallest prime factors up to cube root of N
-    limit = int(N**(1/3)) + 1
+
+    # Compute limit for smallest prime factor sieve
+    limit = int(N ** (1/3)) + 100
+
+    # Smallest prime factor sieve
     ff = list(range(limit + 1))
     for i in range(2, int(limit**0.5) + 1):
-        if ff[i] == i:
+        if ff[i] == i:  # i is prime
             for j in range(i * i, limit + 1, i):
                 if ff[j] == j:
                     ff[j] = i
 
-    # Precompute for e≥5
-    counts: dict[int, Counter[int]] = defaultdict(Counter)
-    for e in range(5, 100):  # Reasonable upper bound
-        if 1 << e >= N:
+    def is_sq(n):
+        """Check if n is a perfect square."""
+        if n < 0:
+            return False
+        r = int(math.isqrt(n))
+        return r * r == n
+
+    def sums_of_two_squares(prime_factors):
+        """
+        Find all ways to express a number (given by its prime factorization)
+        as a sum of two squares x^2 + y^2 where x <= y.
+
+        Uses Gaussian integers: for each prime p = 1 (mod 4), p = (a+bi)(a-bi).
+        For prime 2: 2 = (1+i)(1-i) = -i(1+i)^2.
+        Primes p = 3 (mod 4) must appear with even exponent.
+        """
+        # Count prime factors
+        factor_count = Counter(prime_factors)
+
+        # Check if expressible as sum of two squares
+        for p, exp in factor_count.items():
+            if p % 4 == 3 and exp % 2 == 1:
+                return set()  # Not expressible
+
+        # Gaussian factorization approach
+        # For each prime p = 1 (mod 4), find a, b such that p = a^2 + b^2
+        def find_gaussian_factor(p):
+            """Find (a, b) such that a^2 + b^2 = p for prime p = 1 (mod 4)."""
+            # Find quadratic non-residue
+            x = 2
+            while pow(x, (p - 1) // 2, p) != p - 1:
+                x += 1
+
+            # r = x^((p-1)/4) mod p is sqrt(-1) mod p
+            r = pow(x, (p - 1) // 4, p)
+
+            # Euclidean algorithm
+            sqrt_p = int(math.isqrt(p))
+            m, n = p, r
+            while n > sqrt_p:
+                m, n = n, m % n
+
+            a = n
+            b = int(math.isqrt(p - n * n))
+            return (min(a, b), max(a, b))
+
+        # Enumerate all sums of two squares using Gaussian integer products
+        # Start with (1, 0) representing 1
+        results = [(1, 0)]  # List of (real, imag) Gaussian integers
+
+        # Process prime 2: 2 = (1+i)(1-i), contributes (1+i) each time
+        # 2^k contributes rotation and scaling
+        exp_2 = factor_count.get(2, 0)
+        for _ in range(exp_2):
+            new_results = []
+            for (re, im) in results:
+                # Multiply by (1+i): (re + im*i) * (1+i) = (re - im) + (re + im)*i
+                new_results.append((re - im, re + im))
+            results = new_results
+
+        # Process primes p = 1 (mod 4)
+        for p, exp in factor_count.items():
+            if p == 2:
+                continue
+            if p % 4 == 1:
+                a, b = find_gaussian_factor(p)
+                # p = (a + bi)(a - bi)
+                # p^exp contributes products of (a+bi)^k * (a-bi)^(exp-k) for k = 0..exp
+
+                # Precompute powers of (a+bi) and (a-bi)
+                pow_pos = [(1, 0)]  # powers of (a + bi)
+                pow_neg = [(1, 0)]  # powers of (a - bi)
+                for _ in range(exp):
+                    re, im = pow_pos[-1]
+                    # (re + im*i) * (a + bi) = (re*a - im*b) + (re*b + im*a)*i
+                    pow_pos.append((re * a - im * b, re * b + im * a))
+                    re, im = pow_neg[-1]
+                    # (re + im*i) * (a - bi) = (re*a + im*b) + (-re*b + im*a)*i
+                    pow_neg.append((re * a + im * b, -re * b + im * a))
+
+                new_results = []
+                for (re, im) in results:
+                    for k in range(exp + 1):
+                        # Multiply by (a+bi)^k * (a-bi)^(exp-k)
+                        fre, fim = pow_pos[k]
+                        gre, gim = pow_neg[exp - k]
+                        # (fre + fim*i) * (gre + gim*i)
+                        pre = fre * gre - fim * gim
+                        pim = fre * gim + fim * gre
+                        # Now multiply with (re, im)
+                        nre = re * pre - im * pim
+                        nim = re * pim + im * pre
+                        new_results.append((nre, nim))
+                results = new_results
+
+            elif p % 4 == 3:
+                # p^exp where exp is even, contributes p^(exp/2) to both real and imaginary scaling
+                scale = p ** (exp // 2)
+                results = [(re * scale, im * scale) for (re, im) in results]
+
+        # Convert Gaussian integers to (x, y) pairs with x^2 + y^2 = n and x <= y
+        pairs = set()
+        for (re, im) in results:
+            x, y = abs(re), abs(im)
+            if x > y:
+                x, y = y, x
+            pairs.add((x, y))
+
+        return pairs
+
+    def get_all_divisors(n, prime_factors):
+        """Get all divisors of n given its prime factorization."""
+        factor_count = Counter(prime_factors)
+        divisors = [1]
+        for p, exp in factor_count.items():
+            new_divisors = []
+            p_power = 1
+            for _ in range(exp + 1):
+                for d in divisors:
+                    new_divisors.append(d * p_power)
+                p_power *= p
+            divisors = new_divisors
+        return divisors
+
+    # Precompute sums a^e + b^e for e >= 5
+    counts = {}
+    for e in range(5, 64):
+        if (1 << e) >= N:
             break
-        pows: list[int] = []
+        pows = []
         a = 1
         while True:
-            power = pow(a, e)
-            if power >= N:
+            ae = a ** e
+            if ae >= N:
                 break
-            pows.append(power)
+            pows.append(ae)
             a += 1
-        
+
+        cfs = Counter()
         for i in range(len(pows)):
             for j in range(i + 1, len(pows)):
                 cf = pows[i] + pows[j]
                 if cf <= N:
-                    counts[e][cf] += 1
+                    cfs[cf] += 1
+        counts[e] = cfs
 
     ans = 0
-    
-    for f in range(3, 100):  # Reasonable upper bound
-        if pow(2, f) > N:
-            break
+
+    # Iterate over all c^f where f >= 3 and c^f <= N
+    f = 3
+    while (2 ** f) <= N:
         c = 2
         while True:
-            cf = pow(c, f)
+            cf = c ** f
             if cf > N:
                 break
 
-            # Get prime factors
-            unsorted_prime_factors: list[int] = []
+            # Get prime factorization of c^f (which is just factors of c, each repeated f times)
+            prime_factors = []
             cc = c
             while cc > 1:
-                prime = ff[cc]
+                p = ff[cc]
                 for _ in range(f):
-                    unsorted_prime_factors.append(prime)
-                while cc % prime == 0:
-                    cc //= prime
+                    prime_factors.append(p)
+                cc //= p
 
-            # e=2: sums of two squares
-            sums = sums_of_two_squares(unsorted_prime_factors)
-            for p in sums:
-                if p.x > 0 and p.x < p.y:
+            # e = 2: Count sums of two squares
+            pairs = sums_of_two_squares(prime_factors)
+            for (x, y) in pairs:
+                if x > 0 and x < y:
                     ans += 1
 
-            # e=3: cubic sums
-            divisors = all_divisors(cf, unsorted_prime_factors)
+            # e = 3: Count sums of two cubes
+            # c^f = a^3 + b^3 = (a+b)(a^2 - ab + b^2)
+            # For divisor d = a + b, we need a^2 - ab + b^2 = cf / d
+            # Let s = a + b = d, then a^2 + b^2 = s^2 - 2ab
+            # a^2 - ab + b^2 = s^2 - 3ab = cf/d
+            # So ab = (s^2 - cf/d) / 3 = (d^2 - cf/d) / 3
+            # For real a, b: discriminant = s^2 - 4ab = d^2 - 4(d^2 - cf/d)/3 = (4cf/d - d^2)/3 >= 0
+            # So 4cf/d >= d^2, i.e., d^3 <= 4cf
+            # Also need (4cf/d - d^2) to be divisible by 3 and be a perfect square
+            # And sqrt(...) < d for a < b
+            divisors = get_all_divisors(cf, prime_factors)
             for d in divisors:
                 if d * d * d >= 4 * cf:
                     continue
-                disc = 4 * cf // d - sq(d)
-                if disc < 3 * sq(d) and is_sq(3 * disc):
+                disc = 4 * cf // d - d * d
+                # Check: disc < 3 * d^2 and 3 * disc is a perfect square
+                if disc < 3 * d * d and is_sq(3 * disc):
                     ans += 1
 
-            # e=4: sums of two fourth powers (filter sums of two squares)
-            for p in sums:
-                if p.x > 0 and p.x < p.y and is_sq(p.x) and is_sq(p.y):
+            # e = 4: Count sums of two fourth powers
+            # Filter sums of two squares where both components are squares
+            for (x, y) in pairs:
+                if x > 0 and x < y and is_sq(x) and is_sq(y):
                     ans += 1
 
-            # e≥5: use precomputed counts
-            for e in range(5, 100):
-                if pow(2, e) >= cf:
+            # e >= 5: Lookup precomputed
+            for e in range(5, 64):
+                if (2 ** e) >= cf:
                     break
-                if e in counts:
+                if e in counts and cf in counts[e]:
                     ans += counts[e][cf]
 
             c += 1
+        f += 1
 
     return ans
 
 
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
     print(result)
     return result

@@ -1,109 +1,176 @@
 """Project Euler Problem 784: Reciprocal Pairs.
 
 A pair (p, q) is a reciprocal pair if there exists an integer r < p such that
-r ≡ p⁻¹ (mod q) and r ≡ q⁻¹ (mod p). Find the sum of p+q for all reciprocal
-pairs (p,q) with p ≤ N.
+r = p^(-1) (mod q) and r = q^(-1) (mod p). Find the sum of p+q for all reciprocal
+pairs (p,q) with p <= N.
 
-There exist integers a,b such that rp = 1 + qa and rq = 1 + pb, so
-rp - qa = rq - pb => p(r + b) = q(r + a). Since (p,q)=1, we must have
-q|r+b => r+b=kq for some integer k => rq = 1 + p(kq-r) => r(p+q) = pqk+1.
-Since r < p, the left hand side is at most p²+pq < 2pq, so k=1 and
-r(p+q) = pq => (p-r)(q-r) = r²-1. So we can iterate over all r, and
-enumerate possible (p,q) from the factors of r²-1.
+Key insight: For valid (p,q), we need p + q | p^2 - 1.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from typing import List, Set
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-from sympy import factorint, primerange
+#define N 2000000
 
+int *spf;  // smallest prime factor
 
-def pre_ff(limit: int) -> List[int]:
-    """Precompute smallest prime factor."""
-    ff = [0] * (limit + 1)
-    for i in range(2, limit + 1):
-        if ff[i] == 0:
-            ff[i] = i
-            for j in range(2 * i, limit + 1, i):
-                if ff[j] == 0:
-                    ff[j] = i
-    return ff
+void compute_spf() {
+    spf = (int*)calloc(N + 2, sizeof(int));
+    for (int i = 2; i <= N + 1; i++) {
+        if (spf[i] == 0) {
+            spf[i] = i;
+            if ((long long)i * i <= N + 1) {
+                for (int j = i * i; j <= N + 1; j += i) {
+                    if (spf[j] == 0) spf[j] = i;
+                }
+            }
+        }
+    }
+}
 
+// Generate all divisors of n using SPF
+int get_divisors(int n, long long *divs) {
+    if (n <= 1) {
+        divs[0] = 1;
+        return 1;
+    }
 
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
+    // Factor n
+    int primes[32], exps[32], nf = 0;
+    int temp = n;
+    while (temp > 1) {
+        int p = spf[temp];
+        primes[nf] = p;
+        exps[nf] = 0;
+        while (temp % p == 0) {
+            exps[nf]++;
+            temp /= p;
+        }
+        nf++;
+    }
 
+    // Generate divisors recursively
+    int count = 0;
+    int idx[32] = {0};
 
-def prime_factor(n: int) -> Set[int]:
-    """Return set of prime factors of n."""
-    factors = set()
-    temp = n
-    for p in primerange(2, int(n**0.5) + 1):
-        if temp % p == 0:
-            factors.add(p)
-            while temp % p == 0:
-                temp //= p
-    if temp > 1:
-        factors.add(temp)
-    return factors
+    while (1) {
+        long long d = 1;
+        for (int i = 0; i < nf; i++) {
+            for (int j = 0; j < idx[i]; j++) {
+                d *= primes[i];
+            }
+        }
+        divs[count++] = d;
 
+        int i = 0;
+        while (i < nf) {
+            idx[i]++;
+            if (idx[i] <= exps[i]) break;
+            idx[i] = 0;
+            i++;
+        }
+        if (i == nf) break;
+    }
 
-def all_divisors(n: int, exclude_primes: Set[int] = None) -> List[int]:
-    """Return all divisors of n, optionally excluding those divisible by exclude_primes."""
-    if exclude_primes is None:
-        exclude_primes = set()
+    return count;
+}
 
-    divisors = []
-    for i in range(1, int(n**0.5) + 1):
-        if n % i == 0:
-            # Check if divisible by excluded primes
-            include_i = True
-            for p in exclude_primes:
-                if i % p == 0:
-                    include_i = False
-                    break
-            if include_i:
-                divisors.append(i)
+long long gcd(long long a, long long b) {
+    while (b) {
+        long long t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
 
-            j = n // i
-            if j != i:
-                include_j = True
-                for p in exclude_primes:
-                    if j % p == 0:
-                        include_j = False
-                        break
-                if include_j:
-                    divisors.append(j)
+// Sort and deduplicate
+int cmp_ll(const void *a, const void *b) {
+    long long x = *(long long*)a;
+    long long y = *(long long*)b;
+    return (x > y) - (x < y);
+}
 
-    return sorted(divisors)
+int main() {
+    compute_spf();
 
+    long long ans = 0;
 
-def solve() -> int:
-    """Solve Problem 784."""
-    N = 2 * 10**6
-    ff = pre_ff(N + 1)
+    long long *divs = (long long*)malloc(100000 * sizeof(long long));
+    long long *small_divs = (long long*)malloc(100000 * sizeof(long long));
 
-    ans = 0
-    for r in range(2, N + 1):
-        n = sq(r) - 1
-        exclude_primes = prime_factor(r - 1).union(prime_factor(r + 1))
-        for d in all_divisors(n, exclude_primes):
-            p = d + r
-            q = n // d + r
-            if p < q and p <= N:
-                ans += p + q
+    for (int p = 2; p <= N; p++) {
+        long long m = (long long)(p - 1) * (p + 1);  // p^2 - 1
 
-    return ans
+        long long *d1 = divs;
+        long long *d2 = divs + 5000;
 
+        int nd1 = get_divisors(p - 1, d1);
+        int nd2 = get_divisors(p + 1, d2);
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+        // Collect all small divisors d of m with d < p
+        int nsmall = 0;
+        for (int i = 0; i < nd1; i++) {
+            for (int j = 0; j < nd2; j++) {
+                long long d = d1[i] * d2[j];
+                if (d < p && m % d == 0) {  // d divides m
+                    small_divs[nsmall++] = d;
+                }
+            }
+        }
+
+        // Sort and deduplicate
+        qsort(small_divs, nsmall, sizeof(long long), cmp_ll);
+        int nunique = 0;
+        for (int i = 0; i < nsmall; i++) {
+            if (i == 0 || small_divs[i] != small_divs[i-1]) {
+                small_divs[nunique++] = small_divs[i];
+            }
+        }
+
+        // For each unique small divisor d, check if D = m/d > 2p
+        for (int i = 0; i < nunique; i++) {
+            long long d = small_divs[i];
+            long long D = m / d;
+            if (D > 2 * (long long)p) {
+                long long q = D - p;
+                if (gcd(p, q) == 1) {
+                    ans += p + q;
+                }
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+
+    free(spf);
+    free(divs);
+    free(small_divs);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return int(result)
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

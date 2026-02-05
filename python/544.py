@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from typing import Dict, List, Tuple
 
-sys.setrecursionlimit(10000)
+sys.setrecursionlimit(20000)
 
 
 def lagrange_extrapolation(values: List[int], x: int, mod: int) -> int:
@@ -64,9 +64,26 @@ def solve() -> int:
     cache: Dict[Tuple[int, Tuple[int, ...]], List[int]] = {}
     F_SIZE = 2 * R * C + 5
 
-    def F(r: int, last_colors: List[int], max_color: int) -> List[int]:
-        """Compute F for given state."""
-        key = (r, tuple(last_colors))
+    def F(r: int, colors: List[int]) -> List[int]:
+        """Compute F for given state.
+
+        colors: list of colors used so far (may be longer than R, will be trimmed)
+        Returns: array where F[n] = number of ways with n colors
+        """
+        # Normalize: keep only last R colors, relabel starting from 1
+        lastColors = []
+        mapping = [0] * (2 * R + 1)  # mapping[old_color] = new_color
+        currMaxColor = 0
+        start = max(len(colors) - R, 0)
+        for i in range(start, len(colors)):
+            color = colors[i]
+            if mapping[color] == 0:
+                currMaxColor += 1
+                mapping[color] = currMaxColor
+            lastColors.append(mapping[color])
+
+        maxColor = currMaxColor
+        key = (r, tuple(lastColors))
 
         if key in cache:
             return cache[key]
@@ -78,46 +95,33 @@ def solve() -> int:
             cache[key] = F_arr
             return F_arr
 
-        for color in range(1, max_color + 2):
+        for color in range(1, maxColor + 2):
             # Check constraints
-            if r % R != 0 and len(last_colors) > 0 and color == last_colors[-1]:
+            # Can't match previous cell (horizontal neighbor)
+            if r % R != 0 and len(lastColors) > 0 and color == lastColors[-1]:
                 continue
-            if len(last_colors) >= R and color == last_colors[len(last_colors) - R]:
+            # Can't match cell R positions back (vertical neighbor)
+            if len(lastColors) >= R and color == lastColors[len(lastColors) - R]:
                 continue
 
-            new_last = list(last_colors)
-            new_last.append(color)
-
-            # Normalize: mapping colors starting from 1
-            new_max = max_color
-            if color == max_color + 1:
-                new_max = max_color + 1
-
-            # For the next call, we only need the last R colors
-            trimmed = new_last[max(0, len(new_last) - R):]
-            # Re-normalize
-            mapping = {}
-            curr = 0
-            norm_colors = []
-            for c in trimmed:
-                if c not in mapping:
-                    curr += 1
-                    mapping[c] = curr
-                norm_colors.append(mapping[c])
-
-            next_F = F(r + 1, norm_colors, curr)
+            # Add this color and recurse
+            newColors = lastColors + [color]
+            nextF = F(r + 1, newColors)
 
             for n_idx in range(F_SIZE):
-                choices = (n_idx - color + 1) if color == max_color + 1 else 1
-                F_arr[n_idx] = (F_arr[n_idx] + choices * next_F[n_idx]) % M
+                # If using a new color (color == maxColor + 1), we have n - color + 1 choices
+                choices = (n_idx - color + 1) if color == maxColor + 1 else 1
+                F_arr[n_idx] = (F_arr[n_idx] + choices * nextF[n_idx]) % M
 
         cache[key] = F_arr
         return F_arr
 
-    F_result = F(0, [], 0)
+    F_result = F(0, [])
 
-    # Compute cumulative sum values at points 1, 2, ..., R*C
-    n_points = R * C
+    # Compute cumulative sum values at points 1, 2, ..., R*C+2
+    # The chromatic polynomial has degree R*C, so the sum has degree R*C+1
+    # We need R*C+2 sample points for exact interpolation
+    n_points = R * C + 2
     sum_values = []
     for k in range(1, n_points + 1):
         S = 0

@@ -2,17 +2,16 @@
 
 Find the number of ways that N! can be written as the product of K distinct
 positive integers.
+
+Uses inclusion-exclusion over partitions of K, following the Java reference.
 """
 
 from __future__ import annotations
-
-from collections import Counter
-from itertools import combinations_with_replacement
 from math import isqrt
-from typing import Dict, List, Tuple
+from functools import lru_cache
 
 
-def sieve_primes(limit: int) -> List[int]:
+def sieve_primes(limit: int) -> list[int]:
     """Sieve of Eratosthenes."""
     is_prime = [True] * (limit + 1)
     is_prime[0] = is_prime[1] = False
@@ -33,17 +32,6 @@ def num_factors_in_factorial(n: int, p: int) -> int:
     return count
 
 
-def nCr(n: int, k: int, mod: int) -> int:
-    """Binomial coefficient modulo mod."""
-    if k < 0 or k > n:
-        return 0
-    result = 1
-    for i in range(min(k, n - k)):
-        result = (result * (n - i)) % mod
-        result = (result * pow(i + 1, mod - 2, mod)) % mod
-    return result
-
-
 def solve() -> int:
     """Solve Problem 495."""
     N = 10_000
@@ -53,26 +41,87 @@ def solve() -> int:
     primes = sieve_primes(N)
     exponents = [num_factors_in_factorial(N, p) for p in primes]
 
-    # Inclusion-exclusion over partitions of K
+    # Precompute factorials and inverse factorials
+    fact = [1] * (K + 1)
+    for i in range(1, K + 1):
+        fact[i] = fact[i - 1] * i % M
+    inv_fact = [1] * (K + 1)
+    inv_fact[K] = pow(fact[K], M - 2, M)
+    for i in range(K - 1, -1, -1):
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) % M
+
+    # Precompute inverses of 1..K
+    inv = [0] * (K + 1)
+    inv[1] = 1
+    for i in range(2, K + 1):
+        inv[i] = (M - M // i) * inv[M % i] % M
+
+    # Memoized function f(c) returns array where f(c)[e] = number of solutions
+    # to c[0]*a_0 + c[1]*a_1 + ... = e, with a_i >= 0
+    cache = {}
+
+    def f(c: tuple[int, ...]) -> list[int]:
+        if c in cache:
+            return cache[c]
+
+        result = [0] * (N + 1)
+        if len(c) == 0:
+            result[0] = 1
+            cache[c] = result
+            return result
+
+        # Compute from f(c[:-1])
+        prev_f = f(c[:-1])
+        last_c = c[-1]
+
+        for i in range(N + 1):
+            result[i] = prev_f[i]
+            if i >= last_c:
+                result[i] = (result[i] + result[i - last_c]) % M
+
+        cache[c] = result
+        return result
+
+    # parity: (-1)^(c_i - 1) = -1 if c_i even, 1 if c_i odd
+    def parity(c_i: int) -> int:
+        return 1 if c_i % 2 == 1 else -1
+
     ans = 0
-    # Simplified: use stars and bars for each prime
-    for partition in combinations_with_replacement(range(1, K + 1), K):
-        # Count distinct partitions
-        counts = Counter(partition)
-        ways = 1
-        for exp in exponents:
-            # Ways to distribute exp factors among K groups
-            # Simplified calculation
-            ways = (ways * nCr(exp + K - 1, K - 1, M)) % M
 
-        # Inclusion-exclusion coefficient
-        coeff = 1
-        for count_val, mult in counts.items():
-            if count_val > 1:
-                coeff = coeff * pow(-1, count_val - 1, M) % M
-                coeff = (coeff * pow(count_val, mult, M)) % M
+    # Generate all partitions of K (non-decreasing sequences summing to K)
+    def helper(min_val: int, remaining: int, c: list[int]):
+        nonlocal ans
 
-        ans = (ans + ways * coeff) % M
+        if remaining == 0:
+            c_tuple = tuple(c)
+            f_c = f(c_tuple)
+
+            # Product over all exponents
+            res = 1
+            for e in exponents:
+                res = res * f_c[e] % M
+
+            # Multiply by -parity(c_i) * inv(c_i) for each c_i
+            # parity(c_i) = (-1)^c_i, so -parity(c_i) = (-1)^(c_i+1)
+            for c_i in c:
+                sign = 1 if (c_i + 1) % 2 == 0 else M - 1  # (-1)^(c_i+1) mod M
+                res = res * sign % M * inv[c_i] % M
+
+            # Multiply by inv_fact of frequency of each value in c
+            from collections import Counter
+            freq = Counter(c)
+            for count in freq.values():
+                res = res * inv_fact[count] % M
+
+            ans = (ans + res) % M
+            return
+
+        for coeff in range(min_val, remaining + 1):
+            c.append(coeff)
+            helper(coeff, remaining - coeff, c)
+            c.pop()
+
+    helper(1, K, [])
 
     return ans
 

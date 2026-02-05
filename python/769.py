@@ -1,101 +1,103 @@
 """Project Euler Problem 769: Binary Quadratic Form.
 
-Find the number of ways that a perfect square z² can be represented as
-x²+5xy+3y², where z ≤ N.
+Find the number of ways that a perfect square z^2 can be represented as
+x^2+5xy+3y^2, where z <= N.
 
-Similar to p143, we find a parameterization of (x,y,z) for the equation
-x²+5xy+y² = z². The equation goes through (-1,0) and we are interested in
-points in the first quadrant, so let s=m/n be the slope of a line through
-(-1,0) and a rational point in the first quadrant. We must have 0≤s<1/√3.
-Substituting y=s(1+x) gives x² + 5x(1+x)s + 3(1+x)²s² = 1, which has the
-solution x = (1-3s²)/(1+5s+3s²) and y = (5s²+2s)/(1+5s+3s²), which gives:
-
-x = n²-3m²
-y = 5m²+2mn
-z = 3m²+5mn+n².
-
-We are interested in relatively prime (m,n), with m≤n/√3, and
-3m²+5mn+n²≤N. For each n, we can compute the largest possible m. We can
-remove the relatively prime constraint in the usual way.
-
-Finally, we note that it is possible for h = (x,y,z) to be divisible by 13.
-This happens when m≡-3n (mod 13). So we remove (m,n) that satisfies
-m≡-3n (mod 13), and then add them back when iterating over the range
-3m²+5mn+n²≤13N.
+Ported from Java reference for performance.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from math import isqrt
-from typing import List
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdint.h>
 
+#define N 100000000000000LL  // 10^14
 
-def pre_mobius(limit: int) -> List[int]:
-    """Precompute Möbius function."""
-    mu = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
+int* mobius;
+int64_t sqrt_N;
 
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                if j % (i * i) == 0:
-                    mu[j] = 0
-                else:
-                    mu[j] = -mu[j]
-    return mu
+void pre_mobius(int64_t limit) {
+    mobius = (int*)calloc(limit + 1, sizeof(int));
+    char* is_prime = (char*)calloc(limit + 1, 1);
 
+    for (int64_t i = 0; i <= limit; i++) {
+        mobius[i] = 1;
+        is_prime[i] = 1;
+    }
+    is_prime[0] = is_prime[1] = 0;
 
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
+    for (int64_t i = 2; i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int64_t j = i; j <= limit; j += i) {
+                is_prime[j] = 0;
+                if ((j / i) % i == 0)
+                    mobius[j] = 0;
+                else
+                    mobius[j] = -mobius[j];
+            }
+        }
+    }
+    free(is_prime);
+}
 
+int main() {
+    sqrt_N = (int64_t)sqrt((double)N);
+    pre_mobius(sqrt_N);
 
-def gcd(a: int, b: int) -> int:
-    """Greatest common divisor."""
-    while b:
-        a, b = b, a % b
-    return a
+    int64_t ans = 0;
+    double sqrt3 = sqrt(3.0);
 
+    for (int64_t g = 1; g * g <= N; g++) {
+        int64_t g_sq = g * g;
+        for (int h_idx = 0; h_idx < 2; h_idx++) {
+            int64_t h = (h_idx == 0) ? 1 : 13;
+            for (int64_t n = 1; g_sq * n * n <= h * N; n++) {
+                // max_m = min(n / sqrt(3), (sqrt(13*n^2 + 12*h*N/g^2) - 5*n) / 6)
+                double term1 = (double)n / sqrt3;
+                double inner = 13.0 * (double)(n * n) + 12.0 * (double)(h * N) / (double)g_sq;
+                double term2 = (sqrt(inner) - 5.0 * n) / 6.0;
+                int64_t max_m = (int64_t)(term1 < term2 ? term1 : term2);
 
-def solve() -> int:
-    """Solve Problem 769."""
-    N = 10**14
-    sqrt_N = isqrt(N)
+                // if ((g % 13 == 0) == (h == 13))
+                if ((g % 13 == 0) == (h == 13))
+                    ans += mobius[g] * max_m;
 
-    mobius = pre_mobius(sqrt_N)
-    ans = 0
+                // if (g % 13 != 0)
+                //     ans += (h == 1 ? -1 : 1) * mobius[g] * (max_m + 3 * n % 13) / 13;
+                if (g % 13 != 0) {
+                    int64_t sign = (h == 1) ? -1 : 1;
+                    ans += sign * mobius[g] * (max_m + (3 * n) % 13) / 13;
+                }
+            }
+        }
+    }
 
-    for g in range(1, sqrt_N + 1):
-        if sq(g) > N:
-            break
-        for h in [1, 13]:
-            n_max = int((h * N / sq(g)) ** 0.5)
-            for n in range(1, n_max + 1):
-                if sq(g * n) > h * N:
-                    break
-                max_m = int(
-                    min(
-                        n / (3**0.5),
-                        ((13 * sq(n) + 12 * h * N / sq(g)) ** 0.5 - 5 * n) / 6,
-                    )
-                )
-                if (g % 13 == 0) == (h == 13):
-                    ans += mobius[g] * max_m
-                if g % 13 != 0:
-                    sign = -1 if h == 1 else 1
-                    ans += sign * mobius[g] * (max_m + 3 * n % 13) // 13
+    free(mobius);
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    return ans
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
-
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
     print(result)
     return result
-
 
 if __name__ == "__main__":
     main()

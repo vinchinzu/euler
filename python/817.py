@@ -1,71 +1,159 @@
-"""Project Euler Problem 817: Digits in Squares.
+"""Project Euler Problem 817: Digits in Squares."""
 
-Let M(n,d) be the smallest integer m such that m² in base n contains the
-digit d. Find Σ_{d=1}^N M(P, P-D).
+import subprocess
+import tempfile
+import os
 
-If d is a quadratic residue where d=s², then M(p,d) is clearly s or p-s,
-whichever is smaller. Otherwise, it will almost certainly appear in the
-"tens" digit first. So we iterate over possible "hundreds" digits h
-starting from 0, determining whether d appears by checking if
-√(h + d*p) ≤ ⌊√(h + (d+1)p - 1)⌋.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-from __future__ import annotations
+typedef __int128 i128;
+typedef int64_t i64;
 
-from math import isqrt
+#define N 100000
+#define P 1000000007LL
 
+// Check if n is a quadratic residue mod p using Euler's criterion
+int is_square_mod(i64 n, i64 p) {
+    n = n % p;
+    if (n == 0) return 1;
+    // n^((p-1)/2) == 1 mod p iff n is QR
+    i64 exp = (p - 1) / 2;
+    i128 result = 1;
+    i128 base = n;
+    while (exp > 0) {
+        if (exp & 1) result = (result * base) % p;
+        base = (base * base) % p;
+        exp >>= 1;
+    }
+    return result == 1;
+}
 
-def is_square_mod(n: int, mod: int) -> bool:
-    """Check if n is a quadratic residue modulo mod."""
-    for i in range(mod):
-        if (i * i) % mod == n % mod:
-            return True
-    return False
+// Tonelli-Shanks algorithm to find sqrt of n mod p
+i64 sqrt_mod(i64 n, i64 p) {
+    n = n % p;
+    if (n == 0) return 0;
 
+    // p = 10^9 + 7 = 1 mod 4, so we need Tonelli-Shanks
+    // Actually p-1 = 10^9 + 6 = 2 * 500000003
+    // So Q = 500000003, S = 1
+    i64 Q = (p - 1) / 2;
+    int S = 1;
 
-def sqrt_mod(n: int, mod: int) -> int:
-    """Find square root modulo mod (if exists)."""
-    for i in range(mod):
-        if (i * i) % mod == n % mod:
-            return i
-    return -1
+    // Find a quadratic non-residue z
+    i64 z = 2;
+    while (is_square_mod(z, p)) z++;
 
+    i64 M = S;
+    i128 c = 1;
+    {
+        i128 base = z;
+        i64 exp = Q;
+        while (exp > 0) {
+            if (exp & 1) c = (c * base) % p;
+            base = (base * base) % p;
+            exp >>= 1;
+        }
+    }
 
-def M(p: int, d: int) -> int:
-    """Compute M(p, d)."""
-    if is_square_mod(d, p):
-        sqrt_val = sqrt_mod(d, p)
-        return min(sqrt_val, p - sqrt_val)
+    i128 t = 1;
+    {
+        i128 base = n;
+        i64 exp = Q;
+        while (exp > 0) {
+            if (exp & 1) t = (t * base) % p;
+            base = (base * base) % p;
+            exp >>= 1;
+        }
+    }
 
-    h = 0
-    while True:
-        # Check if there's a square in [h + d*p, h + (d+1)*p - 1]
-        low_bound = h + d * p
-        high_bound = h + (d + 1) * p - 1
-        sqrt_high = isqrt(high_bound)
-        if sqrt_high * sqrt_high >= low_bound:
-            return sqrt_high
-        h += p * p
+    i128 R = 1;
+    {
+        i128 base = n;
+        i64 exp = (Q + 1) / 2;
+        while (exp > 0) {
+            if (exp & 1) R = (R * base) % p;
+            base = (base * base) % p;
+            exp >>= 1;
+        }
+    }
 
+    while (1) {
+        if (t == 1) return (i64)R;
 
-def solve() -> int:
-    """Solve Problem 817."""
-    N = 100_000
-    P = 10**9 + 7
+        // Find i such that t^(2^i) = 1
+        int i = 0;
+        i128 temp = t;
+        while (temp != 1) {
+            temp = (temp * temp) % p;
+            i++;
+        }
 
-    ans = 0
-    for d in range(1, N + 1):
-        ans += M(P, P - d)
+        // b = c^(2^(M-i-1))
+        i128 b = c;
+        for (int j = 0; j < M - i - 1; j++) {
+            b = (b * b) % p;
+        }
 
-    return ans
+        M = i;
+        c = (b * b) % p;
+        t = (t * c) % p;
+        R = (R * b) % p;
+    }
+}
 
+// isqrt for i128
+i64 isqrt128(i128 n) {
+    if (n <= 1) return (i64)n;
+    i64 x = (i64)sqrtl((long double)n);
+    while ((i128)x * x > n) x--;
+    while ((i128)(x+1) * (x+1) <= n) x++;
+    return x;
+}
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+// M(p, d) = smallest m such that m^2 in base p contains digit d
+i64 M_func(i64 p, i64 d) {
+    if (is_square_mod(d, p)) {
+        i64 sq = sqrt_mod(d, p);
+        return sq < p - sq ? sq : p - sq;
+    }
 
+    // Otherwise, check "tens" digit: find smallest m such that floor(m^2/p) mod p == d
+    // m^2 in [h + d*p, h + (d+1)*p - 1] for some h = k*p^2
+    for (i128 h = 0; ; h += (i128)p * p) {
+        i128 low = h + (i128)d * p;
+        i128 high = h + (i128)(d + 1) * p - 1;
+        i64 sq_high = isqrt128(high);
+        if ((i128)sq_high * sq_high >= low) {
+            return sq_high;
+        }
+    }
+}
+
+int main() {
+    i64 ans = 0;
+    for (int d = 1; d <= N; d++) {
+        ans += M_func(P, P - d);
+    }
+    printf("%lld\n", (long long)ans);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

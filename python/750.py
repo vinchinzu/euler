@@ -14,54 +14,45 @@ import tempfile
 import os
 
 
-def solve() -> int:
+def solve(n: int = 976) -> int:
     """Solve Problem 750 using compiled C for O(N^3) DP."""
-    c_code = r"""
+    c_code = f"""
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define N 976
+#define N {n}
 
-static long long dp[N][N+1];  /* dp[s][e] = min cost to merge cards s..e-1 */
-static int pos[N];            /* pos[v] = position of card with value v+1 */
+static long long dp[N][N+1];
+static int pos[N];
 
-int main(void) {
-    /* Generate card positions: card at position n has value 3^n mod (N+1) */
-    /* pos[v] = position of card v (0-indexed: card value v+1 at pos[v]) */
+int main(void) {{
     long long p = 1;
     int i, s, length, mid, end;
-    for (i = 0; i < N; i++) {
+    for (i = 0; i < N; i++) {{
         p = (p * 3) % (N + 1);
-        pos[(int)p - 1] = i;  /* card value p is at position i */
-    }
+        pos[(int)p - 1] = i;
+    }}
 
-    /* Initialize DP */
     memset(dp, 0, sizeof(dp));
 
-    /* Interval DP: dp[s][s+len] for increasing lengths */
-    for (length = 2; length <= N; length++) {
-        for (s = 0; s <= N - length; s++) {
+    for (length = 2; length <= N; length++) {{
+        for (s = 0; s <= N - length; s++) {{
             end = s + length;
             long long best = -1;
-            for (mid = s + 1; mid < end; mid++) {
-                /* Cost to merge [s..mid) and [mid..end) plus distance between
-                   the "top" cards of each sub-stack. The top of [s..mid) is
-                   card mid-1 (0-indexed value), and top of [mid..end) is
-                   card end-1. When we merge, we move one stack to the other.
-                   The cost is |pos[mid-1] - pos[end-1]| */
+            for (mid = s + 1; mid < end; mid++) {{
                 long long cost = dp[s][mid] + dp[mid][end]
                     + abs(pos[mid - 1] - pos[end - 1]);
                 if (best < 0 || cost < best)
                     best = cost;
-            }
+            }}
             dp[s][end] = best;
-        }
-    }
+        }}
+    }}
 
-    printf("%lld\n", dp[0][N]);
+    printf("%lld\\n", dp[0][N]);
     return 0;
-}
+}}
 """
     with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
         f.write(c_code)

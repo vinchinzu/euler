@@ -1,83 +1,110 @@
-"""Project Euler Problem 635: Subset sums.
+"""Project Euler Problem 635: Subset sums."""
 
-Let A_q(n) be the number of subsets of {1, 2, ... q*n} with n elements whose
-sum is divisible by n, and let S_q(L) = Σ A_q(p) for all primes p≤L. Find
-S_2(N) + S_3(N).
+import subprocess
+import tempfile
+import os
 
-If q < n, then there are q "special" subsets that are cyclic permutations of
-each other: {1, n+1, 2n+1, ...}, {2, n+2, 2n+2, ...} ... {q, n+q, 2n+q, ...}.
-By symmetry, all other subsets of n elements can be rotated by adding each
-element to 0, 1, 2, ... n-1 (mod n) to get all sums (mod n). Adjusting for the
-q special subsets, this means that A_q(n) = (nCr(q*n, n) + q(n-1)) / n.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 
-from __future__ import annotations
+#define N 100000000
+#define M 1000000009LL
 
-from sympy import primerange
+// Sieve for primes
+unsigned char *sieve;
 
+void init_sieve(int n) {
+    sieve = calloc((n + 7) / 8, 1);
+    sieve[0] |= 3; // 0 and 1 not prime
+    for (int i = 2; i * i <= n; i++) {
+        if (!(sieve[i >> 3] & (1 << (i & 7)))) {
+            for (int j = i * i; j <= n; j += i)
+                sieve[j >> 3] |= (1 << (j & 7));
+        }
+    }
+}
 
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
+int is_prime(int n) {
+    if (n < 2) return 0;
+    return !(sieve[n >> 3] & (1 << (n & 7)));
+}
 
+long long mod_pow(long long base, long long exp, long long mod) {
+    long long result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = (__int128)result * base % mod;
+        exp >>= 1;
+        base = (__int128)base * base % mod;
+    }
+    return result;
+}
 
-def factorial(n: int, mod: int) -> int:
-    """Compute n! modulo mod."""
-    result = 1
-    for i in range(1, n + 1):
-        result = (result * i) % mod
-    return result
+long long mod_inv(long long a, long long mod) {
+    return mod_pow(a, mod - 2, mod);
+}
 
+int main() {
+    init_sieve(N);
 
-def A(q: int, n: int, factorials: dict[int, int], M: int) -> int:
-    """Compute A_q(n)."""
-    if n == 2:
-        return (q * (q - 1)) % M
-    num = factorials[q * n]
-    den = (factorials[n] * factorials[(q - 1) * n]) % M
-    term1 = (num * mod_inverse(den, M)) % M
-    term2 = (q * (n - 1)) % M
-    return ((term1 + term2) * mod_inverse(n, M)) % M
+    // Precompute factorials up to 3*N
+    long long *fact = malloc((3LL * N + 1) * sizeof(long long));
+    fact[0] = 1;
+    for (long long i = 1; i <= 3LL * N; i++) {
+        fact[i] = (__int128)fact[i-1] * i % M;
+    }
 
+    long long ans = 0;
 
-def solve() -> int:
-    """Solve Problem 635."""
-    N = 10**8
-    M = 10**9 + 9
+    for (int p = 2; p < N; p++) {
+        if (!is_prime(p)) continue;
 
-    # Precompute factorials
-    max_fact = 3 * N
-    factorials = {}
-    fact = 1
-    for i in range(max_fact + 1):
-        factorials[i] = fact
-        fact = (fact * (i + 1)) % M if i < max_fact else fact
+        // A(2, p) = (C(2p, p) + 2(p-1)) / p
+        // A(3, p) = (C(3p, p) + 3(p-1)) / p
 
-    ans = 0
-    primes = list(primerange(2, N))
-    for p in primes:
-        ans = (ans + A(2, p, factorials, M) + A(3, p, factorials, M)) % M
-    return ans
+        if (p == 2) {
+            // A(2, 2) = 2 * 1 = 2
+            // A(3, 2) = 3 * 2 = 6
+            ans = (ans + 2 + 6) % M;
+        } else {
+            // A(2, p)
+            long long num2 = fact[2LL * p];
+            long long den2 = (__int128)fact[p] * fact[p] % M;
+            long long term1_2 = (__int128)num2 * mod_inv(den2, M) % M;
+            long long term2_2 = (2LL * (p - 1)) % M;
+            long long a2 = (__int128)(term1_2 + term2_2) * mod_inv(p, M) % M;
 
+            // A(3, p)
+            long long num3 = fact[3LL * p];
+            long long den3 = (__int128)fact[p] * fact[2LL * p] % M;
+            long long term1_3 = (__int128)num3 * mod_inv(den3, M) % M;
+            long long term2_3 = (3LL * (p - 1)) % M;
+            long long a3 = (__int128)(term1_3 + term2_3) * mod_inv(p, M) % M;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
+            ans = (ans + a2 + a3) % M;
+        }
+    }
+
+    printf("%lld\n", ans);
+
+    free(fact);
+    free(sieve);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-o', exe, c_file], check=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     print(result)
-    return result
-
 
 if __name__ == "__main__":
-    main()
+    solve()

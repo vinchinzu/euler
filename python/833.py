@@ -1,169 +1,208 @@
 """Project Euler Problem 833: Triangular Square.
 
-Find the sum of c for all integer triples (a,b,c) such that c≤N, a<b, and
-the product of the triangular numbers T_a and T_b is a perfect square, c².
-
-Fix a. Then we need to find b such that b(b+1) = a(a+1)k², where
-c=a(a+1)k/2. The equation can be written as
-
-(2b+1)² - a(a+1) (2k)² = 1,
-
-which is a Pell equation with a "trivial" solution at (2b+1,2k) = (2a+1,2)
-(so b=a, k=1). If that's the base solution, we can find all solutions
-using the theory of Pell equations.
-
-However, that might not be base solution if a(a+1) isn't square-free. But
-if it's not, it must be a solution generated from a smaller a. So for
-each set of solutions of a Pell equation, we take all pairs of two
-solutions (2k1, 2k2), where c=D(2k1)(2k2)/8. But to avoid
-double-counting when we iterate over larger a, we only take pairs of
-solutions where the indices of the two solutions are relatively prime.
-
-The above can be done for each a, but the final values of c are
-polynomials in a. So instead we symbolically determine the polynomials and
-the sum of polynomials, and for each pair of two symbolic solutions we can
-compute the sum of all c in logarithmic time.
+Find the sum of c for all integer triples (a,b,c) such that c<=N, a<b, and
+the product of the triangular numbers T_a and T_b is a perfect square, c^2.
 """
 
-from __future__ import annotations
-
 from math import gcd
-from typing import List
+from functools import lru_cache
 
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base = base % mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse."""
-    return pow(a, -1, m)
-
-
-def sum_powers(n: int, k: int, mod: int) -> int:
-    """Sum of k-th powers from 1 to n mod mod."""
-    if k == 0:
-        return n % mod
-    if k == 1:
-        return (n * (n + 1) // 2) % mod
-    if k == 2:
-        return (n * (n + 1) * (2 * n + 1) // 6) % mod
-    # For higher powers, use Faulhaber's formula (simplified)
-    result = 0
-    for i in range(1, n + 1):
-        result = (result + pow_mod(i, k, mod)) % mod
-    return result
-
-
-class Polynomial:
-    """Simple polynomial representation."""
-
-    def __init__(self, coeffs: List[int]):
-        """Initialize polynomial with coefficients."""
-        self.coeffs = coeffs[:]
-        # Remove trailing zeros
-        while self.coeffs and self.coeffs[-1] == 0:
-            self.coeffs.pop()
-
-    def evaluate(self, x: int) -> int:
-        """Evaluate polynomial at x."""
-        result = 0
-        power = 1
-        for coeff in self.coeffs:
-            result += coeff * power
-            power *= x
-        return result
-
-    def add(self, other: "Polynomial") -> "Polynomial":
-        """Add two polynomials."""
-        max_len = max(len(self.coeffs), len(other.coeffs))
-        result_coeffs = [0] * max_len
-        for i in range(len(self.coeffs)):
-            result_coeffs[i] += self.coeffs[i]
-        for i in range(len(other.coeffs)):
-            result_coeffs[i] += other.coeffs[i]
-        return Polynomial(result_coeffs)
-
-    def multiply(self, other: "Polynomial") -> "Polynomial":
-        """Multiply two polynomials."""
-        result_coeffs = [0] * (len(self.coeffs) + len(other.coeffs))
-        for i, c1 in enumerate(self.coeffs):
-            for j, c2 in enumerate(other.coeffs):
-                result_coeffs[i + j] += c1 * c2
-        return Polynomial(result_coeffs)
-
-    def mod(self, m: int) -> "Polynomial":
-        """Take coefficients mod m."""
-        return Polynomial([c % m for c in self.coeffs])
-
-
-def solve() -> int:
-    """Solve Problem 833."""
+def solve():
     N = 10**35
     M = 136101521
 
-    # Initialize Pell equation: D = a(a+1) = x(x+1)
-    # Base solution: x = (1, 2), y = (2)
-    D = Polynomial([0, 1, 1])  # x^2 + x
-    base_x = Polynomial([1, 2])  # 2x + 1
-    base_y = Polynomial([2])  # 2
+    # Precompute Bernoulli numbers for sum of powers
+    # B_0=1, B_1=-1/2, B_2=1/6, B_3=0, B_4=-1/30, etc.
+    # We'll compute modular Bernoulli numbers
+
+    def mod_inv(a, m):
+        return pow(a, -1, m)
+
+    # Sum of k-th powers from 1 to n mod M using Faulhaber's formula
+    # Sum_{i=1}^n i^k = (1/(k+1)) * sum_{j=0}^k binom(k+1,j) * B_j * n^{k+1-j}
+    # where B_j are Bernoulli numbers
+
+    # Precompute Bernoulli numbers mod M
+    MAX_K = 100  # Maximum power we might need
+
+    # Bernoulli numbers: B[k] stored as numerator mod M (already divided properly)
+    # Using the recurrence: sum_{j=0}^{n} binom(n+1, j) B_j = 0 for n >= 1
+    # So B_n = -1/(n+1) * sum_{j=0}^{n-1} binom(n+1, j) B_j
+
+    # Compute binomial coefficients mod M
+    fact = [1] * (MAX_K + 2)
+    for i in range(1, MAX_K + 2):
+        fact[i] = fact[i-1] * i % M
+
+    inv_fact = [1] * (MAX_K + 2)
+    inv_fact[MAX_K + 1] = mod_inv(fact[MAX_K + 1], M)
+    for i in range(MAX_K, -1, -1):
+        inv_fact[i] = inv_fact[i+1] * (i+1) % M
+
+    def binom(n, k):
+        if k < 0 or k > n:
+            return 0
+        return fact[n] * inv_fact[k] % M * inv_fact[n-k] % M
+
+    # Compute Bernoulli numbers mod M
+    B = [0] * (MAX_K + 1)
+    B[0] = 1
+    for n in range(1, MAX_K + 1):
+        s = 0
+        for j in range(n):
+            s = (s + binom(n+1, j) * B[j]) % M
+        B[n] = (-s * mod_inv(n+1, M)) % M
+
+    # B[1] should be -1/2 mod M
+    # Actually Bernoulli B_1 = -1/2, but in some conventions B_1 = 1/2
+    # Let's verify: sum_{i=1}^n i = n(n+1)/2
+    # Faulhaber: (1/2)(B_0*n^2 + 2*B_1*n^1) = (1/2)(n^2 + 2*(-1/2)*n) = (n^2-n)/2 = n(n-1)/2 - wrong!
+    # The issue is the formula. Let me use a different approach.
+
+    # Better: use polynomial interpolation for sum of powers
+    # sum_{i=1}^n i^k is a polynomial of degree k+1 in n
+    # We can compute it by evaluating at k+2 points and interpolating
+
+    @lru_cache(maxsize=None)
+    def sum_powers(n, k):
+        """Sum of i^k for i=1 to n, mod M."""
+        if n <= 0:
+            return 0
+        if k == 0:
+            return n % M
+        if k == 1:
+            return n * (n + 1) // 2 % M
+        if k == 2:
+            return n * (n + 1) * (2*n + 1) // 6 % M
+        if k == 3:
+            s = n * (n + 1) // 2
+            return s * s % M
+
+        # For higher k, use Lagrange interpolation
+        # sum_{i=1}^n i^k is a polynomial P(n) of degree k+1
+        # Evaluate P at points 0, 1, 2, ..., k+1 and interpolate
+
+        # P(0) = 0
+        # P(j) = sum_{i=1}^j i^k for j >= 1
+
+        y = [0] * (k + 2)
+        y[0] = 0
+        pw = 0
+        for j in range(1, k + 2):
+            pw = (pw + pow(j, k, M)) % M
+            y[j] = pw
+
+        # Lagrange interpolation at n
+        # P(n) = sum_{j=0}^{k+1} y[j] * prod_{i != j} (n - i) / (j - i)
+
+        n_mod = n % M
+
+        # Compute prod_{i=0}^{k+1} (n - i) mod M
+        num_prod = 1
+        for i in range(k + 2):
+            num_prod = num_prod * ((n_mod - i) % M) % M
+
+        result = 0
+        for j in range(k + 2):
+            # term = y[j] * prod_{i != j} (n - i) / (j - i)
+            # = y[j] * num_prod / (n - j) * 1 / prod_{i != j} (j - i)
+
+            if (n_mod - j) % M == 0:
+                # n = j (mod M), special case - shouldn't happen for large n
+                # Compute directly
+                term = y[j]
+                for i in range(k + 2):
+                    if i != j:
+                        term = term * ((n_mod - i) % M) % M * mod_inv((j - i) % M, M) % M
+            else:
+                # prod_{i != j} (j - i) = (-1)^{k+1-j} * j! * (k+1-j)!
+                denom = ((-1) ** (k + 1 - j)) * fact[j] * fact[k + 1 - j]
+                denom = denom % M
+
+                term = y[j] * num_prod % M * mod_inv((n_mod - j) % M, M) % M * mod_inv(denom, M) % M
+
+            result = (result + term) % M
+
+        return result
+
+    # Polynomial class for symbolic Pell equation solutions
+    class Poly:
+        def __init__(self, coeffs):
+            self.c = list(coeffs)
+            while len(self.c) > 1 and self.c[-1] == 0:
+                self.c.pop()
+
+        def eval(self, x):
+            r = 0
+            p = 1
+            for c in self.c:
+                r += c * p
+                p *= x
+            return r
+
+        def __add__(self, other):
+            l = max(len(self.c), len(other.c))
+            r = [0] * l
+            for i, v in enumerate(self.c):
+                r[i] += v
+            for i, v in enumerate(other.c):
+                r[i] += v
+            return Poly(r)
+
+        def __mul__(self, other):
+            if not self.c or not other.c:
+                return Poly([0])
+            r = [0] * (len(self.c) + len(other.c) - 1)
+            for i, a in enumerate(self.c):
+                for j, b in enumerate(other.c):
+                    r[i+j] += a * b
+            return Poly(r)
+
+    # Pell equation: x^2 - D*y^2 = 1 where D = a(a+1)
+    # Base solution: (x, y) = (2a+1, 2)
+    # Recurrence: (x', y') = (x * x0 + D * y * y0, x * y0 + y * x0)
+
+    D = Poly([0, 1, 1])  # a^2 + a = a(a+1)
+    base_x = Poly([1, 2])  # 2a + 1
+    base_y = Poly([2])  # 2
 
     x = base_x
     y = base_y
-    ys: List[Polynomial] = []
+    ys = []
 
-    # Generate solutions until y(1) >= N
-    while y.evaluate(1) < N:
+    # Generate solutions until c > N for a = 1
+    # c = D * y1 * y2 / 8, and for a=1, D=2
+    while y.eval(1) < N:
         ys.append(y)
-        # Next solution: (x', y') = (x*base_x + D*y*base_y, x*base_y + y*base_x)
-        new_x = x.multiply(base_x).add(
-            D.multiply(y).multiply(base_y)
-        )
-        new_y = x.multiply(base_y).add(y.multiply(base_x))
-        x = new_x
-        y = new_y
+        new_x = x * base_x + D * y * base_y
+        new_y = x * base_y + y * base_x
+        x, y = new_x, new_y
 
     ans = 0
     for i in range(len(ys)):
         for j in range(i + 1, len(ys)):
             if gcd(i + 1, j + 1) == 1:
-                # Compute product polynomial
-                prod = D.multiply(ys[i]).multiply(ys[j])
+                # prod = D * y_i * y_j
+                prod = D * ys[i] * ys[j]
 
-                # Binary search for maximum a
-                low = 0
-                high = 2**60
-                while low + 1 < high:
-                    mid = (low + high) // 2
-                    if prod.evaluate(mid) // 8 <= N:
-                        low = mid
+                # Binary search for max a such that prod(a) / 8 <= N
+                lo, hi = 0, 2**60
+                while lo + 1 < hi:
+                    mid = (lo + hi) // 2
+                    if prod.eval(mid) // 8 <= N:
+                        lo = mid
                     else:
-                        high = mid
+                        hi = mid
 
-                # Sum polynomial coefficients
-                prod_mod = prod.mod(M)
-                for e, coeff in enumerate(prod_mod.coeffs):
+                # Sum prod(a) for a = 1 to lo
+                # prod is a polynomial, so sum each term
+                for e, coeff in enumerate(prod.c):
                     if coeff != 0:
-                        ans = (ans + sum_powers(low, e, M) * coeff) % M
+                        ans = (ans + sum_powers(lo, e) * (coeff % M)) % M
 
-    ans = (ans * mod_inverse(8, M)) % M
+    ans = ans * mod_inv(8, M) % M
     return ans
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

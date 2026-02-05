@@ -1,136 +1,166 @@
 """Project Euler Problem 771: Increasing Sequences.
 
 Find the number of sequences of at least 5 strictly increasing integers x_i
-such that |(x_i)² - x_{i-1}x_{i+1}| ≤ 2 for all i.
+such that |(x_i)^2 - x_{i-1}x_{i+1}| <= 2 for all i.
 
-There are the following categories of sequences:
-- Sequences of consecutive integers (e.g. 1, 2, 3, 4, 5). There are tr(N-4)
-  of these.
-- Subsequences of 6 miscellaneous sequences (e.g. 1, 2, 3, 4, 6), hardcoded
-  below.
-- Subsequences of a few hardcoded linear recurrences of degree 2 (e.g. 1, 2, 3,
-  5, 8), encoded below as their first 2 terms x0 and x1, and constants a and
-  b such that x_i = ax_{i-2} + bx_{i-1}.
-- Subsequences of the linear recurrences beginning with 1, x1≥3 and either
-  x_i = x1 * x_{i-1} - x_{i-2}, or x_i = x1 * x_{i-1} + x_{i-2} (e.g. 1, 3,
-  8, 21, 55).
-- Sequences starting with 1, 2, 6, 18, 54, with each term 3 times the
-  previous.
-- Perfect geometric sequences, which can be expressed as (k*a^e, k*a^{e-1},
-  ..., k*b^e) with a<b and (a,b)=1. We can count these by iterating over e
-  and b. Then there are ϕ(b) values of a, and ⌊N/b^e⌋ values of k.
+Ported from Java reference for performance.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from math import isqrt
-from typing import List
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-from sympy import primerange
+#define N 1000000000000000000LL
+#define M 1000000007LL
 
+int* phi;
+int64_t seq_count;
+int64_t seq[200];
+int64_t ans_total = 0;
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+void pre_phi(int64_t limit) {
+    phi = (int*)malloc((limit + 1) * sizeof(int));
+    for (int64_t i = 0; i <= limit; i++)
+        phi[i] = (int)i;
 
+    for (int64_t i = 2; i <= limit; i++) {
+        if (phi[i] == i) {
+            for (int64_t j = i; j <= limit; j += i)
+                phi[j] -= phi[j] / (int)i;
+        }
+    }
+}
 
-def tr(n: int, mod: int) -> int:
-    """Triangular number: n*(n+1)//2 mod mod."""
-    return (n * (n + 1) // 2) % mod
+int64_t tr(int64_t n) {
+    int64_t a = n % M;
+    int64_t b = (n + 1) % M;
+    return (a * b % M) * 500000004LL % M;
+}
 
+int64_t pow_int(int64_t base, int exponent) {
+    int64_t result = 1;
+    for (int i = 0; i < exponent; i++) {
+        if (result > N / base)
+            return N + 1;
+        result *= base;
+    }
+    return result;
+}
 
-def pre_phi(limit: int) -> List[int]:
-    """Precompute Euler totient function."""
-    phi = list(range(limit + 1))
-    for i in range(2, limit + 1):
-        if phi[i] == i:  # i is prime
-            for j in range(i, limit + 1, i):
-                phi[j] -= phi[j] // i
-    return phi
+void process_seq_arr() {
+    for (int start = 0; start < seq_count; start++) {
+        for (int end = start + 5; end <= seq_count; end++) {
+            if (seq[end - 1] <= N)
+                ans_total++;
+        }
+    }
+}
 
+void process_recursive_seq(int64_t x0, int64_t x1, int64_t a, int64_t b) {
+    seq_count = 0;
+    seq[seq_count++] = x0;
+    seq[seq_count++] = x1;
+    while (1) {
+        int64_t prev2 = seq[seq_count - 2];
+        int64_t prev1 = seq[seq_count - 1];
+        double next_d = (double)a * prev2 + (double)b * prev1;
+        if (next_d > (double)N || next_d < 0)
+            break;
+        int64_t next = a * prev2 + b * prev1;
+        if (next <= 0 || next > N)
+            break;
+        seq[seq_count++] = next;
+        if (seq_count >= 199)
+            break;
+    }
+    process_seq_arr();
+}
 
-def process_seq(seq: List[int], N: int, mod: int) -> int:
-    """Count subsequences of at least 5 elements from seq."""
-    count = 0
-    for start in range(len(seq)):
-        for end in range(start + 5, len(seq) + 1):
-            if seq[end - 1] <= N:
-                count += 1
-    return count % mod
+void process_seq_6(int64_t a, int64_t b, int64_t c, int64_t d, int64_t e, int64_t f) {
+    seq_count = 0;
+    seq[seq_count++] = a;
+    seq[seq_count++] = b;
+    seq[seq_count++] = c;
+    seq[seq_count++] = d;
+    seq[seq_count++] = e;
+    seq[seq_count++] = f;
+    process_seq_arr();
+}
 
+void process_seq_5(int64_t a, int64_t b, int64_t c, int64_t d, int64_t e) {
+    seq_count = 0;
+    seq[seq_count++] = a;
+    seq[seq_count++] = b;
+    seq[seq_count++] = c;
+    seq[seq_count++] = d;
+    seq[seq_count++] = e;
+    process_seq_arr();
+}
 
-def process_recursive_seq(
-    x0: int, x1: int, a: int, b: int, N: int, mod: int
-) -> int:
-    """Process recursive sequence x_i = a*x_{i-2} + b*x_{i-1}."""
-    seq = [x0, x1]
-    while a * seq[-2] + b * seq[-1] <= N:
-        seq.append(a * seq[-2] + b * seq[-1])
-    return process_seq(seq, N, mod)
+int main() {
+    int64_t phi_limit = (int64_t)pow((double)N, 0.25) + 1;
+    pre_phi(phi_limit);
 
+    ans_total = 0;
+    int64_t ans = tr(N - 4);
 
-def solve() -> int:
-    """Solve Problem 771."""
-    N = 10**18
-    M = 10**9 + 7
-    phi_limit = int(N ** (1.0 / 4))
-    phi = pre_phi(phi_limit)
+    process_seq_6(1, 2, 3, 4, 6, 9);
+    process_seq_6(1, 2, 3, 5, 9, 16);
+    process_seq_5(1, 2, 4, 7, 12);
+    process_seq_5(1, 2, 4, 9, 20);
+    process_seq_5(1, 2, 6, 17, 48);
+    process_seq_5(1, 2, 6, 19, 60);
 
-    ans = tr(N - 4, M)
+    process_recursive_seq(1, 2, 1, 1);
+    process_recursive_seq(1, 2, 1, 2);
+    process_recursive_seq(1, 2, -1, 3);
+    process_recursive_seq(1, 3, 1, 2);
+    process_recursive_seq(1, 3, -1, 4);
 
-    # Hardcoded sequences
-    ans = (ans + process_seq([1, 2, 3, 4, 6, 9], N, M)) % M
-    ans = (ans + process_seq([1, 2, 3, 5, 9, 16], N, M)) % M
-    ans = (ans + process_seq([1, 2, 4, 7, 12], N, M)) % M
-    ans = (ans + process_seq([1, 2, 4, 9, 20], N, M)) % M
-    ans = (ans + process_seq([1, 2, 6, 17, 48], N, M)) % M
-    ans = (ans + process_seq([1, 2, 6, 19, 60], N, M)) % M
+    for (int64_t x1 = 3; pow_int(x1 - 1, 4) <= N; x1++) {
+        process_recursive_seq(1, x1, -1, x1);
+        process_recursive_seq(1, x1, 1, x1);
+    }
 
-    # Hardcoded recursive sequences
-    ans = (ans + process_recursive_seq(1, 2, 1, 1, N, M)) % M
-    ans = (ans + process_recursive_seq(1, 2, 1, 2, N, M)) % M
-    ans = (ans + process_recursive_seq(1, 2, -1, 3, N, M)) % M
-    ans = (ans + process_recursive_seq(1, 3, 1, 2, N, M)) % M
-    ans = (ans + process_recursive_seq(1, 3, -1, 4, N, M)) % M
+    for (int64_t x1 = 2; 27 * x1 <= N; x1 *= 3)
+        ans_total++;
 
-    # Recursive sequences with x1 >= 3
-    x1 = 3
-    while pow_mod(x1 - 1, 4, M) <= N:
-        ans = (ans + process_recursive_seq(1, x1, -1, x1, N, M)) % M
-        ans = (ans + process_recursive_seq(1, x1, 1, x1, N, M)) % M
-        x1 += 1
+    for (int e = 4; pow_int(2, e) <= N; e++) {
+        for (int64_t x1 = 2; pow_int(x1, e) <= N; x1++) {
+            int64_t powe = pow_int(x1, e);
+            ans_total += (N / powe) % M * phi[x1];
+        }
+    }
 
-    # Sequences starting with 1, 2, 6, 18, 54, ...
-    x1 = 2
-    while 27 * x1 <= N:
-        ans = (ans + 1) % M
-        x1 *= 3
+    ans = (ans + ans_total % M) % M;
+    printf("%lld\n", ans);
 
-    # Perfect geometric sequences
-    e = 4
-    while pow_mod(2, e, M) <= N:
-        x1 = 2
-        while pow_mod(x1, e, M) <= N:
-            ans = (ans + (N // pow_mod(x1, e, M)) % M * phi[x1]) % M
-            x1 += 1
-        e += 1
+    free(phi);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    return ans % M
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
-
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
     print(result)
     return result
-
 
 if __name__ == "__main__":
     main()

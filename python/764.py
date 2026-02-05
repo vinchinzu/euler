@@ -1,200 +1,143 @@
-"""Project Euler Problem 764: Sum of Solutions to 16x²+y⁴=z².
+#!/usr/bin/env python3
+"""Project Euler Problem 764: Sum of Solutions to 16x^2+y^4=z^2.
 
-Find S(N), the sum of x+y+z for all solutions to 16x²+y⁴=z² with
-1≤x,y,z≤N and GCD(x,y,z)=1.
+Find S(N), the sum of x+y+z for all solutions to 16x^2+y^4=z^2 with
+1<=x,y,z<=N and GCD(x,y,z)=1.
 
-We have y⁴ = (z-4x)(z+4x). Note that if p≠2 divides both z-4x and z+4x,
-then it divides x, y, and z, a contradiction. So the only possible cases are:
-
-(1) z-4x = a⁴,  z+4x = b⁴  (a < b)
-(2) z-4x = 2a⁴, z+4x = 8b⁴ (a < b√2)
-(3) z-4x = 8a⁴, z+4x = 2b⁴ (a√2 < b)
-
-for integers a,b. Note that 4a⁴ and 4b⁴ is not possible, because that would
-imply x,y,z are all even.
-
-For case (1), we must have a and b odd, otherwise x,y,z are all even. Then
-x=(b⁴-a⁴)/8, y=ab, and z=(a⁴+b⁴)/2. For case (2), x=(8b⁴-2a⁴)/8, y=2ab, and
-z=(2a⁴+8b⁴)/2, so a must be even. For case (3), x=(2b⁴-8a⁴)/8, y=2ab, and
-z=(8a⁴+2b⁴)/2, so b must be even.
-
-Iterating over all a,b works, but for speed we iterate only on b and sum x+y+z
-over all valid a. We can ignore the GCD requirement in the usual way, by using
-Inclusion Exclusion via µ(n), though with some care for odd/even GCDs because
-of the above parity constraints.
+Direct translation from Java reference using exact integer arithmetic.
 """
 
-from __future__ import annotations
-
-from math import isqrt
-from typing import List
+from fractions import Fraction
+import math
 
 
-def pre_mobius(limit: int) -> List[int]:
-    """Precompute Möbius function."""
-    mu = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                if j % (i * i) == 0:
-                    mu[j] = 0
-                else:
-                    mu[j] = -mu[j]
-    return mu
-
-
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Modular exponentiation."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
-
-
-def mod_invs(n: int, mod: int) -> List[int]:
-    """Precompute modular inverses of 1..n modulo mod."""
-    invs = [0] * (n + 1)
-    invs[1] = 1
-    for i in range(2, n + 1):
-        invs[i] = (mod - (mod // i) * invs[mod % i] % mod) % mod
-    return invs
-
-
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
-
-
-def tr(n: int) -> int:
-    """Triangular number: n*(n+1)//2."""
-    return n * (n + 1) // 2
-
-
-def solve() -> int:
-    """Solve Problem 764."""
+def solve():
     N = 10**16
     M = 10**9
-    L = int((2 * N) ** (1.0 / 4))
+    L = int((2 * N) ** 0.25) + 10
 
-    mobius = pre_mobius(L)
-    mod_invs_arr = mod_invs(8, M)
+    # Mobius sieve
+    mobius = [1] * (L + 1)
+    mobius[0] = 0
+    is_prime = [True] * (L + 1)
 
-    # Precompute sum of fourth powers
-    sum_fourth_powers = [0] * L
-    sum_odd_fourth_powers = [0] * L
-    for i in range(1, L):
-        sum_fourth_powers[i] = (sum_fourth_powers[i - 1] + pow_mod(i, 4, M)) % M
-        sum_odd_fourth_powers[i] = (
-            sum_odd_fourth_powers[i - 1] + pow_mod(2 * i - 1, 4, M)
-        ) % M
+    for p in range(2, L + 1):
+        if is_prime[p]:
+            for j in range(p, L + 1, p):
+                if j > p:
+                    is_prime[j] = False
+                if (j // p) % p == 0:
+                    mobius[j] = 0
+                else:
+                    mobius[j] *= -1
 
-    S = 0
+    # Sum of fourth powers (as Python ints - exact)
+    sumFourthPowers = [0] * (L + 1)
+    sumOddFourthPowers = [0] * (L + 1)
+    for i in range(1, L + 1):
+        sumFourthPowers[i] = sumFourthPowers[i - 1] + i ** 4
+        sumOddFourthPowers[i] = sumOddFourthPowers[i - 1] + (2 * i - 1) ** 4
+
+    sqrt2 = math.sqrt(2)
+
+    # Use Fraction for exact arithmetic
+    S = Fraction(0)
+
     for g in range(1, L):
-        n = N // pow_mod(g, 4, M)
-        deg4 = 0
-        deg2 = 0
+        if mobius[g] == 0:
+            continue
 
+        g4 = g ** 4
+        n = N // g4
+        if n == 0:
+            break
+
+        deg4 = Fraction(0)
+        deg2 = Fraction(0)
+
+        # Case (1): z-4x = a^4, z+4x = b^4, a and b both odd, a < b
+        # x = (b^4 - a^4) / 8, y = ab, z = (a^4 + b^4) / 2
+        # x + y + z = (5*b^4 + 3*a^4)/8 + ab
+        # Only when g is odd
         if g % 2 == 1:
-            # Case (1): a and b odd
             b = 1
-            while pow_mod(b, 4, M) <= 2 * n:
-                if b % 2 == 1:
-                    max_a = min(
-                        b // 2,
-                        int(((2 * n - pow_mod(b, 4, M)) ** (1.0 / 4) + 1) // 2),
-                    )
-                    deg4 = (
-                        deg4
-                        + (
-                            (5 * mod_invs_arr[8] % M)
-                            * max_a
-                            % M
-                            * pow_mod(b, 4, M)
-                            % M
-                            + (3 * mod_invs_arr[8] % M)
-                            * sum_odd_fourth_powers[max_a]
-                            % M
-                        )
-                        % M
-                    ) % M
-                    deg2 = (deg2 + sq(max_a) * b % M) % M
+            while b ** 4 <= 2 * n:
+                b4 = b ** 4
+                # Java: num_a = Math.min(b / 2, (int) (Math.pow(2 * n - pow(b, 4), 1. / 4) + 1) / 2)
+                limit1 = b // 2
+                val = (2 * n - b4) ** 0.25 if 2 * n > b4 else 0
+                limit2 = (int(val) + 1) // 2
+                num_a = min(limit1, limit2)
+
+                if num_a > 0:
+                    # Java: deg4 += ((5 * modInvs[8]) * num_a % mod * pow(b, 4, mod)
+                    #              + (3 * modInvs[8]) * sumOddFourthPowers[num_a]) % mod
+                    deg4 += Fraction(5, 8) * num_a * b4 + Fraction(3, 8) * sumOddFourthPowers[num_a]
+
+                    # Java: deg2 += sq(num_a) * b % mod
+                    deg2 += num_a * num_a * b
+
                 b += 2
 
-        # Case (2): z-4x = 2a⁴, z+4x = 8b⁴
+        # Case (2): z-4x = 2a^4, z+4x = 8b^4
+        # x = (8b^4 - 2a^4) / 8 = b^4 - a^4/4, y = 2ab, z = a^4 + 4b^4
+        # x + y + z = 5b^4 + 3a^4/4 + 2ab
         b = 1
-        while 4 * pow_mod(b, 4, M) <= n:
-            max_a = int(
-                min(
-                    (2**0.5) * b,
-                    (n - 4 * pow_mod(b, 4, M)) ** (1.0 / 4),
-                )
-            )
+        while 4 * (b ** 4) <= n:
+            b4 = b ** 4
+            limit1 = int(sqrt2 * b)
+            remaining = n - 4 * b4
+            limit2 = int(remaining ** 0.25) if remaining > 0 else 0
+            num_a = min(limit1, limit2)
+
             if g % 2 == 1:
-                max_a //= 2
+                num_a = num_a // 2
+
             mult = 1 if g % 2 == 0 else 2
-            deg4 = (
-                deg4
-                + (
-                    5 * max_a * pow_mod(b, 4, M) % M
-                    + (3 * mod_invs_arr[4] % M)
-                    * pow_mod(mult, 4, M)
-                    % M
-                    * sum_fourth_powers[max_a]
-                    % M
-                )
-                % M
-            ) % M
-            deg2 = (deg2 + 2 * mult * tr(max_a) * b % M) % M
+
+            if num_a > 0:
+                # Java: deg4 += (5 * num_a * pow(b, 4, mod)
+                #              + (3 * modInvs[4]) * pow(mult, 4) % mod * sumFourthPowers[num_a]) % mod
+                deg4 += 5 * num_a * b4 + Fraction(3, 4) * (mult ** 4) * sumFourthPowers[num_a]
+
+                # Java: deg2 += 2 * mult * tr(num_a) * b % mod
+                tr_num_a = num_a * (num_a + 1) // 2
+                deg2 += 2 * mult * tr_num_a * b
+
             b += 1
 
-        # Case (3): z-4x = 8a⁴, z+4x = 2b⁴
+        # Case (3): z-4x = 8a^4, z+4x = 2b^4
+        # x = (2b^4 - 8a^4) / 8 = b^4/4 - a^4, y = 2ab, z = 4a^4 + b^4
+        # x + y + z = 5b^4/4 + 3a^4 + 2ab
         mult = 1 if g % 2 == 0 else 2
         b = mult
-        while pow_mod(b, 4, M) <= n:
-            max_a = int(
-                min(
-                    b / (2**0.5),
-                    ((n - pow_mod(b, 4, M)) / 4.0) ** (1.0 / 4),
-                )
-            )
-            deg4 = (
-                deg4
-                + (
-                    (5 * mod_invs_arr[4] % M)
-                    * max_a
-                    % M
-                    * pow_mod(b, 4, M)
-                    % M
-                    + 3 * sum_fourth_powers[max_a] % M
-                )
-                % M
-            ) % M
-            deg2 = (deg2 + 2 * tr(max_a) * b % M) % M
+        while b ** 4 <= n:
+            b4 = b ** 4
+            limit1 = int(b / sqrt2)
+            remaining = (n - b4) / 4.0
+            limit2 = int(remaining ** 0.25) if remaining > 0 else 0
+            num_a = min(limit1, limit2)
+
+            if num_a > 0:
+                # Java: deg4 += ((5 * modInvs[4]) * num_a % mod * pow(b, 4, mod)
+                #              + 3 * sumFourthPowers[num_a]) % mod
+                deg4 += Fraction(5, 4) * num_a * b4 + 3 * sumFourthPowers[num_a]
+
+                # Java: deg2 += 2 * tr(num_a) * b % mod
+                tr_num_a = num_a * (num_a + 1) // 2
+                deg2 += 2 * tr_num_a * b
+
             b += mult
 
-        S = (
-            S
-            + mobius[g]
-            * (
-                deg4 % M * pow_mod(g, 4, M) % M
-                + deg2 % M * sq(g) % M
-            )
-            % M
-        ) % M
+        # Java: S += mobius[g] * (deg4 % mod * pow(g, 4, mod) + deg2 % mod * sq(g, mod)) % mod
+        S += mobius[g] * (deg4 * g4 + deg2 * (g ** 2))
 
-    return S % M
+    # Convert to integer and take mod
+    result = int(S)
+    return result % M
 
 
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
     print(result)
     return result

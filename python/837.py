@@ -1,100 +1,94 @@
-"""Project Euler Problem 837: Amidakuji.
+"""Project Euler Problem 837: Amidakuji."""
 
-Find the number of Amidakuji of three vertical lines, with A rungs between
-the first two lines and B rungs between the last two lines, which form the
-identity permutation.
+import subprocess
+import tempfile
+import os
 
-From top to bottom, there are (A+B)/2 pairs of rungs. Suppose that t of
-these pairs consist of two different rungs, i.e. one on the left and the
-other on the right. Then t must be the same parity as A and B, because
-the remaining rungs come in pairs either both on the left or both on the
-right. There are then (A-t)/2 pairs of left rungs and (B-t)/2 pairs of
-right rungs.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-A pair of rungs both on the left or both on the right doesn't affect the
-permutation. A left rung followed by a right rung shifts the permutation
-in one direction, and a right rung followed by a left rung shifts the
-permutation in the other. If there are r and s of these pairs respectively,
-where r+s=t, then we must have 3|r-s.
+typedef __int128 i128;
+typedef int64_t i64;
 
-So for a given t, there are r, s, (A-t)/2, and (B-t)/2) types of each
-pair of rungs, and the number of ways to arrange them is
-((A+B)/2)! / ( r! s! ((A-t)/2)! ((B-t)/2)! ). Therefore, summing over all
-t (of the right parity), the total is:
+#define A 123456789
+#define B 987654321
+#define M 1234567891LL
 
-S = Σ_t Σ_{r,s} ((A+B)/2)! / ( r! s! ((A-t)/2)! ((B-t)/2)! )
-  = Σ_t ((A+B)/2)! / (((A-t)/2)! ((B-t)/2)! ) Σ_{r,s} 1/(r!s!)
-  = ((A+B)/2)! Σ_t 1 / ( ((A-t)/2)! ((B-t)/2)! t! ) Σ_{r,s} nCr(t,r).
+i64 mod_pow(i64 base, i64 exp, i64 m) {
+    i128 result = 1;
+    i128 b = base % m;
+    while (exp > 0) {
+        if (exp & 1) result = (result * b) % m;
+        b = (b * b) % m;
+        exp >>= 1;
+    }
+    return (i64)result;
+}
 
-By induction, we can find that for a given t, f(t) = Σ_{r,s} nCr(t,r)
-(where r,s are constrained by r+s=t and 3|r-s) satisfies the recurrence
-f(t) = 4f(t-2) + 2. We can now sum the terms over all t.
-"""
+i64 mod_inv(i64 a, i64 m) {
+    return mod_pow(a, m - 2, m);
+}
 
-from __future__ import annotations
+int main() {
+    // Precompute modular inverses 1..A
+    i64 *mod_invs = malloc((A + 1) * sizeof(i64));
+    mod_invs[1] = 1;
+    for (int i = 2; i <= A; i++) {
+        mod_invs[i] = (M - (M / i) * mod_invs[M % i] % M) % M;
+    }
 
+    // Compute factorial((A-1)/2) and factorial((B-1)/2)
+    i64 fact_a = 1;
+    for (i64 i = 2; i <= (A - 1) / 2; i++) {
+        fact_a = (i128)fact_a * i % M;
+    }
+    i64 fact_b = 1;
+    for (i64 i = 2; i <= (B - 1) / 2; i++) {
+        fact_b = (i128)fact_b * i % M;
+    }
 
-def factorial(n: int, mod: int) -> int:
-    """Compute n! mod mod."""
-    result = 1
-    for i in range(1, n + 1):
-        result = (result * i) % mod
-    return result
+    i64 term1 = mod_inv((i128)fact_a * fact_b % M, M);
+    i64 term2 = 0;
+    i64 ans = 0;
 
+    for (int t = 3; t <= A; t += 2) {
+        term1 = (i128)term1 * mod_invs[t - 1] % M;
+        term1 = (i128)term1 * mod_invs[t] % M;
+        term1 = (i128)term1 * ((A - t + 2) / 2) % M;
+        term1 = (i128)term1 * ((B - t + 2) / 2) % M;
 
-def mod_inverse(a: int, mod: int) -> int:
-    """Modular inverse."""
-    return pow(a, -1, mod)
+        term2 = (4 * term2 + 2) % M;
 
+        ans = (ans + (i128)term1 * term2) % M;
+    }
 
-def mod_invs(n: int, mod: int) -> list[int]:
-    """Precompute modular inverses for 1..n."""
-    invs = [0] * (n + 1)
-    invs[1] = 1
-    for i in range(2, n + 1):
-        invs[i] = (mod - (mod // i) * invs[mod % i] % mod) % mod
-    return invs
+    // Multiply by ((A+B)/2)!
+    i64 fact_total = 1;
+    for (i64 i = 2; i <= (A + B) / 2; i++) {
+        fact_total = (i128)fact_total * i % M;
+    }
 
+    ans = (i128)ans * fact_total % M;
+    printf("%lld\n", (long long)ans);
 
-def solve() -> int:
-    """Solve Problem 837."""
-    A = 123456789
-    B = 987654321
-    M = 1234567891
+    free(mod_invs);
+    return 0;
+}
+'''
 
-    mod_invs_list = mod_invs(A, M)
-    term1 = mod_inverse(
-        factorial((A - 1) // 2, M) * factorial((B - 1) // 2, M) % M, M
-    )
-    term2 = 0
-    ans = 0
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
 
-    for t in range(3, A + 1, 2):
-        term1 = (
-            term1
-            * mod_invs_list[t - 1]
-            % M
-            * mod_invs_list[t]
-            % M
-            * ((A - t + 2) // 2)
-            % M
-            * ((B - t + 2) // 2)
-            % M
-        )
-        term1 %= M
-        term2 = (4 * term2 + 2) % M
-        ans = (ans + term1 * term2) % M
-
-    ans = ans * factorial((A + B) // 2, M) % M
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

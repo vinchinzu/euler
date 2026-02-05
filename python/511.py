@@ -1,108 +1,123 @@
-"""Project Euler Problem 511: Sequences with Divisibility Constraints.
+"""Project Euler Problem 511: Sequences with Divisibility Constraints."""
 
-Find the number of sequences of N integers such that each term is divisible by
-N, and the sum of all terms and N is divisible by K.
+import subprocess
+import tempfile
+import os
 
-Let T_n[i] be the number of sequences of n terms, all divisible by N, that sum
-to i (mod K). We can compute T_n by taking T_{n-1} and adding the transitions
-for each divisor of N.
+def solve():
+    # The key insight is that we're doing cyclic convolution mod K
+    # p1 and p2 are both arrays of size K representing polynomials
+    # The cyclic convolution is: result[i] = sum over j of p1[j] * p2[(i-j) mod K]
+    # By duplicating, we handle wrap-around: if i < j, (i-j) mod K = i - j + K
+    # p[i+K] handles i-j+K case and p[i] handles i-j case (which is invalid for i < j)
+    # So p[i+K] - p[i] correctly gives cyclic convolution... but wait
+    # Actually for cyclic conv: result[i] = sum_j p1[j] * p2[(i-j) mod K]
+    # After multiply: p[m] = sum_{j+l=m} p1[j]*p2[l] for m in [0, 4K-2]
+    # For cyclic: we want sum over j of p1[j]*p2[(i-j) mod K] for each i in [0,K-1]
+    # (i-j) mod K means: if j <= i, we want p2[i-j], if j > i, we want p2[K + i - j]
+    # So result[i] = sum_{j=0}^{i} p1[j]*p2[i-j] + sum_{j=i+1}^{K-1} p1[j]*p2[K+i-j]
+    # The first sum contributes to p[i], second to p[K+i]
+    # So result[i] = (contribution to i from first half) + (contribution to K+i from wrap)
+    # Actually both p1 and p2 have copies so:
+    # p[i] includes all ways to sum to i, p[K+i] includes sums to K+i
+    # For p1[j]*p2[l] where j,l each in [0,2K-1]:
+    # For j in [0,K-1] and l in [0,K-1]: contributes to p[j+l] for j+l in [0, 2K-2]
+    # For j in [K,2K-1] and l in [0,K-1]: contributes to p[j+l] for j+l in [K, 3K-2]
+    # etc...
+    # The subtraction p[i+K] - p[i] removes double counting when both indices use the "original" part
 
-To efficiently compute T_n for large n, we note that T_{2n} is the convolution
-of T_n with itself, and can use repeated doubling. Convolution can be
-implemented with polynomial multiplication, for which there are fast
-algorithms, by concatenating T_n with itself to handle the terms in the
-convolution that are wrapped around.
+    c_code = r'''
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-The final answer is T_N[-N].
-"""
+#define K 4321
+#define MOD 1000000000LL
 
-from __future__ import annotations
+// Using simple O(K^2) convolution - K=4321 is small enough
+void poly_multiply_cyclic(int64_t *p1, int64_t *p2, int64_t *result) {
+    memset(result, 0, K * sizeof(int64_t));
+    for (int i = 0; i < K; i++) {
+        for (int j = 0; j < K; j++) {
+            int idx = (i + j) % K;
+            result[idx] = (result[idx] + (__int128)p1[i] * p2[j]) % MOD;
+        }
+    }
+}
 
-from math import isqrt
-from typing import List
+// Global divisors array
+int64_t divisors[1000];
+int num_divisors;
 
+void find_divisors(int64_t n) {
+    num_divisors = 0;
+    for (int64_t i = 1; i * i <= n; i++) {
+        if (n % i == 0) {
+            divisors[num_divisors++] = i;
+            if (i * i != n) {
+                divisors[num_divisors++] = n / i;
+            }
+        }
+    }
+}
 
-def all_divisors(n: int) -> List[int]:
-    """Get all divisors of n."""
-    divisors = []
-    limit = isqrt(n)
-    for i in range(1, limit + 1):
-        if n % i == 0:
-            divisors.append(i)
-            if i * i != n:
-                divisors.append(n // i)
-    return sorted(divisors)
+int64_t imod(int64_t a, int64_t m) {
+    return ((a % m) + m) % m;
+}
 
+void num_transitions(int64_t n, int64_t *result) {
+    if (n == 1) {
+        memset(result, 0, K * sizeof(int64_t));
+        for (int i = 0; i < num_divisors; i++) {
+            int idx = imod(divisors[i], K);
+            result[idx] = (result[idx] + 1) % MOD;
+        }
+        return;
+    }
 
-def imod(a: int, m: int) -> int:
-    """Integer modulo (handles negative)."""
-    return ((a % m) + m) % m
+    int64_t *half = (int64_t*)calloc(K, sizeof(int64_t));
+    num_transitions(n / 2, half);
+    poly_multiply_cyclic(half, half, result);
 
+    if (n % 2 == 1) {
+        int64_t *one = (int64_t*)calloc(K, sizeof(int64_t));
+        num_transitions(1, one);
+        int64_t *temp = (int64_t*)calloc(K, sizeof(int64_t));
+        memcpy(temp, result, K * sizeof(int64_t));
+        poly_multiply_cyclic(temp, one, result);
+        free(one);
+        free(temp);
+    }
 
-def polynomial_multiply(p1: List[int], p2: List[int], mod: int) -> List[int]:
-    """Multiply two polynomials modulo mod."""
-    deg1 = len(p1)
-    deg2 = len(p2)
-    result = [0] * (deg1 + deg2 - 1)
-    for i in range(deg1):
-        for j in range(deg2):
-            result[i + j] = (result[i + j] + p1[i] * p2[j]) % mod
-    return result
+    free(half);
+}
 
+int main() {
+    int64_t N = 1234567898765LL;
 
-def combine(
-    num_transitions1: List[int], num_transitions2: List[int], K: int, M: int
-) -> List[int]:
-    """Combine two transition arrays via convolution."""
-    # Concatenate each array with itself to handle wrap-around
-    p1 = num_transitions1 + num_transitions1
-    p2 = num_transitions2 + num_transitions2
-    
-    # Multiply polynomials
-    p = polynomial_multiply(p1, p2, M)
-    
-    # Extract wrapped-around convolution
-    num_transitions = [0] * K
-    for i in range(K):
-        num_transitions[i] = (p[i + K] - p[i]) % M
-    
-    return num_transitions
+    find_divisors(N);
 
+    int64_t *transitions = (int64_t*)calloc(K, sizeof(int64_t));
+    num_transitions(N, transitions);
 
-def num_transitions(n: int, all_divisors: List[int], K: int, M: int) -> List[int]:
-    """Compute transition array for n sequences."""
-    if n == 1:
-        num_transitions_arr = [0] * K
-        for d in all_divisors:
-            num_transitions_arr[imod(d, K)] = (num_transitions_arr[imod(d, K)] + 1) % M
-        return num_transitions_arr
-    
-    res = num_transitions(n // 2, all_divisors, K, M)
-    res = combine(res, res, K, M)
-    if n % 2 == 1:
-        res = combine(res, num_transitions(1, all_divisors, K, M), K, M)
-    return res
+    int64_t ans = transitions[imod(-N, K)];
 
+    free(transitions);
 
-def solve() -> int:
-    """Solve Problem 511."""
-    N = 1234567898765
-    K = 4321
-    M = 10**9
-    
-    all_divisors_list = all_divisors(N)
-    transitions = num_transitions(N, all_divisors_list, K, M)
-    ans = transitions[imod(-N, K)]
-    
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

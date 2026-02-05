@@ -18,18 +18,30 @@ def solve() -> int:
     M = 10**9
 
     dp: List[List[int]] = [[0] * (L + 1) for _ in range(N + 1)]
+    suf: List[List[int]] = [[0] * (L + 2) for _ in range(N + 1)]
+
     dp[1][1] = 3
+    # Build suffix sums for n=1
+    for prev in range(L, -1, -1):
+        suf[1][prev] = (suf[1][prev + 1] + dp[1][prev]) % M
 
     for n in range(2, N + 1):
         for k in range(1, min(L, n) + 1):
-            for prev in range(k - 1, L + 1):
-                multiplier = 1 if (k >= 2 and prev >= 2) else 2
-                dp[n][k] = (dp[n][k] + dp[n - k][prev] * multiplier) % M
+            if n - k < 0:
+                continue
+            if k == 1:
+                dp[n][k] = (2 * suf[n - 1][1]) % M
+            else:
+                total = suf[n - k][k - 1]
+                if k == 2:
+                    total = (total + dp[n - k][1]) % M
+                dp[n][k] = total
 
-    ans = 0
-    for k in range(1, L + 1):
-        ans = (ans + dp[N][k]) % M
+        # Build suffix sums for row n
+        for prev in range(L, -1, -1):
+            suf[n][prev] = (suf[n][prev + 1] + dp[n][prev]) % M
 
+    ans = sum(dp[N][1 : L + 1]) % M
     return ans
 
 

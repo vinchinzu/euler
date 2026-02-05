@@ -25,81 +25,81 @@ def solve() -> int:
 #include <stdlib.h>
 #include <string.h>
 
+#define CACHE_SIZE 4000000
+int cache[CACHE_SIZE];
+
 int compute_g(int x) {
     if (x <= 2) return 0;
+    if (x < CACHE_SIZE && cache[x] != -1) return cache[x];
 
-    int hash_size = 1;
-    while (hash_size < 2 * x) hash_size <<= 1;
-    int hash_mask = hash_size - 1;
+    int *used = (int*)calloc(2 * x + 100, sizeof(int));
+    int *ys = (int*)malloc(x * sizeof(int));
+    int *new_ys = (int*)malloc(x * sizeof(int));
 
-    int *ht = (int*)malloc(hash_size * sizeof(int));
-    int *v1 = (int*)malloc(x * sizeof(int));
-    int *v2 = (int*)malloc(x * sizeof(int));
-    memset(ht, -1, hash_size * sizeof(int));
-    int count = 0;
+    int ys_size = 0;
+    for (int i = 2; i < x; i++) {
+        ys[ys_size++] = i;
+    }
 
-    for (int y = 2; y < x; y++) {
-        long long v = ((long long)y * y) % x;
-        if (v <= 1) continue;
-        unsigned int h = (unsigned int)v & hash_mask;
-        while (ht[h] != -1 && ht[h] != (int)v)
-            h = (h + 1) & hash_mask;
-        if (ht[h] == -1) {
-            ht[h] = (int)v;
-            v1[count++] = (int)v;
+    int z = x;
+    while (1) {
+        if (ys_size == 0) {
+            int result = z - x + 1;
+            free(used);
+            free(ys);
+            free(new_ys);
+            if (x < CACHE_SIZE) cache[x] = result;
+            return result;
         }
-    }
-    if (count == 0) { free(ht); free(v1); free(v2); return 2; }
-    for (int i = 0; i < count; i++) {
-        unsigned int h = (unsigned int)v1[i] & hash_mask;
-        while (ht[h] != v1[i]) h = (h + 1) & hash_mask;
-        ht[h] = -1;
-    }
-    int steps = 1, z = x + 1;
-    while (count > 0) {
-        int new_count = 0;
-        for (int i = 0; i < count; i++) {
-            long long nv = ((long long)v1[i] * v1[i]) % z;
-            if (nv <= 1) continue;
-            unsigned int h = (unsigned int)nv & hash_mask;
-            while (ht[h] != -1 && ht[h] != (int)nv)
-                h = (h + 1) & hash_mask;
-            if (ht[h] == -1) {
-                ht[h] = (int)nv;
-                v2[new_count++] = (int)nv;
+
+        int new_ys_size = 0;
+        for (int i = 0; i < ys_size; i++) {
+            long long val = ((long long)ys[i] * ys[i]) % z;
+            int new_y = (int)val;
+            if (new_y > 1 && used[new_y] != z) {
+                new_ys[new_ys_size++] = new_y;
             }
+            used[new_y] = z;
         }
-        for (int i = 0; i < new_count; i++) {
-            unsigned int h = (unsigned int)v2[i] & hash_mask;
-            while (ht[h] != v2[i]) h = (h + 1) & hash_mask;
-            ht[h] = -1;
-        }
-        int *tmp = v1; v1 = v2; v2 = tmp;
-        count = new_count;
-        steps++;
+
+        int *temp = ys;
+        ys = new_ys;
+        ys_size = new_ys_size;
+        new_ys = temp;
         z++;
     }
-    free(ht); free(v1); free(v2);
-    return steps + 1;
 }
 
 int global_best;
 
-void search(int low, int high, int depth) {
+void helper(int low, int high, int depth) {
     if (low >= high) return;
+
     int g_high = compute_g(high);
-    if (g_high > global_best) global_best = g_high;
-    if (low + 1 >= high || depth <= 0) return;
+    if (g_high > global_best) {
+        global_best = g_high;
+    }
+
+    if (low + 1 == high || depth == 0) return;
     if (global_best >= g_high + high - low) return;
+
     int mid = (low + high) / 2;
-    search(low, mid, depth - 1);
-    search(mid, high, depth - 1);
+    helper(low, mid, depth - 1);
+    helper(mid, high, depth - 1);
 }
 
 int main(void) {
     int N = 3000000;
     global_best = 0;
-    search(2, N, 44);
+
+    // Initialize cache
+    memset(cache, -1, sizeof(cache));
+
+    // Iteratively increase depth like the Java version
+    for (int depth = 1; (1 << depth) < N; depth++) {
+        helper(0, N, depth);
+    }
+
     printf("%d\n", global_best);
     return 0;
 }
@@ -113,7 +113,7 @@ int main(void) {
         subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
                        check=True, capture_output=True)
         result = subprocess.run([bin_path], capture_output=True, text=True,
-                                check=True, timeout=28)
+                                check=True, timeout=60)
         return int(result.stdout.strip())
     finally:
         os.unlink(c_path)

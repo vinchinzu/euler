@@ -1,48 +1,42 @@
-"""Project Euler Problem 505: Bidirectional Recurrence.
+"""Project Euler Problem 505: Bidirectional Recurrence."""
 
-Define x(0) = 0, x(1) = 1, x(2k) = (3x(k) + 2x(⌊k/2⌋)) (mod M), and
-x(2k+1) = (2x(k) + 3x(⌊k/2⌋)) (mod M). Then define y(k) = x(k) if k ≥ N
-and y(k) = M - 1 - max(y(2k), y(2k+1)) otherwise. Find y(1).
-"""
+import subprocess
+import tempfile
+import os
 
-from __future__ import annotations
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdint.h>
 
-from typing import Dict
+#define N 1000000000000LL
+#define K ((1ULL << 60) - 1)
 
+uint64_t helper(uint64_t k, uint64_t prev_x, uint64_t x, uint64_t alpha, uint64_t beta) {
+    if (k >= N)
+        return x;
+    uint64_t y = helper(2 * k, x, (2 * prev_x + 3 * x) & K, K - beta, K - alpha);
+    if (K - y <= alpha)
+        return alpha;
+    uint64_t y2 = helper(2 * k + 1, x, (3 * prev_x + 2 * x) & K, y, K - alpha);
+    return K - (y > y2 ? y : y2);
+}
 
-def solve() -> int:
-    """Solve Problem 505."""
-    N = 10**12
-    M = 2**60
-    K = M - 1
-
-    def helper(
-        k: int, prev_x: int, x: int, alpha: int, beta: int
-    ) -> int:
-        """Recursive helper with alpha-beta pruning."""
-        if k >= N:
-            return x
-
-        new_x = (2 * prev_x + 3 * x) & K
-        y = helper(2 * k, x, new_x, K - beta, K - alpha)
-
-        if K - y <= alpha:
-            return alpha
-
-        new_x2 = (3 * prev_x + 2 * x) & K
-        y2 = helper(2 * k + 1, x, new_x2, y, K - alpha)
-
-        return K - max(y, y2)
-
-    return helper(1, 0, 1, 0, K)
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+int main() {
+    uint64_t result = helper(1, 0, 1, 0, K);
+    printf("%llu\n", result);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

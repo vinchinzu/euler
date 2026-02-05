@@ -1,96 +1,129 @@
 """Project Euler Problem 632: Square prime factors.
 
 Let C_k(N) be the number of integers between 1 and N inclusive that are
-divisible by p² for exactly k primes p. Find the product of all nonzero C_k(N).
+divisible by p^2 for exactly k primes p. Find the product of all nonzero C_k(N).
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from math import isqrt
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
 
-from sympy import factorint, primerange
+typedef long long ll;
+typedef unsigned long long ull;
 
+#define N 10000000000000000LL  // 10^16
+#define M 1000000007LL
+#define L 100000000  // sqrt(N) = 10^8
 
-def ilog2(n: int) -> int:
-    """Integer logarithm base 2."""
-    result = 0
-    while n > 1:
-        n //= 2
-        result += 1
-    return result
+int8_t *mobius;
+int8_t *omega;
 
+void sieve() {
+    mobius = (int8_t*)malloc((L + 1) * sizeof(int8_t));
+    omega = (int8_t*)malloc((L + 1) * sizeof(int8_t));
 
-def nCr(n: int, k: int, mod: int) -> list[list[int]]:
-    """Precompute binomial coefficients modulo mod."""
-    result = [[0] * (k + 1) for _ in range(n + 1)]
-    for i in range(n + 1):
-        result[i][0] = 1
-        for j in range(1, min(i + 1, k + 1)):
-            result[i][j] = (result[i - 1][j - 1] + result[i - 1][j]) % mod
-    return result
+    for (int i = 0; i <= L; i++) {
+        mobius[i] = 1;
+        omega[i] = 0;
+    }
 
+    char *is_prime = (char*)malloc((L + 1) * sizeof(char));
+    memset(is_prime, 1, L + 1);
 
-def mobius_sieve(limit: int) -> list[int]:
-    """Möbius function sieve."""
-    mobius = [1] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                mobius[j] *= -1
-            for j in range(i * i, limit + 1, i * i):
-                mobius[j] = 0
-    return mobius
+    for (int i = 2; i <= L; i++) {
+        if (is_prime[i]) {
+            for (int j = i; j <= L; j += i) {
+                is_prime[j] = 0;
+                mobius[j] *= -1;
+                omega[j]++;
+            }
+            for (ll j = (ll)i * i; j <= L; j += (ll)i * i) {
+                mobius[j] = 0;
+            }
+        }
+    }
 
+    free(is_prime);
+}
 
-def omega_sieve(limit: int) -> list[int]:
-    """Number of distinct prime factors."""
-    omega = [0] * (limit + 1)
-    is_prime = [True] * (limit + 1)
-    for i in range(2, limit + 1):
-        if is_prime[i]:
-            for j in range(i, limit + 1, i):
-                is_prime[j] = False
-                omega[j] += 1
-    return omega
+int ilog2(int n) {
+    int result = 0;
+    while (n > 1) {
+        n /= 2;
+        result++;
+    }
+    return result;
+}
 
+int main() {
+    sieve();
 
-def solve() -> int:
-    """Solve Problem 632."""
-    N = 10**16
-    M = 10**9 + 7
-    L = isqrt(N)
+    int maxK = ilog2(L);
 
-    mobius = mobius_sieve(L)
-    nCrs_table = nCr(ilog2(L), ilog2(L), M)
-    omegas = omega_sieve(L)
+    // Precompute nCr mod M
+    ll **nCr = (ll**)malloc((maxK + 1) * sizeof(ll*));
+    for (int i = 0; i <= maxK; i++) {
+        nCr[i] = (ll*)calloc(maxK + 1, sizeof(ll));
+        nCr[i][0] = 1;
+        for (int j = 1; j <= i; j++) {
+            nCr[i][j] = (nCr[i-1][j-1] + nCr[i-1][j]) % M;
+        }
+    }
 
-    C = [0] * (ilog2(L) + 1)
-    C[0] = N % M
+    ll *C = (ll*)calloc(maxK + 1, sizeof(ll));
+    C[0] = N % M;
 
-    for n in range(2, isqrt(N) + 1):
-        if mobius[n] == 0:
-            continue
-        k = omegas[n]
-        count = (N // (n * n)) % M
-        for i in range(k + 1):
-            parity = 1 if i % 2 == 0 else -1
-            C[k - i] = (C[k - i] + parity * nCrs_table[k][i] * count) % M
+    for (int n = 2; n <= L; n++) {
+        if (mobius[n] == 0) continue;
+        int k = omega[n];
+        ll count = (N / ((ll)n * n)) % M;
 
-    ans = 1
-    for num in C:
-        if num != 0:
-            ans = (ans * num) % M
-    return ans % M
+        for (int i = 0; i <= k; i++) {
+            int parity = (i % 2 == 0) ? 1 : -1;
+            C[k - i] = (C[k - i] + parity * nCr[k][i] * count % M + M) % M;
+        }
+    }
 
+    ll ans = 1;
+    for (int i = 0; i <= maxK; i++) {
+        if (C[i] != 0) {
+            ans = ans * C[i] % M;
+        }
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    printf("%lld\n", ans);
+
+    free(mobius);
+    free(omega);
+    for (int i = 0; i <= maxK; i++) free(nCr[i]);
+    free(nCr);
+    free(C);
+
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return int(result)
 
 
 if __name__ == "__main__":
-    main()
+    print(solve())

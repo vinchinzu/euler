@@ -1,207 +1,200 @@
-"""Project Euler Problem 550: Divisor game.
+"""Project Euler Problem 550: Divisor game."""
 
-Two players play a game with k piles of stones, taking turns replacing a pile
-of n stones with two piles, each one with size a proper divisor of n greater
-than 1, until the player with no valid moves loses. Find the number of winning
-positions of K piles, each with 2 to N stones.
+import subprocess
+import tempfile
+import os
 
-First we compute the nimber N(n) of a pile of n stones, by taking mex N(a) ^ N(b)
-for all pairs of proper divisors a,b of n greater than 1. As an optimization,
-we note that the nimber only depends on the exponents of the prime factorization
-of n, so k*p1, k*p2, ... all have the same nimber. We can use this to quickly
-compute the number of n with any particular nimber value N(n).
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-A winning position is then any set of K piles such that the bitwise XOR of all
-nimbers is nonzero. We can use the Hadamard transform to get exactly the number
-of K-pile games with each total nimber, and finally add up the counts for K piles
-with nonzero nimber.
-"""
+typedef int64_t i64;
+typedef __int128 i128;
 
-from __future__ import annotations
+#define N 10000000
+#define K 1000000000000LL
+#define L 64
+#define M 987654321LL
 
-from math import isqrt
-from typing import Dict, List, Tuple
+// Primes
+int *primes;
+int prime_count;
+int *num_primes;
 
+void sieve() {
+    char *is_prime = (char*)calloc(N + 1, sizeof(char));
+    for (int i = 2; i <= N; i++) is_prime[i] = 1;
+    for (i64 i = 2; i * i <= N; i++) {
+        if (is_prime[i]) {
+            for (i64 j = i * i; j <= N; j += i)
+                is_prime[j] = 0;
+        }
+    }
+    primes = (int*)malloc((N + 1) * sizeof(int));
+    prime_count = 0;
+    for (int i = 2; i <= N; i++)
+        if (is_prime[i]) primes[prime_count++] = i;
 
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit using Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+    num_primes = (int*)calloc(N + 1, sizeof(int));
+    int cnt = 0;
+    for (int i = 0; i <= N; i++) {
+        if (i >= 2 && is_prime[i]) cnt++;
+        num_primes[i] = cnt;
+    }
 
+    free(is_prime);
+}
 
-def all_divisors(n: int) -> List[int]:
-    """Return all divisors of n."""
-    divisors = []
-    i = 1
-    while i * i <= n:
-        if n % i == 0:
-            divisors.append(i)
-            if i * i != n:
-                divisors.append(n // i)
-        i += 1
-    divisors.sort()
-    return divisors
+int divisors[1000];
+int divisor_count;
 
+void get_divisors(int n) {
+    divisor_count = 0;
+    for (i64 i = 1; i * i <= n; i++) {
+        if (n % i == 0) {
+            divisors[divisor_count++] = (int)i;
+            if (i != n / i) divisors[divisor_count++] = n / (int)i;
+        }
+    }
+    for (int i = 0; i < divisor_count; i++) {
+        for (int j = i + 1; j < divisor_count; j++) {
+            if (divisors[i] > divisors[j]) {
+                int t = divisors[i]; divisors[i] = divisors[j]; divisors[j] = t;
+            }
+        }
+    }
+}
 
-def num_primes_up_to(limit: int) -> Dict[int, int]:
-    """Return a dictionary mapping n to the number of primes <= n."""
-    primes = sieve(limit)
-    result: Dict[int, int] = {}
-    prime_set = set(primes)
-    count = 0
-    for i in range(limit + 1):
-        if i in prime_set:
-            count += 1
-        result[i] = count
-    return result
+int *nimbers;
+i64 counts[L];
 
+void helper(int min_idx, int n) {
+    if (n > 1) {
+        int used[L] = {0};
+        get_divisors(n);
+        for (int i = 1; i < divisor_count - 1; i++) {
+            for (int j = i; j < divisor_count - 1; j++) {
+                int xor_val = nimbers[divisors[i]] ^ nimbers[divisors[j]];
+                if (xor_val < L) used[xor_val] = 1;
+            }
+        }
+        while (nimbers[n] < L && used[nimbers[n]])
+            nimbers[n]++;
+        counts[nimbers[n]]++;
+    }
 
-def xor_convolution_power(arr: List[int], exp: int, mod: int) -> List[int]:
-    """Compute arr raised to exp power using XOR convolution.
+    for (int idx = min_idx; idx < prime_count; idx++) {
+        int p = primes[idx];
+        if ((i64)n * p > N) break;
 
-    For XOR convolution, we use the Fast Walsh-Hadamard Transform (FWHT).
-    The transform for XOR is: T[i] = sum over j (arr[j] * (-1)^popcount(i&j))
-    """
-    n = len(arr)
-    # Ensure n is a power of 2
-    while n & (n - 1):
-        n += 1
-    if len(arr) < n:
-        arr = arr + [0] * (n - len(arr))
+        for (int new_n = n; (i64)new_n * p <= N; new_n *= p)
+            helper(idx + 1, new_n * p);
 
-    def fwht(a: List[int], inv: bool = False) -> List[int]:
-        """Fast Walsh-Hadamard Transform for XOR convolution."""
-        n = len(a)
-        a = a[:]
-        j = 0
-        for i in range(1, n):
-            bit = n >> 1
-            while j & bit:
-                j ^= bit
-                bit >>= 1
-            j ^= bit
-            if i < j:
-                a[i], a[j] = a[j], a[i]
+        if ((i64)n * (i64)p * p > N) {
+            if (idx > 0) {
+                int prev_p = primes[idx - 1];
+                int add = num_primes[N / n] - num_primes[prev_p] - 1;
+                if (add > 0) counts[nimbers[n * p]] += add;
+            }
+            return;
+        }
+    }
+}
 
-        length = 2
-        while length <= n:
-            for i in range(0, n, length):
-                for j in range(i, i + length // 2):
-                    u = a[j]
-                    v = a[j + length // 2]
-                    a[j] = (u + v) % mod
-                    a[j + length // 2] = (u - v) % mod
-            length <<= 1
-        if inv:
-            inv_n = pow(n, mod - 2, mod)
-            a = [(x * inv_n) % mod for x in a]
-        return a
+// Extended GCD for modular inverse
+i64 extended_gcd(i64 a, i64 b, i64 *x, i64 *y) {
+    if (a == 0) {
+        *x = 0;
+        *y = 1;
+        return b;
+    }
+    i64 x1, y1;
+    i64 gcd = extended_gcd(b % a, a, &x1, &y1);
+    *x = y1 - (b / a) * x1;
+    *y = x1;
+    return gcd;
+}
 
-    # Apply FWHT
-    transformed = fwht(arr)
-    # Raise to power element-wise
-    powered = [pow(x, exp, mod) for x in transformed]
-    # Inverse transform
-    result = fwht(powered, inv=True)
-    return result[:L]
+i64 mod_inverse(i64 a, i64 m) {
+    i64 x, y;
+    extended_gcd(a % m, m, &x, &y);
+    return ((x % m) + m) % m;
+}
 
+// Fast Walsh-Hadamard Transform for XOR convolution
+void fwht(i64 *a, int n, int inv) {
+    for (int len = 1; len < n; len <<= 1) {
+        for (int i = 0; i < n; i += len << 1) {
+            for (int j = 0; j < len; j++) {
+                i64 u = a[i + j];
+                i64 v = a[i + j + len];
+                a[i + j] = (u + v) % M;
+                a[i + j + len] = ((u - v) % M + M) % M;
+            }
+        }
+    }
+    if (inv) {
+        i64 inv_n = mod_inverse(n, M);
+        for (int i = 0; i < n; i++)
+            a[i] = (i128)a[i] * inv_n % M;
+    }
+}
 
-def solve() -> int:
-    """Solve Problem 550."""
-    N = 10**7
-    K = 10**12
-    L = 64
-    M = 987654321
+i64 power(i64 base, i64 exp) {
+    i64 result = 1;
+    base = ((base % M) + M) % M;
+    while (exp > 0) {
+        if (exp & 1) result = (i128)result * base % M;
+        base = (i128)base * base % M;
+        exp >>= 1;
+    }
+    return result;
+}
 
-    primes = sieve(N)
-    num_primes_dict = num_primes_up_to(N)
+int main() {
+    sieve();
 
-    nimbers = [0] * (N + 1)
-    counts = [0] * L
+    nimbers = (int*)calloc(N + 1, sizeof(int));
 
-    def helper(
-        min_index: int,
-        n: int,
-        primes_list: List[int],
-        nimbers_arr: List[int],
-        counts_arr: List[int],
-        num_primes: Dict[int, int],
-    ) -> None:
-        """Recursively compute nimbers for all numbers."""
-        if n > 1:
-            used = [False] * L
-            divisors = all_divisors(n)
-            # Check all pairs of proper divisors (excluding 1 and n)
-            for i in range(1, len(divisors) - 1):
-                for j in range(i, len(divisors) - 1):
-                    d1 = divisors[i]
-                    d2 = divisors[j]
-                    xor_val = nimbers_arr[d1] ^ nimbers_arr[d2]
-                    if xor_val < L:
-                        used[xor_val] = True
-            # Compute mex (minimum excluded value)
-            while nimbers_arr[n] < L and used[nimbers_arr[n]]:
-                nimbers_arr[n] += 1
-            if nimbers_arr[n] < L:
-                counts_arr[nimbers_arr[n]] += 1
+    helper(0, 1);
 
-        # Recursively process multiples
-        for index in range(min_index, len(primes_list)):
-            p = primes_list[index]
-            if n * p > N:
-                break
-            new_n = n
-            while new_n * p <= N:
-                new_n *= p
-                helper(
-                    index + 1,
-                    new_n,
-                    primes_list,
-                    nimbers_arr,
-                    counts_arr,
-                    num_primes,
-                )
-            # Optimization: if n * p^2 > N, we can batch count remaining
-            if n * p * p > N:
-                if n * p <= N:
-                    nim_val = nimbers_arr[n * p]
-                    if nim_val < L:
-                        # Count numbers of form n * q where q > p and q is prime
-                        # and n * q <= N
-                        if n > 1:
-                            prev_p = primes_list[index - 1] if index > 0 else 0
-                            count_to_add = (
-                                num_primes.get(N // n, 0)
-                                - num_primes.get(prev_p, 0)
-                                - 1
-                            )
-                            if count_to_add > 0:
-                                counts_arr[nim_val] += count_to_add
-                return
+    i64 arr[L];
+    for (int i = 0; i < L; i++) arr[i] = counts[i] % M;
 
-    helper(0, 1, primes, nimbers, counts, num_primes_dict)
+    fwht(arr, L, 0);
+    for (int i = 0; i < L; i++)
+        arr[i] = power(arr[i], K);
+    fwht(arr, L, 1);
 
-    # Compute K-th power using XOR convolution
-    pow_counts = xor_convolution_power(counts, K, M)
+    i64 ans = 0;
+    for (int i = 1; i < L; i++)
+        ans = (ans + arr[i]) % M;
 
-    # Sum counts for nonzero nimbers
-    ans = sum(pow_counts[i] for i in range(1, L)) % M
-    return ans
+    printf("%lld\n", ans);
 
+    free(primes);
+    free(num_primes);
+    free(nimbers);
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return 0;
+}
+'''
 
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,71 +1,78 @@
-"""Project Euler Problem 816: Shortest distance among points.
+"""Project Euler Problem 816: Shortest distance among points."""
 
-Find the shortest distance between any two distinct points of the given
-points.
-"""
+import subprocess
+import tempfile
+import os
 
-from __future__ import annotations
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 
-from dataclasses import dataclass
-from math import sqrt
-from typing import List
+#define N 2000000
 
+typedef struct {
+    uint64_t x, y;
+} Point;
 
-@dataclass
-class Point:
-    """2D point."""
+int cmp_x(const void *a, const void *b) {
+    Point *pa = (Point *)a;
+    Point *pb = (Point *)b;
+    if (pa->x < pb->x) return -1;
+    if (pa->x > pb->x) return 1;
+    return 0;
+}
 
-    x: int
-    y: int
+int main() {
+    Point *points = malloc(N * sizeof(Point));
 
-    def distance_to(self, other: Point) -> float:
-        """Compute Euclidean distance to another point."""
-        dx = self.x - other.x
-        dy = self.y - other.y
-        return sqrt(dx * dx + dy * dy)
+    // Blum Blum Shub sequence
+    // s_0 = 290797, s_{n+1} = s_n^2 mod 50515093
+    // P_n = (s_{2n}, s_{2n+1})
+    uint64_t s = 290797;
+    uint64_t m = 50515093;
+    for (int i = 0; i < N; i++) {
+        // P_i.x = s_{2i}
+        points[i].x = s;
+        s = (s * s) % m;
+        // P_i.y = s_{2i+1}
+        points[i].y = s;
+        s = (s * s) % m;
+    }
 
+    // Sort by x
+    qsort(points, N, sizeof(Point), cmp_x);
 
-def blum_blum_shub(seed: int, n: int) -> List[int]:
-    """Generate Blum Blum Shub sequence."""
-    m = 2**32
-    x = seed
-    result = []
-    for _ in range(n):
-        x = (x * x) % m
-        result.append(x)
+    double ans_sq = 1e36;
+    for (int i = 0; i < N; i++) {
+        for (int j = i + 1; j < N; j++) {
+            double dx = (double)points[j].x - (double)points[i].x;
+            double dx_sq = dx * dx;
+            if (dx_sq >= ans_sq) break;
+            double dy = (double)points[j].y - (double)points[i].y;
+            double d_sq = dx_sq + dy * dy;
+            if (d_sq < ans_sq) ans_sq = d_sq;
+        }
+    }
+
+    printf("%.9f\n", sqrt(ans_sq));
+    free(points);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-march=native', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     return result
-
-
-def solve() -> float:
-    """Solve Problem 816."""
-    N = 2_000_000
-    seed = 0
-
-    # Generate points using Blum Blum Shub
-    seq = blum_blum_shub(seed, 2 * N)
-    points = [Point(seq[i], seq[i + 1]) for i in range(0, 2 * N, 2)]
-
-    # Sort by x-coordinate
-    points.sort(key=lambda p: p.x)
-
-    ans = float("inf")
-    for i in range(N):
-        for j in range(i + 1, N):
-            p = points[i]
-            q = points[j]
-            if q.x - p.x > ans:
-                break
-            ans = min(ans, p.distance_to(q))
-
-    return ans
-
-
-def main() -> float:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.9f}")
-    return result
-
 
 if __name__ == "__main__":
-    main()
+    print(solve())

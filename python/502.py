@@ -1,123 +1,252 @@
 """Project Euler Problem 502: Counting Castles.
 
-For given pairs (w, h), find the number of castles (configurations of stacked
-horizontal blocks) with width w, height h, no horizontally adjacent blocks,
-a single block on the bottom row, and an even number of blocks.
-
-Let f(p, x, y) be the number of castles with width x, rightmost column of
-height y, and the number of blocks has parity p. If the second rightmost column
-is taller than the rightmost column, then the castle of width x-1 has the same
-number of blocks, and therefore the same parity. Otherwise, the parity changes
-if the heights of the rightmost two columns have different parity.
-
-Let dp(p, x, y) be the sum of all f(p, x, y') where y' ≤ y has the same parity
-as y; this gives a more efficient algorithm.
-
-To compute the answer for large w or h, note that the total satisfies a
-generating function and therefore we can extrapolate the value from a linear
-recurrence.
+Uses Berlekamp-Massey to find linear recurrence and Kitamasa to extrapolate.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from typing import Callable
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
+typedef long long i64;
+#define MOD 1000000007LL
 
-def lagrange_extrapolation(
-    f: Callable[[int], int], n_points: int, mod: int
-) -> Callable[[int], int]:
-    """Extrapolate function using Lagrange interpolation."""
-    # Generate n_points values
-    values = []
-    for i in range(1, n_points + 1):
-        values.append(f(i) % mod)
+i64 mod(i64 x) {
+    x %= MOD;
+    if (x < 0) x += MOD;
+    return x;
+}
 
-    def interpolate(x: int) -> int:
-        """Interpolate at point x."""
-        result = 0
-        for i in range(n_points):
-            term = values[i]
-            for j in range(n_points):
-                if i != j:
-                    denom = (i + 1 - (j + 1)) % mod
-                    if denom == 0:
-                        continue
-                    inv = pow(denom, mod - 2, mod)
-                    term = (term * (x - (j + 1)) * inv) % mod
-            result = (result + term) % mod
-        return result
+i64 power(i64 base, i64 exp) {
+    i64 result = 1;
+    base = mod(base);
+    while (exp > 0) {
+        if (exp & 1) result = mod(result * base);
+        base = mod(base * base);
+        exp >>= 1;
+    }
+    return result;
+}
 
-    return interpolate
+i64 inv(i64 x) {
+    return power(mod(x), MOD - 2);
+}
 
+i64 numCastles(int w, int h) {
+    if (h <= 0) return 0;
 
-def num_castles(w: int, h: int, mod: int) -> int:
-    """Count castles with width w and height h."""
-    if h <= 0:
-        return 0
-    # dp[p][x][y] = sum of f(p, x, y') for y' <= y with same parity
-    dp = [[[0] * (h + 1) for _ in range(w + 1)] for _ in range(2)]
-    
-    # Base case: width 0, even parity, even heights
-    for y in range(0, h + 1, 2):
-        dp[0][0][y] = 1
-    
-    for x in range(1, w + 1):
-        for y in range(1, h + 1):
-            for p in range(2):
-                # Add all from previous width
-                dp[p][x][y] += dp[p][x - 1][h]
-                dp[p][x][y] += dp[p][x - 1][h - 1]
-                # Subtract those <= y-1 with different parity
-                dp[p][x][y] -= dp[p][x - 1][y - 1]
-                # Add those <= y-1 with opposite parity
-                dp[p][x][y] += dp[1 - p][x - 1][y - 1]
-                # Cumulative sum: add previous y-2 if exists
-                if y >= 2:
-                    dp[p][x][y] += dp[p][x][y - 2]
-                dp[p][x][y] %= mod
-    
-    return (dp[0][w][h] + dp[0][w][h - 1]) % mod
+    i64 *dp_prev0 = (i64*)calloc(h + 1, sizeof(i64));
+    i64 *dp_prev1 = (i64*)calloc(h + 1, sizeof(i64));
+    i64 *dp_curr0 = (i64*)calloc(h + 1, sizeof(i64));
+    i64 *dp_curr1 = (i64*)calloc(h + 1, sizeof(i64));
 
+    for (int y = 0; y <= h; y += 2)
+        dp_prev0[y] = 1;
 
-def num_castles_big(W: int, H: int, L: int, mod: int) -> int:
-    """Count castles for large W or H using extrapolation."""
-    if W <= L:
-        def f_h(h: int) -> int:
-            return num_castles(W, h, mod)
-        extrap = lagrange_extrapolation(f_h, L, mod)
-        return extrap(H)
-    if H <= L:
-        def f_w(w: int) -> int:
-            return num_castles(w, H, mod)
-        extrap = lagrange_extrapolation(f_w, L, mod)
-        return extrap(W)
-    return num_castles(W, H, mod)
+    for (int x = 1; x <= w; x++) {
+        memset(dp_curr0, 0, (h + 1) * sizeof(i64));
+        memset(dp_curr1, 0, (h + 1) * sizeof(i64));
 
+        for (int y = 1; y <= h; y++) {
+            i64 val0 = 0;
+            val0 += dp_prev0[h];
+            val0 += dp_prev0[h - 1];
+            val0 -= dp_prev0[y - 1];
+            val0 += dp_prev1[y - 1];
+            if (y >= 2)
+                val0 += dp_curr0[y - 2];
+            dp_curr0[y] = mod(val0);
 
-def solve() -> int:
-    """Solve Problem 502."""
-    inputs = [
-        (10**12, 100),
-        (10000, 10000),
-        (100, 10**12),
-    ]
-    L = 100
-    M = 10**9 + 7
-    
-    ans = 0
-    for w, h in inputs:
-        ans = (ans + num_castles_big(w, h, L, M) - 
-               num_castles_big(w, h - 1, L, M)) % M
-    
-    return ans
+            i64 val1 = 0;
+            val1 += dp_prev1[h];
+            val1 += dp_prev1[h - 1];
+            val1 -= dp_prev1[y - 1];
+            val1 += dp_prev0[y - 1];
+            if (y >= 2)
+                val1 += dp_curr1[y - 2];
+            dp_curr1[y] = mod(val1);
+        }
 
+        i64 *tmp;
+        tmp = dp_prev0; dp_prev0 = dp_curr0; dp_curr0 = tmp;
+        tmp = dp_prev1; dp_prev1 = dp_curr1; dp_curr1 = tmp;
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    i64 result = mod(dp_prev0[h] + dp_prev0[h - 1]);
 
+    free(dp_prev0); free(dp_prev1);
+    free(dp_curr0); free(dp_curr1);
+
+    return result;
+}
+
+int berlekamp_massey(i64 *S, int n, i64 *C) {
+    i64 *B = (i64*)calloc(n + 2, sizeof(i64));
+    i64 *T = (i64*)calloc(n + 2, sizeof(i64));
+
+    for (int i = 0; i <= n; i++) C[i] = B[i] = 0;
+    C[0] = B[0] = 1;
+    int recLen = 0, m = 1;
+    i64 b = 1;
+
+    for (int i = 0; i < n; i++) {
+        i64 d = S[i];
+        for (int j = 1; j <= recLen; j++)
+            d = mod(d + C[j] * S[i - j]);
+
+        if (d == 0) {
+            m++;
+        } else if (2 * recLen <= i) {
+            memcpy(T, C, (n + 2) * sizeof(i64));
+            i64 coef = mod(d * inv(b));
+            for (int j = m; j <= n; j++)
+                C[j] = mod(C[j] - coef * B[j - m]);
+            memcpy(B, T, (n + 2) * sizeof(i64));
+            recLen = i + 1 - recLen;
+            b = d;
+            m = 1;
+        } else {
+            i64 coef = mod(d * inv(b));
+            for (int j = m; j <= n; j++)
+                C[j] = mod(C[j] - coef * B[j - m]);
+            m++;
+        }
+    }
+
+    free(B);
+    free(T);
+    return recLen;
+}
+
+i64 linear_recurrence(i64 *C, int recLen, i64 *a, i64 n) {
+    if (n < recLen) return a[n];
+    if (recLen == 0) return 0;
+
+    i64 *q = (i64*)calloc(recLen + 1, sizeof(i64));
+    i64 *r = (i64*)calloc(recLen + 1, sizeof(i64));
+    i64 *tmp = (i64*)calloc(2 * recLen + 2, sizeof(i64));
+
+    q[0] = 1;
+    r[1] = 1;
+
+    i64 exp = n;
+    while (exp > 0) {
+        if (exp & 1) {
+            memset(tmp, 0, (2 * recLen + 2) * sizeof(i64));
+            for (int i = 0; i < recLen; i++)
+                for (int j = 0; j < recLen; j++)
+                    tmp[i + j] = mod(tmp[i + j] + q[i] * r[j]);
+            for (int i = 2 * recLen - 2; i >= recLen; i--) {
+                for (int j = 1; j <= recLen; j++)
+                    tmp[i - j] = mod(tmp[i - j] + tmp[i] * C[j]);
+                tmp[i] = 0;
+            }
+            for (int i = 0; i < recLen; i++) q[i] = tmp[i];
+        }
+        memset(tmp, 0, (2 * recLen + 2) * sizeof(i64));
+        for (int i = 0; i < recLen; i++)
+            for (int j = 0; j < recLen; j++)
+                tmp[i + j] = mod(tmp[i + j] + r[i] * r[j]);
+        for (int i = 2 * recLen - 2; i >= recLen; i--) {
+            for (int j = 1; j <= recLen; j++)
+                tmp[i - j] = mod(tmp[i - j] + tmp[i] * C[j]);
+            tmp[i] = 0;
+        }
+        for (int i = 0; i < recLen; i++) r[i] = tmp[i];
+        exp >>= 1;
+    }
+
+    i64 result = 0;
+    for (int i = 0; i < recLen; i++)
+        result = mod(result + q[i] * a[i]);
+
+    free(q);
+    free(r);
+    free(tmp);
+    return result;
+}
+
+i64 extrapolate(i64 *values, int n, i64 x) {
+    if (x <= n) return values[x - 1];
+
+    i64 *C = (i64*)calloc(n + 2, sizeof(i64));
+    int recLen = berlekamp_massey(values, n, C);
+
+    for (int i = 1; i <= recLen; i++)
+        C[i] = mod(-C[i]);
+
+    i64 result = linear_recurrence(C, recLen, values, x - 1);
+
+    free(C);
+    return result;
+}
+
+i64 numCastlesBig(i64 W, i64 H) {
+    // Need 2*min(W,H)+1 values for recurrence
+    // For W=100 or H=100, need about 201 values, use 500 for safety
+    int L = 500;
+
+    i64 *values = (i64*)malloc((L + 1) * sizeof(i64));
+
+    if (W <= 100) {
+        // Extrapolate in H
+        for (int h = 1; h <= L; h++)
+            values[h - 1] = numCastles((int)W, h);
+        i64 result = extrapolate(values, L, H);
+        free(values);
+        return result;
+    }
+    if (H <= 100) {
+        // Extrapolate in W
+        for (int w = 1; w <= L; w++)
+            values[w - 1] = numCastles(w, (int)H);
+        i64 result = extrapolate(values, L, W);
+        free(values);
+        return result;
+    }
+
+    free(values);
+    return numCastles((int)W, (int)H);
+}
+
+int main() {
+    i64 ans = 0;
+
+    // Input 1: (10^12, 100)
+    i64 W = 1000000000000LL, H = 100;
+    ans = mod(ans + numCastlesBig(W, H) - numCastlesBig(W, H - 1));
+
+    // Input 2: (10000, 10000)
+    W = 10000; H = 10000;
+    ans = mod(ans + numCastlesBig(W, H) - numCastlesBig(W, H - 1));
+
+    // Input 3: (100, 10^12)
+    W = 100; H = 1000000000000LL;
+    ans = mod(ans + numCastlesBig(W, H) - numCastlesBig(W, H - 1));
+
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=600).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

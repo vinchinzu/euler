@@ -74,14 +74,14 @@ Last updated: 2026-02-03
 2. Fix remaining ERROR problems (<800): 554, 562, 564, 696, 748
 3. Optimize TIMEOUT problems (110+ problems need algorithmic speedup)
 4. Fix >800 WRONG/ERROR problems
-5. Java solutions exist for most problems at `/home/v/01_projects/euler/java/pN.java` - use as reference
+5. Java solutions exist for most problems at `../java/pN.java` - use as reference
 
 ## Key Reference Files
 
-- Answer key: `/home/v/01_projects/euler/Solutions.txt` (format: `N. answer`)
-- Answer key 2: `/home/v/01_projects/euler/euler/solutions.txt` (format: `Problem N: answer`)
-- Java solutions: `/home/v/01_projects/euler/java/pN.java`
-- Validation script: `/home/v/01_projects/euler/batch_validate.py`
+- Answer key: `../Solutions.txt` (format: `N. answer`)
+- Answer key 2: `solutions.txt` (format: `Problem N: answer`)
+- Java solutions: `../java/pN.java`
+- Validation script: `batch_validate.py`
 - Problems not in README: `/tmp/not_in_readme.txt`
 
 ## Java Library Patterns (for porting)

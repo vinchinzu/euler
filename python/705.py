@@ -1,123 +1,162 @@
 """Project Euler Problem 705: Total Inversion Count of Divisibility.
 
-Let G(N) be the concatenation of all primes less than N, ignoring zeros. Find
-the sum of the inversion counts of all digit sequences s with the same length
-as G(N) such that each digit of s is a divisor of the corresponding digit of
-G(N).
-
-We process the string G(N) from right to left, keeping track of the frequency
-of each possible digit in the suffixes of all digit sequences s. For each
-digit d, any digit i less than d in these suffixes will result in an
-inversion. The number of strings with this inversion is the total number of
-digit sequences s, with the digits d and i fixed. In other words, it is the
-total number of digit sequences, which is the product of the number of
-divisors over all digits of G(N), divided by the number of divisors for the
-two digits of G(N) at the positions of d and i.
-
-This means that as we keep track of digit frequencies, we need to multiply
-them by the total number of sequences divided by the number of divisors of
-the corresponding digit of G(N). And when we count inversions, we need to
-divide by the number of divisors of the other corresponding digit of G(N).
-Doing this over all digits gives the answer.
+Uses a C helper for performance.
 """
 
-from __future__ import annotations
+import subprocess
+import tempfile
+import os
 
-from typing import List
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+#define N 100000000
+#define M 1000000007ULL
+
+// Sieve of Eratosthenes
+int *sieve(int limit, int *count) {
+    char *is_prime = calloc(limit + 1, 1);
+    for (int i = 2; i <= limit; i++) is_prime[i] = 1;
+    for (int i = 2; i * i <= limit; i++) {
+        if (is_prime[i]) {
+            for (int j = i * i; j <= limit; j += i) {
+                is_prime[j] = 0;
+            }
+        }
+    }
+    *count = 0;
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) (*count)++;
+    }
+    int *primes = malloc(*count * sizeof(int));
+    int idx = 0;
+    for (int i = 2; i <= limit; i++) {
+        if (is_prime[i]) primes[idx++] = i;
+    }
+    free(is_prime);
+    return primes;
+}
+
+// Get digits of a number in REVERSE order (rightmost first), store in arr, return count
+int digits(int n, int *arr) {
+    int len = 0;
+    while (n > 0) {
+        arr[len++] = n % 10;
+        n /= 10;
+    }
+    return len;
+}
+
+// Divisors for digits 0-9
+int divisors[10][5] = {
+    {},              // 0
+    {1},             // 1
+    {1, 2},          // 2
+    {1, 3},          // 3
+    {1, 2, 4},       // 4
+    {1, 5},          // 5
+    {1, 2, 3, 6},    // 6
+    {1, 7},          // 7
+    {1, 2, 4, 8},    // 8
+    {1, 3, 9},       // 9
+};
+int num_divisors[10] = {0, 1, 2, 2, 3, 2, 4, 2, 4, 3};
+
+// Modular inverse using Fermat's little theorem
+unsigned long long mod_inv(unsigned long long a) {
+    unsigned long long result = 1;
+    unsigned long long exp = M - 2;
+    a %= M;
+    while (exp > 0) {
+        if (exp & 1) result = result * a % M;
+        a = a * a % M;
+        exp >>= 1;
+    }
+    return result;
+}
+
+int main() {
+    int prime_count;
+    int *primes = sieve(N - 1, &prime_count);
+
+    // Compute numSequences
+    unsigned long long numSequences = 1;
+    for (int pi = prime_count - 1; pi >= 0; pi--) {
+        int p = primes[pi];
+        int d[10], len = digits(p, d);
+        for (int i = 0; i < len; i++) {
+            int k = d[i];
+            if (k > 0) {
+                numSequences = numSequences * num_divisors[k] % M;
+            }
+        }
+    }
+
+    // Precompute mod inverses
+    unsigned long long mod_invs[10];
+    for (int i = 1; i < 10; i++) {
+        mod_invs[i] = mod_inv(i);
+    }
+
+    // Main computation
+    unsigned long long counts[10] = {0};
+    unsigned long long ans = 0;
+
+    for (int pi = prime_count - 1; pi >= 0; pi--) {
+        int p = primes[pi];
+        int digs[10], len = digits(p, digs);
+        for (int di = 0; di < len; di++) {
+            int k = digs[di];
+            if (k > 0) {
+                int nd = num_divisors[k];
+                unsigned long long inv_nd = mod_invs[nd];
+
+                // Count inversions
+                for (int j = 0; j < nd; j++) {
+                    int div = divisors[k][j];
+                    for (int i = 1; i < div; i++) {
+                        ans = (ans + counts[i] * inv_nd) % M;
+                    }
+                }
+
+                // Update counts
+                for (int j = 0; j < nd; j++) {
+                    int div = divisors[k][j];
+                    counts[div] = (counts[div] + numSequences * inv_nd) % M;
+                }
+            }
+        }
+    }
+
+    printf("%llu\n", ans);
+
+    free(primes);
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True,
+                       capture_output=True)
+        result = subprocess.check_output([exe]).decode().strip()
+        return int(result)
+    finally:
+        if os.path.exists(c_file):
+            os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)
 
 
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, int(limit**0.5) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
-
-
-def digits(n: int) -> List[int]:
-    """Get digits of a number."""
-    return [int(d) for d in str(n)]
-
-
-def all_divisors(d: int) -> List[int]:
-    """Get all divisors of a digit (1-9)."""
-    if d == 0:
-        return []
-    result = []
-    for i in range(1, d + 1):
-        if d % i == 0:
-            result.append(i)
-    return result
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def mod_invs(n: int, m: int) -> List[int]:
-    """Generate modular inverses for 0..n-1 modulo m."""
-    return [mod_inverse(i, m) if i > 0 else 0 for i in range(n)]
-
-
-def solve() -> int:
-    """Solve Problem 705."""
-    n = 10**8
-    b = 10
-    m = 10**9 + 7
-
-    primes = sieve(n)
-    primes.reverse()
-
-    all_divisors_list: List[List[int]] = []
-    for i in range(b):
-        all_divisors_list.append(all_divisors(i))
-
-    num_sequences = 1
-    for p in primes:
-        for k in digits(p):
-            if k > 0:
-                num_sequences = (num_sequences * len(all_divisors_list[k])) % m
-
-    mod_invs_list = mod_invs(b, m)
-    counts = [0] * b
-    ans = 0
-
-    for p in primes:
-        for k in digits(p):
-            if k > 0:
-                divisors_k = all_divisors_list[k]
-                inv_divisors_k = mod_invs_list[len(divisors_k)]
-                for d in divisors_k:
-                    for i in range(1, d):
-                        ans = (ans + counts[i] * inv_divisors_k) % m
-                for d in divisors_k:
-                    counts[d] = (
-                        counts[d] + num_sequences * inv_divisors_k
-                    ) % m
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
+def main():
     result = solve()
     print(result)
     return result

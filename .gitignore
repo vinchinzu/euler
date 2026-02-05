@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+
+# Generated validation outputs
+validation_results.json
+validation_run.log

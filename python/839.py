@@ -32,11 +32,13 @@ class Block:
 
 
 def blum_blum_shub(seed: int, n: int) -> List[int]:
-    """Generate Blum Blum Shub sequence."""
-    m = 2**32
+    """Generate Blum Blum Shub sequence.
+    S_0 = 290797, S_n = S_{n-1}^2 mod 50515093.
+    """
+    m = 50515093
+    result = [seed]  # S_0 = seed
     x = seed
-    result = []
-    for _ in range(n):
+    for _ in range(n - 1):
         x = (x * x) % m
         result.append(x)
     return result
@@ -45,7 +47,7 @@ def blum_blum_shub(seed: int, n: int) -> List[int]:
 def solve() -> int:
     """Solve Problem 839."""
     N = 10**7
-    seed = 0
+    seed = 290797  # S_0 = 290797
 
     S = blum_blum_shub(seed, N)
 

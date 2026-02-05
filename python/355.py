@@ -1,185 +1,135 @@
-"""Project Euler Problem 355 solver.
+"""Project Euler Problem 355 - maximal coprime subset sum.
 
-This module provides an implementation of Co(n), defined as the maximal possible
-sum of a set of pairwise coprime elements from {1, 2, ..., n}.
+Find the largest possible sum of a mutually coprime subset of {1, ..., 200000}.
 
-It contains a direct translation of the provided Ruby solution with
-adjustments for Python 3.12 and type hints. The approach:
+This implementation mirrors the Java approach:
+- Keep all primes > sqrt(N) plus 1 as a base set.
+- For each small prime p <= sqrt(N), choose exactly one base element q and replace
+  q by the largest q * p^k <= N.
+- The gain matrix is solved by maximum-weight bipartite matching.
 
-- Precompute smallest prime factors (SPF) up to n.
-- Group numbers by their set of distinct prime factors (its "signature").
-- For each signature, keep only the maximum number in that group.
-- Use a compatibility table between signatures and a bitmask DP over groups to
-  find the maximum achievable sum of group maxima where selected signatures are
-  pairwise compatible (no shared primes).
-
-Note: This algorithm is exponential in the number of distinct prime-signature
-groups and is suited to this specific problem setup, mirroring the Ruby code.
+The only nontrivial component is assignment; we implement a rectangular Hungarian
+algorithm directly (no third-party dependencies).
 """
 
 from __future__ import annotations
 
-from math import isqrt
-from typing import Dict, List, Sequence, Tuple
+
+def _sieve_primes(limit: int) -> list[int]:
+    """Return all primes <= limit."""
+    is_prime = bytearray(b"\x01") * (limit + 1)
+    is_prime[0:2] = b"\x00\x00"
+
+    p = 2
+    while p * p <= limit:
+        if is_prime[p]:
+            start = p * p
+            step = p
+            is_prime[start : limit + 1 : step] = b"\x00" * (
+                ((limit - start) // step) + 1
+            )
+        p += 1
+
+    return [i for i in range(2, limit + 1) if is_prime[i]]
 
 
-def sieve_spf(limit: int) -> List[int]:
-    """Compute smallest prime factor (SPF) for every number up to ``limit``.
+def _maximum_weight_assignment(weights: list[list[int]]) -> int:
+    """Return max total weight selecting one distinct column per row.
 
-    Returns a list ``spf`` of length ``limit + 1`` where ``spf[x]`` is the
-    smallest prime factor of ``x`` (or 0 for 0 and 1). For ``limit < 1`` an
-    empty list is returned.
+    Uses Hungarian algorithm for a rectangular matrix with row_count <= col_count.
+    Time complexity: O(row_count^2 * col_count).
     """
-
-    if limit < 1:
-        return []
-
-    spf: List[int] = list(range(limit + 1))
-    spf[0] = 0
-    spf[1] = 0
-
-    for i in range(2, isqrt(limit) + 1):
-        if spf[i] != i:
-            continue
-        step_start = i * i
-        for j in range(step_start, limit, i):
-            if spf[j] == j:
-                spf[j] = i
-
-    return spf
-
-
-def get_prime_factors(num: int, spf: Sequence[int]) -> List[int]:
-    """Return the sorted list of prime factors of ``num`` (with multiplicity).
-
-    Uses the precomputed SPF table. For ``num <= 1`` returns an empty list.
-    """
-
-    if num <= 1:
-        return []
-
-    factors: List[int] = []
-    while num > 1:
-        p = spf[num]
-        factors.append(p)
-        while num % p == 0:
-            num //= p
-
-    factors.sort()
-    return factors
-
-
-def _build_groups(n: int, spf: Sequence[int]) -> Dict[Tuple[int, ...], int]:
-    """Group numbers by prime-factor signatures and keep the maximum per group.
-
-    Returns a mapping: signature -> max number having that signature.
-    The signature is a tuple of sorted prime factors (with multiplicity).
-    """
-
-    groups: Dict[Tuple[int, ...], int] = {}
-
-    # Include 1, which has an empty signature.
-    if n >= 1:
-        groups[()] = 1
-
-    for num in range(2, n + 1):
-        sig = tuple(get_prime_factors(num, spf))  # Keep multiplicity
-        current = groups.get(sig)
-        if current is None or num > current:
-            groups[sig] = num
-
-    return groups
-
-
-def _compute_compatibility(signatures: List[Tuple[int, ...]]) -> List[List[bool]]:
-    """Precompute compatibility between signatures.
-
-    Two signatures are compatible if they share no common prime factors.
-    """
-
-    num_groups = len(signatures)
-    compatible: List[List[bool]] = [
-        [False] * num_groups for _ in range(num_groups)
-    ]
-
-    for i in range(num_groups):
-        compatible[i][i] = True
-        sig_i = signatures[i]
-        set_i = set(sig_i)
-        for j in range(i + 1, num_groups):
-            sig_j = signatures[j]
-            # They are compatible if there is no shared prime.
-            compat = set_i.isdisjoint(sig_j)
-            compatible[i][j] = compat
-            compatible[j][i] = compat
-
-    return compatible
-
-
-def _maximize_sum(max_per_group: Dict[Tuple[int, ...], int]) -> int:
-    """Run a bitmask DP to find the best sum over compatible groups.
-
-    The state space is exponential in the number of signatures and mirrors the
-    provided Ruby solution. This is tailored for the original problem and is
-    not intended as a general-purpose large-scale algorithm.
-    """
-
-    if not max_per_group:
+    if not weights:
         return 0
 
-    signatures: List[Tuple[int, ...]] = list(max_per_group.keys())
-    num_groups = len(signatures)
+    row_count = len(weights)
+    col_count = len(weights[0])
+    if row_count > col_count:
+        raise ValueError("assignment requires rows <= columns")
 
-    compatible = _compute_compatibility(signatures)
+    # Hungarian for minimization; convert max(w) to min(-w).
+    u = [0] * (row_count + 1)
+    v = [0] * (col_count + 1)
+    p = [0] * (col_count + 1)
+    way = [0] * (col_count + 1)
+    inf = 10**30
 
-    # Use dict for sparse DP to avoid memory issues
-    dp: Dict[int, int] = {0: 0}
+    for i in range(1, row_count + 1):
+        p[0] = i
+        j0 = 0
+        minv = [inf] * (col_count + 1)
+        used = [False] * (col_count + 1)
 
-    for grp_idx in range(num_groups):
-        mask_for_group = 1 << grp_idx
-        value = max_per_group[signatures[grp_idx]]
+        while True:
+            used[j0] = True
+            i0 = p[j0]
+            row = weights[i0 - 1]
+            delta = inf
+            j1 = 0
 
-        new_dp = dp.copy()
-        for state, current_sum in dp.items():
-            if state & mask_for_group:
-                continue
+            for j in range(1, col_count + 1):
+                if used[j]:
+                    continue
+                cur = -row[j - 1] - u[i0] - v[j]
+                if cur < minv[j]:
+                    minv[j] = cur
+                    way[j] = j0
+                if minv[j] < delta:
+                    delta = minv[j]
+                    j1 = j
 
-            # Check compatibility of this group with all groups in state.
-            is_compatible = True
-            other = state
-            while other:
-                lsb = other & -other
-                other_idx = (lsb.bit_length() - 1)
-                if not compatible[grp_idx][other_idx]:
-                    is_compatible = False
-                    break
-                other ^= lsb
+            for j in range(col_count + 1):
+                if used[j]:
+                    u[p[j]] += delta
+                    v[j] -= delta
+                else:
+                    minv[j] -= delta
 
-            if not is_compatible:
-                continue
+            j0 = j1
+            if p[j0] == 0:
+                break
 
-            new_state = state | mask_for_group
-            new_sum = current_sum + value
-            if new_sum > new_dp.get(new_state, 0):
-                new_dp[new_state] = new_sum
+        while True:
+            j1 = way[j0]
+            p[j0] = p[j1]
+            j0 = j1
+            if j0 == 0:
+                break
 
-        dp = new_dp
+    # Recover selected columns and sum original weights.
+    assignment = [0] * (row_count + 1)
+    for j in range(1, col_count + 1):
+        if p[j] != 0:
+            assignment[p[j]] = j
 
-    return max(dp.values())
+    total = 0
+    for i in range(1, row_count + 1):
+        total += weights[i - 1][assignment[i] - 1]
+    return total
 
 
-def solve(n: int) -> int:
-    """Compute Co(n): maximal sum of pairwise coprime numbers in [1, n]."""
+def solve() -> int:
+    n = 200000
+    sqrt_n = int(n**0.5)
 
-    if n < 1:
-        return 0
-    if n == 1:
-        return 1
+    primes = _sieve_primes(n)
+    small_primes = [p for p in primes if p <= sqrt_n]
+    base_elements = [1] + [p for p in primes if p > sqrt_n]
 
-    spf = sieve_spf(n)
-    max_per_group = _build_groups(n, spf)
-    return _maximize_sum(max_per_group)
+    base_sum = sum(base_elements)
+
+    gains: list[list[int]] = []
+    for p in small_primes:
+        row: list[int] = []
+        for q in base_elements:
+            combined = q
+            while combined * p <= n:
+                combined *= p
+            row.append(combined - (0 if q == 1 else q))
+        gains.append(row)
+
+    return base_sum + _maximum_weight_assignment(gains)
 
 
 if __name__ == "__main__":
-    print(solve(30))
+    print(solve())

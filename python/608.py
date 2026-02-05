@@ -1,123 +1,180 @@
-"""Project Euler Problem 608: Divisor Sums.
+"""Project Euler Problem 608: Divisor Sums."""
 
-Find Σ_{d|K!} Σ_{k=1}^N σ_0(k*d), where σ_0(n) is the number of divisors of n.
+import subprocess
+import tempfile
+import os
 
-Let σ_t(n) be the number of divisors of n that are not divisible by t, and
-let f_t(n) = Σ_{k=1}^N σ_t(n). We have σ_0(d*n) = σ_0(n) + Σ_{p^e} e * σ_p(n),
-where the inner summation goes over all p^e in the prime factorization of d.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
 
-from __future__ import annotations
+typedef int64_t i64;
+typedef __int128 i128;
 
-from collections import defaultdict
+#define N 1000000000000LL
+#define K 200
+#define M 1000000007LL
 
-from sympy import primerange
+i64 isqrt(i64 n) {
+    i64 x = (i64)sqrtl((long double)n);
+    while (x * x > n) x--;
+    while ((x+1) * (x+1) <= n) x++;
+    return x;
+}
 
+// Sublinear sum of floor(n/k) for k=1 to n
+// This equals sum of number of divisors d(k) for k=1 to n
+// Formula: 2 * sum_{d=1}^{sqrt(n)} floor(n/d) - sqrt(n)^2
+i64 sum_floor_quotients(i64 n) {
+    if (n <= 0) return 0;
+    i64 sqrtn = isqrt(n);
+    i64 result = 0;
 
-def num_divisors_sieve(limit: int) -> list[int]:
-    """Count number of divisors for each number up to limit."""
-    num_divs = [0] * (limit + 1)
-    for i in range(1, limit + 1):
-        for j in range(i, limit + 1, i):
-            num_divs[j] += 1
-    return num_divs
+    for (i64 d = 1; d <= sqrtn; d++) {
+        result += n / d;
+    }
 
+    result = 2 * result - sqrtn * sqrtn;
 
-def num_factors_in_factorial(n: int, p: int) -> int:
-    """Count how many times p divides n!."""
-    count = 0
-    power = p
-    while power <= n:
-        count += n // power
-        power *= p
-    return count
+    return result;
+}
 
+// Primes up to K
+int primes[100];
+int prime_count = 0;
 
-def triangular(n: int) -> int:
-    """Triangular number n(n+1)/2."""
-    return n * (n + 1) // 2
+void sieve_primes() {
+    char is_prime[K + 1];
+    memset(is_prime, 1, sizeof(is_prime));
+    is_prime[0] = is_prime[1] = 0;
+    for (int i = 2; i * i <= K; i++) {
+        if (is_prime[i]) {
+            for (int j = i * i; j <= K; j += i)
+                is_prime[j] = 0;
+        }
+    }
+    for (int i = 2; i <= K; i++) {
+        if (is_prime[i])
+            primes[prime_count++] = i;
+    }
+}
 
+// Count factors of p in n!
+i64 num_factors_in_factorial(int n, int p) {
+    i64 count = 0;
+    i64 power = p;
+    while (power <= n) {
+        count += n / power;
+        power *= p;
+    }
+    return count;
+}
 
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
+// Triangular number
+i64 tr(i64 n) {
+    return n * (n + 1) / 2;
+}
 
+// Modular inverse using extended Euclidean algorithm
+i64 mod_inv(i64 a, i64 m) {
+    i64 t = 0, new_t = 1;
+    i64 r = m, new_r = a % m;
+    while (new_r != 0) {
+        i64 q = r / new_r;
+        i64 tmp = new_t;
+        new_t = t - q * new_t;
+        t = tmp;
+        tmp = new_r;
+        new_r = r - q * new_r;
+        r = tmp;
+    }
+    if (t < 0) t += m;
+    return t;
+}
 
-def sum_floor_quotients(n: int) -> int:
-    """Sum of σ_0(k) for k=1 to n (simplified)."""
-    # Simplified version - compute directly
-    result = 0
-    for k in range(1, n + 1):
-        result += num_divisors_sieve(n)[k] if k <= n else 0
-    return result
+int L;
+i64 *sum_floor_small;
+i64 *product_updates;
+i64 ans = 0;
 
+void helper(int min_index, i64 d, i64 mult) {
+    i64 q = N / d;
+    i64 sum_val;
+    if (q >= L) {
+        sum_val = sum_floor_quotients(q) % M;
+    } else {
+        sum_val = sum_floor_small[q];
+    }
+    ans = (ans + (i128)sum_val * mult % M + M) % M;
 
-def solve() -> int:
-    """Solve Problem 608."""
-    N = 10**12
-    K = 200
-    M = 10**9 + 7
-    L = int(N ** (2 / 3))
+    for (int index = min_index; index < prime_count; index++) {
+        int p = primes[index];
+        if ((double)d * p > N) break;
+        i64 new_mult = (i128)mult * product_updates[p] % M;
+        if (new_mult < 0) new_mult += M;
+        helper(index + 1, d * p, new_mult);
+    }
+}
 
-    primes = list(primerange(2, K + 1))
-    num_divs = num_divisors_sieve(L)
-    sum_floor_quotients_arr = [0] * (L + 1)
-    for i in range(1, L + 1):
-        sum_floor_quotients_arr[i] = (
-            sum_floor_quotients_arr[i - 1] + num_divs[i]
-        ) % M
+int main() {
+    sieve_primes();
 
-    product_updates = {}
-    mult = 1
-    for p in primes:
-        e = num_factors_in_factorial(K, p)
-        tr_e_plus_1 = triangular(e + 1)
-        mult = (mult * tr_e_plus_1) % M
-        tr_e = triangular(e)
-        product_updates[p] = (-tr_e * mod_inverse(tr_e_plus_1, M)) % M
+    L = (int)pow((double)N, 2.0 / 3.0);
 
-    ans = 0
+    // Compute number of divisors for small numbers
+    int *num_divs = (int*)calloc(L + 1, sizeof(int));
+    for (int i = 1; i <= L; i++) {
+        for (int j = i; j <= L; j += i) {
+            num_divs[j]++;
+        }
+    }
 
-    def helper(min_index: int, d: int, mult_val: int) -> None:
-        """Recursive helper."""
-        nonlocal ans
-        q = N // d
-        if q >= L:
-            # Use sublinear algorithm (simplified)
-            sum_val = sum_floor_quotients(q) % M
-        else:
-            sum_val = sum_floor_quotients_arr[int(q)]
-        ans = (ans + sum_val * mult_val) % M
+    // Compute prefix sums
+    sum_floor_small = (i64*)calloc(L + 1, sizeof(i64));
+    for (int i = 1; i <= L; i++) {
+        sum_floor_small[i] = (sum_floor_small[i - 1] + num_divs[i]) % M;
+    }
+    free(num_divs);
 
-        for index in range(min_index, len(primes)):
-            p = primes[index]
-            if d * p > N:
-                break
-            new_mult = (mult_val * product_updates[p]) % M
-            helper(index + 1, d * p, new_mult)
+    // Compute product updates
+    product_updates = (i64*)calloc(K + 1, sizeof(i64));
+    i64 mult = 1;
+    for (int i = 0; i < prime_count; i++) {
+        int p = primes[i];
+        i64 e = num_factors_in_factorial(K, p);
+        i64 tr_e_plus_1 = tr(e + 1) % M;
+        mult = (i128)mult * tr_e_plus_1 % M;
+        i64 tr_e = tr(e) % M;
+        product_updates[p] = (-(i128)tr_e * mod_inv(tr_e_plus_1, M) % M + M) % M;
+    }
 
-    helper(0, 1, mult)
-    return ans % M
+    helper(0, 1, mult);
 
+    printf("%lld\n", (ans % M + M) % M);
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    free(sum_floor_small);
+    free(product_updates);
 
+    return 0;
+}
+'''
+
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

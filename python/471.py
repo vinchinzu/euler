@@ -6,30 +6,58 @@ the ellipse x²/a² + y²/b² = 1. Find G(N) = Σ_{a=3}^N Σ_{b=1}^⌊(a-1)/2⌋
 """
 
 from __future__ import annotations
+from decimal import Decimal, getcontext
+import math
+
+# Set precision high enough for accurate calculation
+getcontext().prec = 100
 
 
-def harmonic(n: float) -> float:
-    """Harmonic number."""
-    result = 0.0
-    for i in range(1, int(n) + 1):
-        result += 1.0 / i
-    return result
+def harmonic(n: int) -> Decimal:
+    """Harmonic number using asymptotic approximation for large n.
+
+    For large n: H(n) ≈ ln(n) + γ + 1/(2n) - 1/(12n²) + 1/(120n⁴)
+    where γ ≈ 0.5772156649015329 (Euler-Mascheroni constant)
+    """
+    if n <= 0:
+        return Decimal(0)
+
+    n_dec = Decimal(n)
+
+    # Euler-Mascheroni constant with high precision
+    gamma = Decimal('0.5772156649015328606065120900824024310421593359399235988057672348848677267776646709369470632917467495')
+
+    # Natural logarithm using Python's math.log, then convert to Decimal
+    ln_n = Decimal(str(math.log(n)))
+
+    # Higher order terms for better accuracy
+    correction = (Decimal(1) / (Decimal(2) * n_dec)
+                  - Decimal(1) / (Decimal(12) * n_dec * n_dec)
+                  + Decimal(1) / (Decimal(120) * n_dec**4))
+
+    return ln_n + gamma + correction
 
 
-def solve() -> float:
+def solve() -> int:
     """Solve Problem 471."""
-    N = 10.0**11
-    ans = (
-        N * (2 * N - 1) * (3 * N + 4) / 24
-        - N * (N + 1) * (2 * N + 1) * (harmonic(N) - harmonic(N / 2)) / 6
-    )
-    return ans
+    N = Decimal('100000000000')  # 10^11
+
+    # Calculate G(N) = N(2N-1)(3N+4)/24 - N(N+1)(2N+1)[H(N)-H(N/2)]/6
+    term1 = N * (2 * N - 1) * (3 * N + 4) / 24
+
+    h_diff = harmonic(int(N)) - harmonic(int(N / 2))
+    term2 = N * (N + 1) * (2 * N + 1) * h_diff / 6
+
+    ans = term1 - term2
+
+    # Round to nearest integer for final answer
+    return round(ans)
 
 
-def main() -> float:
+def main() -> int:
     """Main entry point."""
     result = solve()
-    print(f"{result:.9e}")
+    print(result)
     return result
 
 

@@ -1,149 +1,169 @@
-"""Project Euler Problem 593: Fleeting Medians.
+"""Project Euler Problem 593: Fleeting Medians."""
 
-Define S(k) = (p_k)^k (mod M) where p_k is the kth prime number, define
-S2(k) = S(k) + S(⌊k/D⌋+1). Find F(N, K), the sum of the medians of all
-subsequences of length K from the first N terms of S2.
+import subprocess
+import tempfile
+import os
 
-We compute the sliding median by maintaining two heaps, a max heap with
-the smaller K/2 elements, and a min heap with the larger K/2 elements.
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-from __future__ import annotations
+typedef int64_t i64;
 
-import heapq
-from typing import List
+#define N 10000000
+#define K 100000
+#define M 10007
+#define D 10000
+#define MAX_VAL (2 * M + 1)
 
-from sympy import primerange
+// Sieve for primes
+int *ff;
+int prime_count = 0;
+int *primes;
 
+void sieve(int limit) {
+    ff = (int*)calloc(limit + 1, sizeof(int));
+    primes = (int*)malloc((limit + 1) * sizeof(int));
+    for (int i = 2; i <= limit; i++) {
+        if (ff[i] == 0) {
+            ff[i] = i;
+            primes[prime_count++] = i;
+            for (i64 j = (i64)i * i; j <= limit; j += i)
+                if (ff[j] == 0) ff[j] = i;
+        }
+    }
+}
 
-def generator(m: int) -> int:
-    """Find a generator modulo m."""
-    phi = m - 1  # For prime m
-    factors = []
-    temp = phi
-    p = 2
-    while p * p <= temp:
-        if temp % p == 0:
-            factors.append(p)
-            while temp % p == 0:
-                temp //= p
-        p += 1
-    if temp > 1:
-        factors.append(temp)
+int generator(int m) {
+    int phi = m - 1;
+    int factors[100], nf = 0;
+    int temp = phi;
+    for (int p = 2; p * p <= temp; p++) {
+        if (temp % p == 0) {
+            factors[nf++] = p;
+            while (temp % p == 0) temp /= p;
+        }
+    }
+    if (temp > 1) factors[nf++] = temp;
 
-    for g in range(2, m):
-        is_gen = True
-        for f in factors:
-            if pow(g, phi // f, m) == 1:
-                is_gen = False
-                break
-        if is_gen:
-            return g
-    return 1
+    for (int g = 2; g < m; g++) {
+        int is_gen = 1;
+        for (int i = 0; i < nf; i++) {
+            i64 x = 1;
+            for (int e = phi / factors[i]; e > 0; e--)
+                x = x * g % m;
+            if (x == 1) { is_gen = 0; break; }
+        }
+        if (is_gen) return g;
+    }
+    return 1;
+}
 
+// Fenwick tree for counting elements
+int *bit;
 
-def solve() -> float:
-    """Solve Problem 593."""
-    N = 10**7
-    K = 100_000
-    M = 10007
-    D = 10000
+void bit_update(int i, int delta) {
+    for (; i < MAX_VAL; i += i & (-i))
+        bit[i] += delta;
+}
 
-    # Precompute primes
-    primes = list(primerange(2, N + 100))
-    primes = primes[: N + 1]
+int bit_query(int i) {
+    int sum = 0;
+    for (; i > 0; i -= i & (-i))
+        sum += bit[i];
+    return sum;
+}
 
-    # Precompute generator powers
-    g = generator(M)
-    pows = [1] * M
-    for i in range(1, M):
-        pows[i] = (pows[i - 1] * g) % M
+// Find k-th smallest (1-indexed)
+int bit_find_kth(int k) {
+    int pos = 0;
+    int sum = 0;
+    for (int i = 14; i >= 0; i--) {  // log2(MAX_VAL) ~ 14
+        int next = pos + (1 << i);
+        if (next < MAX_VAL && sum + bit[next] < k) {
+            sum += bit[next];
+            pos = next;
+        }
+    }
+    return pos + 1;
+}
 
-    # Precompute logs
-    logs = [0] * M
-    gp = 1
-    for i in range(M):
-        logs[gp] = i
-        gp = (gp * g) % M
+int main() {
+    // p_{10^7} ~ 179424673, need limit around 200 million
+    int limit = 200000000;
+    sieve(limit);
 
-    # Compute S
-    S = [0] * (N + 2)
-    k = 1
-    for i in range(2, len(primes)):
-        if k > N + 1:
-            break
-        p = primes[i - 2] if i >= 2 else 2
-        if p == M:
-            S[k] = 0
-        else:
-            exp = (k % (M - 1)) * logs[p % M] % (M - 1)
-            S[k] = pows[exp]
-        k += 1
+    int g = generator(M);
 
-    # Compute S2
-    S2 = [0] * (N + 2)
-    for k in range(1, N + 2):
-        S2[k] = S[k] + S[k // D + 1]
+    i64 *pows = (i64*)malloc(M * sizeof(i64));
+    pows[0] = 1;
+    for (int i = 1; i < M; i++)
+        pows[i] = pows[i-1] * g % M;
 
-    # Sliding median using two heaps
-    first_half: List[tuple[int, int]] = []  # Max heap (negate values)
-    second_half: List[tuple[int, int]] = []  # Min heap
+    int *logs = (int*)malloc(M * sizeof(int));
+    for (int i = 0, gp = 1; i < M; i++) {
+        logs[gp] = i;
+        gp = gp * g % M;
+    }
 
-    # Initialize first window
-    for i in range(1, K + 1):
-        heapq.heappush(first_half, (-S2[i], i))
+    i64 *S = (i64*)calloc(N + 2, sizeof(i64));
+    for (int k = 1; k <= N + 1 && k - 1 < prime_count; k++) {
+        int p = primes[k-1];
+        if (p == M) S[k] = 0;
+        else S[k] = pows[(i64)k % (M-1) * logs[p % M] % (M-1)];
+    }
 
-    # Balance heaps
-    while len(first_half) > K // 2:
-        val, key = heapq.heappop(first_half)
-        heapq.heappush(second_half, (S2[key], key))
+    int *S2 = (int*)calloc(N + 2, sizeof(int));
+    for (int k = 1; k <= N + 1; k++)
+        S2[k] = (int)(S[k] + S[k / D + 1]);
 
-    F = 0.0
+    // Initialize BIT
+    bit = (int*)calloc(MAX_VAL, sizeof(int));
 
-    for next_val in range(K + 1, N + 2):
-        # Add median
-        median = (S2[first_half[0][1]] + S2[second_half[0][1]]) / 2.0
-        F += median
+    // Add first K elements
+    for (int i = 1; i <= K; i++)
+        bit_update(S2[i] + 1, 1);  // +1 because BIT is 1-indexed and values start at 0
 
-        # Remove old element
-        old_key = next_val - K
-        removed = False
-        for i, (val, key) in enumerate(first_half):
-            if key == old_key:
-                first_half.pop(i)
-                heapq.heapify(first_half)
-                removed = True
-                break
-        if not removed:
-            for i, (val, key) in enumerate(second_half):
-                if key == old_key:
-                    second_half.pop(i)
-                    heapq.heapify(second_half)
-                    removed = True
-                    break
+    double F = 0;
+    for (int next = K + 1; next <= N + 1; next++) {
+        // Find median (average of K/2 and K/2+1 smallest)
+        int v1 = bit_find_kth(K / 2) - 1;
+        int v2 = bit_find_kth(K / 2 + 1) - 1;
+        F += (v1 + v2) / 2.0;
 
-        # Add new element
-        if S2[next_val] <= S2[first_half[0][1]]:
-            heapq.heappush(first_half, (-S2[next_val], next_val))
-        else:
-            heapq.heappush(second_half, (S2[next_val], next_val))
+        // Remove old element
+        int old_val = S2[next - K];
+        bit_update(old_val + 1, -1);
 
-        # Rebalance
-        if len(first_half) > len(second_half):
-            val, key = heapq.heappop(first_half)
-            heapq.heappush(second_half, (S2[key], key))
-        elif len(second_half) > len(first_half):
-            val, key = heapq.heappop(second_half)
-            heapq.heappush(first_half, (-S2[key], key))
+        // Add new element
+        int new_val = S2[next];
+        bit_update(new_val + 1, 1);
+    }
 
-    return F
+    printf("%.1f\n", F);
 
+    free(ff); free(primes); free(pows); free(logs);
+    free(S); free(S2); free(bit);
 
-def main() -> None:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.1f}")
+    return 0;
+}
+'''
 
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe]).decode().strip()
+
+    os.unlink(c_file)
+    os.unlink(exe)
+
+    return result
 
 if __name__ == "__main__":
-    main()
+    print(solve())
