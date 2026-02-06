@@ -3,14 +3,10 @@
 Find the Nth smallest number n such that ϕ(n) = K!.
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass
 from math import isqrt
-from typing import List
 
 
-def sieve(limit: int) -> List[int]:
+def sieve(limit):
     """Generate all primes up to limit."""
     if limit < 2:
         return []
@@ -23,7 +19,7 @@ def sieve(limit: int) -> List[int]:
     return [i for i in range(limit + 1) if is_prime[i]]
 
 
-def factorial(n: int) -> int:
+def factorial(n):
     """Return n!."""
     result = 1
     for i in range(1, n + 1):
@@ -31,7 +27,7 @@ def factorial(n: int) -> int:
     return result
 
 
-def all_divisors(n: int, primes: List[int]) -> List[int]:
+def all_divisors(n, primes):
     """Return all divisors of n."""
     divisors = [1]
     temp = n
@@ -51,7 +47,7 @@ def all_divisors(n: int, primes: List[int]) -> List[int]:
     return divisors
 
 
-def is_probable_prime(n: int) -> bool:
+def is_probable_prime(n):
     """Check if n is probably prime."""
     if n < 2:
         return False
@@ -65,45 +61,31 @@ def is_probable_prime(n: int) -> bool:
     return True
 
 
-@dataclass
-class Num:
-    """Represents a number with its totient."""
-
-    prod: int
-    phi: int
-
-
-def solve() -> int:
+def solve():
     """Solve Problem 248."""
     N = 150000
     K = 13
     Kf = factorial(K)
 
-    nums: List[Num] = [Num(1, 1)]
+    # Each entry is (prod, phi) tuple
+    nums = [(1, 1)]
 
     primes_list = sieve(K)
     for d in all_divisors(Kf, primes_list):
         p = Kf // d + 1
         if is_probable_prime(p):
-            new_nums: List[Num] = []
-            for num in nums:
+            new_nums = []
+            for prod, phi in nums:
                 pe = 1
-                while Kf % (num.phi * pe * (p - 1)) == 0:
-                    new_nums.append(Num(num.prod * pe * p, num.phi * pe * (p - 1)))
+                while Kf % (phi * pe * (p - 1)) == 0:
+                    new_nums.append((prod * pe * p, phi * pe * (p - 1)))
                     pe *= p
             nums.extend(new_nums)
 
     # Filter and sort
-    valid_nums = sorted([num.prod for num in nums if num.phi == Kf])
+    valid_nums = sorted(prod for prod, phi in nums if phi == Kf)
     return valid_nums[N - 1]
 
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
-
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -2,176 +2,93 @@
 """
 Project Euler Problem 373: Circumscribed Circles
 
-S(n) = sum of circumradii of ALL integer-sided triangles with integer circumradius <= n.
+Find S(10^7) = sum of circumradii of all integer-sided triangles with integer
+circumradius r <= 10^7.
 
-Algorithm:
-1. Generate all primitive Heronian triangles:
-   a) Primitive Pythagorean triples (right triangles)
-   b) Primitive non-right Heronian triangles (Brahmagupta parametrization)
-2. For each primitive with R_prim = p/q, sum the circumradii of scaled triangles:
-   R = p, 2p, 3p, ..., floor(R_max/p) * p
+Algorithm (from Java reference):
+For each circumradius r, each triangle side must be twice the leg of a right
+triangle with hypotenuse r. So for each r we find all x > 0 with x^2 + y^2 = r^2
+and form candidate sides = 2x. Then check all triples (a <= b <= c) for the
+circumradius formula: (abc)^2 = r^2 * (a+b+c)(-a+b+c)(a-b+c)(a+b-c).
 
-The key is ensuring we search wide enough parameter ranges in Brahmagupta.
+The number of valid triangles depends only on the sorted exponent signature of r's
+prime factors congruent to 1 mod 4, allowing memoization across r values.
 """
-
-from math import gcd, isqrt
-
-
-def compute_R_fraction(a, b, c):
-    """Compute circumradius as fraction (numerator, denominator) in lowest terms."""
-    if a + b <= c or a + c <= b or b + c <= a:
-        return None
-
-    s = a + b + c
-    p1 = -a + b + c
-    p2 = a - b + c
-    p3 = a + b - c
-
-    k2_times_16 = s * p1 * p2 * p3
-
-    if k2_times_16 <= 0:
-        return None
-
-    k_times_4 = isqrt(k2_times_16)
-    if k_times_4 * k_times_4 != k2_times_16:
-        return None
-
-    num = a * b * c
-    den = k_times_4
-    g = gcd(num, den)
-    return (num // g, den // g)
+from math import isqrt
 
 
-def generate_primitive_pythagorean_triples(p_max):
-    """Generate all primitive Pythagorean triples with c <= p_max."""
-    triples = []
-    max_m = isqrt(p_max) + 1
+def solve():
+    N = 10**7
 
-    for m in range(2, max_m + 1):
-        for n in range(1, m):
-            if (m - n) % 2 == 0:
-                continue
-            if gcd(m, n) != 1:
-                continue
+    # Smallest prime factor sieve
+    spf = list(range(N + 1))
+    for i in range(2, isqrt(N) + 1):
+        if spf[i] == i:
+            for j in range(i * i, N + 1, i):
+                if spf[j] == j:
+                    spf[j] = i
 
-            a = m * m - n * n
-            b = 2 * m * n
-            c = m * m + n * n
+    def get_exponent_signature(n):
+        """Get sorted tuple of exponents of primes = 1 mod 4 in factorization of n."""
+        exps = []
+        while n > 1:
+            p = spf[n]
+            e = 0
+            while n % p == 0:
+                n //= p
+                e += 1
+            if p % 4 == 1:
+                exps.append(e)
+        exps.sort()
+        return tuple(exps)
 
-            if c > p_max:
-                continue
-
-            if a > b:
-                a, b = b, a
-
-            triples.append((a, b, c))
-
-    return triples
-
-
-def generate_primitives_non_right_via_brahmagupta(p_max):
-    """Generate primitive non-right Heronian triangles where R_prim = p/q has p <= p_max."""
-    primitives = set()
-
-    # The raw R = (m^2+k^2)(n^2+k^2)/(4k)
-    # For primitive, we divide by gcd of sides
-    # The primitive's R can be significantly smaller than raw R
-
-    # Need wider search to find all primitives
-    # Empirically: for p_max = 100, we need m up to at least 15
-    # Scale: max_m ~ O(p_max^0.5) or higher
-
-    # Let's be generous with bounds
-    max_param = max(60, int(p_max ** 0.6) + 20)
-
-    for k in range(1, max_param + 1):
-        k2 = k * k
-
-        for m in range(1, max_param + 1):
-            m2 = m * m
-            m2_k2 = m2 + k2
-
-            for n in range(1, m + 1):
-                n2 = n * n
-                n2_k2 = n2 + k2
-
-                if m * n <= k2:
-                    continue
-
-                a = n * m2_k2
-                b = m * n2_k2
-                c = (m + n) * (m * n - k2)
-
-                if c <= 0:
-                    continue
-
-                # Get primitive form
-                g = gcd(gcd(a, b), c)
-                a_prim, b_prim, c_prim = a // g, b // g, c // g
-                sides = tuple(sorted([a_prim, b_prim, c_prim]))
-
-                # Skip right triangles
-                if sides[0]**2 + sides[1]**2 == sides[2]**2:
-                    continue
-
-                R_frac = compute_R_fraction(*sides)
-                if R_frac is None:
-                    continue
-
-                p, q = R_frac
-                if p <= p_max:
-                    primitives.add(sides)
-
-    return primitives
-
-
-def solve(R_max, verbose=False):
-    """Compute S(R_max)."""
-
+    cache = {}
     total = 0
-    count = 0
 
-    # 1. Primitive Pythagorean triples: R_prim = c/2, p = c, q = 2
-    pythagorean = generate_primitive_pythagorean_triples(R_max)
-    if verbose:
-        print(f"Found {len(pythagorean)} primitive Pythagorean triples with c <= {R_max}")
+    for r in range(1, N + 1):
+        key = get_exponent_signature(r)
 
-    for a0, b0, c0 in pythagorean:
-        p, q = c0, 2
-
-        max_k = R_max // p
-        sum_R = p * max_k * (max_k + 1) // 2
-        total += sum_R
-        count += max_k
-
-    # 2. Non-right primitive Heronian triangles
-    non_right = generate_primitives_non_right_via_brahmagupta(R_max)
-    if verbose:
-        print(f"Found {len(non_right)} primitive non-right Heronian triangles with p <= {R_max}")
-
-    for prim in non_right:
-        R_frac = compute_R_fraction(*prim)
-        if R_frac is None:
+        if key in cache:
+            total += cache[key] * r
             continue
 
-        p, q = R_frac
+        # Find all x > 0 with x^2 + y^2 = r^2, y >= 0
+        sides = []
+        r2 = r * r
+        for x in range(1, r + 1):
+            y2 = r2 - x * x
+            if y2 < 0:
+                break
+            y = isqrt(y2)
+            if y * y == y2:
+                sides.append(2 * x)
 
-        if p > R_max:
-            continue
+        # Count triangles (a <= b <= c) with circumradius = r
+        # (abc)^2 = r^2 * (a+b+c)(-a+b+c)(a-b+c)(a+b-c)
+        num_triangles = 0
+        n_sides = len(sides)
+        for i in range(n_sides):
+            a = sides[i]
+            for j in range(i, n_sides):
+                b = sides[j]
+                for k in range(j, n_sides):
+                    c = sides[k]
+                    if a + b <= c:
+                        break
+                    s2 = a + b + c
+                    p1 = -a + b + c
+                    p2 = a - b + c
+                    p3 = a + b - c
+                    lhs = (a * b * c) ** 2
+                    rhs = r2 * s2 * p1 * p2 * p3
+                    if lhs == rhs:
+                        num_triangles += 1
 
-        max_k = R_max // p
-        sum_R = p * max_k * (max_k + 1) // 2
-        total += sum_R
-        count += max_k
+        cache[key] = num_triangles
+        total += num_triangles * r
 
-    return total, count
+    return total
 
 
-# Test
-print("Testing S(100):")
-total, count = solve(100, verbose=True)
-print(f"  S(100) = {total}, count = {count}, expected S(100) = 4950, count = 80")
-
-print("\nTesting S(1200):")
-total, count = solve(1200, verbose=True)
-print(f"  S(1200) = {total}, count = {count}, expected S(1200) = 1653605")
+if __name__ == "__main__":
+    print(solve())
