@@ -1,180 +1,138 @@
-"""Project Euler Problem 639: Summing a multiplicative function."""
+#!/usr/bin/env python3
+"""Project Euler Problem 639: Summing a multiplicative function.
 
-import subprocess
-import tempfile
-import os
+Find sum_{k=1}^{K} sum_{i=1}^{N} f_k(i), where f_k is multiplicative with f_k(p) = p^k.
+Uses powerful number iteration with Lagrange interpolation for power sums.
+"""
+
+import math
+
 
 def solve():
-    c_code = r'''
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <math.h>
+    N = 10**12
+    K = 50
+    M = 10**9 + 7
+    L = int(math.isqrt(N))
 
-#define N 1000000000000LL
-#define K 50
-#define M 1000000007LL
+    # Sieve primes up to L
+    is_prime = bytearray(L + 1)
+    is_prime[2] = 1
+    for i in range(3, L + 1, 2):
+        is_prime[i] = 1
+    for i in range(3, int(math.isqrt(L)) + 1, 2):
+        if is_prime[i]:
+            for j in range(i * i, L + 1, 2 * i):
+                is_prime[j] = 0
+    primes = [i for i in range(2, L + 1) if is_prime[i]]
 
-int64_t isqrt(int64_t n) {
-    int64_t x = (int64_t)sqrt((double)n);
-    while (x * x > n) x--;
-    while ((x+1)*(x+1) <= n) x++;
-    return x;
-}
+    # Precompute factorial inverses for Lagrange interpolation
+    max_deg = K + 2  # need K+2 points for degree K+1 polynomial
+    fact = [1] * (max_deg + 1)
+    for i in range(1, max_deg + 1):
+        fact[i] = fact[i - 1] * i % M
+    inv_fact = [1] * (max_deg + 1)
+    inv_fact[max_deg] = pow(fact[max_deg], M - 2, M)
+    for i in range(max_deg - 1, -1, -1):
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) % M
 
-int64_t icbrt(int64_t n) {
-    int64_t x = (int64_t)cbrt((double)n);
-    while (x > 0 && x * x * x > n) x--;
-    while ((x+1)*(x+1)*(x+1) <= n) x++;
-    return x;
-}
+    # Arrays updated incrementally across k iterations
+    nth_pows = [1] * (L + 1)  # nth_pows[i] = i^k mod M after k-th iteration
+    sum_powers = [0] * (L + 1)  # sum_powers[i] = sum_{j=1}^{i} j^k mod M
+    sum_coeffs = [0] * (L + 1)  # sum_coeffs[i] = sum over primes p<=i of p^k*(1-p^k)
 
-int L;
-char *is_prime;
-int *primes;
-int num_primes;
-int64_t *nth_pows;
-int64_t *sum_powers;
-int64_t *sum_coeffs;
-int64_t ans = 0;
+    def sum_kth_powers(n, k):
+        """Compute sum_{i=1}^{n} i^k mod M using Lagrange interpolation."""
+        if n <= L:
+            return sum_powers[n]
+        pts = k + 2  # number of sample points (polynomial degree = k+1)
+        # Use points x=0,1,...,k+1 with y=sum_powers[0..k+1]
+        prefix = [1] * (pts + 1)
+        for j in range(pts):
+            prefix[j + 1] = prefix[j] * ((n - j) % M) % M
+        suffix = [1] * (pts + 1)
+        for j in range(pts - 1, -1, -1):
+            suffix[j] = suffix[j + 1] * ((n - j) % M) % M
+        result = 0
+        m = k + 1  # degree
+        for i in range(pts):
+            numer = prefix[i] * suffix[i + 1] % M * sum_powers[i] % M
+            denom = inv_fact[i] * inv_fact[m - i] % M
+            if (m - i) % 2 == 1:
+                denom = M - denom
+            result = (result + numer * denom) % M
+        return result
 
-int64_t mod(int64_t x) {
-    x %= M;
-    if (x < 0) x += M;
-    return x;
-}
+    ans = 0
 
-int64_t pow_mod(int64_t base, int64_t exp) {
-    int64_t result = 1;
-    base = mod(base);
-    while (exp > 0) {
-        if (exp & 1) result = mod(result * base);
-        base = mod(base * base);
-        exp >>= 1;
-    }
-    return result;
-}
+    for k in range(1, K + 1):
+        sum_powers[0] = 0
+        sum_coeffs[0] = 0
+        for i in range(1, L + 1):
+            nth_pows[i] = nth_pows[i] * i % M
+            sum_powers[i] = (sum_powers[i - 1] + nth_pows[i]) % M
+            if is_prime[i]:
+                coeff = nth_pows[i] * (1 - nth_pows[i]) % M
+            else:
+                coeff = 0
+            sum_coeffs[i] = (sum_coeffs[i - 1] + coeff) % M
 
-// Sum i^k for i=1 to n using Faulhaber / power sum formula
-// For large n, we use the formula for sum of k-th powers
-// Actually, for moderate k (<=50) and large n, we compute iteratively
-int64_t sum_powers_func(int64_t n, int k) {
-    if (n <= L) return sum_powers[n];
-    // For very large n, we need Faulhaber's formula
-    // For now, use a loop (this shouldn't happen often)
-    int64_t result = 0;
-    for (int64_t i = 1; i <= n; i++) {
-        result = mod(result + pow_mod(i, k));
-    }
-    return result;
-}
+        # Stack-based iteration over powerful numbers
+        # State: (min_index, d, mult, prev_e)
+        stack = [(0, 1, 1, 0)]
 
-void helper(int min_index, int64_t d, int64_t mult, int prev_e, int k) {
-    int64_t n = N / d;
+        while stack:
+            min_idx, d, mult, prev_e = stack.pop()
+            n = N // d
 
-    if (prev_e != 2) {
-        int64_t sp = (n <= L) ? sum_powers[n] : sum_powers_func(n, k);
-        ans = mod(ans + sp * mult);
-    }
+            # Part 1: contribution from n itself (if not already counted)
+            if prev_e != 2:
+                sp = sum_kth_powers(n, k)
+                ans = (ans + sp * mult) % M
 
-    int64_t lim = icbrt(n);
+            lim = int(round(n ** (1.0 / 3)))
+            while lim * lim * lim > n:
+                lim -= 1
+            while (lim + 1) ** 3 <= n:
+                lim += 1
 
-    // Sum over primes p where p^2 <= n/lim
-    for (int i = min_index; i < num_primes; i++) {
-        int64_t p = primes[i];
-        if (p * p > n / lim) break;
-        int64_t q = n / (p * p);
-        int64_t sp_q = (q <= L) ? sum_powers[q] : sum_powers_func(q, k);
-        int64_t coeff = mod(nth_pows[p] * mod(1 - nth_pows[p]));
-        ans = mod(ans + sp_q * mult % M * coeff);
-    }
+            # Part 2: sum over individual primes p (exponent 2 contribution)
+            for i in range(min_idx, len(primes)):
+                p = primes[i]
+                if p * p > n // max(lim, 1):
+                    break
+                q = n // (p * p)
+                sp_q = sum_kth_powers(q, k)
+                coeff = nth_pows[p] * (1 - nth_pows[p]) % M
+                ans = (ans + sp_q * mult % M * coeff) % M
 
-    // Sum over ranges of primes
-    for (int64_t q = 1; q < lim; q++) {
-        int64_t high = isqrt(n / q);
-        int64_t low_sq = isqrt(n / (q + 1));
-        int64_t low = (min_index > 0 && primes[min_index] > 1) ? primes[min_index] - 1 : 1;
-        if (low_sq > low) low = low_sq;
-        if (high > L) high = L;
-        if (high >= low && high >= 1 && low >= 0) {
-            int64_t coeff_sum = mod(sum_coeffs[high] - (low > 0 ? sum_coeffs[low] : 0));
-            ans = mod(ans + sum_powers[q] * mult % M * coeff_sum);
-        } else {
-            break;
-        }
-    }
+            # Part 3: sum over ranges of primes using sum_coeffs
+            p_min = primes[min_idx] if min_idx < len(primes) else L + 1
+            for q in range(1, lim):
+                high = int(math.isqrt(n // q))
+                low = max(int(math.isqrt(n // (q + 1))), p_min - 1)
+                if high > L:
+                    high = L
+                if high >= low:
+                    coeff_sum = (sum_coeffs[high] - sum_coeffs[low]) % M
+                    ans = (ans + sum_powers[q] * mult % M * coeff_sum) % M
+                else:
+                    break
 
-    // Recurse with higher prime powers
-    for (int index = min_index; index < num_primes; index++) {
-        int64_t p = primes[index];
-        if (d * p * p * p > N) break;
-        int64_t new_d = d * p;
-        for (int e = 2; (double)new_d * p <= (double)N; e++) {
-            new_d *= p;
-            int64_t new_mult = mod(mult * nth_pows[p] % M * mod(1 - nth_pows[p]));
-            helper(index + 1, new_d, new_mult, e, k);
-        }
-    }
-}
+            # Part 4: recurse with higher prime powers (exponent >= 3)
+            for idx in range(min_idx, len(primes)):
+                p = primes[idx]
+                if d * p * p * p > N:
+                    break
+                new_d = d * p
+                new_mult = mult * nth_pows[p] % M * (1 - nth_pows[p]) % M
+                e = 1
+                while new_d * p <= N:
+                    new_d *= p
+                    e += 1
+                    stack.append((idx + 1, new_d, new_mult, e))
 
-int main() {
-    L = (int)isqrt(N);
+    return ans % M
 
-    // Sieve primes
-    is_prime = (char*)malloc((L + 1) * sizeof(char));
-    for (int i = 0; i <= L; i++) is_prime[i] = 1;
-    is_prime[0] = is_prime[1] = 0;
-    for (int64_t i = 2; i * i <= L; i++) {
-        if (is_prime[i]) {
-            for (int64_t j = i * i; j <= L; j += i) is_prime[j] = 0;
-        }
-    }
-    num_primes = 0;
-    for (int i = 2; i <= L; i++) if (is_prime[i]) num_primes++;
-    primes = (int*)malloc(num_primes * sizeof(int));
-    int idx = 0;
-    for (int i = 2; i <= L; i++) if (is_prime[i]) primes[idx++] = i;
-
-    // Allocate arrays
-    nth_pows = (int64_t*)malloc((L + 1) * sizeof(int64_t));
-    sum_powers = (int64_t*)malloc((L + 1) * sizeof(int64_t));
-    sum_coeffs = (int64_t*)malloc((L + 1) * sizeof(int64_t));
-
-    for (int i = 0; i <= L; i++) nth_pows[i] = 1;
-
-    for (int k = 1; k <= K; k++) {
-        sum_powers[0] = 0;
-        sum_coeffs[0] = 0;
-        for (int i = 1; i <= L; i++) {
-            nth_pows[i] = mod(nth_pows[i] * i);
-            sum_powers[i] = mod(sum_powers[i - 1] + nth_pows[i]);
-            int64_t coeff = is_prime[i] ? mod(nth_pows[i] * mod(1 - nth_pows[i])) : 0;
-            sum_coeffs[i] = mod(sum_coeffs[i - 1] + coeff);
-        }
-        helper(0, 1, 1, 0, k);
-    }
-
-    ans = mod(ans);
-
-    free(is_prime);
-    free(primes);
-    free(nth_pows);
-    free(sum_powers);
-    free(sum_coeffs);
-
-    printf("%lld\n", ans);
-    return 0;
-}
-'''
-    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
-        f.write(c_code.encode())
-        c_file = f.name
-    exe = c_file[:-2]
-    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
-    result = subprocess.check_output([exe]).decode().strip()
-    os.unlink(c_file)
-    os.unlink(exe)
-    return int(result)
 
 if __name__ == "__main__":
     print(solve())
