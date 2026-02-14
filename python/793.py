@@ -2,63 +2,107 @@
 
 Find the median of the products S_i * S_j for 0 <= i < j < N.
 
-We use binary search. For any X, we can iterate over each S_i, and for each
-one find the number of S_j such that S_i * S_j < X. We then remove (S_i)^2 if
-necessary. Since we are counting both S_i S_j and S_j S_i, we run binary
-search on there are more than tr(N-1) products less than X, instead of
-tr(N-1)/2.
+Embedded C for speed: binary search with two-pointer counting.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
 
-def blum_blum_shub(seed: int, n: int) -> list[int]:
-    """Generate Blum Blum Shub sequence starting with S_0 = seed."""
-    result = [seed]  # S_0 = seed
-    x = seed
-    for _ in range(n - 1):
-        x = (x * x) % 50515093
-        result.append(x)
-    return result
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#define N 1000003
 
-def sq(n: int) -> int:
-    """Square of n."""
-    return n * n
+static long long S[N];
 
+int cmp_ll(const void *a, const void *b) {
+    long long x = *(const long long *)a;
+    long long y = *(const long long *)b;
+    return (x > y) - (x < y);
+}
 
-def tr(n: int) -> int:
-    """Triangular number."""
-    return n * (n + 1) // 2
+int main(void) {
+    /* Generate BBS sequence */
+    S[0] = 290797;
+    for (int i = 1; i < N; i++) {
+        S[i] = (S[i-1] * S[i-1]) % 50515093LL;
+    }
+
+    /* Sort */
+    qsort(S, N, sizeof(long long), cmp_ll);
+
+    long long low = 0;
+    long long high = S[N-1] * S[N-1];
+    long long target = (long long)(N - 1) * (long long)N / 2;  /* tr(N-1) */
+
+    while (low + 1 < high) {
+        long long mid = low + (high - low) / 2;
+        long long rank = 0;
+        int row_count = N - 1;
+
+        for (int i = 0; i < N; i++) {
+            long long s = S[i];
+            while (row_count >= 0 && s * S[row_count] >= mid) {
+                row_count--;
+            }
+            /*
+             * row_count + 1 = number of j where s * S[j] < mid
+             * We count ordered pairs (i,j) with i != j, so subtract 1
+             * if s*s < mid (the diagonal i==j was counted).
+             */
+            rank += row_count + (s * s < mid ? 0 : 1);
+        }
+
+        if (rank > target) {
+            high = mid;
+        } else {
+            low = mid;
+        }
+    }
+
+    printf("%lld\n", low);
+    return 0;
+}
+"""
 
 
 def solve() -> int:
-    """Solve Problem 793."""
-    N = 1000003
-    S = blum_blum_shub(290797, N)
-    S.sort()
+    """Compile and run C solution."""
+    tmp_dir = tempfile.mkdtemp()
+    src = os.path.join(tmp_dir, "p793.c")
+    exe = os.path.join(tmp_dir, "p793")
 
-    low = 0
-    high = sq(S[-1])
+    try:
+        with open(src, "w") as f:
+            f.write(C_CODE)
 
-    while low + 1 < high:
-        mid = (low + high) // 2
-        rank = 0
-        row_count = N - 1
+        # Compile with optimisation
+        subprocess.run(
+            ["gcc", "-O2", "-o", exe, src, "-lm"],
+            check=True,
+            timeout=30,
+        )
 
-        for s in S:
-            while row_count >= 0 and s * S[row_count] >= mid:
-                row_count -= 1
-            # rowCount + 1 is the count of j where s * S[j] < mid
-            # Subtract 1 if sq(s) < mid (to exclude the diagonal i=j case)
-            rank += row_count + (0 if sq(s) < mid else 1)
+        # Run with generous timeout
+        result = subprocess.run(
+            [exe],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=280,
+        )
 
-        if rank > tr(N - 1):
-            high = mid
-        else:
-            low = mid
-
-    return low
+        return int(result.stdout.strip())
+    finally:
+        for f in [src, exe]:
+            if os.path.exists(f):
+                os.remove(f)
+        os.rmdir(tmp_dir)
 
 
 def main() -> int:

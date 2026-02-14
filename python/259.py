@@ -1,61 +1,222 @@
-"""Project Euler Problem 259: Reachable Numbers.
+"""Project Euler Problem 259 — Reachable Numbers."""
+import subprocess, tempfile, os
 
-Find all positive integers that can be expressed by concatenating and
-performing the four usual binary operations on the digits 1 to 9, in that
-order.
-"""
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-from __future__ import annotations
+typedef long long ll;
+typedef __int128 lll;
 
-from fractions import Fraction
-from typing import Dict, Set, Tuple
+static ll my_abs_ll(ll x) { return x < 0 ? -x : x; }
 
+static ll gcd_func(ll a, ll b) {
+    a = my_abs_ll(a);
+    b = my_abs_ll(b);
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
 
-def solve() -> int:
-    """Solve Problem 259."""
-    B = 10
-    dp: Dict[Tuple[int, int], Set[Fraction]] = {}
+typedef struct { ll num, den; } Frac;
 
-    # Initialize single digits
-    for i in range(B - 1):
-        dp[(i, i + 1)] = {Fraction(i + 1)}
+static Frac make_frac(ll n, ll d) {
+    if (d < 0) { n = -n; d = -d; }
+    if (n == 0) { d = 1; }
+    else { ll g = gcd_func(n, d); n /= g; d /= g; }
+    return (Frac){n, d};
+}
 
-    # Build up longer sequences
-    for length in range(2, B):
-        for start in range(B - length):
-            end = start + length
-            # Concatenated number
-            num_str = "".join(str(d + 1) for d in range(start, end))
-            nums: Set[Fraction] = {Fraction(int(num_str))}
+/*
+ * Dynamic fraction sets using separate heap allocations per set.
+ * Each set has its own data array, chain array, and bucket array.
+ */
+typedef struct {
+    Frac *data;
+    int *chain;
+    int *buckets;
+    int count;
+    int capacity;
+    int hash_size;
+} FracSet;
 
-            # Try all splits
-            for left in range(1, length):
-                mid = start + left
-                for num1 in dp.get((start, mid), set()):
-                    for num2 in dp.get((mid, end), set()):
-                        nums.add(num1 + num2)
-                        nums.add(num1 - num2)
-                        nums.add(num1 * num2)
-                        if num2 != 0:
-                            nums.add(num1 / num2)
+static FracSet sets[9][10];
 
-            dp[(start, end)] = nums
+static unsigned hash_frac(ll num, ll den, unsigned hash_size) {
+    unsigned long long h = (unsigned long long)num * 2654435761ULL
+                         ^ (unsigned long long)den * 40503ULL;
+    return (unsigned)(h & (hash_size - 1));
+}
 
-    # Sum all positive integers
-    ans = 0
-    for num in dp.get((0, B - 1), set()):
-        if num.denominator == 1 and num.numerator > 0:
-            ans += num.numerator
+static void set_init(FracSet *s, int cap) {
+    s->count = 0;
+    s->capacity = cap;
+    s->data = (Frac*)malloc(cap * sizeof(Frac));
+    s->chain = (int*)malloc(cap * sizeof(int));
+    /* hash_size = next power of 2 >= 2*cap */
+    int hs = 16;
+    while (hs < cap * 2) hs *= 2;
+    s->hash_size = hs;
+    s->buckets = (int*)malloc(hs * sizeof(int));
+    memset(s->buckets, -1, hs * sizeof(int));
+}
 
-    return ans
+static void set_grow(FracSet *s) {
+    int new_cap = s->capacity * 2;
+    s->data = (Frac*)realloc(s->data, new_cap * sizeof(Frac));
+    s->chain = (int*)realloc(s->chain, new_cap * sizeof(int));
+    s->capacity = new_cap;
+    /* Rehash */
+    int new_hs = 16;
+    while (new_hs < new_cap * 2) new_hs *= 2;
+    s->hash_size = new_hs;
+    s->buckets = (int*)realloc(s->buckets, new_hs * sizeof(int));
+    memset(s->buckets, -1, new_hs * sizeof(int));
+    for (int i = 0; i < s->count; i++) {
+        unsigned h = hash_frac(s->data[i].num, s->data[i].den, new_hs);
+        s->chain[i] = s->buckets[h];
+        s->buckets[h] = i;
+    }
+}
 
+static int set_contains(FracSet *s, Frac f) {
+    unsigned h = hash_frac(f.num, f.den, s->hash_size);
+    int idx = s->buckets[h];
+    while (idx != -1) {
+        if (s->data[idx].num == f.num && s->data[idx].den == f.den) return 1;
+        idx = s->chain[idx];
+    }
+    return 0;
+}
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+static void set_add(FracSet *s, Frac f) {
+    if (set_contains(s, f)) return;
+    if (s->count >= s->capacity) set_grow(s);
+    int idx = s->count++;
+    s->data[idx] = f;
+    unsigned h = hash_frac(f.num, f.den, s->hash_size);
+    s->chain[idx] = s->buckets[h];
+    s->buckets[h] = idx;
+}
 
+static void try_add(FracSet *s, lll n, lll d) {
+    if (d == 0) return;
+    /* Try to reduce to fit in ll */
+    lll an = n < 0 ? -n : n;
+    lll ad = d < 0 ? -d : d;
+    /* Use GCD on __int128 values */
+    lll ga = an, gb = ad;
+    while (gb) { lll t = gb; gb = ga % gb; ga = t; }
+    if (ga > 0) { n /= ga; d /= ga; }
+    an = n < 0 ? -n : n;
+    ad = d < 0 ? -d : d;
+    if (an > 4000000000000000000LL || ad > 4000000000000000000LL) return;
+    set_add(s, make_frac((ll)n, (ll)d));
+}
+
+static void add_ops(FracSet *s, Frac a, Frac b) {
+    lll n, d;
+
+    /* addition */
+    n = (lll)a.num * b.den + (lll)b.num * a.den;
+    d = (lll)a.den * b.den;
+    try_add(s, n, d);
+
+    /* subtraction */
+    n = (lll)a.num * b.den - (lll)b.num * a.den;
+    d = (lll)a.den * b.den;
+    try_add(s, n, d);
+
+    /* multiplication (cross-reduce for speed) */
+    {
+        ll g1 = gcd_func(a.num, b.den);
+        ll g2 = gcd_func(b.num, a.den);
+        n = (lll)(a.num/g1) * (b.num/g2);
+        d = (lll)(a.den/g2) * (b.den/g1);
+        try_add(s, n, d);
+    }
+
+    /* division */
+    if (b.num != 0) {
+        ll g1 = gcd_func(a.num, b.num);
+        ll g2 = gcd_func(a.den, b.den);
+        n = (lll)(a.num/g1) * (b.den/g2);
+        d = (lll)(a.den/g2) * (b.num/g1);
+        try_add(s, n, d);
+    }
+}
+
+int main(void) {
+    int B = 10;
+
+    /* Single digits */
+    for (int i = 0; i < B - 1; i++) {
+        set_init(&sets[i][i+1], 4);
+        set_add(&sets[i][i+1], make_frac(i + 1, 1));
+    }
+
+    /* Build up longer sequences */
+    for (int length = 2; length < B; length++) {
+        for (int start = 0; start < B - length; start++) {
+            int end = start + length;
+            /* Estimate capacity */
+            int cap = 8;
+            if (length <= 4) cap = 512;
+            else if (length == 5) cap = 2048;
+            else if (length == 6) cap = 16384;
+            else if (length == 7) cap = 65536;
+            else if (length == 8) cap = 500000;
+            else cap = 4000000;
+
+            set_init(&sets[start][end], cap);
+            FracSet *cur = &sets[start][end];
+
+            /* Concatenated number */
+            ll concat = 0;
+            for (int d = start; d < end; d++)
+                concat = concat * 10 + (d + 1);
+            set_add(cur, make_frac(concat, 1));
+
+            /* Try all splits */
+            for (int left = 1; left < length; left++) {
+                int mid = start + left;
+                FracSet *lset = &sets[start][mid];
+                FracSet *rset = &sets[mid][end];
+                int lc = lset->count, rc = rset->count;
+                for (int li = 0; li < lc; li++) {
+                    Frac fa = lset->data[li];
+                    for (int ri = 0; ri < rc; ri++) {
+                        add_ops(cur, fa, rset->data[ri]);
+                    }
+                }
+            }
+        }
+    }
+
+    /* Sum all positive integers in dp[(0, B-1)] */
+    ll ans = 0;
+    FracSet *fs = &sets[0][B-1];
+    for (int i = 0; i < fs->count; i++) {
+        if (fs->data[i].den == 1 && fs->data[i].num > 0)
+            ans += fs->data[i].num;
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

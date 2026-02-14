@@ -1,0 +1,664 @@
+Validating 505 problems with 120s timeout, 20 parallel workers...
+  [1/505] 444: PASS |      101ms | ok
+  [2/505] 435: PASS |      722ms | ok
+  [3/505] 467: PASS |     3.714s | ok
+  [4/505] 466: PASS |     5.456s | ok
+  [5/505] 450: PASS |     8.898s | ok
+  [6/505] 471: FAIL |       93ms | ok
+  [7/505] 472: PASS |       38ms | ok
+  [8/505] 470: PASS |     4.922s | ok
+  [9/505] 447: PASS |    13.935s | ok
+  [10/505] 454: PASS |    15.572s | ok
+  [11/505] 464: PASS |    16.001s | ok
+  [12/505] 480: PASS |     1.661s | ok
+  [13/505] 477: PASS |     4.191s | ok
+  [14/505] 481: PASS |     1.703s | ok
+  [15/505] 437: PASS |    21.938s | ok
+  [16/505] 459: FAIL |    31.450s | no_output
+  [17/505] 483: PASS |    12.421s | ok
+  [18/505] 452: PASS |    32.340s | ok
+  [19/505] 488: PASS |      122ms | ok
+  [20/505] 484: PASS |    11.587s | ok
+  [21/505] 490: PASS |     1.664s | ok
+  [22/505] 457: PASS |    38.035s | ok
+  [23/505] 465: PASS |    40.106s | ok
+  [24/505] 476: FAIL |    30.942s | no_output
+  [25/505] 475: PASS |    35.828s | ok
+  [26/505] 497: PASS |     3.405s | ok
+  [27/505] 433: PASS |    48.468s | ok
+  [28/505] 498: PASS |      239ms | ok
+  [29/505] 499: PASS |       71ms | ok
+  [30/505] 496: PASS |     7.790s | ok
+  [31/505] 494: PASS |    14.135s | ok
+  [32/505] 500: PASS |     3.731s | ok
+  [33/505] 504: PASS |      788ms | ok
+  [34/505] 503: PASS |     1.152s | ok
+  [35/505] 489: PASS |    21.737s | ok
+  [36/505] 461: PASS |    55.238s | ok
+  [37/505] 506: PASS |     2.403s | ok
+  [38/505] 509: PASS |      367ms | ok
+  [39/505] 502: PASS |     7.337s | ok
+  [40/505] 508: PASS |     1.692s | ok
+  [41/505] 512: PASS |      949ms | ok
+  [42/505] 448: PASS |    62.677s | ok
+  [43/505] 510: PASS |    11.201s | ok
+  [44/505] 505: PASS |    22.797s | ok
+  [45/505] 487: PASS |    45.703s | ok
+  [46/505] 468: PASS |    75.396s | ok
+  [47/505] 439: PASS |    80.439s | ok
+  [48/505] 507: PASS |    26.814s | ok
+  [49/505] 516: PASS |    10.983s | ok
+  [50/505] 519: PASS |     6.384s | ok
+  [51/505] 511: PASS |    31.128s | ok
+  [52/505] 523: PASS |       52ms | ok
+  [53/505] 524: PASS |       37ms | ok
+  [54/505] 522: PASS |     3.882s | ok
+  [55/505] 525: PASS |     5.314s | ok
+  [56/505] 527: PASS |      205ms | ok
+  [57/505] 515: PASS |    26.427s | ok
+  [58/505] 528: PASS |      987ms | ok
+  [59/505] 485: PASS |    66.532s | ok
+  [60/505] 517: PASS |    24.249s | ok
+  [61/505] 532: PASS |     1.008s | ok
+  [62/505] 531: PASS |    10.982s | ok
+  [63/505] 533: PASS |     9.347s | ok
+  [64/505] 535: PASS |      471ms | ok
+  [65/505] 520: PASS |    32.953s | ok
+  [66/505] 537: PASS |     1.958s | ok
+  [67/505] 482: PASS |    99.757s | ok
+  [68/505] 539: PASS |       83ms | ok
+  [69/505] 438: FAIL |   120.108s | timeout
+  [70/505] 460: FAIL |   120.121s | timeout
+  [71/505] 445: FAIL |   120.303s | timeout
+  [72/505] 446: FAIL |   120.536s | timeout
+  [73/505] 432: FAIL |   120.799s | timeout
+  [74/505] 521: PASS |    36.072s | ok
+  [75/505] 514: PASS |    64.398s | ok
+  [76/505] 547: PASS |     3.426s | ok
+  [77/505] 546: PASS |     7.687s | ok
+  [78/505] 541: PASS |    14.813s | ok
+  [79/505] 534: PASS |    27.868s | ok
+  [80/505] 551: PASS |      673ms | ok
+  [81/505] 549: PASS |     8.194s | ok
+  [82/505] 478: FAIL |   123.335s | timeout
+  [83/505] 529: PASS |    47.340s | ok
+  [84/505] 553: PASS |     5.356s | ok
+  [85/505] 550: PASS |     9.617s | ok
+  [86/505] 554: PASS |     6.684s | ok
+  [87/505] 540: PASS |    28.353s | ok
+  [88/505] 495: PASS |   106.581s | ok
+  [89/505] 545: FAIL |    28.794s | no_output
+  [90/505] 561: PASS |      152ms | ok
+  [91/505] 562: PASS |     1.057s | ok
+  [92/505] 492: FAIL |   120.143s | timeout
+  [93/505] 538: PASS |    40.182s | ok
+  [94/505] 564: PASS |     4.367s | ok
+  [95/505] 542: PASS |    43.160s | ok
+  [96/505] 548: PASS |    35.006s | ok
+  [97/505] 568: PASS |      245ms | ok
+  [98/505] 530: PASS |    73.910s | ok
+  [99/505] 501: FAIL |   120.322s | timeout
+  [100/505] 555: PASS |    28.316s | ok
+  [101/505] 557: PASS |    26.091s | ok
+  [102/505] 573: FAIL |     2.046s | ok
+  [103/505] 569: FAIL |     9.369s | no_output
+  [104/505] 575: PASS |      853ms | ok
+  [105/505] 559: FAIL |    30.707s | no_output
+  [106/505] 574: FAIL |     4.406s | ok
+  [107/505] 513: FAIL |   120.104s | timeout
+  [108/505] 563: FAIL |    30.924s | no_output
+  [109/505] 578: FAIL |     9.363s | no_output
+  [110/505] 552: PASS |    49.543s | ok
+  [111/505] 582: FAIL |     1.570s | ok
+  [112/505] 567: PASS |    36.318s | ok
+  [113/505] 518: FAIL |   120.318s | timeout
+  [114/505] 560: PASS |    54.133s | ok
+  [115/505] 579: FAIL |    22.896s | ok
+  [116/505] 587: PASS |       83ms | ok
+  [117/505] 588: PASS |      153ms | ok
+  [118/505] 589: PASS |     7.774s | ok
+  [119/505] 526: FAIL |   120.604s | timeout
+  [120/505] 590: PASS |     3.612s | ok
+  [121/505] 591: PASS |     1.342s | ok
+  [122/505] 586: PASS |    14.039s | ok
+  [123/505] 585: PASS |    24.778s | ok
+  [124/505] 595: PASS |      100ms | ok
+  [125/505] 593: PASS |    18.372s | ok
+  [126/505] 536: FAIL |   121.160s | timeout
+  [127/505] 592: PASS |    21.677s | ok
+  [128/505] 599: PASS |       87ms | ok
+  [129/505] 600: PASS |     3.783s | ok
+  [130/505] 601: PASS |       74ms | ok
+  [131/505] 598: PASS |     5.109s | ok
+  [132/505] 594: PASS |    23.974s | ok
+  [133/505] 544: FAIL |   120.568s | timeout
+  [134/505] 605: PASS |       70ms | ok
+  [135/505] 543: FAIL |   121.701s | timeout
+  [136/505] 607: PASS |       75ms | ok
+  [137/505] 556: PASS |   103.161s | ok
+  [138/505] 597: PASS |    22.276s | ok
+  [139/505] 610: PASS |       67ms | ok
+  [140/505] 604: PASS |    16.391s | ok
+  [141/505] 612: PASS |     1.227s | ok
+  [142/505] 613: PASS |      127ms | ok
+  [143/505] 584: FAIL |    60.923s | no_output
+  [144/505] 572: PASS |    92.028s | ok
+  [145/505] 558: FAIL |   120.109s | timeout
+  [146/505] 565: FAIL |   120.274s | timeout
+  [147/505] 616: PASS |    17.452s | ok
+  [148/505] 566: FAIL |   120.833s | timeout
+  [149/505] 619: PASS |     6.739s | ok
+  [150/505] 617: PASS |    22.336s | ok
+  [151/505] 570: FAIL |   120.106s | timeout
+  [152/505] 571: FAIL |   120.106s | timeout
+  [153/505] 624: PASS |      390ms | ok
+  [154/505] 602: PASS |    53.181s | ok
+  [155/505] 622: PASS |     3.509s | ok
+  [156/505] 627: PASS |     1.836s | ok
+  [157/505] 621: PASS |     8.787s | ok
+  [158/505] 629: PASS |     1.446s | ok
+  [159/505] 576: FAIL |   120.261s | timeout
+  [160/505] 577: FAIL |   120.113s | timeout
+  [161/505] 631: PASS |     3.515s | ok
+  [162/505] 580: FAIL |   121.843s | timeout
+  [163/505] 625: PASS |    14.838s | ok
+  [164/505] 623: PASS |    16.817s | ok
+  [165/505] 581: FAIL |   120.118s | timeout
+  [166/505] 583: FAIL |   125.999s | timeout
+  [167/505] 606: PASS |    76.501s | ok
+  [168/505] 620: PASS |    38.068s | ok
+  [169/505] 633: PASS |    18.849s | ok
+  [170/505] 640: PASS |     2.327s | ok
+  [171/505] 603: PASS |    82.891s | ok
+  [172/505] 634: PASS |    23.569s | ok
+  [173/505] 630: PASS |    34.600s | ok
+  [174/505] 645: PASS |       44ms | ok
+  [175/505] 615: PASS |    70.798s | ok
+  [176/505] 632: PASS |    37.137s | ok
+  [177/505] 608: PASS |    94.455s | ok
+  [178/505] 649: PASS |      116ms | ok
+  [179/505] 648: PASS |     4.294s | ok
+  [180/505] 646: PASS |     8.465s | ok
+  [181/505] 636: FAIL |    37.081s | no_output
+  [182/505] 651: PASS |     5.046s | ok
+  [183/505] 596: FAIL |   120.120s | timeout
+  [184/505] 653: PASS |     6.030s | ok
+  [185/505] 656: PASS |      169ms | ok
+  [186/505] 652: PASS |     9.439s | ok
+  [187/505] 638: PASS |    34.362s | ok
+  [188/505] 654: PASS |    14.863s | ok
+  [189/505] 650: PASS |    23.016s | ok
+  [190/505] 647: PASS |    31.010s | ok
+  [191/505] 661: PASS |     3.634s | ok
+  [192/505] 609: FAIL |   120.518s | timeout
+  [193/505] 611: FAIL |   120.209s | timeout
+  [194/505] 660: PASS |    15.720s | ok
+  [195/505] 666: PASS |      151ms | ok
+  [196/505] 667: PASS |      142ms | ok
+  [197/505] 655: PASS |    29.821s | ok
+  [198/505] 669: PASS |       50ms | ok
+  [199/505] 664: PASS |     7.762s | ok
+  [200/505] 670: PASS |      702ms | ok
+  [201/505] 672: PASS |      151ms | ok
+  [202/505] 673: PASS |      149ms | ok
+  [203/505] 668: PASS |     1.613s | ok
+  [204/505] 614: FAIL |   120.106s | timeout
+  [205/505] 676: PASS |      963ms | ok
+  [206/505] 635: PASS |    75.832s | ok
+  [207/505] 618: PASS |   108.010s | ok
+  [208/505] 641: PASS |    68.017s | ok
+  [209/505] 679: PASS |     2.615s | ok
+  [210/505] 662: FAIL |    28.969s | no_output
+  [211/505] 682: PASS |     2.251s | ok
+  [212/505] 677: PASS |    17.328s | ok
+  [213/505] 684: PASS |      150ms | ok
+  [214/505] 685: PASS |      754ms | ok
+  [215/505] 686: PASS |     1.305s | ok
+  [216/505] 644: PASS |    74.825s | ok
+  [217/505] 683: PASS |     8.643s | ok
+  [218/505] 671: PASS |    26.793s | ok
+  [219/505] 687: PASS |     5.732s | ok
+  [220/505] 674: PASS |    28.216s | ok
+  [221/505] 692: PASS |       68ms | ok
+  [222/505] 626: FAIL |   120.122s | timeout
+  [223/505] 681: FAIL |    27.963s | no_output
+  [224/505] 695: PASS |      120ms | ok
+  [225/505] 628: FAIL |   122.026s | timeout
+  [226/505] 696: PASS |     1.413s | ok
+  [227/505] 698: PASS |      182ms | ok
+  [228/505] 697: PASS |     8.468s | ok
+  [229/505] 637: FAIL |   120.116s | timeout
+  [230/505] 691: FAIL |    29.599s | no_output
+  [231/505] 702: PASS |      124ms | ok
+  [232/505] 639: FAIL |   120.133s | timeout
+  [233/505] 704: PASS |       72ms | ok
+  [234/505] 694: PASS |    27.955s | ok
+  [235/505] 642: FAIL |   120.129s | timeout
+  [236/505] 703: PASS |     9.556s | ok
+  [237/505] 643: FAIL |   120.978s | timeout
+  [238/505] 706: PASS |     8.561s | ok
+  [239/505] 693: PASS |    45.231s | ok
+  [240/505] 707: PASS |     8.971s | ok
+  [241/505] 705: PASS |    14.098s | ok
+  [242/505] 689: PASS |    55.430s | ok
+  [243/505] 690: PASS |    57.430s | ok
+  [244/505] 699: PASS |    48.448s | ok
+  [245/505] 710: PASS |    17.708s | ok
+  [246/505] 708: PASS |    26.330s | ok
+  [247/505] 657: FAIL |   120.180s | timeout
+  [248/505] 658: FAIL |   120.385s | timeout
+  [249/505] 713: PASS |    17.040s | ok
+  [250/505] 659: FAIL |   120.332s | timeout
+  [251/505] 722: PASS |      140ms | ok
+  [252/505] 720: PASS |     2.841s | ok
+  [253/505] 723: PASS |     3.324s | ok
+  [254/505] 725: PASS |       67ms | ok
+  [255/505] 716: PASS |    13.945s | ok
+  [256/505] 700: PASS |    55.831s | ok
+  [257/505] 727: PASS |      977ms | ok
+  [258/505] 663: FAIL |   120.758s | timeout
+  [259/505] 729: PASS |     4.373s | ok
+  [260/505] 731: PASS |      121ms | ok
+  [261/505] 732: PASS |     3.455s | ok
+  [262/505] 726: PASS |    21.279s | ok
+  [263/505] 665: FAIL |   121.594s | timeout
+  [264/505] 675: FAIL |   120.604s | timeout
+  [265/505] 736: PASS |      261ms | ok
+  [266/505] 678: FAIL |   120.480s | timeout
+  [267/505] 733: PASS |    13.194s | ok
+  [268/505] 680: FAIL |   120.207s | timeout
+  [269/505] 715: PASS |    47.164s | ok
+  [270/505] 740: PASS |    10.909s | ok
+  [271/505] 742: PASS |      828ms | ok
+  [272/505] 734: PASS |    26.879s | ok
+  [273/505] 744: PASS |      125ms | ok
+  [274/505] 688: FAIL |   120.102s | timeout
+  [275/505] 741: PASS |    16.421s | ok
+  [276/505] 719: PASS |    58.441s | ok
+  [277/505] 717: PASS |    61.494s | ok
+  [278/505] 730: PASS |    45.515s | ok
+  [279/505] 750: PASS |     1.105s | ok
+  [280/505] 751: PASS |      137ms | ok
+  [281/505] 739: PASS |    31.105s | ok
+  [282/505] 721: PASS |    66.779s | ok
+  [283/505] 737: PASS |    42.175s | ok
+  [284/505] 755: PASS |       49ms | ok
+  [285/505] 745: PASS |    23.075s | ok
+  [286/505] 752: PASS |    14.685s | ok
+  [287/505] 701: FAIL |   120.148s | timeout
+  [288/505] 759: PASS |      150ms | ok
+  [289/505] 760: PASS |       86ms | ok
+  [290/505] 761: PASS |       91ms | ok
+  [291/505] 748: FAIL |    25.922s | no_output
+  [292/505] 763: PASS |       69ms | ok
+  [293/505] 764: PASS |     3.307s | ok
+  [294/505] 765: PASS |      103ms | ok
+  [295/505] 724: PASS |    86.845s | ok
+  [296/505] 767: PASS |     2.324s | ok
+  [297/505] 746: PASS |    42.392s | ok
+  [298/505] 709: FAIL |   121.936s | timeout
+  [299/505] 770: PASS |       76ms | ok
+  [300/505] 768: PASS |     4.288s | ok
+  [301/505] 771: PASS |     1.215s | ok
+  [302/505] 773: PASS |     1.538s | ok
+  [303/505] 774: PASS |       66ms | ok
+  [304/505] 758: PASS |    23.260s | ok
+  [305/505] 776: PASS |      300ms | ok
+  [306/505] 766: PASS |    12.913s | ok
+  [307/505] 778: PASS |      220ms | ok
+  [308/505] 711: FAIL |   120.215s | timeout
+  [309/505] 780: PASS |       58ms | ok
+  [310/505] 712: FAIL |   120.126s | timeout
+  [311/505] 777: PASS |     7.010s | ok
+  [312/505] 714: FAIL |   120.103s | timeout
+  [313/505] 718: FAIL |   120.186s | timeout
+  [314/505] 779: PASS |    22.876s | ok
+  [315/505] 769: PASS |    28.594s | ok
+  [316/505] 753: PASS |    62.403s | ok
+  [317/505] 787: PASS |     2.887s | ok
+  [318/505] 728: FAIL |   120.285s | timeout
+  [319/505] 762: PASS |    61.222s | ok
+  [320/505] 735: FAIL |   120.112s | timeout
+  [321/505] 792: PASS |     4.240s | ok
+  [322/505] 738: FAIL |   121.185s | timeout
+  [323/505] 794: PASS |       56ms | ok
+  [324/505] 775: PASS |    54.615s | ok
+  [325/505] 756: PASS |    90.403s | ok
+  [326/505] 788: PASS |    34.984s | ok
+  [327/505] 798: PASS |      112ms | ok
+  [328/505] 743: FAIL |   120.174s | timeout
+  [329/505] 747: FAIL |   120.108s | timeout
+  [330/505] 749: FAIL |   120.110s | timeout
+  [331/505] 802: PASS |     1.572s | ok
+  [332/505] 772: PASS |    87.189s | ok
+  [333/505] 799: PASS |    25.684s | ok
+  [334/505] 754: FAIL |   120.738s | timeout
+  [335/505] 795: PASS |    35.918s | ok
+  [336/505] 809: PASS |       48ms | ok
+  [337/505] 789: PASS |    62.548s | ok
+  [338/505] 811: PASS |      139ms | ok
+  [339/505] 813: PASS |       80ms | ok
+  [340/505] 814: PASS |     2.325s | ok
+  [341/505] 805: PASS |     7.163s | ok
+  [342/505] 816: PASS |     2.464s | ok
+  [343/505] 757: FAIL |   121.401s | timeout
+  [344/505] 817: PASS |     1.629s | ok
+  [345/505] 815: PASS |     5.844s | ok
+  [346/505] 821: PASS |       99ms | ok
+  [347/505] 810: PASS |    10.298s | ok
+  [348/505] 818: PASS |     6.458s | ok
+  [349/505] 800: PASS |    42.952s | ok
+  [350/505] 827: PASS |     3.126s | ok
+  [351/505] 784: PASS |   108.003s | ok
+  [352/505] 830: PASS |      606ms | ok
+  [353/505] 781: FAIL |   120.112s | timeout
+  [354/505] 782: FAIL |   120.216s | timeout
+  [355/505] 835: PASS |      115ms | ok
+  [356/505] 836: PASS |      162ms | ok
+  [357/505] 833: PASS |     4.549s | ok
+  [358/505] 825: PASS |    23.453s | ok
+  [359/505] 783: FAIL |   120.107s | timeout
+  [360/505] 796: PASS |    86.170s | ok
+  [361/505] 785: FAIL |   120.375s | timeout
+  [362/505] 791: PASS |   100.968s | ok
+  [363/505] 844: PASS |      614ms | ok
+  [364/505] 845: PASS |      343ms | ok
+  [365/505] 786: FAIL |   120.108s | timeout
+  [366/505] 801: PASS |    70.703s | ok
+  [367/505] 848: PASS |      102ms | ok
+  [368/505] 822: PASS |    48.742s | ok
+  [369/505] 790: FAIL |   120.138s | timeout
+  [370/505] 793: PASS |   102.011s | ok
+  [371/505] 853: PASS |      172ms | ok
+  [372/505] 851: PASS |    12.389s | ok
+  [373/505] 855: PASS |       82ms | ok
+  [374/505] 856: PASS |      117ms | ok
+  [375/505] 804: PASS |    77.930s | ok
+  [376/505] 808: PASS |    75.437s | ok
+  [377/505] 858: PASS |     3.499s | ok
+  [378/505] 829: PASS |    56.088s | ok
+  [379/505] 860: PASS |     8.642s | ok
+  [380/505] 862: PASS |     1.741s | ok
+  [381/505] 797: FAIL |   120.426s | timeout
+  [382/505] 863: PASS |     8.485s | ok
+  [383/505] 839: PASS |    61.665s | ok
+  [384/505] 866: PASS |      121ms | ok
+  [385/505] 837: PASS |    65.028s | ok
+  [386/505] 868: PASS |       54ms | ok
+  [387/505] 843: FAIL |    47.344s | ok
+  [388/505] 842: FAIL |    48.566s | ok
+  [389/505] 803: FAIL |   120.105s | timeout
+  [390/505] 872: PASS |       61ms | ok
+  [391/505] 859: PASS |    38.804s | ok
+  [392/505] 874: PASS |     3.620s | ok
+  [393/505] 846: FAIL |    68.454s | ok
+  [394/505] 876: PASS |      928ms | ok
+  [395/505] 877: PASS |      100ms | ok
+  [396/505] 820: PASS |   115.026s | ok
+  [397/505] 823: PASS |   114.789s | ok
+  [398/505] 867: PASS |    32.852s | ok
+  [399/505] 879: PASS |     5.885s | ok
+  [400/505] 882: PASS |     1.673s | ok
+  [401/505] 881: PASS |     6.552s | ok
+  [402/505] 871: PASS |    37.890s | ok
+  [403/505] 884: PASS |     7.730s | ok
+  [404/505] 883: PASS |    13.487s | ok
+  [405/505] 887: PASS |       83ms | ok
+  [406/505] 834: FAIL |   120.132s | timeout
+  [407/505] 889: FAIL |       47ms | no_output
+  [408/505] 840: FAIL |   120.108s | timeout
+  [409/505] 841: FAIL |   120.108s | timeout
+  [410/505] 890: FAIL |    10.167s | ok
+  [411/505] 893: FAIL |      113ms | no_output
+  [412/505] 894: FAIL |       85ms | no_output
+  [413/505] 895: FAIL |       28ms | no_output
+  [414/505] 896: FAIL |       49ms | no_output
+  [415/505] 875: PASS |    47.199s | ok
+  [416/505] 897: PASS |     1.250s | ok
+  [417/505] 857: PASS |    93.506s | ok
+  [418/505] 899: FAIL |       68ms | no_output
+  [419/505] 900: FAIL |       82ms | ok
+  [420/505] 901: PASS |      333ms | ok
+  [421/505] 886: PASS |    31.883s | ok
+  [422/505] 904: FAIL |       88ms | ok
+  [423/505] 905: PASS |       85ms | ok
+  [424/505] 906: FAIL |       85ms | no_output
+  [425/505] 907: FAIL |      101ms | no_output
+  [426/505] 908: FAIL |       52ms | no_output
+  [427/505] 898: PASS |    10.555s | ok
+  [428/505] 909: FAIL |       42ms | no_output
+  [429/505] 911: FAIL |       46ms | ok
+  [430/505] 910: FAIL |       71ms | ok
+  [431/505] 912: PASS |       58ms | ok
+  [432/505] 847: FAIL |   120.124s | timeout
+  [433/505] 903: FAIL |    10.769s | ok
+  [434/505] 916: PASS |       52ms | ok
+  [435/505] 850: FAIL |   120.139s | timeout
+  [436/505] 918: PASS |       74ms | ok
+  [437/505] 913: PASS |     3.893s | ok
+  [438/505] 920: FAIL |       70ms | ok
+  [439/505] 914: PASS |     6.131s | ok
+  [440/505] 915: PASS |     5.803s | ok
+  [441/505] 922: FAIL |       83ms | ok
+  [442/505] 923: FAIL |       70ms | ok
+  [443/505] 924: FAIL |       92ms | ok
+  [444/505] 925: FAIL |       67ms | ok
+  [445/505] 852: FAIL |   120.112s | timeout
+  [446/505] 854: FAIL |   120.076s | timeout
+  [447/505] 880: PASS |    63.717s | ok
+  [448/505] 885: PASS |    55.411s | ok
+  [449/505] 931: FAIL |       74ms | no_output
+  [450/505] 933: FAIL |       63ms | no_output
+  [451/505] 930: PASS |    10.198s | ok
+  [452/505] 935: FAIL |       96ms | no_output
+  [453/505] 861: FAIL |   120.106s | timeout
+  [454/505] 934: PASS |    12.425s | ok
+  [455/505] 892: PASS |    48.481s | ok
+  [456/505] 929: PASS |    23.219s | ok
+  [457/505] 940: PASS |     3.638s | ok
+  [458/505] 941: FAIL |       76ms | ok
+  [459/505] 942: FAIL |       46ms | ok
+  [460/505] 943: FAIL |       44ms | ok
+  [461/505] 864: FAIL |   120.452s | timeout
+  [462/505] 945: FAIL |       54ms | ok
+  [463/505] 939: FAIL |     6.931s | ok
+  [464/505] 947: FAIL |       72ms | ok
+  [465/505] 948: PASS |       77ms | ok
+  [466/505] 949: FAIL |       64ms | ok
+  [467/505] 950: FAIL |       62ms | ok
+  [468/505] 951: PASS |       71ms | ok
+  [469/505] 865: FAIL |   120.110s | timeout
+  [470/505] 869: FAIL |   120.559s | timeout
+  [471/505] 870: FAIL |   120.106s | timeout
+  [472/505] 955: FAIL |       24ms | no_output
+  [473/505] 956: PASS |     3.647s | ok
+  [474/505] 957: FAIL |       76ms | no_output
+  [475/505] 958: FAIL |       49ms | no_output
+  [476/505] 917: PASS |    49.797s | ok
+  [477/505] 960: PASS |       75ms | ok
+  [478/505] 961: FAIL |       71ms | no_output
+  [479/505] 964: FAIL |      204ms | ok
+  [480/505] 873: FAIL |   120.106s | timeout
+  [481/505] 926: PASS |    54.136s | ok
+  [482/505] 946: PASS |    25.825s | ok
+  [483/505] 878: FAIL |   120.104s | timeout
+  [484/505] 969: PASS |      216ms | ok
+  [485/505] 966: PASS |    21.510s | ok
+  [486/505] 972: FAIL |      177ms | no_output
+  [487/505] 970: PASS |    10.752s | ok
+  [488/505] 888: FAIL |   120.184s | timeout
+  [489/505] 965: PASS |    43.363s | ok
+  [490/505] 891: FAIL |   120.107s | timeout
+  [491/505] 902: FAIL |   120.115s | timeout
+  [492/505] 952: PASS |    79.125s | ok
+  [493/505] 937: FAIL |    91.078s | ok
+  [494/505] 919: FAIL |   120.189s | timeout
+  [495/505] 921: FAIL |   120.108s | timeout
+  [496/505] 927: FAIL |   120.106s | timeout
+  [497/505] 928: FAIL |   120.109s | timeout
+  [498/505] 936: FAIL |   120.108s | timeout
+  [499/505] 938: FAIL |   120.110s | timeout
+  [500/505] 944: FAIL |   120.100s | timeout
+  [501/505] 953: FAIL |   120.103s | timeout
+  [502/505] 954: FAIL |   120.408s | timeout
+  [503/505] 959: FAIL |   120.142s | timeout
+  [504/505] 967: FAIL |   120.111s | timeout
+  [505/505] 968: FAIL |   120.107s | timeout
+
+Passed: 351, Failed: 154
+
+# FAILED (154):
+  432: got=None, expected=754862080, status=timeout
+  438: got=None, expected=2046409616809, status=timeout
+  445: got=None, expected=659104042, status=timeout
+  446: got=None, expected=907803852, status=timeout
+  459: got=None, expected=3996390106631, status=no_output
+  460: got=None, expected=18.420738199, status=timeout
+  471: got=18950939813635264097188712546991, expected=1.895093981e31, status=ok
+  476: got=None, expected=110242.87794, status=no_output
+  478: got=None, expected=59510340, status=timeout
+  492: got=None, expected=242586962923928, status=timeout
+  501: got=None, expected=197912312715, status=timeout
+  513: got=None, expected=2925619196, status=timeout
+  518: got=None, expected=100315739184392, status=timeout
+  526: got=None, expected=49601160286750947, status=timeout
+  536: got=None, expected=3557005261906288, status=timeout
+  543: got=None, expected=199007746081234640, status=timeout
+  544: got=None, expected=640432376, status=timeout
+  545: got=None, expected=921107572, status=no_output
+  558: got=None, expected=226754889, status=timeout
+  559: got=None, expected=684724920, status=no_output
+  563: got=None, expected=27186308211734760, status=no_output
+  565: got=None, expected=2992480851924313898, status=timeout
+  566: got=None, expected=329569369413585, status=timeout
+  569: got=None, expected=21025060, status=no_output
+  570: got=None, expected=271197444, status=timeout
+  571: got=None, expected=30510390701978, status=timeout
+  573: got=1252.9808, expected=1252.9809, status=ok
+  574: got=5780447552057000451, expected=5780447552057000454, status=ok
+  576: got=None, expected=344457.5871, status=timeout
+  577: got=None, expected=265695031399260211, status=timeout
+  578: got=None, expected=9219696799346, status=no_output
+  579: got=631426340, expected=3805524, status=ok
+  580: got=None, expected=2327213148095366, status=timeout
+  581: got=None, expected=2227616372734, status=timeout
+  582: got=12818, expected=19903, status=ok
+  583: got=None, expected=1174137929000, status=timeout
+  584: got=None, expected=32.83822408, status=no_output
+  596: got=None, expected=734582049, status=timeout
+  609: got=None, expected=172023848, status=timeout
+  611: got=None, expected=49283233900, status=timeout
+  614: got=None, expected=130694090, status=timeout
+  626: got=None, expected=695577663, status=timeout
+  628: got=None, expected=210286684, status=timeout
+  636: got=None, expected=888316, status=no_output
+  637: got=None, expected=49000634845039, status=timeout
+  639: got=None, expected=797866893, status=timeout
+  642: got=None, expected=631499044, status=timeout
+  643: got=None, expected=968274154, status=timeout
+  657: got=None, expected=219493139, status=timeout
+  658: got=None, expected=958280177, status=timeout
+  659: got=None, expected=238518915714422000, status=timeout
+  662: got=None, expected=860873428, status=no_output
+  663: got=None, expected=1884138010064752, status=timeout
+  665: got=None, expected=11541685709674, status=timeout
+  675: got=None, expected=416146418, status=timeout
+  678: got=None, expected=1986065, status=timeout
+  680: got=None, expected=563917241, status=timeout
+  681: got=None, expected=2611227421428, status=no_output
+  688: got=None, expected=110941813, status=timeout
+  691: got=None, expected=11570761, status=no_output
+  701: got=None, expected=13.51099836, status=timeout
+  709: got=None, expected=773479144, status=timeout
+  711: got=None, expected=541510990, status=timeout
+  712: got=None, expected=413876461, status=timeout
+  714: got=None, expected=2.452767775565e20, status=timeout
+  718: got=None, expected=228579116, status=timeout
+  728: got=None, expected=709874991, status=timeout
+  735: got=None, expected=174848216767932, status=timeout
+  738: got=None, expected=143091030, status=timeout
+  743: got=None, expected=259158998, status=timeout
+  747: got=None, expected=681813395, status=timeout
+  748: got=None, expected=276402862, status=no_output
+  749: got=None, expected=13459471903176422, status=timeout
+  754: got=None, expected=785845900, status=timeout
+  757: got=None, expected=75737353, status=timeout
+  781: got=None, expected=162450870, status=timeout
+  782: got=None, expected=318313204, status=timeout
+  783: got=None, expected=136666597, status=timeout
+  785: got=None, expected=29526986315080920, status=timeout
+  786: got=None, expected=45594532839912702, status=timeout
+  790: got=None, expected=16585056588495119, status=timeout
+  797: got=None, expected=47722272, status=timeout
+  803: got=None, expected=9300900470636, status=timeout
+  834: got=None, expected=1254404167198752370, status=timeout
+  840: got=None, expected=194396971, status=timeout
+  841: got=None, expected=381.7860132854, status=timeout
+  842: got=Final Answer: 885226002, expected=885226002, status=ok
+  843: got=2816758647348, expected=2816775424692, status=ok
+  846: got=Time: 68.26s, expected=9851175623, status=ok
+  847: got=None, expected=381868244, status=timeout
+  850: got=None, expected=878255725, status=timeout
+  852: got=None, expected=130.313496, status=timeout
+  854: got=None, expected=29894398, status=timeout
+  861: got=None, expected=672623540591, status=timeout
+  864: got=None, expected=110572936177, status=timeout
+  865: got=None, expected=761181918, status=timeout
+  869: got=None, expected=14.97696693, status=timeout
+  870: got=None, expected=229.9129353234, status=timeout
+  873: got=None, expected=735131856, status=timeout
+  878: got=None, expected=23707109, status=timeout
+  888: got=None, expected=227429102, status=timeout
+  889: got=None, expected=424315113, status=no_output
+  890: got=0, expected=820442179, status=ok
+  891: got=None, expected=1541414, status=timeout
+  893: got=None, expected=26688208, status=no_output
+  894: got=None, expected=0.7718678168, status=no_output
+  895: got=None, expected=670785433, status=no_output
+  896: got=None, expected=274229635640, status=no_output
+  899: got=None, expected=10784223938983273, status=no_output
+  900: got=296202364, expected=646900900, status=ok
+  902: got=None, expected=343557869, status=timeout
+  903: got=231548875, expected=128553191, status=ok
+  904: got=0, expected=880652522278760, status=ok
+  906: got=None, expected=0.0195868911, status=no_output
+  907: got=None, expected=196808901, status=no_output
+  908: got=None, expected=451822602, status=no_output
+  909: got=None, expected=399885292, status=no_output
+  910: got=432948826, expected=547480666, status=ok
+  911: got=0, expected=5679.934966, status=ok
+  919: got=None, expected=134222859969633, status=timeout
+  920: got=0, expected=1154027691000533893, status=ok
+  921: got=None, expected=378401935, status=timeout
+  922: got=0, expected=858945298, status=ok
+  923: got=0, expected=740759929, status=ok
+  924: got=0, expected=811141860, status=ok
+  925: got=0, expected=400034379, status=ok
+  927: got=None, expected=207282955, status=timeout
+  928: got=None, expected=81108001093, status=timeout
+  931: got=None, expected=128856311, status=no_output
+  933: got=None, expected=5707485980743099, status=no_output
+  935: got=None, expected=759908921637225, status=no_output
+  936: got=None, expected=12144907797522336, status=timeout
+  937: got=866599922, expected=792169346, status=ok
+  938: got=None, expected=0.2928967987, status=timeout
+  939: got=1149840452, expected=246776732, status=ok
+  941: got=to compute positions in the de Bruijn sequence C(1, expected=1068765750, status=ok
+  942: got=R(74207281) mod 1000000007 = 851239875, expected=557539756, status=ok
+  943: got=Requires analysis of self-describing sequence stru, expected=1038733707, status=ok
+  944: got=None, expected=1228599511, status=timeout
+  945: got=Full solution requires optimization for N=10^7, expected=83357132, status=ok
+  947: got=Full solution requires computing s(m) and S(M) for, expected=213731313, status=ok
+  949: got=Requires complex game theory analysis - Stub, expected=726010935, status=ok
+  950: got=Requires game theory and dynamic programming - Stu, expected=429162542, status=ok
+  953: got=None, expected=176907658, status=timeout
+  954: got=None, expected=736463823, status=timeout
+  955: got=None, expected=6795261671274, status=no_output
+  957: got=None, expected=234897386493229284, status=no_output
+  958: got=None, expected=367554579311, status=no_output
+  959: got=None, expected=0.857162085, status=timeout
+  961: got=None, expected=166666666689036288, status=no_output
+  964: got=0, expected=4.7126135532e-29, status=ok
+  967: got=None, expected=357591131712034236, status=timeout
+  968: got=None, expected=885362394, status=timeout
+  972: got=None, expected=3575508, status=no_output

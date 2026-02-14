@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-"""
-Project Euler 446 - Retractions B
+"""Project Euler 446 - Retractions B
 
 F(N) = sum_{n=1}^N R(n^4 + 4)
 R(n) = prod(1 + p^e) - n for factorization n = prod(p^e)
@@ -8,130 +6,200 @@ R(n) = prod(1 + p^e) - n for factorization n = prod(p^e)
 Key: n^4 + 4 = ((n-1)^2 + 1) * ((n+1)^2 + 1)
 
 So we factorize all k^2 + 1 for k = 0 to N+1, then combine.
+Ported to embedded C for speed.
 """
+import subprocess, tempfile, os
 
-def solve():
-    N = 10**7
-    MOD = 10**9 + 7
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-    # Tonelli-Shanks: find sqrt of a mod p
-    def tonelli_shanks(a, p):
-        """Find x such that x^2 = a mod p, or return None if no solution."""
-        if a % p == 0:
-            return 0
-        if pow(a, (p - 1) // 2, p) != 1:
-            return None
+#define N 10000000
+#define MOD 1000000007LL
 
-        # Factor p - 1 = q * 2^s
-        q, s = p - 1, 0
-        while q % 2 == 0:
-            q //= 2
-            s += 1
+static char is_prime[N + 2];
+static int64_t factors[N + 2];  /* factors[k] = remaining part of k^2+1 after dividing out small primes */
+static int64_t res[N + 3];     /* res[n] = product of (1+p^e) contributions */
 
-        # Find quadratic non-residue
-        z = 2
-        while pow(z, (p - 1) // 2, p) != p - 1:
-            z += 1
+/* Tonelli-Shanks: find x such that x^2 = a mod p */
+static int64_t tonelli_shanks(int64_t a, int64_t p) {
+    a %= p;
+    if (a < 0) a += p;
+    if (a == 0) return 0;
 
-        m = s
-        c = pow(z, q, p)
-        t = pow(a, q, p)
-        r = pow(a, (q + 1) // 2, p)
+    /* Check if a is QR */
+    int64_t test = 1;
+    int64_t base = a;
+    int64_t exp = (p - 1) / 2;
+    int64_t e2 = exp;
+    while (e2 > 0) {
+        if (e2 & 1) test = (__int128)test * base % p;
+        base = (__int128)base * base % p;
+        e2 >>= 1;
+    }
+    if (test != 1) return -1; /* not a QR */
 
-        while True:
-            if t == 1:
-                return r
-            # Find smallest i such that t^(2^i) = 1
-            i = 1
-            temp = (t * t) % p
-            while temp != 1:
-                temp = (temp * temp) % p
-                i += 1
-            # Update
-            b = pow(c, 1 << (m - i - 1), p)
-            m = i
-            c = (b * b) % p
-            t = (t * c) % p
-            r = (r * b) % p
+    /* Factor p-1 = q * 2^s */
+    int64_t q = p - 1;
+    int s = 0;
+    while (q % 2 == 0) { q /= 2; s++; }
 
-    # Sieve primes up to N
-    is_prime = [True] * (N + 2)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, int((N + 1) ** 0.5) + 1):
-        if is_prime[i]:
-            for j in range(i * i, N + 2, i):
-                is_prime[j] = False
+    /* Find non-residue */
+    int64_t z = 2;
+    while (1) {
+        base = z; exp = (p - 1) / 2; test = 1;
+        int64_t e3 = exp;
+        while (e3 > 0) {
+            if (e3 & 1) test = (__int128)test * base % p;
+            base = (__int128)base * base % p;
+            e3 >>= 1;
+        }
+        if (test == p - 1) break;
+        z++;
+    }
 
-    # factors[k] = (k^2 + 1) with small primes divided out
-    factors = [k * k + 1 for k in range(N + 2)]
+    int m = s;
+    /* c = z^q mod p */
+    int64_t c = 1; base = z; e2 = q;
+    while (e2 > 0) {
+        if (e2 & 1) c = (__int128)c * base % p;
+        base = (__int128)base * base % p;
+        e2 >>= 1;
+    }
+    /* t = a^q mod p */
+    int64_t t = 1; base = a; e2 = q;
+    while (e2 > 0) {
+        if (e2 & 1) t = (__int128)t * base % p;
+        base = (__int128)base * base % p;
+        e2 >>= 1;
+    }
+    /* r = a^((q+1)/2) mod p */
+    int64_t r = 1; base = a; e2 = (q + 1) / 2;
+    while (e2 > 0) {
+        if (e2 & 1) r = (__int128)r * base % p;
+        base = (__int128)base * base % p;
+        e2 >>= 1;
+    }
 
-    # res[k] will be the product of (1 + p^e) contributions from (k-1)^2+1 and (k+1)^2+1
-    # for computing R((k-1)^2+1 * (k+1)^2+1)
-    res = [1] * (N + 3)
+    while (1) {
+        if (t == 1) return r;
+        int i = 1;
+        int64_t temp = (__int128)t * t % p;
+        while (temp != 1) {
+            temp = (__int128)temp * temp % p;
+            i++;
+        }
+        /* b = c^(2^(m-i-1)) */
+        int64_t b = c;
+        int j;
+        for (j = 0; j < m - i - 1; j++)
+            b = (__int128)b * b % p;
+        m = i;
+        c = (__int128)b * b % p;
+        t = (__int128)t * c % p;
+        r = (__int128)r * b % p;
+    }
+}
 
-    # Handle factor of 2: k^2 + 1 is odd if k is even, has one factor of 2 if k is odd
-    # n^4 + 4 = ((n-1)^2+1)*((n+1)^2+1)
-    # If n is even: both (n-1)^2+1 and (n+1)^2+1 are even (n-1 and n+1 odd)
-    # If n is odd: both are odd
-    for k in range(1, N + 2, 2):  # k odd means k^2+1 even
-        factors[k] //= 2
+int main(void) {
+    int i, k;
 
-    # Now n^4+4 has factor 4 when n is even, factor 1 when n is odd
-    # For n even: (n-1)^2+1 and (n+1)^2+1 each contribute 2, so product has 4
-    # R(...) includes (1 + 4) = 5 factor for the 2^2
-    for n in range(2, N + 1, 2):
-        res[n] = 5
+    /* Sieve primes */
+    memset(is_prime, 1, sizeof(is_prime));
+    is_prime[0] = is_prime[1] = 0;
+    for (i = 2; (int64_t)i * i <= N + 1; i++) {
+        if (is_prime[i]) {
+            int j;
+            for (j = i * i; j <= N + 1; j += i)
+                is_prime[j] = 0;
+        }
+    }
 
-    # Process primes p = 1 mod 4 (these can divide k^2+1)
-    for p in range(5, N + 2):
-        if not is_prime[p] or p % 4 != 1:
-            continue
+    /* Initialize factors[k] = k^2 + 1 */
+    for (k = 0; k <= N + 1; k++)
+        factors[k] = (int64_t)k * k + 1;
 
-        # Find sqrt(-1) mod p using Tonelli-Shanks
-        sqrt_neg1 = tonelli_shanks(p - 1, p)
-        if sqrt_neg1 is None:
-            continue
+    /* Initialize res[n] = 1 */
+    for (i = 0; i <= N + 2; i++)
+        res[i] = 1;
 
-        # k^2 + 1 = 0 mod p means k^2 = -1 mod p, so k = ±sqrt(-1)
-        roots = [sqrt_neg1 % p, (-sqrt_neg1) % p]
-        if roots[0] == roots[1]:
-            roots = [roots[0]]
+    /* Handle factor of 2: k odd => k^2+1 is even (exactly one factor of 2) */
+    for (k = 1; k <= N + 1; k += 2)
+        factors[k] /= 2;
 
-        for start in roots:
-            k = start
-            while k < N + 2:
-                # Divide out all factors of p from factors[k]
-                pw = 1
-                while factors[k] % p == 0:
-                    factors[k] //= p
-                    pw *= p
+    /* For n even: both (n-1)^2+1 and (n+1)^2+1 are even => n^4+4 has 2^2 => (1+4)=5 */
+    for (i = 2; i <= N; i += 2)
+        res[i] = 5;
 
-                # (k^2+1) contributes to n = k-1 and n = k+1
-                # res[n] *= (1 + pw)
-                term = (1 + pw) % MOD
-                if k >= 1:
-                    res[k - 1] = res[k - 1] * term % MOD
-                if k + 1 <= N + 2:
-                    res[k + 1] = res[k + 1] * term % MOD
+    /* Process primes p = 1 mod 4 */
+    for (int p = 5; p <= N + 1; p++) {
+        if (!is_prime[p] || p % 4 != 1) continue;
 
-                k += p
+        int64_t sqrt_neg1 = tonelli_shanks(p - 1, (int64_t)p);
+        if (sqrt_neg1 < 0) continue;
 
-    # Handle remaining large prime factors
-    for k in range(N + 2):
-        if factors[k] > 1:
-            term = (1 + factors[k]) % MOD
-            if k >= 1:
-                res[k - 1] = res[k - 1] * term % MOD
-            if k + 1 <= N + 2:
-                res[k + 1] = res[k + 1] * term % MOD
+        int64_t roots[2];
+        roots[0] = sqrt_neg1 % p;
+        roots[1] = (p - sqrt_neg1) % p;
+        int nroots = (roots[0] == roots[1]) ? 1 : 2;
 
-    # Compute F(N) = sum_{n=1}^N (res[n] - (n^4 + 4))
-    ans = 0
-    for n in range(1, N + 1):
-        n4_plus_4 = (pow(n, 4, MOD) + 4) % MOD
-        ans = (ans + res[n] - n4_plus_4) % MOD
+        int ri;
+        for (ri = 0; ri < nroots; ri++) {
+            int64_t start = roots[ri];
+            for (k = (int)start; k <= N + 1; k += p) {
+                int64_t pw = 1;
+                while (factors[k] % p == 0) {
+                    factors[k] /= p;
+                    pw *= p;
+                }
+                int64_t term = (1 + pw) % MOD;
+                if (k >= 1)
+                    res[k - 1] = res[k - 1] * term % MOD;
+                if (k + 1 <= N + 2)
+                    res[k + 1] = res[k + 1] * term % MOD;
+            }
+        }
+    }
 
-    return ans
+    /* Handle remaining large prime factors */
+    for (k = 0; k <= N + 1; k++) {
+        if (factors[k] > 1) {
+            int64_t term = (1 + factors[k]) % MOD;
+            if (k >= 1)
+                res[k - 1] = res[k - 1] * term % MOD;
+            if (k + 1 <= N + 2)
+                res[k + 1] = res[k + 1] * term % MOD;
+        }
+    }
+
+    /* Compute F(N) = sum_{n=1}^N (res[n] - (n^4 + 4)) mod MOD */
+    int64_t ans = 0;
+    for (i = 1; i <= N; i++) {
+        int64_t n = i;
+        int64_t n2 = n % MOD;
+        n2 = n2 * n2 % MOD;
+        int64_t n4 = n2 * n2 % MOD;
+        int64_t n4p4 = (n4 + 4) % MOD;
+        ans = (ans + res[i] - n4p4 + MOD) % MOD;
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    print(solve())
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

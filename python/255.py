@@ -1,67 +1,67 @@
-"""Project Euler Problem 255: Rounded Square Roots.
+"""Project Euler Problem 255 — Rounded Square Roots."""
+import subprocess, tempfile, os
 
-An iterative method to compute √n is to start with x_0 and repeatedly
-compute x_{k+1} = ⌊(x_k + ⌈n/x_k⌉) / 2⌋, until x_{k+1} = x_k. Find the
-average number of iterations needed to compute √n for L ≤ n < H.
-"""
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-from __future__ import annotations
+typedef long long ll;
 
-from math import ceil
+static ll ceil_div(ll a, ll b) {
+    return (a + b - 1) / b;
+}
 
+static ll bound(ll n, ll low, ll high) {
+    if (n < low) return low;
+    if (n > high) return high;
+    return n;
+}
 
-def solve() -> float:
-    """Solve Problem 255."""
-    L = 10**13
-    H = 10**14
-    X0 = 7 * 10**6
+static ll sum_iterations(ll l, ll h, ll x, ll k);
 
-    total_iterations = sum_iterations(L, H, X0, 1)
-    return total_iterations / (H - L)
+static ll sum_remaining_iterations(ll l, ll h, ll x, ll k) {
+    ll total = 0;
+    while (l < h) {
+        ll next_x = (x + ceil_div(l, x)) / 2;
+        ll next_l_val = (next_x * 2 + 1 - x) * x + 1;
+        ll next_l = next_l_val < h ? next_l_val : h;
+        total += sum_iterations(l, next_l, next_x, k + 1);
+        l = next_l;
+    }
+    return total;
+}
 
+static ll sum_iterations(ll l, ll h, ll x, ll k) {
+    ll x2l = bound(x * (x - 1) + 1, l, h);
+    ll x2h = bound(x * (x + 1) + 1, l, h);
+    return sum_remaining_iterations(l, x2l, x, k)
+         + (x2h - x2l) * k
+         + sum_remaining_iterations(x2h, h, x, k);
+}
 
-def sum_iterations(l: int, h: int, x: int, k: int) -> int:
-    """Sum iterations for interval [l, h) with current x and iteration k."""
-    x2l = bound(x * (x - 1) + 1, l, h)
-    x2h = bound(x * (x + 1) + 1, l, h)
-    return (
-        sum_remaining_iterations(l, x2l, x, k)
-        + (x2h - x2l) * k
-        + sum_remaining_iterations(x2h, h, x, k)
-    )
+int main(void) {
+    ll L = 10000000000000LL;   /* 10^13 */
+    ll H = 100000000000000LL;  /* 10^14 */
+    ll X0 = 7000000LL;         /* 7 * 10^6 */
 
-
-def sum_remaining_iterations(l: int, h: int, x: int, k: int) -> int:
-    """Sum remaining iterations."""
-    total = 0
-    while l < h:
-        next_x = (x + ceil_div(l, x)) // 2
-        next_l = min((next_x * 2 + 1 - x) * x + 1, h)
-        total += sum_iterations(l, next_l, next_x, k + 1)
-        l = next_l
-    return total
-
-
-def ceil_div(a: int, b: int) -> int:
-    """Ceiling division."""
-    return (a + b - 1) // b
-
-
-def bound(n: int, low: int, high: int) -> int:
-    """Bound n between low and high."""
-    if n < low:
-        return low
-    if n > high:
-        return high
-    return n
-
-
-def main() -> float:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.10f}")
-    return result
-
+    ll total = sum_iterations(L, H, X0, 1);
+    double result = (double)total / (double)(H - L);
+    printf("%.10f\n", result);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

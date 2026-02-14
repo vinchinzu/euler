@@ -1,159 +1,107 @@
 """Project Euler Problem 423: Consecutive die throws.
 
-Let C(n) be the number of ways to throw a K-sided die n times such that at
-most π(n) consecutive throws are identical, where π(n) is the number of
-primes ≤ n. Find Σ_{n=1}^N C(n).
+C(n) = number of outcomes of throwing a 6-sided die n times such that the
+number of consecutive identical pairs does not exceed pi(n).
 
-Clearly C(0) = 1. Now suppose that we've already computed C(n-1). Then the
-number of ways to throw a die n times with at most π(n) pairs is almost
-K * C(n-1), i.e. the number of ways to throw a die n-1 times with at most
-π(n-1) pairs, multiplied by K possibilities for the last throw.
+C(n) = K * sum_{c=0}^{pi(n)} C(n-1, c) * (K-1)^(n-1-c)
 
-If n is prime, then π(n) = π(n-1) + 1. So we're missing some throws - the
-first n-1 throws can have π(n) pairs, which is not counted in C(n-1). Let
-R(n) be the number of possibilities for the first n-1 throws. To compute R, we
-note that there are K ways to throw the first die, nCr(n-2, π(n)) ways to
-choose which of the n-2 pairs are identical, and (K-1) ^ (n-2 - π(n)) ways
-to select the distinct values for those throws. Finally, the last throw cannot
-match the second last throw, so there are K-1 possibilities for the last throw.
+Using recurrence on f (where C(n) = K*f) and R = C(n-1, pi(n)) * (K-1)^(n-1-pi(n)):
+  Non-prime n: f_new = K*f - R; R_new = R*(n-1)*(K-1)/(n-1-pi)
+  Prime n:     R_new = R*(n-1)/(pi+1); f_new = K*f - R + R_new
 
-R(n) = K * nCr(n-2, π(n)) * (K-1) ^ (n-2 - π(n))
-C(n) = K * C(n-1) + (K-1) * R(n),  if p is prime.
-
-If n is not prime, then we over-counted the throws where the last throw
-matches the second last throw, and the first n-1 throws already have π(n)
-pairs. This is the same as R(n) computed above.
-
-C(n) = K * C(n-1) - R(n),  if p is not prime.
-
-To compute R(n) efficiently, we note that for large enough n, R(n) = R *
-(n-2) / π(n) if n is prime, and R(n) = R * (n-2) / (n - 2 - π(n)) * (K-1)
-otherwise. For small n, this recursive relation results in divide by zero
-errors, so we compute it directly.
+Uses embedded C for performance since N=50,000,000.
 """
-
-from __future__ import annotations
-
-from math import isqrt
-from typing import List
+import subprocess, os, tempfile
 
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes to find all primes up to limit."""
-    if limit < 2:
-        return []
-    sieve = [True] * (limit + 1)
-    sieve[0] = sieve[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if sieve[i]:
-            for j in range(i * i, limit + 1, i):
-                sieve[j] = False
-    return [i for i in range(2, limit + 1) if sieve[i]]
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
+#define N 50000000
+#define K 6
+#define MOD 1000000007LL
 
-def prime_counts(limit: int) -> List[int]:
-    """Count primes up to each number."""
-    is_prime_arr = [True] * (limit + 1)
-    is_prime_arr[0] = is_prime_arr[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime_arr[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime_arr[j] = False
+static char is_prime_arr[N + 1];
+static long long inv_arr[N + 1];
 
-    counts = [0] * (limit + 1)
-    count = 0
-    for i in range(limit + 1):
-        if is_prime_arr[i]:
-            count += 1
-        counts[i] = count
-    return counts
+int main() {
+    int i;
 
+    /* Sieve of Eratosthenes */
+    memset(is_prime_arr, 1, sizeof(is_prime_arr));
+    is_prime_arr[0] = is_prime_arr[1] = 0;
+    for (i = 2; (long long)i * i <= N; i++) {
+        if (is_prime_arr[i]) {
+            for (int j = i * i; j <= N; j += i)
+                is_prime_arr[j] = 0;
+        }
+    }
 
-def mod_invs(limit: int, mod: int) -> List[int]:
-    """Compute modular inverses for 1..limit modulo mod."""
-    invs = [0] * (limit + 1)
-    invs[1] = 1
-    for i in range(2, limit + 1):
-        invs[i] = (mod - (mod // i) * invs[mod % i] % mod) % mod
-    return invs
+    /* Modular inverses */
+    inv_arr[0] = 0;
+    inv_arr[1] = 1;
+    for (i = 2; i <= N; i++) {
+        inv_arr[i] = (MOD - MOD / i * inv_arr[MOD % i] % MOD) % MOD;
+    }
 
+    /*
+     * f = sum_{c=0}^{pi(n)} C(n-1,c) * (K-1)^(n-1-c), so C(n) = K * f
+     * R = C(n-1, pi(n)) * (K-1)^(n-1-pi(n))
+     *
+     * Initial (n=1): pi(1)=0, f=1, R=1, C(1)=6.
+     */
+    long long f = 1;
+    long long R = 1;
+    int pi_n = 0;
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Fast exponentiation modulo mod."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+    long long ans = (K * f) % MOD;  /* C(1) = 6 */
 
+    for (int n = 2; n <= N; n++) {
+        if (is_prime_arr[n]) {
+            /* pi(n) = pi(n-1) + 1 */
+            /* R_new = R * (n-1) / (pi_n + 1) */
+            long long R_new = R * ((n - 1) % MOD) % MOD * inv_arr[pi_n + 1] % MOD;
+            /* f_new = K*f - R + R_new */
+            f = ((long long)K * f % MOD - R % MOD + R_new + MOD) % MOD;
+            R = R_new;
+            pi_n++;
+        } else {
+            /* pi(n) = pi(n-1) */
+            /* f_new = K*f - R */
+            long long f_new = ((long long)K * f % MOD - R % MOD + MOD) % MOD;
+            /* R_new = R * (n-1) * (K-1) / (n-1-pi_n) */
+            long long R_new;
+            if (n - 1 > pi_n) {
+                R_new = R * ((n - 1) % MOD) % MOD * (K - 1) % MOD * inv_arr[n - 1 - pi_n] % MOD;
+            } else {
+                /* n-1 == pi_n: R = C(n-1, n-1) * 5^0 = 1 */
+                R_new = 1;
+            }
+            f = f_new;
+            R = R_new;
+        }
 
-def nCr(n: int, r: int, mod: int, invs: List[int]) -> int:
-    """Compute C(n, r) modulo mod using precomputed inverses."""
-    if r < 0 or r > n:
-        return 0
-    if r == 0 or r == n:
-        return 1
-    
-    result = 1
-    for i in range(r):
-        result = (result * (n - i)) % mod
-        result = (result * invs[i + 1]) % mod
-    return result
+        long long C_n = (long long)K * f % MOD;
+        ans = (ans + C_n) % MOD;
+    }
 
-
-def solve() -> int:
-    """Solve Problem 423."""
-    N = 50_000_000
-    K = 6
-    M = 10**9 + 7
-    
-    prime_count_arr = prime_counts(N)
-    mod_invs_arr = mod_invs(N, M)
-    
-    R = 1
-    C = 1
-    ans = 0
-    
-    for n in range(1, N + 1):
-        if n == 1:
-            ans = (ans + C) % M
-            continue
-        
-        is_prime_n = prime_count_arr[n] == prime_count_arr[n - 1] + 1
-        
-        if is_prime_n:
-            R = R * (n - 2) % M * mod_invs_arr[prime_count_arr[n]] % M
-            C = (K * C + (K - 1) * R) % M
-        else:
-            if n - 2 > prime_count_arr[n]:
-                R = (
-                    R * (n - 2) % M
-                    * mod_invs_arr[n - 2 - prime_count_arr[n]]
-                    * (K - 1)
-                    % M
-                )
-            else:
-                R = (
-                    nCr(n - 2, prime_count_arr[n], M, mod_invs_arr)
-                    * pow_mod(K - 1, n - 2 - prime_count_arr[n], M)
-                    % M
-                )
-            C = (K * C - R) % M
-        
-        ans = (ans + C) % M
-    
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol423.c")
+    exe = os.path.join(tmpdir, "sol423")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    solve()

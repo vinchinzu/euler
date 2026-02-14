@@ -1,76 +1,80 @@
-"""Project Euler Problem 756: Approximating a Sum.
+"""Project Euler Problem 756: Approximating a Sum — embedded C with GMP."""
 
-For a random K-tuple 0 < X_1 < X_2 < ... < X_K ≤ N, let S = Σ_{i=1}^N ϕ(i)
-and let S* = Σ_{i=1}^K ϕ(X_i)(X_i - X_{i-1}). Find the expected value of
-S - S*.
+import subprocess, tempfile, os
 
-Let f(i) = ϕ(r) where r is the smallest integer that is one of the X_i,
-or 0 if none exists. Then S* = Σ_{i=1}^N f(i). So by linearity of
-expectation, we can sum the expected values of each f(i).
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <gmp.h>
 
-With probability K/N, f(i) = ϕ(i). With probability (K/N) (N-K)/(N-1),
-f(i) = ϕ(i+1), and so on. These coefficients are the same for all i. So
-we have:
+int main() {
+    int N = 12345678;
+    int K = 12345;
 
-E(S*) = K/N Σ_{i=1}^N ϕ(i) + (K/N) (N-K)/(N-1) Σ_{i=2}^N ϕ(i) + ...
+    /* Sieve for Euler's totient */
+    int *phi = (int*)malloc((N + 1) * sizeof(int));
+    for (int i = 0; i <= N; i++) phi[i] = i;
+    for (int i = 2; i <= N; i++) {
+        if (phi[i] == i) {
+            for (int j = i; j <= N; j += i)
+                phi[j] = phi[j] / i * (i - 1);
+        }
+    }
 
-We can precompute the cumulative sums Σ ϕ(i), and iteratively build up
-the coefficients to compute the entire sum in linear time. As a further
-optimization, we can stop when the terms become negligible. The answer is
-then Σ ϕ(i) - E(S*).
-"""
+    /* Prefix sums */
+    long long *sum_phis = (long long*)malloc((N + 1) * sizeof(long long));
+    sum_phis[0] = 0;
+    for (int i = 1; i <= N; i++)
+        sum_phis[i] = sum_phis[i - 1] + phi[i];
+    free(phi);
 
-from __future__ import annotations
+    /* GMP accumulation */
+    mpf_set_default_prec(256);
+    mpf_t d, ans, diff, temp, num_t, den_t;
+    mpf_inits(d, ans, diff, temp, num_t, den_t, NULL);
 
-from typing import List
+    mpf_set_si(ans, sum_phis[N]);
+    mpf_set_ui(num_t, (unsigned long)K);
+    mpf_set_ui(den_t, (unsigned long)N);
+    mpf_div(d, num_t, den_t);
 
-import mpmath
-mpmath.mp.dps = 50
+    for (int i = 1; i <= N; i++) {
+        long long tail = sum_phis[N] - sum_phis[i - 1];
+        mpf_set_si(temp, tail);
+        mpf_mul(diff, d, temp);
 
+        if (mpf_get_d(diff) == 0.0) break;
 
-def pre_phi(limit: int) -> List[int]:
-    """Precompute Euler's totient function."""
-    phi = list(range(limit + 1))
-    for i in range(2, limit + 1):
-        if phi[i] == i:  # i is prime
-            for j in range(i, limit + 1, i):
-                phi[j] = phi[j] // i * (i - 1)
-    return phi
+        mpf_sub(ans, ans, diff);
 
+        long long nr = (long long)N - K - i + 1;
+        if (nr <= 0) break;
+        long long dn = (long long)N - i;
+        if (dn <= 0) break;
 
-def solve() -> str:
-    """Solve Problem 756."""
-    N = 12_345_678
-    K = 12_345
+        mpf_set_ui(num_t, (unsigned long)nr);
+        mpf_mul(d, d, num_t);
+        mpf_set_ui(den_t, (unsigned long)dn);
+        mpf_div(d, d, den_t);
+    }
 
-    phi = pre_phi(N)
-    sum_phis = [0] * (N + 1)
-    for i in range(1, N + 1):
-        sum_phis[i] = sum_phis[i - 1] + phi[i]
+    gmp_printf("%.6Ff\n", ans);
 
-    d = mpmath.mpf(K) / mpmath.mpf(N)
-    ans = mpmath.mpf(sum_phis[N])
-
-    for i in range(1, N + 1):
-        diff = d * mpmath.mpf(sum_phis[N] - sum_phis[i - 1])
-        if abs(float(diff)) == 0.0:
-            break
-        d = d * mpmath.mpf(N - K - i + 1) / mpmath.mpf(N - i)
-        ans = ans - diff
-
-    # Format to 6 decimal places
-    s = mpmath.nstr(ans, 15, strip_zeros=False)
-    # Find the decimal point and take 6 digits after it
-    dot = s.index('.')
-    return s[:dot + 7]
-
-
-def main() -> str:
-    """Main entry point."""
-    result = solve()
-    print(result)
+    mpf_clears(d, ans, diff, temp, num_t, den_t, NULL);
+    free(sum_phis);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lgmp'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     return result
 
-
 if __name__ == "__main__":
-    main()
+    print(solve())

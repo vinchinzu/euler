@@ -1,111 +1,133 @@
-"""Project Euler Problem 603: Concatenation of Consecutive Primes.
+"""Project Euler Problem 603: Concatenation of Consecutive Primes — embedded C."""
 
-Find the sum of all contiguous integer substrings of the integer C, where C
-consists of the first N primes concatenated together, and repeated K times.
+import subprocess, tempfile, os
 
-The nth digit (0-indexed) of C appears as the unit digit of an integer substring
-exactly n+1 times. It also appears as n+1 times as the tenth digit, the
-hundredth digit, and so on up to the (10^r)th digit, where r is the number of
-digits after it. This means the nth digit is multiplied by (n+1)(111...111) in
-the final sum.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-Let L be the length of a single copy of the concatenation of N primes. The
-above logic gives a sum of sum_{n=0}^{KL-1} d_n (n+1) (10^(KL-n) - 1)/9.
-However, since K is large, we need to group the terms n, L+n, ... (K-1)L+n
-into an arithmetico-geometric series.
-"""
+typedef long long i64;
+typedef __int128 i128;
 
-from __future__ import annotations
+#define MOD 1000000007LL
+#define N_PRIMES 1000000
+#define K_COPIES 1000000000000LL
+#define SIEVE_LIMIT 16000000
 
-from sympy import nextprime
+i64 mod_inv(i64 a, i64 m) {
+    i64 t = 0, new_t = 1, r = m, new_r = a % m;
+    while (new_r != 0) {
+        i64 q = r / new_r;
+        i64 tmp;
+        tmp = new_t; new_t = t - q * new_t; t = tmp;
+        tmp = new_r; new_r = r - q * new_r; r = tmp;
+    }
+    if (t < 0) t += m;
+    return t;
+}
 
+i64 power_mod(i64 base, i64 exp, i64 mod) {
+    i64 result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = (i128)result * base % mod;
+        base = (i128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    return pow(a, m - 2, m)
+int main() {
+    /* Sieve of Eratosthenes */
+    char *is_prime = (char*)calloc(SIEVE_LIMIT + 1, 1);
+    memset(is_prime, 1, SIEVE_LIMIT + 1);
+    is_prime[0] = is_prime[1] = 0;
+    for (int i = 2; (long long)i * i <= SIEVE_LIMIT; i++) {
+        if (is_prime[i])
+            for (int j = i * i; j <= SIEVE_LIMIT; j += i)
+                is_prime[j] = 0;
+    }
 
+    /* Collect first N_PRIMES primes */
+    int *primes = (int*)malloc(N_PRIMES * sizeof(int));
+    int count = 0;
+    for (int i = 2; i <= SIEVE_LIMIT && count < N_PRIMES; i++)
+        if (is_prime[i]) primes[count++] = i;
+    free(is_prime);
 
-def S(P: str, K: int, M: int) -> int:
-    """Compute sum of contiguous substrings.
+    /* Build digit string – first pass: compute total length */
+    int total_len = 0;
+    for (int i = 0; i < N_PRIMES; i++) {
+        char buf[16];
+        total_len += sprintf(buf, "%d", primes[i]);
+    }
 
-    Matches the Java implementation exactly:
-      layeredNum = sum_{n} d_n * n * B^(L-1-n)   (mod M)
-      num        = sum_{n} d_n     * B^(L-1-n)   (mod M)
-      layeredSum = sum_{n} d_n * n                (mod M)
-      sum        = sum_{n} d_n                    (mod M)
-    """
-    B = 10
-    layered_num = 0
-    num = 0
-    layered_sum = 0
-    sum_val = 0
-    L = len(P)
+    char *P = (char*)malloc(total_len + 1);
+    int pos = 0;
+    for (int i = 0; i < N_PRIMES; i++)
+        pos += sprintf(P + pos, "%d", primes[i]);
+    free(primes);
 
-    for n in range(L):
-        d = int(P[n])
-        layered_num = (layered_num + n * d) % M
-        layered_sum = (layered_sum + n * d) % M
-        num = (num + d) % M
-        sum_val = (sum_val + d) % M
-        layered_num = layered_num * B % M
-        num = num * B % M
+    i64 L = total_len;
+    i64 M = MOD;
+    i64 B = 10;
 
-    piece = pow(B, L, M)
-    all_pow = (pow(piece, K, M) - 1) % M
-    inv_den = mod_inverse((piece - 1) % M, M)
+    i64 layered_num = 0, num = 0, layered_sum = 0, sum_val = 0;
+    for (i64 n = 0; n < L; n++) {
+        int d = P[n] - '0';
+        layered_num = (layered_num + (i128)(n % M) * d) % M;
+        layered_sum = (layered_sum + (i128)(n % M) * d) % M;
+        num = (num + d) % M;
+        sum_val = (sum_val + d) % M;
+        layered_num = (i128)layered_num * B % M;
+        num = (i128)num * B % M;
+    }
+    free(P);
 
-    # tr(K-1, M) = (K-1)*K/2 mod M
-    tr_km1 = (K - 1) % M * (K % M) % M * mod_inverse(2, M) % M
+    i64 piece = power_mod(B, L, M);
+    i64 all_pow = (power_mod(piece, K_COPIES, M) - 1 + M) % M;
+    i64 inv_den = mod_inv((piece - 1 + M) % M, M);
 
-    # Match Java expression with explicit parenthesization:
-    # res = (all * invDen % M * layeredNum
-    #      + (all + L * all % M * invDen - K % M * L) % M * invDen % M * num
-    #      - K % M * (layeredSum % M)
-    #      - (L * tr(K-1,M) + K) % M * sum
-    #      ) % M * modInv(B-1, M)
-    #
-    # Java operator precedence (left-to-right for * and %):
-    # term1 = ((all * invDen) % M) * layeredNum
-    # term2_inner = (all + ((L * all) % M) * invDen - ((K % M) * L)) % M
-    # term2 = ((term2_inner * invDen) % M) * num
-    # term3 = (K % M) * (layeredSum % M)
-    # term4 = ((L * tr(K-1,M) + K) % M) * sum
+    i64 K_mod = K_COPIES % M;
+    i64 Km1_mod = (K_COPIES - 1) % M;
+    i64 tr_km1 = (i128)Km1_mod * K_mod % M * mod_inv(2, M) % M;
+    i64 L_mod = L % M;
 
-    term1 = (all_pow * inv_den % M) * layered_num % M
-    term2_inner = (all_pow + (L % M * all_pow % M) * inv_den % M - (K % M) * (L % M) % M) % M
-    term2 = (term2_inner * inv_den % M) * num % M
-    term3 = (K % M) * (layered_sum % M) % M
-    term4 = ((L % M) * tr_km1 % M + K % M) % M * sum_val % M
+    i64 term1 = (i128)all_pow * inv_den % M;
+    term1 = (i128)term1 * layered_num % M;
 
-    res = (term1 + term2 - term3 - term4) % M
-    res = res * mod_inverse(B - 1, M) % M
+    i64 inner1 = (i128)L_mod * all_pow % M;
+    inner1 = (i128)inner1 * inv_den % M;
+    i64 inner2 = (i128)K_mod * L_mod % M;
+    i64 term2_inner = (all_pow + inner1 - inner2 % M + 2 * M) % M;
+    i64 term2 = (i128)term2_inner * inv_den % M;
+    term2 = (i128)term2 * num % M;
 
-    return res % M
+    i64 term3 = (i128)K_mod * (layered_sum % M) % M;
 
+    i64 term4 = (i128)L_mod * tr_km1 % M;
+    term4 = (term4 + K_mod) % M;
+    term4 = (i128)term4 * sum_val % M;
 
-def solve() -> int:
-    """Solve Problem 603."""
-    N = 10**6
-    K = 10**12
-    M = 10**9 + 7
+    i64 res = (term1 + term2 - term3 - term4 + 2 * M) % M;
+    res = (i128)res * mod_inv(B - 1, M) % M;
 
-    # Generate first N primes
-    sb = []
-    p = 2
-    for _ in range(N):
-        sb.append(str(p))
-        p = nextprime(p)
-    P = "".join(sb)
-
-    return S(P, K, M)
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    printf("%lld\n", res);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

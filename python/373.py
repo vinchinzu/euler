@@ -5,7 +5,7 @@ Project Euler Problem 373: Circumscribed Circles
 Find S(10^7) = sum of circumradii of all integer-sided triangles with integer
 circumradius r <= 10^7.
 
-Algorithm (from Java reference):
+Algorithm:
 For each circumradius r, each triangle side must be twice the leg of a right
 triangle with hypotenuse r. So for each r we find all x > 0 with x^2 + y^2 = r^2
 and form candidate sides = 2x. Then check all triples (a <= b <= c) for the
@@ -13,82 +13,235 @@ circumradius formula: (abc)^2 = r^2 * (a+b+c)(-a+b+c)(a-b+c)(a+b-c).
 
 The number of valid triangles depends only on the sorted exponent signature of r's
 prime factors congruent to 1 mod 4, allowing memoization across r values.
+
+Uses embedded C for performance (~10-30x speedup over Python).
 """
-from math import isqrt
+import subprocess, os, tempfile
 
 
 def solve():
-    N = 10**7
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-    # Smallest prime factor sieve
-    spf = list(range(N + 1))
-    for i in range(2, isqrt(N) + 1):
-        if spf[i] == i:
-            for j in range(i * i, N + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
+#define N 10000000
+#define MAX_SIG_LEN 8
 
-    def get_exponent_signature(n):
-        """Get sorted tuple of exponents of primes = 1 mod 4 in factorization of n."""
-        exps = []
-        while n > 1:
-            p = spf[n]
-            e = 0
-            while n % p == 0:
-                n //= p
-                e += 1
-            if p % 4 == 1:
-                exps.append(e)
-        exps.sort()
-        return tuple(exps)
+/* ---- SPF sieve ---- */
+static int spf[N + 1];
 
-    cache = {}
-    total = 0
+static void build_spf(void) {
+    for (int i = 0; i <= N; i++) spf[i] = i;
+    for (int i = 2; (long long)i * i <= N; i++) {
+        if (spf[i] == i) {
+            for (int j = i * i; j <= N; j += i) {
+                if (spf[j] == j) spf[j] = i;
+            }
+        }
+    }
+}
 
-    for r in range(1, N + 1):
-        key = get_exponent_signature(r)
+/* ---- Exponent signature ---- */
+typedef struct {
+    unsigned char exps[MAX_SIG_LEN];
+    unsigned char len;
+} Signature;
 
-        if key in cache:
-            total += cache[key] * r
-            continue
+/* Insertion sort for small arrays */
+static void sort_exps(unsigned char *arr, int n) {
+    for (int i = 1; i < n; i++) {
+        unsigned char key = arr[i];
+        int j = i - 1;
+        while (j >= 0 && arr[j] > key) {
+            arr[j + 1] = arr[j];
+            j--;
+        }
+        arr[j + 1] = key;
+    }
+}
 
-        # Find all x > 0 with x^2 + y^2 = r^2, y >= 0
-        sides = []
-        r2 = r * r
-        for x in range(1, r + 1):
-            y2 = r2 - x * x
-            if y2 < 0:
-                break
-            y = isqrt(y2)
-            if y * y == y2:
-                sides.append(2 * x)
+static Signature get_signature(int n) {
+    Signature sig;
+    sig.len = 0;
+    while (n > 1) {
+        int p = spf[n];
+        int e = 0;
+        while (n % p == 0) {
+            n /= p;
+            e++;
+        }
+        if (p % 4 == 1) {
+            sig.exps[sig.len++] = (unsigned char)e;
+        }
+    }
+    sort_exps(sig.exps, sig.len);
+    return sig;
+}
 
-        # Count triangles (a <= b <= c) with circumradius = r
-        # (abc)^2 = r^2 * (a+b+c)(-a+b+c)(a-b+c)(a+b-c)
-        num_triangles = 0
-        n_sides = len(sides)
-        for i in range(n_sides):
-            a = sides[i]
-            for j in range(i, n_sides):
-                b = sides[j]
-                for k in range(j, n_sides):
-                    c = sides[k]
-                    if a + b <= c:
-                        break
-                    s2 = a + b + c
-                    p1 = -a + b + c
-                    p2 = a - b + c
-                    p3 = a + b - c
-                    lhs = (a * b * c) ** 2
-                    rhs = r2 * s2 * p1 * p2 * p3
-                    if lhs == rhs:
-                        num_triangles += 1
+/* ---- Hash map for signature -> count ---- */
+#define HM_SIZE (1 << 18)  /* 262144 buckets, power of 2 */
+#define HM_MASK (HM_SIZE - 1)
 
-        cache[key] = num_triangles
-        total += num_triangles * r
+typedef struct HMEntry {
+    Signature key;
+    int value;
+    int occupied;
+} HMEntry;
 
-    return total
+static HMEntry hashmap[HM_SIZE];
+
+static unsigned int sig_hash(const Signature *s) {
+    unsigned int h = 2166136261u;
+    h ^= s->len;
+    h *= 16777619u;
+    for (int i = 0; i < s->len; i++) {
+        h ^= s->exps[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static int sig_equal(const Signature *a, const Signature *b) {
+    if (a->len != b->len) return 0;
+    for (int i = 0; i < a->len; i++) {
+        if (a->exps[i] != b->exps[i]) return 0;
+    }
+    return 1;
+}
+
+/* Returns pointer to entry if found, NULL otherwise */
+static HMEntry* hm_find(const Signature *key) {
+    unsigned int idx = sig_hash(key) & HM_MASK;
+    for (int probe = 0; probe < HM_SIZE; probe++) {
+        unsigned int i = (idx + probe) & HM_MASK;
+        if (!hashmap[i].occupied) return NULL;
+        if (sig_equal(&hashmap[i].key, key)) return &hashmap[i];
+    }
+    return NULL;
+}
+
+/* Insert key->value. Assumes key not already present. */
+static void hm_insert(const Signature *key, int value) {
+    unsigned int idx = sig_hash(key) & HM_MASK;
+    for (int probe = 0; probe < HM_SIZE; probe++) {
+        unsigned int i = (idx + probe) & HM_MASK;
+        if (!hashmap[i].occupied) {
+            hashmap[i].key = *key;
+            hashmap[i].value = value;
+            hashmap[i].occupied = 1;
+            return;
+        }
+    }
+    fprintf(stderr, "hashmap full!\n");
+    exit(1);
+}
+
+/* ---- isqrt for __int128 ---- */
+static long long isqrt128(__int128 n) {
+    if (n <= 0) return 0;
+    /* Use double for initial estimate */
+    long long x = (long long)sqrt((double)n);
+    /* Newton refinement */
+    while (x > 0 && (__int128)x * x > n) x--;
+    while ((__int128)(x + 1) * (x + 1) <= n) x++;
+    return x;
+}
+
+/* ---- Main computation ---- */
+int main(void) {
+    build_spf();
+    memset(hashmap, 0, sizeof(hashmap));
+
+    long long total = 0;
+
+    for (int r = 1; r <= N; r++) {
+        Signature sig = get_signature(r);
+
+        HMEntry *entry = hm_find(&sig);
+        if (entry) {
+            total += (long long)entry->value * r;
+            continue;
+        }
+
+        /* Find all x > 0 with x^2 + y^2 = r^2 */
+        int sides[512];  /* sides = 2x for each valid x; max ~405 */
+        int n_sides = 0;
+        long long r2 = (long long)r * r;
+
+        for (int x = 1; x <= r; x++) {
+            long long y2 = r2 - (long long)x * x;
+            if (y2 < 0) break;
+            long long y = (long long)sqrt((double)y2);
+            /* Refine: correct both overshoot and undershoot */
+            while (y > 0 && y * y > y2) y--;
+            while ((y + 1) * (y + 1) <= y2) y++;
+            if (y * y == y2) {
+                if (n_sides < 512) {
+                    sides[n_sides++] = 2 * x;
+                }
+            }
+        }
+
+        /* Check all triples (a <= b <= c) */
+        /*
+         * Circumradius check: (abc)^2 = r^2 * (a+b+c)(-a+b+c)(a-b+c)(a+b-c)
+         * Equivalently: abc = r * sqrt(P) where P = s2*p1*p2*p3
+         * So check: P is a perfect square AND abc == r * sqrt(P)
+         * All computations fit in __int128.
+         */
+        int num_triangles = 0;
+        for (int i = 0; i < n_sides; i++) {
+            long long a = sides[i];
+            for (int j = i; j < n_sides; j++) {
+                long long b = sides[j];
+                for (int k = j; k < n_sides; k++) {
+                    long long c = sides[k];
+                    if (a + b <= c) break;
+
+                    long long s2 = a + b + c;
+                    long long p1 = -a + b + c;
+                    long long p2 = a - b + c;
+                    long long p3 = a + b - c;
+
+                    /* P = s2 * p1 * p2 * p3, all positive */
+                    __int128 P = (__int128)s2 * p1 * p2 * p3;
+                    long long Q = isqrt128(P);
+                    if ((__int128)Q * Q != P) continue;
+
+                    /* Check abc == r * Q */
+                    __int128 abc = (__int128)a * b * c;
+                    __int128 rQ = (__int128)r * Q;
+                    if (abc == rQ) {
+                        num_triangles++;
+                    }
+                }
+            }
+        }
+
+        hm_insert(&sig, num_triangles);
+        total += (long long)num_triangles * r;
+    }
+
+    printf("%lld\n", total);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol373.c")
+    exe = os.path.join(tmpdir, "sol373")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(
+        ["gcc", "-O2", "-o", exe, src, "-lm"],
+        check=True, capture_output=True
+    )
+    result = subprocess.run(
+        [exe], capture_output=True, text=True, check=True, timeout=280
+    )
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    print(solve())
+    solve()

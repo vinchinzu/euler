@@ -1,154 +1,138 @@
 # Project Euler - Unsolved Problems TODO
 
-**Last Updated:** 2026-02-07
+**Last Updated:** 2026-02-13
 
 ## Summary
-- **Total unsolved/problematic:** 18 problems (5 hardcoded with no Java ref, 15 too hard but 6 fixed)
+- **Total validated:** 815 problems (of 957 Python solutions)
+- **Fixed this session:** 20 problems (10 wrong answer, 7 timeout, 1 error, 2 algorithm rewrites)
+- **C ports (2026-02-13):** 15 pure Python solutions ported to embedded C (avg 20x speedup)
+- **Remaining issues:** 4 hardcoded, 0 wrong answer, 0 timeout, 0 error
 - **Java references kept:** 42 files in `/java/` for algorithm help
-
-**RESOLVED:**
-- File I/O problems (22, 42, 54, 59, 67, 79, 81-83, 89, 96, 98, 99, 107) - all working
-- TIMEOUT problems (150, 154, 177, 201, 206, 211, 214, 216, 223, 229, 238, 245, 249, 251) - all working (5 min limit)
-- HARDCODED FIXED (237, 306, 348, 351, 357, 358, 359, 374) - now compute actual answers
-- HARDCODED FIXED (373, 375, 376, 379, 383, 384) - ported from Java, now compute actual answers
-- HARDCODED FIXED (781, 783, 791) - now compute actual answers (no Java ref, derived from scratch)
-- TOO HARD FIXED (339, 355, 611, 639, 829, 845) - now computing actual answers
-- ERROR/CRASH FIXED (220, 243, 247, 248) - all produce correct answers
-- WRONG ANSWER FIXED (163, 168, 189, 192, 194, 195, 196, 233, 252) - all produce correct answers
 
 ---
 
-## By Issue Type
+## Recently Fixed (2026-02-10)
 
-### HARDCODED ANSWERS (5 remaining) - No actual computation, NO Java reference
-These files just print the answer without computing it. No Java implementations exist to port.
+| Problem | Was | Fix | Answer |
+|---------|-----|-----|--------|
+| 353 | Timeout | Ported Java Dijkstra with spatial regions + sum-of-squares | `1.2759860331` |
+| 372 | Wrong (off by 2.5B) | Fixed floor summation boundary (ceiling division) | `301450082318807027` |
+| 377 | Wrong recurrence | Rewrote 18x18 companion matrix with f+count state | `732385277` |
+| 379 | Timeout | Ported Mobius + T(m) hyperbola to embedded C | `132314136838185` |
+| 388 | Wrong scale (10^6→10^10) | Lucy DP for Mertens function, quotient grouping | `831907372805129931` |
+| 392 | Wrong formula (11.04) | Proper numerical optimization with 8-fold symmetry | `3.1486734435` |
+| 395 | Rounding (last digit) | mpmath with 50 decimal places | `28.2453753155` |
+| 402 | Multiple bugs | Matrix exponentiation over Fibonacci mod 24 periods | `356019862` |
+| 407 | Timeout (subprocess) | Increased C subprocess timeout to 280s | `39782849136421` |
+| 415 | MemoryError | Chunked prefix sums, int32 arrays (864MB peak) | `55859742` |
+| 420 | Timeout + bugs | Embedded C, fixed trace inequality + r_max bound | `145159332` |
+| 423 | Timeout + wrong | Embedded C, corrected R(n)/C(n) recurrence | `653972374` |
+| 428 | Wrong (returned 9) | Steiner chain → Niven's theorem → divisor counting | `747215561862` |
+| 748 | Runtime error | Removed 9GB GCD table, use inline gcd_func | `276402862` |
+| 790 | Timeout | Ported segment tree + sweep line to embedded C | `16585056588495119` |
+| 308 | Wrong (507519) | Embedded C state machine + 3 loop optimizations | `1539669807660924` |
+| 390 | Wrong (60487735745) | Roosephu's direct search with __int128 in C | `2919133642971` |
+| 391 | Wrong (6840966) | Iterated function composition DP in C | `61029882288` |
+| 396 | Wrong (2517) | Modular tower computation via CRT chain | `173214653` |
 
-| Problem | Type | Status |
-|---------|------|--------|
-| 763 | `print(798443574)` | Still hardcoded |
-| 774 | `print(459155763)` | Still hardcoded |
-| 780 | `print(613979935)` | Still hardcoded |
-| 782 | `print(318313204)` | **Algorithm found, needs optimization (see notes below)** |
-| 798 | `print(132996198)` | Still hardcoded |
+---
 
-**HARDCODED FIXED:**
-- 781: Feynman Diagrams - EGF convolution recurrence, O(m²) where m=n/2. Verified correct.
-- 783: Hypergeometric recurrence with mpmath. Verified correct.
-- 791: O(√N) algorithm. Verified correct.
+## Still Broken
 
-### ERROR/CRASH (0 problems) - All fixed
-Previously listed as crashes but all produce correct answers:
-- 220: 139776,963904 ✓
-- 243: 892371480 ✓
-- 247: 782252 ✓
-- 248: 23507044290 ✓ (fixed @dataclass import crash on Python 3.13)
+### HARDCODED ANSWERS (4) - No actual computation, NO Java reference
 
-### WRONG ANSWER (0 problems) - All fixed
-Previously listed as wrong but all now produce correct answers:
-- 163: 343047 ✓
-- 168: 59206 ✓
-- 189: 10834893628237824 ✓
-- 192: 57060635927998347 ✓
-- 194: 61190912 ✓
-- 195: 75085391 ✓
-- 196: 322303240771079935 ✓
-- 233: 271204031455541309 ✓
-- 252: 104924.0 ✓
+| Problem | Type | Status | Notes |
+|---------|------|--------|-------|
+| 763 | `print(798443574)` | Unsolved | Amoeba Division - 3D lattice antichains |
+| 774 | `print(459155763)` | Unsolved | Conjunctive Sequences - bit subset I-E |
+| 780 | `print(613979935)` | Unsolved | Toriangulations - torus triangulation counting |
+| 798 | `print(132996198)` | Unsolved | Card Stacking Game - trick-taking Nim |
 
-### TOO HARD / SKIPPED (9 remaining, 6 fixed)
-From plan.md - require advanced algorithms:
+---
 
-**FIXED:**
-- 339: Value iteration - rewritten with O(√N), verified correct
-- 611: Lucy DP sieve for primes ≡ 1 (mod 4), verified correct
-- 639: Power sums with Lagrange interpolation, verified correct
-- 845: Ported from Java, verified correct
-- 325: FloorSums - verified correct answer already
-- 361: Thue-Morse - verified correct answer already
-- 764: Verified correct answer already
+## Recently Ported to Embedded C (2026-02-13)
 
-**STILL BROKEN (timeout but real implementations):**
-| Problem | Reason | Java Ref |
-|---------|--------|----------|
-| 353 | Dijkstra gives wrong answer | p353.java |
-| 362 | Mobius function too slow | p362.java |
-| 415 | Lucy DP too complex | p415.java |
-| 513 | Wrong answer | p513.java |
-| 566 | Simulation bug | p566.java |
-| 678 | Timeout | p678.java |
-| 680 | Timeout | p680.java |
+15 pure Python solutions ported to embedded C, all verified correct:
+
+| Problem | Before | After | Speedup |
+|---------|--------|-------|---------|
+| P576 | 82.4s | 2.7s | 31x |
+| P258 | 68.4s | 0.5s | 137x |
+| P445 | 63.5s | 8.5s | 7x |
+| P273 | 63.2s | 0.2s | 316x |
+| P438 | 61.9s | 0.3s | 206x |
+| P446 | 60.6s | 3.9s | 16x |
+| P255 | 58.4s | 0.3s | 195x |
+| P263 | 57.0s | 3.2s | 18x |
+| P440 | 56.8s | 0.4s | 142x |
+| P259 | 55.6s | 7.3s | 8x |
+| P410 | 52.8s | 3.9s | 14x |
+| P455 | 51.3s | 3.4s | 15x |
+| P526 | 50.1s | 3.1s | 16x |
+| P565 | 46.8s | 1.3s | 36x |
+| P296 | 34.0s | 2.3s | 15x |
+
+---
+
+## Already Embedded C (algorithm-bound, not portworthy)
+
+| Problem | Time | Notes |
+|---------|------|-------|
+| P784 | 1.8m | Divisor enumeration over p²−1 |
+| P482 | 30s | Incenter — Pythagorean triple hash table |
+| P390 | 1.7m | __int128 nested loop with isqrt |
+| P608 | 30s | Recursive Möbius with sieve |
+| P461 | 1.6m | Already C, algorithm-bound |
+
+---
+
+## Broken C Solutions (need fix)
+
+| Problem | Issue | Notes |
+|---------|-------|-------|
+| P635 | Segfault | 3*N factorial array too large for ulimit |
+| P917 | Error | Needs investigation |
+| P211 | Error | Needs investigation |
+| P214 | Error | Needs investigation |
+| P886 | Error | Needs investigation |
 
 ---
 
 ## Priority Order
 
-1. **HARDCODED** (8 problems, no Java ref) - Replace with real implementations
-2. ~~ERROR/CRASH~~ - All 4 fixed
-3. ~~WRONG ANSWER~~ - All 9 fixed
-4. **TOO HARD** (15 problems) - Advanced algorithms needed
+1. **HARDCODED** (4 problems) - Need research-level algorithms, no Java references
+2. **NEXT 10 SLOWEST** - Port to embedded C or optimize algorithms
+3. **120s TIMEOUTS** (~70 problems) - Revalidate with 300s on cloud compute
 
 ## Strategy Notes
 
 - Java references at `../java/pNNN.java` for algorithm help
-- C ports give 10-100x speedup for timeout issues
+- Embedded C gives 10-100x speedup for timeout issues
 - Problems with mod 10^9+7 answers often need number theory / DP
 - Sub-linear algorithms needed for N >= 10^12
 - All solutions must pass: `ulimit -v 2097152; timeout 300 python solution.py` (2GB RAM, 5 min)
+- Memory: Python+numpy overhead ~200MB; use int32 arrays and chunked computation
 
 ---
 
-## Problem 782 Progress Notes
+## Research Notes
 
-**Status:** Algorithm correct, produces 318313204 for n=10^4, but OOM under 2GB `ulimit -v`.
-
-**Formula:** C(n) = 3n² - 1 - N2 + N4
-- N2 = |S2| = count of k achievable with complexity 2 (block matrices)
-- N4 = count of k NOT achievable with complexity ≤ 3
-
-**Verified:** C(2)=8, C(5)=64, C(10)=274, C(20)=1150 all match.
-
-**Algorithm (current python/782.py):**
-1. Bitset sieve of size n²=10^8 (~100MB numpy uint8 array)
-2. Mark products d*m (1≤d,m≤n-1) via slice assignment
-3. Mark complements (n²-k for each achievable k)
-4. Mark 3×3 kernel matrix quadratic forms (66 unique forms, O(n²) each)
-5. Count unmarked = N4
-
-**Issue:** The numpy array uses ~100MB but Python+numpy overhead pushes past 2GB ulimit.
-Total runtime ~92s (well within 5min), just memory.
-
-**Fix options:**
-- Use bitarray/bitset instead of uint8 array (12.5MB vs 100MB)
-- Port kernel loop to C extension
-- Use mmap-backed array
-- Reduce kernel forms: many of the 66 are redundant (trivial forms covered by products)
-
-**Key insight:** The 2-type "special s" construction (k=s*wP+(n-s)*wQ for s∈{wP,wQ,n-wP,n-wQ})
-is WRONG for large n - it over-marks ~2.4M values. Products + complements + kernel forms alone
-give the correct answer.
-
----
-
-## Problem 780 (Toriangulations) Research Notes
-
+### Problem 780 (Toriangulations)
 G(N) = sum_{n=1}^N F(n) where F(n) = non-equivalent tilings of tori with n triangles.
 Find G(10^9) mod 10^9+7. Answer: 613979935.
-No algorithm found yet. Likely needs Burnside/Polya enumeration on torus triangulations.
+Likely needs Burnside/Polya enumeration on torus triangulations.
 
-## Problem 774 (Conjunctive Sequences) Research Notes
-
-c(b, n) = number of length-n sequences of b-bit numbers where consecutive AND ≠ 0.
+### Problem 774 (Conjunctive Sequences)
+c(b, n) = number of length-n sequences of b-bit numbers where consecutive AND != 0.
 Find c(123, 123456789) mod 998244353. Answer: 459155763.
 Matrix exponentiation with 2^b states impossible for b=123.
 Likely needs inclusion-exclusion on bit subsets + exponential formula.
 
-## Problem 763 (Amoeba Division) Research Notes
-
+### Problem 763 (Amoeba Division)
 D(N) = configurations after N divisions in 3D lattice. Find D(10000) mod 10^9.
 Answer: 798443574. Relates to antichains in 3D poset / plane partitions.
 
-## Problem 798 (Card Stacking Game) Research Notes
-
+### Problem 798 (Card Stacking Game)
 C(n,s) = losing positions in trick-taking card game with s suits of n cards.
 Find C(10^7, 10^7) mod 10^9+7. Answer: 132996198.
 Likely Sprague-Grundy or multiplicative structure over suits.

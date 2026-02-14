@@ -4,112 +4,155 @@
 Count quadruplets (k, a, b, c) with 1 <= k <= K, -N <= a < b < c <= N where
 triangle on parabola y = x^2/k at x=a, x=b, x=c contains at least one 45 degree angle.
 
-Solution ported from Java reference using efficient divisor enumeration.
+Uses embedded C for performance (ported from Java reference).
 """
-
-from math import isqrt, floor
-
-
-def truncdiv(a, b):
-    """Java-style integer division: truncates towards zero."""
-    if (a >= 0) == (b >= 0):
-        return abs(a) // abs(b)
-    else:
-        return -(abs(a) // abs(b))
-
-
-def all_divisors(n, prime_set):
-    """Generate all divisors of n given its set of prime factors."""
-    divs = [1]
-    for p in prime_set:
-        if n % p != 0:
-            continue
-        e = 0
-        temp = n
-        while temp % p == 0:
-            e += 1
-            temp //= p
-        new_divs = []
-        pk = 1
-        for _ in range(e + 1):
-            for dd in divs:
-                new_divs.append(dd * pk)
-            pk *= p
-        divs = new_divs
-    return divs
+import subprocess, os, tempfile
 
 
 def solve():
-    K = 10**6
-    N = 10**9
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-    max_val = 2 * K
-    smallest_prime = [0] * (max_val + 1)
-    for i in range(2, max_val + 1):
-        if smallest_prime[i] == 0:
-            for j in range(i, max_val + 1, i):
-                if smallest_prime[j] == 0:
-                    smallest_prime[j] = i
+#define K_MAX 1000000
+#define N_VAL 1000000000LL
+#define SIEVE_MAX (2 * K_MAX + 1)
 
-    def get_prime_set(n):
-        factors = set()
-        while n > 1:
-            p = smallest_prime[n]
-            factors.add(p)
-            while n % p == 0:
-                n //= p
-        return factors
+static int smallest_prime[SIEVE_MAX];
 
-    ans = 0
+/* Divisor storage */
+static long long divs[4096];
+static int ndivs;
 
-    for k in range(1, K + 1):
-        prod = 2 * k * k
-        prime_set = get_prime_set(2 * k)
-        divs = all_divisors(prod, prime_set)
+static void gen_divisors(long long n, int val) {
+    /* Generate all divisors of n using prime factors of val.
+       val's prime factors are a superset of n's. */
+    divs[0] = 1;
+    ndivs = 1;
 
-        for d in divs:
-            # First case
-            a_plus_b = -(k + d)
-            b_plus_c = prod // d + k
-            # Java integer division truncates towards zero
-            min_b = max(truncdiv(a_plus_b + 1, 2), b_plus_c - N)
-            max_b = min(truncdiv(b_plus_c - 1, 2), a_plus_b + N)
-            if min_b <= max_b:
-                ans += max_b - min_b + 1
+    int tmp = val;
+    while (tmp > 1) {
+        int p = smallest_prime[tmp];
+        while (tmp % p == 0) tmp /= p;
 
-            # Check for double-counted triangles
-            if prod % (d + 2 * k) == 0:
-                a_plus_c = prod // (d + 2 * k) - k
-                total = a_plus_b + b_plus_c + a_plus_c
-                if total % 2 == 0:
-                    a = total // 2 - b_plus_c
-                    c = total // 2 - a_plus_b
-                    if -N <= a and c <= N:
-                        ans -= 2
+        /* Find exponent of p in n */
+        if (n % p != 0) continue;
+        int e = 0;
+        long long t = n;
+        while (t % p == 0) { e++; t /= p; }
 
-            # Second case
-            a_plus_b = k - d
-            b_plus_c = prod // d - k
-            # Java: Math.floor(b_plus_c / 2.) gives floor division
-            min_b = int(floor(b_plus_c / 2.0)) + 1
-            min_b = max(min_b, b_plus_c - N)
-            max_b = min(a_plus_b + N, N)
-            if min_b <= max_b:
-                ans += 2 * (max_b - min_b + 1)
+        /* Extend divisor list: multiply each existing divisor by p^1, p^2, ..., p^e */
+        int old = ndivs;
+        long long pk = 1;
+        for (int j = 0; j < e; j++) {
+            pk *= p;
+            for (int i = 0; i < old; i++) {
+                divs[ndivs++] = divs[i] * pk;
+            }
+        }
+    }
+}
 
-            # Check for double-counted triangles
-            if d != 2 * k and prod % (2 * k - d) == 0:
-                a_plus_c = k - prod // (2 * k - d)
-                total = a_plus_b + b_plus_c + a_plus_c
-                if total % 2 == 0:
-                    a = total // 2 - b_plus_c
-                    b = total // 2 - a_plus_c
-                    c = total // 2 - a_plus_b
-                    if -N <= a and c < b and b <= N:
-                        ans -= 1
+int main(void) {
+    /* Sieve smallest prime factors */
+    memset(smallest_prime, 0, sizeof(smallest_prime));
+    for (int i = 2; i < SIEVE_MAX; i++) {
+        if (smallest_prime[i] == 0) {
+            for (int j = i; j < SIEVE_MAX; j += i) {
+                if (smallest_prime[j] == 0)
+                    smallest_prime[j] = i;
+            }
+        }
+    }
 
-    return ans
+    long long ans = 0;
+
+    for (long long k = 1; k <= K_MAX; k++) {
+        long long prod = 2 * k * k;
+        gen_divisors(prod, (int)(2 * k));
+
+        for (int di = 0; di < ndivs; di++) {
+            long long d = divs[di];
+
+            /* Case 1: a+b = -(k+d), b+c = prod/d + k */
+            {
+                long long apb = -(k + d);
+                long long bpc = prod / d + k;
+                /* Java-style truncation division (C99 does this natively) */
+                long long lo = (apb + 1) / 2;
+                long long hi = (bpc - 1) / 2;
+                long long lo2 = bpc - N_VAL;
+                long long hi2 = apb + N_VAL;
+                if (lo2 > lo) lo = lo2;
+                if (hi2 < hi) hi = hi2;
+                if (lo <= hi)
+                    ans += hi - lo + 1;
+
+                /* Double-count check: d+2k divides prod */
+                long long den = d + 2 * k;
+                if (prod % den == 0) {
+                    long long apc = prod / den - k;
+                    long long s = apb + bpc + apc;
+                    if (s % 2 == 0) {
+                        long long a = s / 2 - bpc;
+                        long long c = s / 2 - apb;
+                        if (a >= -N_VAL && c <= N_VAL)
+                            ans -= 2;
+                    }
+                }
+            }
+
+            /* Case 2: a+b = k-d, b+c = prod/d - k */
+            {
+                long long apb = k - d;
+                long long bpc = prod / d - k;
+                /* floor(bpc / 2.0) + 1 */
+                long long lo;
+                if (bpc >= 0)
+                    lo = bpc / 2 + 1;
+                else
+                    lo = (bpc - 1) / 2 + 1;
+                long long lo2 = bpc - N_VAL;
+                if (lo2 > lo) lo = lo2;
+                long long hi = apb + N_VAL;
+                if (N_VAL < hi) hi = N_VAL;
+                if (lo <= hi)
+                    ans += 2 * (hi - lo + 1);
+
+                /* Double-count check: 2k-d divides prod */
+                if (d != 2 * k) {
+                    long long den = 2 * k - d;
+                    if (den > 0 ? (prod % den == 0) : (prod % (-den) == 0)) {
+                        long long apc = k - prod / den;
+                        long long s = apb + bpc + apc;
+                        if (s % 2 == 0) {
+                            long long a = s / 2 - bpc;
+                            long long b = s / 2 - apc;
+                            long long c = s / 2 - apb;
+                            if (a >= -N_VAL && c < b && b <= N_VAL)
+                                ans--;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol397.c")
+    exe = os.path.join(tmpdir, "sol397")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    print(solve())
+    solve()

@@ -1,110 +1,111 @@
-"""Project Euler Problem 273: Sum of Squares.
+"""Project Euler Problem 273 — Sum of Squares (embedded C)."""
+import subprocess, tempfile, os
 
-Find the sum of all a where a < b and a² + b² = T, summed over all square-free
-integers T with only prime factors of the form 4k+1 < N.
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-A prime p of the form 4k+1 can be expressed as p = (x + yi)(x - yi) for
-integers x, y. An integer T can be expressed as p_1 p_2 ... p_r = (x_1 + y_1
-i)(x_1 - y_1 i)(x_2 + y_2 i)(x_2 - y_2 i) ... (x_r + y_r i)(x_r - y_r i), and
-any a < b satisfying a² + b² = T can be derived from (x ± yi) = (x_1 ± y_1
-i)(x_2 ± y_2 i) ... (x_r ± y_r i) for some set of signs. This means that we
-can compute the answer by iterating over all products of (x_r ± y_r i), and
-summing the smaller of x, y. To avoid processing (x + yi) and (x - yi), we only
-process y > 0.
-"""
+/*
+ * Find primes p < 150 with p = 1 mod 4.
+ * Express each as p = a^2 + b^2 (a < b).
+ * Recursively form all products of Gaussian integers (x+yi) choosing
+ * for each prime: skip, multiply by (a+bi), multiply by (a-bi).
+ * Sum min(|x|,|y|) for all products with y > 0.
+ * Use __int128 since products of ~16 primes can be large.
+ */
 
-from __future__ import annotations
+typedef __int128 i128;
 
-from dataclasses import dataclass
-from math import isqrt
-from typing import List
+static int primes[40];
+static int num_primes = 0;
 
-from sympy import primerange
+/* Gaussian base: (a, b) with a^2 + b^2 = p, a < b */
+static int ga[40], gb[40];
 
+static i128 ans = 0;
 
-@dataclass(frozen=True)
-class Point:
-    """A point representing a complex number (x, y) = x + yi."""
+static i128 abs128(i128 x) { return x < 0 ? -x : x; }
 
-    x: int
-    y: int
+static void helper(int idx, i128 x, i128 y) {
+    if (idx == num_primes) {
+        if (y > 0) {
+            i128 ax = abs128(x), ay = abs128(y);
+            ans += (ax < ay) ? ax : ay;
+        }
+        return;
+    }
+    /* Skip this prime */
+    helper(idx + 1, x, y);
+    /* Multiply by (ga[idx] + gb[idx]*i) */
+    i128 a = ga[idx], b = gb[idx];
+    i128 nx = x * a - y * b;
+    i128 ny = x * b + y * a;
+    helper(idx + 1, nx, ny);
+    /* Multiply by (ga[idx] - gb[idx]*i) */
+    nx = x * a + y * b;
+    ny = -x * b + y * a;
+    helper(idx + 1, nx, ny);
+}
 
-    def complex_multiply(self, other: "Point") -> "Point":
-        """Complex multiplication: (x1 + y1i) * (x2 + y2i)."""
-        return Point(
-            self.x * other.x - self.y * other.y,
-            self.x * other.y + self.y * other.x,
-        )
+int main(void) {
+    /* Find primes < 150 with p = 1 mod 4 */
+    int sieve[150];
+    for (int i = 0; i < 150; i++) sieve[i] = 1;
+    sieve[0] = sieve[1] = 0;
+    for (int i = 2; i * i < 150; i++)
+        if (sieve[i])
+            for (int j = i*i; j < 150; j += i)
+                sieve[j] = 0;
+    for (int i = 2; i < 150; i++)
+        if (sieve[i] && i % 4 == 1)
+            primes[num_primes++] = i;
 
-    def reflect_y(self) -> "Point":
-        """Reflect across x-axis: (x, y) -> (x, -y)."""
-        return Point(self.x, -self.y)
+    /* Find Gaussian decomposition for each prime */
+    for (int k = 0; k < num_primes; k++) {
+        int p = primes[k];
+        for (int a = 1; a * a < p; a++) {
+            int rem = p - a * a;
+            int b = (int)sqrt((double)rem);
+            if (b * b == rem) {
+                ga[k] = a;
+                gb[k] = b;
+                break;
+            }
+        }
+    }
 
+    helper(0, 1, 0);
 
-def is_square(n: int) -> bool:
-    """Check if n is a perfect square."""
-    if n < 0:
-        return False
-    root = isqrt(n)
-    return root * root == n
-
-
-def primes_mod(n: int, a: int, m: int) -> List[int]:
-    """Return primes p < n such that p ≡ a (mod m)."""
-    return [p for p in primerange(2, n) if p % m == a]
-
-
-def find_a(n: int) -> int:
-    """Find a such that n - a² is a perfect square."""
-    a = 1
-    while True:
-        if is_square(n - a * a):
-            return a
-        a += 1
-
-
-def solve() -> int:
-    """Solve Problem 273."""
-    N = 150
-
-    ps = primes_mod(N, 1, 4)
-
-    bases: List[Point] = []
-    for p in ps:
-        a = find_a(p)
-        b = isqrt(p - a * a)
-        bases.append(Point(a, b))
-
-    ans = 0
-
-    def helper(index: int, current: Point, bases_list: List[Point]) -> None:
-        """Recursive helper to compute all products."""
-        nonlocal ans
-        if index == len(bases_list):
-            if current.y > 0:
-                ans += min(abs(current.x), abs(current.y))
-            return
-
-        # Don't multiply
-        helper(index + 1, current, bases_list)
-        # Multiply by base
-        helper(index + 1, current.complex_multiply(bases_list[index]), bases_list)
-        # Multiply by reflected base
-        helper(
-            index + 1,
-            current.complex_multiply(bases_list[index].reflect_y()),
-            bases_list,
-        )
-
-    helper(0, Point(1, 0), bases)
-    return ans
-
-
-def main() -> None:
-    """Main entry point."""
-    result = solve()
-    print(result)
-
+    /* Print __int128 result */
+    if (ans == 0) {
+        printf("0\n");
+        return 0;
+    }
+    char buf[50];
+    int pos = 0;
+    i128 v = ans;
+    while (v > 0) {
+        buf[pos++] = '0' + (int)(v % 10);
+        v /= 10;
+    }
+    for (int i = pos - 1; i >= 0; i--)
+        putchar(buf[i]);
+    putchar('\n');
+    return 0;
+}
+'''.lstrip()
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

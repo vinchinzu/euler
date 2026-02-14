@@ -1,190 +1,251 @@
-"""Project Euler Problem 353: Minimal risk paths on a spherical grid.
+#!/usr/bin/env python3
+"""Project Euler Problem 353 - Minimal risk paths on a spherical grid.
 
-This module provides functionality to compute M(r), the minimal risk of a
-journey from the North Pole station (0, 0, r) to the South Pole station
-(0, 0, -r) along great-circle arcs between integer-coordinate stations on
-sphere C(r).
-
-The risk of a road (direct journey between two stations) with geodesic length
-``d`` on a sphere of radius ``r`` is defined as ``(d / (pi * r)) ** 2``.
-The risk of a journey using multiple roads is the sum of risks of its roads.
-
-The core public API is:
-- compute_m_r(r): compute the minimal risk M(r) for a given radius r.
-- main(): compute sum(M(2**n - 1) for n in 1..15) and print diagnostic output.
-
-The implementation is self-contained and uses only Python's standard library.
+Port of the Java reference using:
+1. Efficient station enumeration via sum-of-two-squares factorization
+2. Spatial regions (LxLxL boxes) for neighbor pruning
+3. Heap-based Dijkstra
 """
 
-from __future__ import annotations
-
 import math
-from typing import Iterable, List, Sequence, Tuple
+import heapq
+from collections import defaultdict
 
-Point3D = Tuple[int, int, int]
+
+def factorize(n):
+    """Return prime factorization of n as list of (p, e) pairs."""
+    factors = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            e = 0
+            while n % d == 0:
+                n //= d
+                e += 1
+            factors.append((d, e))
+        d += 1
+    if n > 1:
+        factors.append((n, 1))
+    return factors
 
 
-def enumerate_stations(r: int) -> List[Point3D]:
-    """Return all integer-coordinate stations on the sphere of radius r.
+def sum_of_two_squares_reps(n):
+    """Find all representations of n as y^2 + z^2 with y >= 0, z >= 0.
 
-    Each station is an (x, y, z) tuple of integers satisfying x^2 + y^2 + z^2 = r^2.
-    For any valid (x, y), both z and -z (if distinct) are included.
+    Uses the factorization of n. A number can be represented as sum of two
+    squares iff all prime factors of form 4k+3 appear to even powers.
+
+    We enumerate using Gaussian integers: for each prime p = 4k+1, find a+bi
+    with a^2+b^2=p, then combine using multiplication of Gaussian integers.
     """
+    if n == 0:
+        return [(0, 0)]
+    if n < 0:
+        return []
 
-    r_squared = r * r
-    points: List[Point3D] = []
+    factors = factorize(n)
 
-    for x in range(-r, r + 1):
-        x_squared = x * x
-        if x_squared > r_squared:
-            continue
+    # Check feasibility: primes ≡ 3 (mod 4) must have even exponent
+    for p, e in factors:
+        if p % 4 == 3 and e % 2 == 1:
+            return []
 
-        for y in range(-r, r + 1):
-            y_squared = y * y
-            z_squared = r_squared - x_squared - y_squared
-            if z_squared < 0:
-                continue
+    # Start with representations = {(1, 0)}
+    # For each prime factor, multiply Gaussian integers
+    reps = [(1, 0)]
 
-            z_float = math.isqrt(z_squared)
-            if z_float * z_float != z_squared:
-                continue
+    for p, e in factors:
+        if p == 2:
+            # 2 = (1+i)(1-i), so 2 = 1^2 + 1^2
+            # Multiply by (1+i)^e
+            gauss = (1, 1)
+            new_reps = []
+            for a, b in reps:
+                ca, cb = a, b
+                for _ in range(e):
+                    # multiply (ca + cb*i) by (1 + i) = (ca - cb) + (ca + cb)*i
+                    ca, cb = ca - cb, ca + cb
+                new_reps.append((ca, cb))
+            reps = new_reps
+        elif p % 4 == 1:
+            # Find a, b with a^2 + b^2 = p using Cornacchia/trial
+            a, b = _find_sq_rep(p)
+            # We need to combine with exponent e
+            # For each existing rep, multiply by (a+bi)^j * (a-bi)^(e-j) for j=0..e
+            new_reps = []
+            for ra, rb in reps:
+                # Compute all products of (a+bi)^j * (a-bi)^(e-j)
+                # Start: powers of (a+bi) from 0 to e
+                pow_plus = [(1, 0)]  # (a+bi)^0
+                for _ in range(e):
+                    x, y = pow_plus[-1]
+                    pow_plus.append((x * a - y * b, x * b + y * a))
 
-            z = int(z_float)
-            points.append((x, y, z))
-            if z != 0:
-                points.append((x, y, -z))
+                pow_minus = [(1, 0)]  # (a-bi)^0
+                for _ in range(e):
+                    x, y = pow_minus[-1]
+                    pow_minus.append((x * a + y * b, -x * b + y * a))
 
-    if not points:
-        msg = f"No points found for r={r}"
-        raise ValueError(msg)
+                for j in range(e + 1):
+                    # (a+bi)^j * (a-bi)^(e-j)
+                    px, py = pow_plus[j]
+                    mx, my = pow_minus[e - j]
+                    gx = px * mx - py * my
+                    gy = px * my + py * mx
+                    # Multiply with (ra, rb)
+                    fx = ra * gx - rb * gy
+                    fy = ra * gy + rb * gx
+                    new_reps.append((fx, fy))
+            reps = new_reps
+        else:
+            # p % 4 == 3, e must be even
+            # p^e contributes p^(e/2) to both components as real factor
+            factor = p ** (e // 2)
+            reps = [(a * factor, b * factor) for a, b in reps]
 
-    return points
+    # Normalize: take abs values and ensure y >= 0, z >= 0, unique pairs
+    result = set()
+    for a, b in reps:
+        a, b = abs(a), abs(b)
+        if a * a + b * b == n:
+            result.add((min(a, b), max(a, b)))
+            result.add((max(a, b), min(a, b)))
+            # Actually we want all (y, z) with y >= 0, z >= 0
+            # Both (a, b) and (b, a) are valid if different
+    # Return unique pairs with y >= 0, z >= 0
+    final = set()
+    for a, b in reps:
+        a, b = abs(a), abs(b)
+        if a * a + b * b == n:
+            final.add((a, b))
+            final.add((b, a))
+            # Also add (-a, b) etc but we want y,z >= 0 so only non-negative
+    return sorted(final)
 
 
-def geodesic_distance(p1: Point3D, p2: Point3D, r: int) -> float:
-    """Return great-circle distance between two stations on sphere of radius r.
+def _find_sq_rep(p):
+    """Find a, b with a^2 + b^2 = p for prime p ≡ 1 (mod 4)."""
+    # Use Cornacchia's algorithm
+    # Find r with r^2 ≡ -1 (mod p)
+    r = _sqrt_neg1_mod(p)
+    # Apply Euclidean algorithm
+    a, b = p, r
+    limit = math.isqrt(p)
+    while b > limit:
+        a, b = b, a % b
+    return b, math.isqrt(p - b * b)
 
-    Uses acos of the clamped dot product to obtain the central angle.
+
+def _sqrt_neg1_mod(p):
+    """Find r with r^2 ≡ -1 (mod p) for prime p ≡ 1 (mod 4)."""
+    # Find a quadratic non-residue
+    for g in range(2, p):
+        r = pow(g, (p - 1) // 4, p)
+        if (r * r) % p == p - 1:
+            return r
+    return None
+
+
+def enumerate_stations(r):
+    """Enumerate all integer points (x,y,z) on sphere of radius r with y>=0, z>=0.
+
+    For each x from 0 to r, compute r^2 - x^2 and find all (y,z) with y^2+z^2 = r^2-x^2
+    and y>=0, z>=0.
     """
-
     r2 = r * r
-    dot = p1[0] * p2[0] + p1[1] * p2[1] + p1[2] * p2[2]
+    stations = []
 
-    # Clamp to handle minor floating point issues (though inputs are integral).
-    cos_theta = max(min(dot / float(r2), 1.0), -1.0)
-    theta = math.acos(cos_theta)
-    return r * theta
+    for x in range(0, r + 1):
+        remainder = r2 - x * x
+        reps = sum_of_two_squares_reps(remainder)
+        for y, z in reps:
+            if y >= 0 and z >= 0:
+                stations.append((x, y, z))
 
-
-def road_risk(i: int, j: int, points: Sequence[Point3D], r: int) -> float:
-    """Return the risk of the road between stations i and j.
-
-    The risk is (d / (pi * r)) ** 2, where d is geodesic_distance.
-    """
-
-    d = geodesic_distance(points[i], points[j], r)
-    return (d / (math.pi * r)) ** 2
+    return stations
 
 
-def compute_m_r(r: int) -> float:
-    """Compute M(r), the minimal risk from North to South Pole stations.
+def compute_m_r(r):
+    """Compute M(r) using spatial-region Dijkstra."""
+    L = 300  # Region box size
 
-    This uses Dijkstra's algorithm on the complete graph of stations where each
-    edge weight is the road risk. For the modest r values used in the original
-    problem (2**n - 1, n <= 15), this simple implementation is sufficient.
+    # Get stations with y >= 0, z >= 0 (matching Java's sumsOfThreeSquares)
+    stations = enumerate_stations(r)
 
-    Note: For larger r, building the full dense graph is infeasible and a more
-    sophisticated approach (e.g., geometric pruning or on-demand neighbor
-    generation) would be needed.
-    """
+    # Add reflections for x != 0 (negative x)
+    full_stations = []
+    for x, y, z in stations:
+        full_stations.append((x, y, z))
+        if x != 0:
+            full_stations.append((-x, y, z))
 
-    points = enumerate_stations(r)
+    # Sort by x descending (matching Java)
+    full_stations.sort(key=lambda p: -p[0])
 
-    try:
-        north_idx = points.index((0, 0, r))
-    except ValueError as exc:  # pragma: no cover - indicates invalid input
-        msg = f"North Pole not found for r={r}"
-        raise ValueError(msg) from exc
+    n = len(full_stations)
+    r2 = r * r
 
-    try:
-        south_idx = points.index((0, 0, -r))
-    except ValueError as exc:  # pragma: no cover - indicates invalid input
-        msg = f"South Pole not found for r={r}"
-        raise ValueError(msg) from exc
+    # Build spatial regions
+    regions = defaultdict(list)
+    for i, (x, y, z) in enumerate(full_stations):
+        rx = (x + r) // L + 1
+        ry = (y + r) // L + 1
+        rz = (z + r) // L + 1
+        regions[(rx, ry, rz)].append(i)
 
-    n = len(points)
-    inf = float("inf")
+    # Dijkstra from index 0 to index n-1
+    INF = float('inf')
+    risks = [INF] * n
+    risks[0] = 0.0
+    visited = [False] * n
 
-    # Dijkstra's algorithm on an implicit dense graph.
-    distances: List[float] = [inf] * n
-    visited: List[bool] = [False] * n
-    distances[north_idx] = 0.0
+    # Min-heap: (risk, index)
+    heap = [(0.0, 0)]
 
-    for _ in range(n):
-        # Find unvisited node with smallest known distance.
-        u = -1
-        min_dist = inf
-        for idx in range(n):
-            if not visited[idx] and distances[idx] < min_dist:
-                min_dist = distances[idx]
-                u = idx
+    while heap:
+        curr_risk, i = heapq.heappop(heap)
+        if visited[i]:
+            continue
+        visited[i] = True
 
-        if u == -1:
-            break
+        if i == n - 1:
+            return curr_risk
 
-        if u == south_idx:
-            break
+        sx, sy, sz = full_stations[i]
+        rx = (sx + r) // L + 1
+        ry = (sy + r) // L + 1
+        rz = (sz + r) // L + 1
 
-        visited[u] = True
+        # Check all 27 neighboring regions
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                for dz in range(-1, 2):
+                    key = (rx + dx, ry + dy, rz + dz)
+                    if key in regions:
+                        for j in regions[key]:
+                            if not visited[j]:
+                                # Compute risk of edge (i, j)
+                                jx, jy, jz = full_stations[j]
+                                dot = sx * jx + sy * jy + sz * jz
+                                cos_theta = max(min(dot / r2, 1.0), -1.0)
+                                theta = math.acos(cos_theta)
+                                edge_risk = (theta / math.pi) ** 2
+                                new_risk = curr_risk + edge_risk
+                                if new_risk < risks[j]:
+                                    risks[j] = new_risk
+                                    heapq.heappush(heap, (new_risk, j))
 
-        # Relax edges from u to every other station.
-        for v in range(n):
-            if visited[v] or v == u:
-                continue
-            risk = road_risk(u, v, points, r)
-            alt = distances[u] + risk
-            if alt < distances[v]:
-                distances[v] = alt
-
-    result = distances[south_idx]
-    if math.isinf(result):  # pragma: no cover - indicates disconnected graph
-        msg = f"No path found from North to South for r={r}"
-        raise RuntimeError(msg)
-
-    return result
+    return risks[n - 1]
 
 
-def compute_sum_m_r_powers_of_two(limit_exponent: int = 15) -> float:
-    """Compute sum of M(2**n - 1) for n from 1 to limit_exponent inclusive."""
-
+def main():
     total = 0.0
-    for k in range(1, limit_exponent + 1):
-        r = (1 << k) - 1
-        total += compute_m_r(r)
-    return total
-
-
-def main() -> None:
-    """Entry point: compute and print example values and the final sum.
-
-    Matches the behavior of the original Ruby script while remaining concise.
-    """
-
-    print("Computing M(r) for r = 2^n - 1 where n = 1 to 15...")
-    r_values = [(1 << k) - 1 for k in range(1, 15 + 1)]
-    print("r values:", ", ".join(str(r) for r in r_values))
-
-    total = 0.0
-    for k in range(1, 15 + 1):
+    for k in range(1, 16):
         r = (1 << k) - 1
         m_r = compute_m_r(r)
         total += m_r
-
-        if k <= 3:
-            print(f"M({r}) = {m_r:.10f}")
-
-    print(f"Sum M(2^n - 1), n=1..15: {total:.10f}")
+    print(f"{total:.10f}")
 
 
-if __name__ == "__main__":  # pragma: no cover - manual execution only
+if __name__ == "__main__":
     main()

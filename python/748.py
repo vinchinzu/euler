@@ -48,21 +48,10 @@ int main(void) {
     double A = (sqrt(6.5) - 2.0) / (3.0 - sqrt(6.5));
     double B = 2.0 / (sqrt(13.0) - 3.0);
 
-    /* Precompute GCD table */
-    int gcd_limit = (int)pow((double)N * 4.0 / 8.0, 0.25) + 2;
-    /* Use 1D array for cache efficiency */
-    int *gcds = NULL;
-    int gs = gcd_limit + 1;
-    gcds = (int*)malloc((long long)gs * gs * sizeof(int));
-    if (!gcds) { fprintf(stderr, "malloc failed\n"); return 1; }
-    for (int i = 0; i < gs; i++)
-        for (int j = 1; j < gs; j++)
-            gcds[i * gs + j] = (int)gcd_func(i, j);
-
     /* Section 1: bound 4*N */
     for (ll n = 1; 8 * sq(n) * sq(n) <= 4 * N; n++) {
         for (ll m = n + 1; m < B * n && (sq(m)+sq(n)) * (3*sq(m)+4*m*n-3*sq(n)) <= 4*N; m++) {
-            if (m > A * n && gcds[(int)(m % n) * gs + (int)n] == 1 && (2*m - 3*n) % 13 != 0) {
+            if (m > A * n && gcd_func(m % n, n) == 1 && (2*m - 3*n) % 13 != 0) {
                 process(m, n, (m + n) % 2 == 0 ? 4 : 1);
             }
         }
@@ -78,7 +67,6 @@ int main(void) {
     }
 
     printf("%lld\n", ans);
-    free(gcds);
     return 0;
 }
 """
@@ -102,7 +90,7 @@ def solve():
 
     result = subprocess.run(
         [exe_file],
-        capture_output=True, text=True, timeout=25
+        capture_output=True, text=True, timeout=280
     )
 
     os.unlink(c_file)

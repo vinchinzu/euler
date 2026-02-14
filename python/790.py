@@ -5,149 +5,225 @@ Find the sum of the values of a KxK grid of clocks all starting at 12
 clocks with x_l <= x <= x_h and y_l <= y <= y_h" are performed, and clocks
 cycle from 12 o'clock to 1 o'clock.
 
-We use coordinate compression + a segment tree with lazy shifts.
+We use coordinate compression + a segment tree with lazy shifts in C.
 """
-
-from __future__ import annotations
-
-import array
-from collections import defaultdict
+import subprocess, os, tempfile
 
 
-def solve() -> int:
-    """Solve Problem 790."""
-    N = 100000
-    K = 50515093
-    T = 12
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    # Generate BBS sequence: S_0=290797, S_{t+1} = S_t^2 mod K
-    s = [0] * (4 * N)
-    s[0] = 290797
-    for i in range(1, 4 * N):
-        s[i] = s[i - 1] * s[i - 1] % K
+#define NOPS 100000
+#define KK 50515093
+#define T 12
 
-    # Build queries: N_t uses (S_{4t-4}, S_{4t-3}, S_{4t-2}, S_{4t-1})
-    # Query(a, b, c, d) => x1=min(a,b), x2=max(a,b)+1, y1=min(c,d), y2=max(c,d)+1
-    q_x1 = [0] * N
-    q_x2 = [0] * N
-    q_y1 = [0] * N
-    q_y2 = [0] * N
-    for t in range(N):
-        base = 4 * t
-        a, b, c, d = s[base], s[base + 1], s[base + 2], s[base + 3]
-        if a <= b:
-            q_x1[t] = a; q_x2[t] = b + 1
-        else:
-            q_x1[t] = b; q_x2[t] = a + 1
-        if c <= d:
-            q_y1[t] = c; q_y2[t] = d + 1
-        else:
-            q_y1[t] = d; q_y2[t] = c + 1
+/* Segment tree with lazy propagation.
+ * Each node stores an array of T counts: hour_counts[h] = number of clocks at hour h.
+ * Lazy shift: shift[node] means all clocks in this subtree have been shifted by this amount.
+ */
 
-    # Coordinate compression for x and y
-    xs_set = {0, K}
-    ys_set = {0, K}
-    for t in range(N):
-        xs_set.add(q_x1[t])
-        xs_set.add(q_x2[t])
-        ys_set.add(q_y1[t])
-        ys_set.add(q_y2[t])
+static long long s[4 * NOPS];
+static int q_x1[NOPS], q_x2[NOPS], q_y1[NOPS], q_y2[NOPS];
 
-    xs = sorted(xs_set)
-    ys = sorted(ys_set)
-    y_to_idx = {}
-    for i, y in enumerate(ys):
-        y_to_idx[y] = i
+/* Coordinate compression */
+static int *xs, *ys;
+static int nx, ny_intervals;
 
-    ny = len(ys) - 1  # number of y intervals
-    # Segment tree size
-    seg_l = 1
-    while seg_l < ny:
-        seg_l *= 2
-    tree_size = 2 * seg_l
+/* Segment tree arrays */
+static long long *hc;  /* tree_size * T */
+static int *shifts;
+static int seg_l;
 
-    # Flatten hour_counts: tree_size * T entries
-    # hour_counts[index * T + h] = count of clocks at hour h in node index
-    hc = array.array('q', [0]) * (tree_size * T)
-    shifts = array.array('i', [0]) * tree_size
+/* y coordinate to index mapping - use binary search */
+static int *ys_arr;
+static int ys_count;
 
-    # Initialize leaf nodes
-    for i in range(ny):
-        hc[(seg_l + i) * T] = ys[i + 1] - ys[i]
+int bsearch_y(int val) {
+    int lo = 0, hi = ys_count - 1;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (ys_arr[mid] < val) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
+}
 
-    # merge function
-    def merge(idx):
-        left = 2 * idx
-        right = 2 * idx + 1
-        sl = shifts[left]
-        sr = shifts[right]
-        base_idx = idx * T
-        base_l = left * T
-        base_r = right * T
-        for h in range(T):
-            hc[base_idx + h] = hc[base_l + (h - sl) % T] + hc[base_r + (h - sr) % T]
+void merge(int idx) {
+    int left = 2 * idx;
+    int right = 2 * idx + 1;
+    int sl = shifts[left];
+    int sr = shifts[right];
+    int base_idx = idx * T;
+    int base_l = left * T;
+    int base_r = right * T;
+    for (int h = 0; h < T; h++) {
+        hc[base_idx + h] = hc[base_l + ((h - sl) % T + T) % T]
+                         + hc[base_r + ((h - sr) % T + T) % T];
+    }
+}
 
-    # Build tree bottom-up
-    for i in range(seg_l - 1, 0, -1):
-        merge(i)
+void update(int from_idx, int to_idx, int diff, int index, int low, int high) {
+    if (from_idx >= high || to_idx <= low) return;
+    if (from_idx <= low && to_idx >= high) {
+        shifts[index] += diff;
+        return;
+    }
+    int mid = (low + high) >> 1;
+    update(from_idx, to_idx, diff, 2 * index, low, mid);
+    update(from_idx, to_idx, diff, 2 * index + 1, mid, high);
+    merge(index);
+}
 
-    # Group queries by x
-    add_queries = defaultdict(list)
-    rem_queries = defaultdict(list)
-    for t in range(N):
-        yi1 = y_to_idx[q_y1[t]]
-        yi2 = y_to_idx[q_y2[t]]
-        add_queries[q_x1[t]].append((yi1, yi2))
-        rem_queries[q_x2[t]].append((yi1, yi2))
+int cmp_int(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
 
-    ans = 0
-    prev_x = 0
+int unique_sorted(int *arr, int n) {
+    if (n == 0) return 0;
+    int w = 1;
+    for (int i = 1; i < n; i++) {
+        if (arr[i] != arr[i - 1])
+            arr[w++] = arr[i];
+    }
+    return w;
+}
 
-    # Hour values: h=0 means 12 (value T), else h
-    hval = list(range(T))
-    hval[0] = T
+/* Event list for sweep line */
+struct Event {
+    int x;
+    int yi1, yi2;
+    int diff; /* +1 or -1 */
+};
 
-    def update(from_idx, to_idx, diff, index, low, high):
-        if from_idx >= high or to_idx <= low:
-            return
-        if from_idx <= low and to_idx >= high:
-            shifts[index] += diff
-            return
-        mid = (low + high) >> 1
-        update(from_idx, to_idx, diff, 2 * index, low, mid)
-        update(from_idx, to_idx, diff, 2 * index + 1, mid, high)
-        merge(index)
+int cmp_event(const void *a, const void *b) {
+    return ((struct Event *)a)->x - ((struct Event *)b)->x;
+}
 
-    root_base = T  # index 1, base = 1*T = T
-    for x in xs:
-        # Accumulate contribution from columns prev_x to x
-        dx = x - prev_x
-        if dx > 0:
-            s1 = shifts[1]
-            for h in range(T):
-                ans += hval[h] * hc[root_base + (h - s1) % T] * dx
+int main() {
+    int i, t;
 
-        # Process add queries at x
-        if x in add_queries:
-            for yi1, yi2 in add_queries[x]:
-                update(yi1, yi2, 1, 1, 0, seg_l)
+    /* Generate BBS sequence */
+    s[0] = 290797;
+    for (i = 1; i < 4 * NOPS; i++) {
+        s[i] = s[i - 1] * s[i - 1] % KK;
+    }
 
-        # Process remove queries at x
-        if x in rem_queries:
-            for yi1, yi2 in rem_queries[x]:
-                update(yi1, yi2, -1, 1, 0, seg_l)
+    /* Build queries */
+    int *xs_raw = (int *)malloc(2 * NOPS * sizeof(int) + 2 * sizeof(int));
+    int *ys_raw = (int *)malloc(2 * NOPS * sizeof(int) + 2 * sizeof(int));
+    int xc = 0, yc = 0;
 
-        prev_x = x
+    xs_raw[xc++] = 0;
+    xs_raw[xc++] = KK;
+    ys_raw[yc++] = 0;
+    ys_raw[yc++] = KK;
 
-    return ans
+    for (t = 0; t < NOPS; t++) {
+        int base = 4 * t;
+        int a = (int)s[base], b = (int)s[base + 1], c = (int)s[base + 2], d = (int)s[base + 3];
+        if (a <= b) { q_x1[t] = a; q_x2[t] = b + 1; }
+        else { q_x1[t] = b; q_x2[t] = a + 1; }
+        if (c <= d) { q_y1[t] = c; q_y2[t] = d + 1; }
+        else { q_y1[t] = d; q_y2[t] = c + 1; }
 
+        xs_raw[xc++] = q_x1[t];
+        xs_raw[xc++] = q_x2[t];
+        ys_raw[yc++] = q_y1[t];
+        ys_raw[yc++] = q_y2[t];
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    /* Sort and deduplicate */
+    qsort(xs_raw, xc, sizeof(int), cmp_int);
+    xc = unique_sorted(xs_raw, xc);
+    qsort(ys_raw, yc, sizeof(int), cmp_int);
+    yc = unique_sorted(ys_raw, yc);
+
+    xs = xs_raw;
+    nx = xc;
+    ys_arr = ys_raw;
+    ys_count = yc;
+    ny_intervals = yc - 1;
+
+    /* Segment tree size */
+    seg_l = 1;
+    while (seg_l < ny_intervals) seg_l *= 2;
+    int tree_size = 2 * seg_l;
+
+    hc = (long long *)calloc((long long)tree_size * T, sizeof(long long));
+    shifts = (int *)calloc(tree_size, sizeof(int));
+
+    /* Initialize leaf nodes */
+    for (i = 0; i < ny_intervals; i++) {
+        hc[(long long)(seg_l + i) * T] = ys_arr[i + 1] - ys_arr[i];
+    }
+
+    /* Build tree bottom-up */
+    for (i = seg_l - 1; i >= 1; i--) {
+        merge(i);
+    }
+
+    /* Create events for sweep line */
+    struct Event *events = (struct Event *)malloc(2 * NOPS * sizeof(struct Event));
+    int ne = 0;
+    for (t = 0; t < NOPS; t++) {
+        int yi1 = bsearch_y(q_y1[t]);
+        int yi2 = bsearch_y(q_y2[t]);
+        events[ne].x = q_x1[t]; events[ne].yi1 = yi1; events[ne].yi2 = yi2; events[ne].diff = 1; ne++;
+        events[ne].x = q_x2[t]; events[ne].yi1 = yi1; events[ne].yi2 = yi2; events[ne].diff = -1; ne++;
+    }
+    qsort(events, ne, sizeof(struct Event), cmp_event);
+
+    /* Hour values: h=0 means 12 (value T), else h */
+    int hval[T];
+    for (i = 0; i < T; i++) hval[i] = i;
+    hval[0] = T;
+
+    long long ans = 0;
+    int prev_x = 0;
+    int ev_idx = 0;
+
+    for (int xi = 0; xi < nx; xi++) {
+        int x = xs[xi];
+        /* Accumulate contribution from columns prev_x to x */
+        long long dx = (long long)(x - prev_x);
+        if (dx > 0) {
+            int s1 = shifts[1];
+            for (int h = 0; h < T; h++) {
+                ans += (long long)hval[h] * hc[T + ((h - s1) % T + T) % T] * dx;
+            }
+        }
+
+        /* Process all events at x */
+        while (ev_idx < ne && events[ev_idx].x == x) {
+            update(events[ev_idx].yi1, events[ev_idx].yi2, events[ev_idx].diff, 1, 0, seg_l);
+            ev_idx++;
+        }
+
+        prev_x = x;
+    }
+
+    printf("%lld\n", ans);
+
+    free(hc);
+    free(shifts);
+    free(events);
+    free(xs_raw);
+    free(ys_raw);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol790.c")
+    exe = os.path.join(tmpdir, "sol790")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    solve()

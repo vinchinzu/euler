@@ -1,112 +1,137 @@
-"""Project Euler Problem 354 - Honeycomb distance distribution.
+"""Project Euler Problem 354 - Honeycomb distance distribution — embedded C."""
 
-Given an infinite honeycomb of unit hexagons, B(l) is the number of honeycomb
-centers at distance l from a particular center. Find count of l <= 5*10^11
-such that B(l) = 450.
-
-Uses Eisenstein integers and prime factorization modulo 3.
-"""
+import subprocess, tempfile, os
 
 def solve():
-    N = 5 * 10**11
-    K = 450
-    L1 = (N / (3**0.5)) ** 2  # (N/sqrt(3))^2
-    L2 = int((L1 / (7**4) / (13**4)) ** 0.5)
+    c_code = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdint.h>
 
-    # Sieve smallest prime factor
-    spf = list(range(L2 + 1))
-    for i in range(2, int(L2**0.5) + 1):
-        if spf[i] == i:
-            for j in range(i*i, L2 + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
+#define N_VAL 500000000000LL
+#define K_VAL 450
 
-    # Check if n is composed only of primes ≡ 2 (mod 3)
-    def is_2mod3_only(n):
-        if n == 1:
-            return True
-        temp = n
-        while temp > 1:
-            p = spf[temp]
-            if p % 3 != 2:
-                return False
-            temp //= p
-        return True
+static double L1;
+static int L2;
+static int *spf;
+static int *num_2mod3s;
+static long long ans = 0;
 
-    # Precompute count of numbers composed only of primes ≡ 2 (mod 3)
-    num_2mod3s = [0] * (L2 + 1)
-    for n in range(1, L2 + 1):
-        num_2mod3s[n] = num_2mod3s[n - 1] + (1 if is_2mod3_only(n) else 0)
+int is_prime_large(long long n) {
+    if (n < 2) return 0;
+    if (n == 2 || n == 3) return 1;
+    if (n % 2 == 0 || n % 3 == 0) return 0;
+    for (long long i = 5; i * i <= n; i += 6) {
+        if (n % i == 0 || n % (i + 2) == 0) return 0;
+    }
+    return 1;
+}
 
-    # Check if n is prime
-    def is_prime(n):
-        if n < 2:
-            return False
-        if n == 2:
-            return True
-        if n % 2 == 0:
-            return False
-        if n <= L2:
-            return spf[n] == n
-        # For n > L2, do trial division
-        for i in range(3, int(n**0.5) + 1, 2):
-            if n % i == 0:
-                return False
-        return True
+int is_prime(long long p) {
+    if (p <= 1) return 0;
+    if (p <= (long long)L2) return spf[p] == p;
+    return is_prime_large(p);
+}
 
-    ans = 0
+void find_nums_for_template(int index, long long prod_primes, long long min_prime,
+                            double limit, int *tmpl, int tmpl_len) {
+    if (index == tmpl_len) {
+        double remaining = limit;
+        while (remaining > 1.0) {
+            int idx = (int)sqrt(remaining);
+            if (idx > L2) idx = L2;
+            ans += num_2mod3s[idx];
+            remaining /= 3.0;
+        }
+        return;
+    }
 
-    def find_nums_for_template(index, prod_primes, min_prime, limit, template):
-        """Recursively find numbers matching the template."""
-        nonlocal ans
+    int e = tmpl[index];
+    long long p = (min_prime > 1) ? min_prime : 1;
+    /* advance to p ≡ 1 mod 3 */
+    if (p % 3 == 0) p += 1;
+    else if (p % 3 == 2) p += 2;
 
-        if index == len(template):
-            # Add factors of 3 and primes ≡ 2 (mod 3)
-            remaining = limit
-            while remaining > 1:
-                ans += num_2mod3s[int(remaining**0.5)]
-                remaining /= 3
-        else:
-            e = template[index]
-            p = min_prime if min_prime > 1 else 1
-            if p % 3 == 0:
-                p += 1
-            elif p % 3 == 2:
-                p += 2
+    while (1) {
+        double pe = 1.0;
+        int ok = 1;
+        for (int j = 0; j < e; j++) {
+            pe *= (double)p;
+            if (pe > limit) { ok = 0; break; }
+        }
+        if (!ok) break;
 
-            while p ** e <= limit:
-                if prod_primes % p != 0 and is_prime(p):
-                    # Determine next min prime
-                    if index + 1 < len(template) and template[index] == template[index + 1]:
-                        next_min = p + 3
-                    else:
-                        next_min = 1
+        if (prod_primes % p != 0 && is_prime(p)) {
+            long long next_min;
+            if (index + 1 < tmpl_len && tmpl[index] == tmpl[index + 1])
+                next_min = p + 3;
+            else
+                next_min = 1;
 
-                    find_nums_for_template(
-                        index + 1,
-                        prod_primes * p,
-                        next_min,
-                        limit / (p ** e),
-                        template
-                    )
+            find_nums_for_template(index + 1, prod_primes * p, next_min,
+                                   limit / pe, tmpl, tmpl_len);
+        }
+        p += 3;
+    }
+}
 
-                p += 3
-                while p % 3 != 1:
-                    p += 1
+void find_all_templates(int n, int max_d, int *tmpl, int tmpl_len) {
+    if (n == 1) {
+        find_nums_for_template(0, 1, 1, L1, tmpl, tmpl_len);
+        return;
+    }
+    for (int d = 2; d <= max_d; d++) {
+        if (n % d == 0) {
+            tmpl[tmpl_len] = d - 1;
+            find_all_templates(n / d, d, tmpl, tmpl_len + 1);
+        }
+    }
+}
 
-    def find_nums_for_all_templates(n, max_d, template):
-        """Find all templates by factorizing K/6."""
-        if n == 1:
-            find_nums_for_template(0, 1, 1, L1, template)
-        else:
-            for d in range(2, max_d + 1):
-                if n % d == 0:
-                    template.append(d - 1)
-                    find_nums_for_all_templates(n // d, d, template)
-                    template.pop()
+int main() {
+    L1 = (double)N_VAL / sqrt(3.0);
+    L1 = L1 * L1;
+    L2 = (int)sqrt(L1 / (pow(7.0, 4) * pow(13.0, 4)));
 
-    find_nums_for_all_templates(K // 6, K // 6, [])
-    return ans
+    spf = (int*)malloc((L2 + 1) * sizeof(int));
+    for (int i = 0; i <= L2; i++) spf[i] = i;
+    for (int i = 2; (long long)i * i <= L2; i++) {
+        if (spf[i] == i) {
+            for (int j = i * i; j <= L2; j += i)
+                if (spf[j] == j) spf[j] = i;
+        }
+    }
+
+    num_2mod3s = (int*)calloc(L2 + 1, sizeof(int));
+    for (int n = 1; n <= L2; n++) {
+        int ok = 1, temp = n;
+        while (temp > 1) {
+            int p = spf[temp];
+            if (p % 3 != 2) { ok = 0; break; }
+            while (temp % p == 0) temp /= p;
+        }
+        num_2mod3s[n] = num_2mod3s[n - 1] + ok;
+    }
+
+    int tmpl[32];
+    find_all_templates(K_VAL / 6, K_VAL / 6, tmpl, 0);
+
+    printf("%lld\n", ans);
+    free(spf);
+    free(num_2mod3s);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
     print(solve())

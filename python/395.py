@@ -3,15 +3,18 @@
 
 Find minimum area of rectangle parallel to initial square containing entire tree.
 
-Solution iteratively finds extreme points in each direction.
+Solution iteratively finds extreme points in each direction using high-precision
+arithmetic (mpmath) to avoid rounding errors in the last digit.
 """
 
-from math import sqrt
+from mpmath import mp, mpf, sqrt, fabs
+
+mp.dps = 50  # 50 decimal places of precision
 
 class Point:
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
+        self.x = mpf(x)
+        self.y = mpf(y)
 
     def add(self, other):
         return Point(self.x + other.x, self.y + other.y)
@@ -31,14 +34,15 @@ class Point:
         dy = self.y - other.y
         return sqrt(dx * dx + dy * dy)
 
+
 def solve():
-    A, B, C = 3, 4, 5
+    A, B, C = mpf(3), mpf(4), mpf(5)
     L = sqrt(2) / (1 - B / C)
 
     def find_extreme(get_coord):
         """Find extreme point in direction given by get_coord function"""
         segments = [((Point(0, 0), Point(1, 0)))]
-        extremity = float('-inf')
+        extremity = mpf('-inf')
 
         while True:
             new_segments = []
@@ -67,7 +71,7 @@ def solve():
 
             new_extremity = max(all_points.keys())
 
-            if abs(extremity - new_extremity) < 1e-12:
+            if fabs(extremity - new_extremity) < mpf('1e-30'):
                 break
 
             extremity = new_extremity
@@ -90,7 +94,8 @@ def solve():
     max_y = find_extreme(lambda p: p.y)
 
     area = (max_x - min_x) * (max_y - min_y)
-    return f"{area:.10f}"
+    # Format to 10 decimal places
+    return mp.nstr(area, 12, strip_zeros=False)
 
 if __name__ == "__main__":
     print(solve())

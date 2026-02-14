@@ -1,114 +1,105 @@
-"""Project Euler Problem 440: GCD and Tiling.
+"""Project Euler Problem 440 — GCD and Tiling.
 
 Let T(n) be the number of ways to tile a board of length n using 10 distinct
-types of 1x1 blocks or 1x2 blocks. Find Σ_{1 ≤ a,b,c ≤ N} GCD(T(c^a), T(c^b)).
+types of 1x1 blocks or 1x2 blocks. Find sum_{1<=a,b,c<=N} GCD(T(c^a), T(c^b)).
 
-First, we can show by induction that T(x) = T(x-y) T(y) + T(x-y-1) T(y-1) for
-all (x,y), and GCD(T(x), T(x-1)) = 1 for all x. This means that
-GCD(T(x), T(y)) = GCD(T(x-y-1), T(y)).
-
-Defining T'(n) = T(n-1), we have GCD(T'(x+1), T'(y+1)) = GCD(T'((x+1)-(y+1)),
-T'(y+1)). This is the same relationship as the normal GCD, so we have
-GCD(T'(x+1), T'(y+1)) = T'(GCD(x+1, y+1)), or GCD(T(x), T(y)) = T(GCD(x+1,
-y+1) - 1).
-
-Now plug in x = c^a and y = c^b. We need to determine GCD(c^a + 1, c^b + 1).
-Assume without loss of generality that a ≥ b. Then:
-
-GCD(c^a + 1, c^b + 1) = GCD(c^a - c^b, c^b + 1)
-                      = GCD(c^{a-b} - 1, c^b + 1)
-                      = GCD(c^{a-b} + c^b, c^b + 1)
-                      = GCD(c^|a-2b| + 1, c^b + 1).
-
-This effectively just replaces a by |a-2b|, so we can repeat until one of
-two things happen. If at any point a=b, then both terms are equal to their GCD,
-which is c^g + 1 (g = GCD(a,b)). This happens if a/g and b/g are both odd.
-Otherwise, if at any point a=2b, then we see that the GCD is at most 2. In fact,
-it is clearly 2 if c is odd, and 1 if c is even.
-
-For each g, we can compute the number of pairs (a,b) such that f(a,b) = c^g + 1,
-and we can also compute the number of pairs such that f(a,b) = 2 or 1. Then we
-can multiply this number by T(f(a,b) - 1), and sum over all c.
-
-To efficiently compute all T(c^g), we note that T(n) is the top left entry of
-A^n, where A = [[K, 1], [1, 0]]. So we can start with A and repeatedly raise
-the matrix to the c'th power.
+Uses the identity GCD(T(x), T(y)) = T(GCD(x+1,y+1) - 1) and matrix exponentiation.
+N=2000, K=10, M=987898789.
+Ported to embedded C for speed.
 """
+import subprocess, tempfile, os
 
-from __future__ import annotations
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-from math import gcd
-from typing import List
+#define NN 2000
+#define KK 10
+#define M 987898789LL
 
+/* 2x2 matrix: [a, b, c, d] = [[a,b],[c,d]] */
+typedef struct { int64_t a, b, c, d; } Mat;
 
-def pow2x2(matrix: List[int], exp: int, mod: int) -> List[int]:
-    """Raise 2x2 matrix to power exp modulo mod.
-    
-    Matrix is represented as [a, b, c, d] for [[a, b], [c, d]].
-    """
-    if exp == 0:
-        return [1, 0, 0, 1]  # Identity matrix
-    
-    result = [1, 0, 0, 1]
-    base = matrix[:]
-    e = exp
-    
-    while e > 0:
-        if e & 1:
-            # Multiply result by base
-            a1, b1, c1, d1 = result
-            a2, b2, c2, d2 = base
-            result = [
-                (a1 * a2 + b1 * c2) % mod,
-                (a1 * b2 + b1 * d2) % mod,
-                (c1 * a2 + d1 * c2) % mod,
-                (c1 * b2 + d1 * d2) % mod,
-            ]
-        # Square base
-        a, b, c, d = base
-        base = [
-            (a * a + b * c) % mod,
-            (a * b + b * d) % mod,
-            (c * a + d * c) % mod,
-            (c * b + d * d) % mod,
-        ]
-        e >>= 1
-    
-    return result
+static Mat mat_mul(Mat x, Mat y) {
+    Mat r;
+    r.a = (x.a * y.a + x.b * y.c) % M;
+    r.b = (x.a * y.b + x.b * y.d) % M;
+    r.c = (x.c * y.a + x.d * y.c) % M;
+    r.d = (x.c * y.b + x.d * y.d) % M;
+    return r;
+}
 
+static Mat mat_pow(Mat base, int exp) {
+    Mat result = {1, 0, 0, 1}; /* identity */
+    while (exp > 0) {
+        if (exp & 1) result = mat_mul(result, base);
+        base = mat_mul(base, base);
+        exp >>= 1;
+    }
+    return result;
+}
 
-def solve() -> int:
-    """Solve Problem 440."""
-    N = 2000
-    K = 10
-    M = 987898789
-    
-    mults = [0] * (N + 1)
-    for a in range(1, N + 1):
-        for b in range(1, N + 1):
-            g = gcd(a, b)
-            if (a // g) % 2 == 1 and (b // g) % 2 == 1:
-                mults[g] += 1
-            else:
-                mults[0] += 1
-    
-    ans = 0
-    for c in range(1, N + 1):
-        ans = (ans + mults[0] * (1 if c % 2 == 0 else K)) % M
-        A = [K, 1, 1, 0]
-        for g in range(1, N + 1):
-            A = pow2x2(A, c, M)
-            ans = (ans + mults[g] * A[0]) % M
-    
-    return ans
+static int gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
 
+int main(void) {
+    int a, b, g;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    /* Compute mults[g] */
+    int64_t mults[NN + 1];
+    for (g = 0; g <= NN; g++) mults[g] = 0;
 
+    for (a = 1; a <= NN; a++) {
+        for (b = 1; b <= NN; b++) {
+            g = gcd(a, b);
+            if ((a / g) % 2 == 1 && (b / g) % 2 == 1)
+                mults[g]++;
+            else
+                mults[0]++;
+        }
+    }
+
+    int64_t ans = 0;
+    int c;
+    for (c = 1; c <= NN; c++) {
+        /* mults[0] pairs: GCD is 2 if c odd, 1 if c even */
+        /* T(2-1)=T(1), T(1-1)=T(0) */
+        /* T(0) = 1, T(1) = K = 10 */
+        ans = (ans + mults[0] * (c % 2 == 0 ? 1 : KK)) % M;
+
+        /* For each g>=1, accumulate A = A^c (starting from [[K,1],[1,0]]) */
+        /* After g iterations, A = [[K,1],[1,0]]^(c^g) */
+        /* T(c^g - 1) = A[0][0] ... wait, T(n) = top-left of A^n */
+        /* Actually T(c^g) is not directly what we need. */
+        /* We need T(GCD(c^a+1, c^b+1) - 1). For the case where a/g, b/g both odd,
+           GCD(c^a+1, c^b+1) = c^g + 1, so we need T(c^g + 1 - 1) = T(c^g). */
+        /* T(n) = top-left entry of [[K,1],[1,0]]^n */
+        Mat A = {KK, 1, 1, 0};
+        for (g = 1; g <= NN; g++) {
+            A = mat_pow(A, c);
+            /* A is now [[K,1],[1,0]]^(c^g), T(c^g) = A.a */
+            ans = (ans + mults[g] * A.a) % M;
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

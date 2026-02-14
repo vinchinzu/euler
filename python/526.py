@@ -1,158 +1,191 @@
-"""Project Euler Problem 526: Maximum Sum of Largest Prime Factors.
+"""Project Euler Problem 526 — Largest Prime Factor Sum (embedded C)."""
+import subprocess, tempfile, os
 
-Find the maximum possible value of Σ_{k=0}^{K-1} f(n+k) for n ≤ N, where
-f(n) is the largest prime factor of n.
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
 
-For each small prime p, we figure out the possible residue classes of n
-(mod p) that result in the largest possible sum after dividing the
-appropriate terms by p, assuming all numbers are constant. Then we search
-only those residue classes for a valid n.
-"""
+/*
+ * N=10^16, K=9.
+ * Build residue states mod (product of prime powers <= 30).
+ * Each state has offset 'a' and K denominators (ratio = 1/denom).
+ * h = sum_{j=0}^{K-1} (num+j)/denom[j]
+ * Search backwards from N for best candidates, filtering by large primes.
+ */
 
-from __future__ import annotations
+#define K 9
+#define L 30
 
-from dataclasses import dataclass
-from math import isqrt
-from typing import Dict, List
+typedef int64_t i64;
 
+/* State: offset a, and K denominators (ratio = 1/denom) */
+typedef struct {
+    i64 a;
+    i64 denom[K]; /* ratio = 1/denom */
+} State;
 
-@dataclass
-class State:
-    """State for residue class search."""
+/* Dynamic array of states */
+static State *states = NULL;
+static int nstates = 0;
+static int states_cap = 0;
 
-    a: int
-    ratios: List[float]
+static State *new_states = NULL;
+static int nnew = 0;
+static int new_cap = 0;
 
+static void ensure_states(State **arr, int *cap, int need) {
+    if (need > *cap) {
+        int nc = *cap ? *cap * 2 : 1024;
+        while (nc < need) nc *= 2;
+        *arr = (State *)realloc(*arr, nc * sizeof(State));
+        *cap = nc;
+    }
+}
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+/* Returns prime factor if n is a prime power, else 0 */
+static int prime_power_base(int n) {
+    int d = 2;
+    while (d * d <= n) {
+        if (n % d == 0) {
+            while (n % d == 0) n /= d;
+            return n == 1 ? d : 0;
+        }
+        d++;
+    }
+    return n > 1 ? n : 0;
+}
 
+/* sum of 1/denom[j] as a double, for comparison only */
+static double sum_inv(i64 *denom) {
+    double s = 0;
+    for (int j = 0; j < K; j++) s += 1.0 / denom[j];
+    return s;
+}
 
-def primes_in_range(low: int, high: int, small_primes: List[int]) -> List[int]:
-    """Get primes in range [low, high]."""
-    if high < low:
-        return []
-    result = []
-    for p in small_primes:
-        if p > high:
-            break
-        if p >= low:
-            result.append(p)
-    # Use segmented sieve for large range
-    if high > len(small_primes):
-        segment_size = max(10000, isqrt(high))
-        low_seg = max(low, len(small_primes) + 1)
-        while low_seg <= high:
-            high_seg = min(low_seg + segment_size - 1, high)
-            is_prime_seg = [True] * (high_seg - low_seg + 1)
-            for p in small_primes:
-                if p * p > high_seg:
-                    break
-                start = max(p * p, ((low_seg + p - 1) // p) * p)
-                for j in range(start, high_seg + 1, p):
-                    is_prime_seg[j - low_seg] = False
-            for i in range(high_seg - low_seg + 1):
-                if is_prime_seg[i]:
-                    result.append(low_seg + i)
-            low_seg = high_seg + 1
-    return result
+/* Sieve primes up to limit, return count */
+static int *sieve_primes(int limit, int *count) {
+    char *is_prime = (char *)calloc(limit + 1, 1);
+    for (int i = 2; i <= limit; i++) is_prime[i] = 1;
+    for (int i = 2; (long long)i * i <= limit; i++)
+        if (is_prime[i])
+            for (int j = i * i; j <= limit; j += i)
+                is_prime[j] = 0;
+    int cnt = 0;
+    for (int i = 2; i <= limit; i++) if (is_prime[i]) cnt++;
+    int *primes = (int *)malloc(cnt * sizeof(int));
+    int idx = 0;
+    for (int i = 2; i <= limit; i++) if (is_prime[i]) primes[idx++] = i;
+    free(is_prime);
+    *count = cnt;
+    return primes;
+}
 
+int main(void) {
+    i64 N = 10000000000000000LL; /* 10^16 */
 
-def prime_factor(n: int) -> Dict[int, int]:
-    """Get prime factorization of n."""
-    factors: Dict[int, int] = {}
-    d = 2
-    while d * d <= n:
-        while n % d == 0:
-            factors[d] = factors.get(d, 0) + 1
-            n //= d
-        d += 1
-    if n > 1:
-        factors[n] = factors.get(n, 0) + 1
-    return factors
+    /* Build states */
+    ensure_states(&states, &states_cap, 1);
+    for (int j = 0; j < K; j++) states[0].denom[j] = 1;
+    states[0].a = 0;
+    nstates = 1;
 
+    i64 mod = 1;
+    for (int pe = 2; pe <= L; pe++) {
+        int p = prime_power_base(pe);
+        if (p == 0) continue;
 
-def round_down(n: int, mod: int) -> int:
-    """Round n down to nearest multiple of mod."""
-    return (n // mod) * mod
+        double max_sum = -1.0;
+        nnew = 0;
 
+        for (int si = 0; si < nstates; si++) {
+            for (int ii = 0; ii < p; ii++) {
+                i64 start = states[si].a + (i64)ii * mod;
+                i64 nd[K];
+                for (int j = 0; j < K; j++) nd[j] = states[si].denom[j];
+                for (int j = 0; j < K; j++) {
+                    if ((start + j) % pe == 0)
+                        nd[j] *= p;
+                }
+                double sr = sum_inv(nd);
+                if (sr > max_sum + 1e-12) {
+                    nnew = 0;
+                    max_sum = sr;
+                }
+                if (sr > max_sum - 1e-12) {
+                    ensure_states(&new_states, &new_cap, nnew + 1);
+                    new_states[nnew].a = start;
+                    for (int j = 0; j < K; j++) new_states[nnew].denom[j] = nd[j];
+                    nnew++;
+                }
+            }
+        }
 
-def solve() -> int:
-    """Solve Problem 526."""
-    N = 10**16
-    K = 9
-    L = 30
+        State *tmp = states; states = new_states; new_states = tmp;
+        int tc = states_cap; states_cap = new_cap; new_cap = tc;
+        nstates = nnew;
+        mod *= p;
+    }
 
-    sqrt_n = isqrt(N)
-    small_primes_list = sieve_primes(L)
-    large_primes = primes_in_range(L + 1, sqrt_n, small_primes_list)
+    /* Sieve primes up to sqrt(N) */
+    int sqrt_n = (int)sqrt((double)N);
+    int nprimes;
+    int *all_primes = sieve_primes(sqrt_n, &nprimes);
 
-    start_ratios = [1.0] * K
-    best_states: List[State] = [State(0, start_ratios)]
-    mod = 1
+    /* Filter to primes > L */
+    int lp_start = 0;
+    while (lp_start < nprimes && all_primes[lp_start] <= L) lp_start++;
+    int *large_primes = all_primes + lp_start;
+    int nlarge = nprimes - lp_start;
 
-    for pe in range(2, L + 1):
-        prime_factors = prime_factor(pe)
-        if len(prime_factors) > 1:
-            continue
-        p = list(prime_factors.keys())[0]
+    /* Search backwards */
+    i64 ans = 0;
+    i64 start_search = (N / mod) * mod;
 
-        max_sum_ratios = 0.0
-        new_best_states: List[State] = []
-        for state in best_states:
-            for i in range(p):
-                start = state.a + i * mod
-                new_ratios = state.ratios.copy()
-                for j in range(K):
-                    if (start + j) % pe == 0:
-                        new_ratios[j] /= p
-                sum_ratios = sum(new_ratios)
-                if sum_ratios > max_sum_ratios:
-                    new_best_states.clear()
-                    max_sum_ratios = sum_ratios
-                if sum_ratios == max_sum_ratios:
-                    new_best_states.append(State(start, new_ratios))
-        best_states = new_best_states
-        mod *= p
+    for (i64 base = start_search; base >= 0 && ans == 0; base -= mod) {
+        for (int si = 0; si < nstates; si++) {
+            i64 num = base + states[si].a;
+            if (num > N || num <= 0) continue;
 
-    ans = 0
-    for start in range(round_down(N, mod), -1, -mod):
-        if ans > 0:
-            break
-        for state in best_states:
-            num = start + state.a
-            if num > N:
-                continue
-            good = True
-            for p in large_primes:
-                if num % p == 0 or num % p > p - K:
-                    good = False
-                    break
-            if good:
-                h = 0
-                for i in range(K):
-                    h += round(state.ratios[i] * (num + i))
-                if h > ans:
-                    ans = h
+            int good = 1;
+            for (int pi = 0; pi < nlarge; pi++) {
+                int p = large_primes[pi];
+                i64 r = num % p;
+                if (r == 0 || r > p - K) {
+                    good = 0;
+                    break;
+                }
+            }
+            if (good) {
+                i64 h = 0;
+                for (int j = 0; j < K; j++) {
+                    h += (num + j) / states[si].denom[j];
+                }
+                if (h > ans) ans = h;
+            }
+        }
+    }
 
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    printf("%lld\n", (long long)ans);
+    free(states);
+    free(new_states);
+    free(all_primes);
+    return 0;
+}
+'''.lstrip()
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

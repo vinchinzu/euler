@@ -1,89 +1,109 @@
-#!/usr/bin/env python3
-"""
-Project Euler 445 - Retractions A
+"""Project Euler Problem 445 — Retractions A, embedded C port."""
+import subprocess, tempfile, os
 
-R(n) = product of (1 + p^e) for each prime power p^e dividing n, minus n.
-Find sum of R(C(N, k)) for k = 1 to N-1 where N = 10^7, mod 10^9+7.
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
-Key insight:
-R(n) = prod(1 + p^e) - prod(p^e) for factorization n = prod(p^e)
+#define NN 10000000
+#define MOD 1000000007LL
 
-C(N, k) = C(N, k-1) * (N+1-k) / k, so we can incrementally update the factorization.
-"""
+static int spf[NN + 1];     /* smallest prime factor */
+static int exps[NN + 1];    /* exponents of each prime in current C(N,k) */
 
-def solve():
-    N = 10**7
-    MOD = 10**9 + 7
+static long long power_mod(long long base, long long exp, long long mod) {
+    long long result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-    # Sieve smallest prime factor
-    spf = list(range(N + 1))
-    for i in range(2, int(N**0.5) + 1):
-        if spf[i] == i:
-            for j in range(i * i, N + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
+static long long mod_inv(long long a, long long mod) {
+    return power_mod(a, mod - 2, mod);
+}
 
-    def prime_factor(n):
-        """Return dict of prime: exponent for n."""
-        factors = {}
-        while n > 1:
-            p = spf[n]
-            e = 0
-            while n % p == 0:
-                n //= p
-                e += 1
-            factors[p] = e
-        return factors
+int main(void) {
+    /* Sieve smallest prime factor */
+    for (int i = 0; i <= NN; i++) spf[i] = i;
+    for (int i = 2; (long long)i * i <= NN; i++)
+        if (spf[i] == i)
+            for (int j = i * i; j <= NN; j += i)
+                if (spf[j] == j)
+                    spf[j] = i;
 
-    # Precompute modular inverses
-    inv = [0] * (N + 1)
-    inv[1] = 1
-    for i in range(2, N + 1):
-        inv[i] = (MOD - MOD // i) * inv[MOD % i] % MOD
+    /* Initialize exponent array */
+    for (int i = 0; i <= NN; i++) exps[i] = 0;
 
-    # Track exponents of each prime in current C(N, k)
-    exps = [0] * (N + 1)
+    long long res_prod_pe = 1;   /* product of p^e mod MOD */
+    long long res_prod_1pe = 1;  /* product of (1 + p^e) mod MOD */
+    long long ans = 0;
 
-    # res[0] = product of p^e (mod M)
-    # res[1] = product of (1 + p^e) (mod M)
-    res_prod_pe = 1
-    res_prod_1pe = 1
+    for (int k = 1; k <= NN / 2; k++) {
+        /* Multiply by (N + 1 - k): factor it and update exponents */
+        int num = NN + 1 - k;
+        while (num > 1) {
+            int p = spf[num];
+            int e = 0;
+            while (num % p == 0) { num /= p; e++; }
 
-    ans = 0
+            long long old_pow = power_mod(p, exps[p], MOD);
+            exps[p] += e;
+            long long new_pow = power_mod(p, exps[p], MOD);
 
-    for k in range(1, N // 2 + 1):
-        # Multiply by (N + 1 - k): update exponents
-        for p, e in prime_factor(N + 1 - k).items():
-            old_pow = pow(p, exps[p], MOD)
-            exps[p] += e
-            new_pow = pow(p, exps[p], MOD)
+            res_prod_pe = res_prod_pe % MOD * mod_inv(old_pow, MOD) % MOD * new_pow % MOD;
+            long long old_term = (old_pow == 1) ? 1 : (1 + old_pow) % MOD;
+            long long new_term = (1 + new_pow) % MOD;
+            res_prod_1pe = res_prod_1pe % MOD * mod_inv(old_term, MOD) % MOD * new_term % MOD;
+        }
 
-            res_prod_pe = res_prod_pe * inv[old_pow] % MOD * new_pow % MOD
-            old_term = 1 if old_pow == 1 else (1 + old_pow) % MOD
-            new_term = (1 + new_pow) % MOD
-            res_prod_1pe = res_prod_1pe * inv[old_term] % MOD * new_term % MOD
+        /* Divide by k: factor it and update exponents */
+        int den = k;
+        while (den > 1) {
+            int p = spf[den];
+            int e = 0;
+            while (den % p == 0) { den /= p; e++; }
 
-        # Divide by k: update exponents
-        for p, e in prime_factor(k).items():
-            old_pow = pow(p, exps[p], MOD)
-            exps[p] -= e
-            new_pow = pow(p, exps[p], MOD)
+            long long old_pow = power_mod(p, exps[p], MOD);
+            exps[p] -= e;
+            long long new_pow = power_mod(p, exps[p], MOD);
 
-            res_prod_pe = res_prod_pe * inv[old_pow] % MOD * new_pow % MOD
-            old_term = (1 + old_pow) % MOD
-            new_term = 1 if new_pow == 1 else (1 + new_pow) % MOD
-            res_prod_1pe = res_prod_1pe * inv[old_term] % MOD * new_term % MOD
+            res_prod_pe = res_prod_pe % MOD * mod_inv(old_pow, MOD) % MOD * new_pow % MOD;
+            long long old_term = (1 + old_pow) % MOD;
+            long long new_term = (new_pow == 1) ? 1 : (1 + new_pow) % MOD;
+            res_prod_1pe = res_prod_1pe % MOD * mod_inv(old_term, MOD) % MOD * new_term % MOD;
+        }
 
-        # R(n) = res_prod_1pe - res_prod_pe
-        R_val = (res_prod_1pe - res_prod_pe) % MOD
+        /* R(n) = res_prod_1pe - res_prod_pe */
+        long long R_val = (res_prod_1pe - res_prod_pe + MOD) % MOD;
 
-        # Double all terms except the middle one (for k = N/2)
-        if k == N // 2:
-            ans = (ans + R_val) % MOD
-        else:
-            ans = (ans + 2 * R_val) % MOD
+        /* Double all terms except the middle one */
+        if (k == NN / 2)
+            ans = (ans + R_val) % MOD;
+        else
+            ans = (ans + 2 * R_val) % MOD;
+    }
 
-    return ans
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    print(solve())
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

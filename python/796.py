@@ -1,77 +1,55 @@
-"""Project Euler Problem 796: Expected Cards Drawn.
+"""Project Euler Problem 796: Expected Cards Drawn — embedded C."""
 
-Find the expected number of cards drawn from D decks of 54 cards (R ranks in
-S suits and J jokers) until all ranks, suits, and decks appear at least once.
+import subprocess, tempfile, os
 
-By linearity of expectation, we can add for each nth card, the probability
-that n cards do not contain all ranks, suits, and decks, and then add 1 at
-the end for the final card. To obtain each probability, we use Inclusion
-Exclusion for r ranks and s suits and d decks showing up over all r,s,d:
+def solve():
+    c_code = r'''
+#include <stdio.h>
 
-E = Σ_{n=1}^∞ nCr(540,n)⁻¹
-        Σ_{r=0}^13 Σ_{s=0}^4 Σ_{d=0}^10 (-1)^{r+s+d+1} nCr(13,r) nCr(4,s) nCr(10,d)
-                                        nCr(((13-r)(4-s)+2)(10-d),n).
+double nCr(int n, int k) {
+    if (k < 0 || k > n) return 0.0;
+    if (k == 0 || k == n) return 1.0;
+    double result = 1.0;
+    if (k > n - k) k = n - k;
+    for (int i = 0; i < k; i++)
+        result = result * (n - i) / (i + 1);
+    return result;
+}
 
-To make this computable with floating point arithmetic, we cancel the n! terms
-in the first and final nCr, and multiply the ratios one at a time.
-"""
+int main() {
+    int R = 13, S = 4, J = 2, D = 10;
+    int L = (R * S + J) * D;
 
-from __future__ import annotations
-
-
-def nCr(n: int, k: int) -> float:
-    """Binomial coefficient C(n, k)."""
-    if k < 0 or k > n:
-        return 0.0
-    if k == 0 or k == n:
-        return 1.0
-    result = 1.0
-    for i in range(min(k, n - k)):
-        result = result * (n - i) / (i + 1)
+    double ans = 1.0;
+    for (int n = 1; n <= L; n++) {
+        for (int r = 0; r <= R; r++) {
+            for (int s = 0; s <= S; s++) {
+                for (int d = 0; d <= D; d++) {
+                    if (r + s + d > 0) {
+                        double res = 1.0;
+                        int limit = ((R - r) * (S - s) + J) * (D - d);
+                        for (int k = L; k > limit; k--)
+                            res *= 1.0 * (k - n) / k;
+                        int sign = ((r + s + d) % 2 == 0) ? 1 : -1;
+                        ans -= sign * nCr(R, r) * nCr(S, s) * nCr(D, d) * res;
+                    }
+                }
+            }
+        }
+    }
+    printf("%.8f\n", ans);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
     return result
-
-
-def parity(n: int) -> int:
-    """Return 1 if n is even, -1 if odd."""
-    return 1 if n % 2 == 0 else -1
-
-
-def solve() -> float:
-    """Solve Problem 796."""
-    R = 13
-    S = 4
-    J = 2
-    D = 10
-    L = (R * S + J) * D
-
-    ans = 1.0
-
-    for n in range(1, L + 1):
-        for r in range(R + 1):
-            for s in range(S + 1):
-                for d in range(D + 1):
-                    if r + s + d > 0:
-                        res = 1.0
-                        limit = ((R - r) * (S - s) + J) * (D - d)
-                        for k in range(L, limit, -1):
-                            res *= 1.0 * (k - n) / k
-                        ans -= (
-                            parity(r + s + d)
-                            * nCr(R, r)
-                            * nCr(S, s)
-                            * nCr(D, d)
-                            * res
-                        )
-
-    return ans
-
-
-def main() -> float:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.8f}")
-    return result
-
 
 if __name__ == "__main__":
-    main()
+    print(solve())

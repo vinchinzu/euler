@@ -1,314 +1,391 @@
-"""Project Euler Problem 428: Necklace triplets.
+"""Project Euler Problem 428: Necklace of circles.
 
-Given three positive integers a, b, c, consider four collinear points W, X, Y, Z
-such that the distances between adjacent points are a, b, c respectively. Draw
-a circle C_in with diameter XY, and a circle C_out with diameter WZ. The
-triplet (a, b, c) is a "necklace triplet" if you can place k ≥ 3 distinct
-circles C_1, C_2, ... C_k such that they are all tangent to C_in and C_out, and
-all adjacent circles are tangent to each other.
+A necklace triplet (a,b,c) with k >= 3 circles exists when the Steiner chain
+condition delta = (1+s^2)/(1-s^2) matches, where s = sin(pi/k).
+Only k=3,4,6 give rational delta, yielding three disjoint sets.
 
-Find the number of necklace triplets such that b ≤ N.
+k=4: ac = b(a+b+c)  =>  S4 = sum_{b=1}^N tau(2*b^2)
+k=3: ac = 3b(a+b+c) =>  S3 = sum_{b=1}^N tau(12*b^2)
+k=6: 3ac = b(a+b+c) =>  S6 via divisor counting with mod 3 conditions
 
-This problem uses Dirichlet series to efficiently compute divisor sums.
+Answer = S3 + S4 + S6.
+
+Uses:
+- Hyperbola method for F(X) = sum 2^omega(d)
+- Quotient grouping for T(X) = sum tau(b^2) = sum_{d} 2^omega(d)*floor(X/d)
+- Recursive stripping of factors 2,3 for T_odd, T_odd_no3
+- G = lambda * B decomposition for S6_chi (Dirichlet convolution)
+- Lucy DP for pi_1 (prime counting in arithmetic progression)
+- DFS over 1mod3-smooth numbers with large prime contribution via partial summation
 """
 
-from __future__ import annotations
-
-import math
-from typing import Callable, List
+from math import isqrt
 
 
-def isqrt(n: int) -> int:
-    """Integer square root."""
-    if n < 0:
-        return 0
-    if n == 0:
-        return 0
-    x = int(math.sqrt(n))
-    while x * x < n:
-        x += 1
-    while x * x > n:
-        x -= 1
-    return x
+def solve(N):
+    sqrtN = isqrt(N)
 
+    # Sieve mu and primes up to N^{2/3}
+    cbrt = int(round(N ** (1 / 3)))
+    while (cbrt + 1) ** 3 <= N:
+        cbrt += 1
+    while cbrt ** 3 > N:
+        cbrt -= 1
+    sieve_limit = max(cbrt * cbrt, sqrtN + 1)
 
-def num_divisors(limit: int) -> List[int]:
-    """Compute number of divisors for each number up to limit."""
-    result = [0] * (limit + 1)
-    for i in range(1, limit + 1):
-        for j in range(i, limit + 1, i):
-            result[j] += 1
-    return result
+    mu = [0] * (sieve_limit + 1)
+    mu[1] = 1
+    is_comp = bytearray(sieve_limit + 1)
+    primes_all = []
+    for i in range(2, sieve_limit + 1):
+        if not is_comp[i]:
+            primes_all.append(i)
+            mu[i] = -1
+        for p in primes_all:
+            if p * i > sieve_limit:
+                break
+            is_comp[p * i] = 1
+            if i % p == 0:
+                mu[p * i] = 0
+                break
+            mu[p * i] = -mu[i]
 
+    mu_prefix = [0] * (sieve_limit + 1)
+    for i in range(1, sieve_limit + 1):
+        mu_prefix[i] = mu_prefix[i - 1] + mu[i]
 
-class QuotientValues:
-    """Stores values of f(⌊n/k⌋) for all integer k.
+    # Mertens function with caching for large values
+    mertens_cache = {}
 
-    Values are stored in big[k] directly for small k, and for large k they are
-    stored implicitly as small[i] = f(i).
-    """
-
-    def __init__(self, n: int, big: List[int], small: List[int]) -> None:
-        """Initialize with n and arrays."""
-        self.n = n
-        self.big = big
-        self.small = small
-
-    def get(self, i: int) -> int:
-        """Return f(i)."""
-        return self.small[i]
-
-    def div(self, k: int) -> int:
-        """Return f(⌊n/k⌋)."""
-        if k < len(self.big):
-            return self.big[k]
-        return self.small[self.n // k]
-
-
-class DirichletSeriesContext:
-    """Context for Dirichlet series operations.
-
-    A Dirichlet series is an infinite series of the form f(s) = Σ_n (a_n) / n^s.
-    It is represented internally by a QuotientValues where f(k) is the cumulative
-    sum of the numerators, f(k) = Σ_{n=1}^k a_n, because this allows efficient
-    multiplication/division of Dirichlet series in O(N^{2/3}) time.
-    """
-
-    def __init__(self, N: int, M: int = 2**63 - 1) -> None:
-        """Initialize with N and modulus M."""
-        self.N = N
-        self.M = M
-        self.L = int((N * math.log(N + 1)) ** (1 / 3)) + 1
-        self.L2 = int(N / self.L)
-
-        num_divs = num_divisors(self.L2)
-
-        start_indices = [0] * (self.L2 + 2)
-        for i in range(1, self.L2 + 1):
-            start_indices[i + 1] = start_indices[i] + num_divs[i]
-
-        curr_indices = start_indices[:]
-
-        divisors: List[int] = [0] * start_indices[self.L2 + 1]
-        for d in range(1, self.L2 + 1):
-            mult = 1
-            while d * mult <= self.L2:
-                divisors[curr_indices[d * mult]] = d
-                curr_indices[d * mult] += 1
-                mult += 1
-
-        self.num_divisors = num_divs
-        self.start_indices = start_indices
-        self.divisors = divisors
-
-    def create(self, *a_n: int) -> QuotientValues:
-        """Create from explicit values."""
-        cum_sums = [0] * (len(a_n) + 1)
-        for i in range(len(a_n)):
-            cum_sums[i + 1] = cum_sums[i] + a_n[i]
-
-        def cum_sum_func(n: int) -> int:
-            return cum_sums[min(n, len(a_n))]
-
-        return self.create_from_func(cum_sum_func)
-
-    def create_from_func(self, cum_sum_func: Callable[[int], int]) -> QuotientValues:
-        """Create from cumulative sum function."""
-        big = [0] * self.L
-        small = [0] * (self.L2 + 1)
-        for i in range(1, self.L2 + 1):
-            small[i] = cum_sum_func(i) % self.M
-        for i in range(self.L - 1, 0, -1):
-            big[i] = cum_sum_func(self.N // i) % self.M
-        return QuotientValues(self.N, big, small)
-
-    def add(
-        self, ds1: QuotientValues, ds2: QuotientValues, *more: QuotientValues
-    ) -> QuotientValues:
-        """Add Dirichlet series."""
-        result = self._add_two(ds1, ds2)
-        for ds in more:
-            result = self._add_two(result, ds)
+    def mertens(n):
+        if n <= sieve_limit:
+            return mu_prefix[n]
+        if n in mertens_cache:
+            return mertens_cache[n]
+        s = 0
+        d = 2
+        while d <= n:
+            q = n // d
+            d_max = n // q
+            s += (d_max - d + 1) * mertens(q)
+            d = d_max + 1
+        result = 1 - s
+        mertens_cache[n] = result
         return result
 
-    def _add_two(
-        self, ds1: QuotientValues, ds2: QuotientValues
-    ) -> QuotientValues:
-        """Add two Dirichlet series."""
-        big = [0] * self.L
-        small = [0] * (self.L2 + 1)
-        for i in range(1, self.L2 + 1):
-            small[i] = (ds1.get(i) + ds2.get(i)) % self.M
-        for i in range(self.L - 1, 0, -1):
-            big[i] = (ds1.div(i) + ds2.div(i)) % self.M
-        return QuotientValues(self.N, big, small)
+    # Pre-fill mertens cache
+    d = 1
+    while d <= N:
+        mertens(N // d)
+        d = N // (N // d) + 1
 
-    def multiply(self, ds: QuotientValues, scale: int) -> QuotientValues:
-        """Multiply Dirichlet series by scalar."""
-        big = [0] * self.L
-        small = [0] * (self.L2 + 1)
-        for i in range(1, self.L2 + 1):
-            small[i] = (ds.get(i) * scale) % self.M
-        for i in range(self.L - 1, 0, -1):
-            big[i] = (ds.div(i) * scale) % self.M
-        return QuotientValues(self.N, big, small)
+    # Primes up to sqrtN (for Lucy DP)
+    primes_small = [p for p in primes_all if p <= sqrtN]
 
-    def multiply_series(
-        self, ds1: QuotientValues, ds2: QuotientValues, *more: QuotientValues
-    ) -> QuotientValues:
-        """Multiply Dirichlet series."""
-        result = self._multiply_two(ds1, ds2)
-        for ds in more:
-            result = self._multiply_two(result, ds)
+    # Q(X) = #{squarefree n <= X}
+    Q_cache = {}
+
+    def Q(X):
+        if X <= 0:
+            return 0
+        if X in Q_cache:
+            return Q_cache[X]
+        s = 0
+        for k in range(1, isqrt(X) + 1):
+            if mu[k] != 0:
+                s += mu[k] * (X // (k * k))
+        Q_cache[X] = s
+        return s
+
+    # F(X) = sum_{d=1}^X 2^omega(d)
+    F_cache = {}
+
+    def F_val(X):
+        if X <= 0:
+            return 0
+        if X in F_cache:
+            return F_cache[X]
+        sX = isqrt(X)
+        result = 0
+        for d in range(1, sX + 1):
+            if mu[d] != 0:
+                result += X // d
+        max_q = X // (sX + 1)
+        for q in range(1, max_q + 1):
+            result += q * (Q(X // q) - Q(X // (q + 1)))
+        F_cache[X] = result
         return result
 
-    def _multiply_two(
-        self, ds1: QuotientValues, ds2: QuotientValues
-    ) -> QuotientValues:
-        """Multiply two Dirichlet series."""
-        big = [0] * self.L
-        small = [0] * (self.L2 + 1)
-        for i in range(1, self.L2 + 1):
-            small[i] = small[i - 1]
-            for j in range(self.num_divisors[i]):
-                d = self.divisors[self.start_indices[i] + j]
-                term = (
-                    (ds1.get(d) - ds1.get(d - 1))
-                    * (ds2.get(i // d) - ds2.get(i // d - 1))
-                ) % self.M
-                small[i] = (small[i] + term) % self.M
+    # Precompute F for quotient values of all needed T arguments
+    needed_T = set()
+    for a in range(61):
+        pw2 = 1 << a
+        if pw2 > N:
+            break
+        for c in range(40):
+            pw3 = 3 ** c
+            pw = pw2 * pw3
+            if pw > N:
+                break
+            needed_T.add(N // pw)
 
-        for i in range(self.L - 1, 0, -1):
-            limit = isqrt(self.N // i)
-            for x in range(1, limit + 1):
-                term = (ds1.get(x) - ds1.get(x - 1)) * ds2.div(i * x)
-                big[i] = (big[i] + term) % self.M
-            for y in range(1, limit + 1):
-                term = (ds2.get(y) - ds2.get(y - 1)) * ds1.div(i * y)
-                big[i] = (big[i] + term) % self.M
-            big[i] = (big[i] - ds1.get(limit) * ds2.get(limit)) % self.M
+    for X in sorted(needed_T):
+        dd = 1
+        while dd <= X:
+            qq = X // dd
+            F_val(qq)
+            dd = X // qq + 1
 
-        return QuotientValues(self.N, big, small)
+    # T(X) = sum_{b=1}^X tau(b^2) via quotient grouping
+    T_cache = {}
 
-    def reciprocal(self, ds: QuotientValues) -> QuotientValues:
-        """Compute reciprocal of Dirichlet series."""
-        if abs(ds.get(1)) != 1:
-            raise ValueError("Dirichlet series is not invertible")
-        big = [0] * self.L
-        small = [0] * (self.L2 + 1)
-        small[1] = ds.get(1)
-        for i in range(2, self.L2 + 1):
-            small[i] = small[i - 1]
-            for j in range(1, self.num_divisors[i]):
-                d = self.divisors[self.start_indices[i] + j]
-                term = (
-                    -ds.get(1)
-                    * (ds.get(d) - ds.get(d - 1))
-                    * (small[i // d] - small[i // d - 1])
-                ) % self.M
-                small[i] = (small[i] + term) % self.M
+    def T_c(X):
+        if X <= 0:
+            return 0
+        if X in T_cache:
+            return T_cache[X]
+        result = 0
+        d = 1
+        while d <= X:
+            q = X // d
+            d_max = X // q
+            result += q * (F_val(d_max) - F_val(d - 1))
+            d = d_max + 1
+        T_cache[X] = result
+        return result
 
-        for i in range(self.L - 1, 0, -1):
-            limit = isqrt(self.N // i)
-            for x in range(2, limit + 1):
-                idx = i * x
-                if idx < self.L:
-                    val = big[idx]
+    # T_odd(X) = sum_{m odd, m<=X} tau(m^2)
+    T_odd_cache = {}
+
+    def T_odd(X):
+        if X <= 0:
+            return 0
+        if X in T_odd_cache:
+            return T_odd_cache[X]
+        result = T_c(X)
+        a = 1
+        pw = 2
+        while pw <= X:
+            result -= (2 * a + 1) * T_odd(X // pw)
+            a += 1
+            pw *= 2
+        T_odd_cache[X] = result
+        return result
+
+    # T_on3(X) = sum_{m odd, gcd(m,3)=1, m<=X} tau(m^2)
+    T_on3_cache = {}
+
+    def T_on3(X):
+        if X <= 0:
+            return 0
+        if X in T_on3_cache:
+            return T_on3_cache[X]
+        result = T_odd(X)
+        c = 1
+        pw = 3
+        while pw <= X:
+            result -= (2 * c + 1) * T_on3(X // pw)
+            c += 1
+            pw *= 3
+        T_on3_cache[X] = result
+        return result
+
+    # S4 = sum_{b=1}^N tau(2*b^2)
+    S4 = 0
+    a = 0
+    pw = 1
+    while pw <= N:
+        S4 += (2 * a + 2) * T_odd(N // pw)
+        a += 1
+        pw *= 2
+
+    # S3 = sum_{b=1}^N tau(12*b^2)
+    S3 = 0
+    a = 0
+    pw2 = 1
+    while pw2 <= N:
+        c = 0
+        pw3 = 1
+        while pw2 * pw3 <= N:
+            S3 += (2 * a + 3) * (2 * c + 2) * T_on3(N // (pw2 * pw3))
+            c += 1
+            pw3 *= 3
+        a += 1
+        pw2 *= 2
+
+    # S6_div3: contribution from b divisible by 3
+    S6_div3 = 0
+    v = 1
+    pw3 = 3
+    while pw3 <= N:
+        a = 0
+        pw2 = 1
+        while pw2 * pw3 <= N:
+            S6_div3 += (2 * v - 1) * (2 * a + 3) * T_on3(N // (pw2 * pw3))
+            a += 1
+            pw2 *= 2
+        v += 1
+        pw3 *= 3
+
+    # S6_tau: sum_{b coprime to 3} tau(4*b^2)
+    S6_tau = 0
+    a = 0
+    pw = 1
+    while pw <= N:
+        S6_tau += (2 * a + 3) * T_on3(N // pw)
+        a += 1
+        pw *= 2
+
+    # === S6_chi via G = lambda * B decomposition ===
+    # G(b) = chi_3(b) * tau_chi(b), multiplicative.
+    # G = lambda * B where B supported on primes ≡ 1 mod 3, B(p^k) = 4k.
+    # sum G(b) for b coprime to 3 = sum_d B(d) * L3(N/d)
+    # L3(X) = L(X) + L(X//3), L(X) = sum_{j=1}^{isqrt(X)} M(X//j^2)
+
+    L_cache = {}
+
+    def L(X):
+        if X <= 0:
+            return 0
+        if X in L_cache:
+            return L_cache[X]
+        total = 0
+        for j in range(1, isqrt(X) + 1):
+            total += mertens(X // (j * j))
+        L_cache[X] = total
+        return total
+
+    L3_cache = {}
+
+    def L3(X):
+        if X <= 0:
+            return 0
+        if X in L3_cache:
+            return L3_cache[X]
+        result = L(X) + L(X // 3)
+        L3_cache[X] = result
+        return result
+
+    primes_1mod3 = [p for p in primes_all if p % 3 == 1]
+
+    # Lucy DP for pi_1 (primes ≡ 1 mod 3)
+    small_pi1 = [0] * (sqrtN + 1)
+    big_pi1 = [0] * (sqrtN + 1)
+    small_pi2 = [0] * (sqrtN + 1)
+    big_pi2 = [0] * (sqrtN + 1)
+
+    for v in range(1, sqrtN + 1):
+        small_pi1[v] = (v + 2) // 3 - 1
+        small_pi2[v] = (v + 1) // 3
+    for k in range(1, sqrtN + 1):
+        V = N // k
+        big_pi1[k] = (V + 2) // 3 - 1
+        big_pi2[k] = (V + 1) // 3
+
+    quotients_desc = []
+    d = 1
+    while d <= N:
+        quotients_desc.append(N // d)
+        d = N // (N // d) + 1
+    quotients_desc.sort(reverse=True)
+
+    for p in primes_small:
+        if p == 3:
+            continue
+        pp = p * p
+        p1 = small_pi1[p - 1]
+        p2 = small_pi2[p - 1]
+
+        for V in quotients_desc:
+            if V < pp:
+                break
+            Vp = V // p
+            c1 = small_pi1[Vp] if Vp <= sqrtN else big_pi1[N // Vp]
+            c2 = small_pi2[Vp] if Vp <= sqrtN else big_pi2[N // Vp]
+
+            if p % 3 == 1:
+                if V <= sqrtN:
+                    small_pi1[V] -= c1 - p1
+                    small_pi2[V] -= c2 - p2
                 else:
-                    val = small[self.N // idx]
-                term = (ds.get(x) - ds.get(x - 1)) * val
-                big[i] = (big[i] + term) % self.M
-            for y in range(1, limit + 1):
-                term = (small[y] - small[y - 1]) * (
-                    ds.div(i * y) - ds.get(1)
+                    k = N // V
+                    big_pi1[k] -= c1 - p1
+                    big_pi2[k] -= c2 - p2
+            else:
+                if V <= sqrtN:
+                    old1 = small_pi1[V]
+                    old2 = small_pi2[V]
+                    small_pi1[V] = old1 - (c2 - p2)
+                    small_pi2[V] = old2 - (c1 - p1)
+                else:
+                    k = N // V
+                    old1 = big_pi1[k]
+                    old2 = big_pi2[k]
+                    big_pi1[k] = old1 - (c2 - p2)
+                    big_pi2[k] = old2 - (c1 - p1)
+
+    def pi1(V):
+        if V < 2:
+            return 0
+        if V <= sqrtN:
+            return small_pi1[V]
+        return big_pi1[N // V]
+
+    # DFS over d with prime factors ≡ 1 mod 3 (≤ sqrtN)
+    # plus large prime contribution via partial summation with pi_1
+    sum_G = 0
+
+    def dfs_g(idx, d_val, b_val, last_prime):
+        nonlocal sum_G
+        sum_G += b_val * L3(N // d_val)
+
+        # Large prime contribution
+        upper_p = N // d_val
+        lower_p = max(last_prime, sqrtN)
+
+        if upper_p > lower_p:
+            large_sum = 0
+            p = lower_p + 1
+            while p <= upper_p:
+                q = N // (d_val * p)
+                if q > 0:
+                    p_range_hi = min(upper_p, N // (d_val * q))
+                else:
+                    p_range_hi = upper_p
+                p_range_lo = (
+                    max(lower_p + 1, N // (d_val * (q + 1)) + 1)
+                    if q < upper_p
+                    else lower_p + 1
                 )
-                big[i] = (big[i] + term) % self.M
-            big[i] = (big[i] - (ds.get(limit) - ds.get(1)) * small[limit]) % self.M
-            big[i] = ds.get(1) * (1 - big[i]) % self.M
 
-        return QuotientValues(self.N, big, small)
+                cnt = pi1(p_range_hi) - pi1(p_range_lo - 1)
+                if cnt > 0:
+                    large_sum += cnt * L3(q)
 
-    def divide(
-        self, ds1: QuotientValues, ds2: QuotientValues
-    ) -> QuotientValues:
-        """Divide two Dirichlet series."""
-        return self.multiply_series(ds1, self.reciprocal(ds2))
+                p = p_range_hi + 1
 
+            sum_G += 4 * b_val * large_sum
 
-def solve() -> int:
-    """Solve Problem 428."""
-    N = 10**9
+        for i in range(idx, len(primes_1mod3)):
+            p = primes_1mod3[i]
+            if p > sqrtN:
+                break
+            if d_val * p > N:
+                break
+            pk = p
+            k = 1
+            while d_val * pk <= N:
+                dfs_g(i + 1, d_val * pk, b_val * (4 * k), p)
+                k += 1
+                pk *= p
 
-    dsc = DirichletSeriesContext(N)
+    dfs_g(0, 1, 1, 0)
 
-    # Create constant 1
-    ONE = dsc.create(1)
+    S6_chi = -sum_G
+    S6 = S6_div3 + (S6_tau + S6_chi) // 2
 
-    # C(2) = (1 - 2^-s) / (1 + 2^-s)
-    # Represented as series with values at powers of 2
-    C2_num = dsc.create(1, -1)  # 1 - 2^-s
-    C2_den = dsc.create(1, 1)  # 1 + 2^-s
-    C2 = dsc.divide(C2_num, C2_den)
-
-    # C(3) = (1 - 3^-s) / (1 + 3^-s)
-    C3_num = dsc.create(1, 0, -1)  # 1 - 3^-s
-    C3_den = dsc.create(1, 0, 1)  # 1 + 3^-s
-    C3 = dsc.divide(C3_num, C3_den)
-
-    # tau_n2_terms combines the various terms
-    term1 = dsc.multiply(dsc.add(ONE, C2), 2)
-    term2_part1 = dsc.multiply(dsc.add(ONE, C3), 2)
-    term2_part2 = dsc.multiply(dsc.create(0, 0, 1), 2)  # 2 * 3^-s
-    term2_part3 = dsc.multiply_series(C3, dsc.create(1, 0, -1))
-    term2 = dsc.multiply_series(
-        dsc.add(ONE, dsc.multiply(C2, 2)),
-        dsc.add(term2_part1, term2_part2, term2_part3),
-    )
-    tau_n2_terms = dsc.add(term1, term2)
-
-    # Correction term: reciprocal of (1 + 3^-s)
-    correction_term = dsc.reciprocal(dsc.create(1, 0, 1))
-
-    # zeta(s) = Σ_n n / n^s where value at n is n
-    def zeta_func(n: int) -> int:
-        return n
-
-    zeta_s = dsc.create_from_func(zeta_func)
-
-    # zeta(2s) = Σ_n isqrt(n) / n^s where value at n is isqrt(n)
-    def zeta_2s_func(n: int) -> int:
-        return isqrt(n)
-
-    zeta_2s = dsc.create_from_func(zeta_2s_func)
-
-    # chi(s): 1 if n ≡ 1 (mod 3), 0 otherwise
-    def chi_func(n: int) -> int:
-        return 1 if n % 3 == 1 else 0
-
-    chi_s = dsc.create_from_func(chi_func)
-
-    # Compute final result
-    # Note: multiply with multiple args means multiply all series together
-    term_a = dsc.multiply_series(
-        dsc.multiply_series(tau_n2_terms, zeta_s), zeta_s
-    )
-    term_b = dsc.multiply_series(
-        dsc.multiply_series(correction_term, chi_s), chi_s
-    )
-    diff = dsc.add(term_a, dsc.multiply(term_b, -1))
-    res = dsc.multiply_series(diff, dsc.divide(zeta_s, zeta_2s))
-
-    # Extract value at n=1 and divide by 2
-    ans = res.get(1) // 2
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    return S3 + S4 + S6
 
 
 if __name__ == "__main__":
-    main()
+    print(solve(10 ** 9))

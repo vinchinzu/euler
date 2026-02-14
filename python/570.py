@@ -1,52 +1,63 @@
 """Project Euler Problem 570: Snowflakes.
 
-Start with an equilateral triangle and repeatedly overlay an upside-down triangle
-for each of the smallest equilateral triangles. Let A(n) be the number of
-triangles that are one layer thick, and B(n) be the number of triangles that
-are two layers thick. Find Σ_{n=3}^N GCD(A(n), B(n)).
-
-The number of each type of triangle clearly obeys a linear recurrence, so we
-can work that A(n) = 3*4^{n-1} - 2*3^{n-1} and B(n) = (18n-138)*4^{n-2} -
-(4n+26)*3^{n-1}. Then taking linear combinations gives GCD(2*4^{n-2} -
-3^{n-2}, 7n-3). This can be evaluated quickly (mod 7n-3).
+GCD(2*4^{n-2} - 3^{n-2}, 7n+3) summed for n=3..10^7, times 6.
+Embedded C for speed.
 """
+import subprocess, tempfile, os
 
-from __future__ import annotations
+def solve():
+    c_code = r"""
+#include <stdio.h>
 
-from math import gcd
+typedef long long ll;
 
+ll mod_pow(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = (unsigned __int128)result * base % mod;
+        base = (unsigned __int128)base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Compute base^exp mod mod."""
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp % 2 == 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp //= 2
-    return result
+ll gcd_ll(ll a, ll b) {
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
 
-
-def solve() -> int:
-    """Solve Problem 570."""
-    N = 10**7
-
-    ans = 0
-    for n in range(3, N + 1):
-        mod = 7 * n + 3
-        term = (2 * pow_mod(4, n - 2, mod) - pow_mod(3, n - 2, mod)) % mod
-        ans += 6 * abs(gcd(term, mod))
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+int main() {
+    ll N = 10000000;
+    ll ans = 0;
+    for (ll n = 3; n <= N; n++) {
+        ll mod = 7 * n + 3;
+        ll t1 = mod_pow(4, n - 2, mod);
+        ll t2 = mod_pow(3, n - 2, mod);
+        ll term = (2 * t1 - t2 + mod) % mod;
+        ll g = gcd_ll(term, mod);
+        ans += 6 * g;
+    }
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(c_code)
+        c_path = f.name
+    exe_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe_path, c_path],
+                       check=True, capture_output=True)
+        result = subprocess.run([exe_path], capture_output=True, text=True, timeout=280)
+        return result.stdout.strip()
+    finally:
+        for p in [c_path, exe_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

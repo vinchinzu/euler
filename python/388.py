@@ -1,319 +1,109 @@
-"""Project Euler Problem 388 - Python translation.
+"""Project Euler Problem 388 - Distinct Lines through lattice points.
 
-This module computes the number of distinct lines from the origin to lattice
-points (a, b, c) with 0 <= a, b, c <= N, denoted D(N).
+D(N) = sum_{d=1}^N mu(d) * (floor(N/d) + 1)^3 - M(N)
+where M(N) is the Mertens function.
 
-Public API:
-- compute_d_formula(n): reference implementation using a segmented approach.
-- compute_d_optimized(n): optimized implementation suitable for large N.
-- brute_force_d(n): correctness helper for tiny N.
-
-The original Ruby code targeted N = 10**10 and confirmed the solution
-831907372805129931. This module preserves that logic in idiomatic Python 3.12
-with type hints, avoiding external dependencies.
+Uses O(N^{2/3}) Mertens function via Lucy DP, then quotient grouping for the main sum.
 """
 
-from __future__ import annotations
-
 from math import isqrt
-from typing import Dict, List
 
 
-# Target N for the problem is 10**10, but that's too slow
-# Using 10**6 as a tractable intermediate target
-N: int = 10**6
+def solve(N: int) -> int:
+    # Sieve limit: N^{2/3}
+    cbrt = int(round(N ** (1.0 / 3.0)))
+    while (cbrt + 1) ** 3 <= N:
+        cbrt += 1
+    while cbrt ** 3 > N:
+        cbrt -= 1
+    sieve_limit = max(cbrt * cbrt, isqrt(N) + 1)
+    # Ensure sieve_limit is at least sqrt(N) for correctness
+    sqrtN = isqrt(N)
+    if sieve_limit < sqrtN + 1:
+        sieve_limit = sqrtN + 1
 
-
-def gcd(a: int, b: int) -> int:
-    """Compute the greatest common divisor of two integers.
-
-    Uses Euclid's algorithm. Python's math.gcd could be used instead, but this
-    explicit version mirrors the original Ruby implementation and keeps the
-    function self-contained.
-    """
-
-    while b:
-        a, b = b, a % b
-    return a
-
-
-def brute_force_d(n: int) -> int:
-    """Brute-force computation of D(n) for very small n.
-
-    Counts lattice points (a, b, c) with 0 <= a, b, c <= n for which gcd(a, b, c)
-    is 1, excluding the origin. This is O(n^3) and intended only for tests.
-    """
-
-    count = 0
-    for a in range(n + 1):
-        for b in range(n + 1):
-            for c in range(n + 1):
-                if a == 0 and b == 0 and c == 0:
-                    continue
-                if gcd(gcd(a, b), c) == 1:
-                    count += 1
-    return count
-
-
-def verify_formula(n: int) -> None:
-    """Verify compute_d_formula against brute_force_d for a given n.
-
-    Prints both values and whether they agree. Intended as a quick
-    self-consistency check for very small n.
-    """
-
-    brute = brute_force_d(n)
-    formula = compute_d_formula(n)
-    print(f"Verifying for N={n}:")
-    print(f"Brute force: {brute}")
-    print(f"Formula: {formula}")
-    print(f"Match: {brute == formula}\n")
-
-
-def _sieve_mobius(limit: int) -> List[int]:
-    """Compute Möbius function values mu[1..limit] using a linear sieve."""
-
-    mu = [0] * (limit + 1)
-    is_composite = [False] * (limit + 1)
-    primes: List[int] = []
-
+    # Linear sieve for mu
+    mu = [0] * (sieve_limit + 1)
+    is_composite = bytearray(sieve_limit + 1)
+    primes = []
     mu[1] = 1
-    for i in range(2, limit + 1):
+    for i in range(2, sieve_limit + 1):
         if not is_composite[i]:
             primes.append(i)
             mu[i] = -1
         for p in primes:
             v = p * i
-            if v > limit:
+            if v > sieve_limit:
                 break
-            is_composite[v] = True
-            if i % p == 0:
-                mu[v] = 0
-                break
-            mu[v] = -mu[i]
-    return mu
-
-
-def compute_mu_on_fly(d: int) -> int:
-    """Compute the Möbius function μ(d) via trial division.
-
-    This is used when d exceeds the pre-sieved range. It is not highly
-    optimized, but is sufficient for the usage pattern in this translation.
-    """
-
-    if d == 1:
-        return 1
-
-    factors: Dict[int, int] = {}
-    original_d = d
-    i = 2
-    while i * i <= d:
-        while d % i == 0:
-            factors[i] = factors.get(i, 0) + 1
-            d //= i
-        i += 1
-    if d > 1:
-        factors[d] = factors.get(d, 0) + 1
-
-    for exp in factors.values():
-        if exp >= 2:
-            return 0
-
-    # μ(n) = (-1)^k for product of k distinct primes
-    return -1 if len(factors) % 2 == 1 else 1
-
-
-def compute_mu_sum_segment(
-    n: int,
-    k: int,
-    left: int,
-    right: int,
-    mu: List[int],
-    sqrt_n: int,
-) -> int:
-    """Sum μ(d) over d in [left, right] with floor(n / d) == k.
-
-    Uses precomputed mu up to sqrt_n and compute_mu_on_fly beyond.
-    """
-
-    total = 0
-
-    seg_left = max(left, 1)
-    seg_right = min(right, sqrt_n)
-    if seg_left <= seg_right:
-        for d in range(seg_left, seg_right + 1):
-            if n // d == k:
-                total += mu[d]
-
-    start = max(left, sqrt_n + 1)
-    if start <= right:
-        for d in range(start, right + 1):
-            if d <= n and n // d == k:
-                total += compute_mu_on_fly(d)
-
-    return total
-
-
-def compute_mertens(n: int, mu: List[int], sqrt_n: int) -> int:
-    """Compute M(n) = sum_{d <= n} μ(d) using segmentation.
-
-    Mirrors the structure of the original Ruby routine. For n <= sqrt_n, simply
-    returns sum(mu[1:n]). For larger n, partitions by constant floor(n / i).
-    """
-
-    if n <= sqrt_n:
-        return sum(mu[1 : n + 1])
-
-    m_n = 0
-    i = 1
-    while i <= n:
-        k = n // i
-        l = n // (k + 1) + 1
-        r = n // k
-
-        left = i
-        right = min(r, sqrt_n)
-        if left <= right:
-            m_n += sum(mu[left : right + 1])
-
-        remaining_left = max(i, sqrt_n + 1)
-        remaining_right = r
-        if remaining_left <= remaining_right and k >= 1:
-            m_start = (remaining_left + k - 1) // k
-            m_end = remaining_right // k
-            for m in range(m_start, m_end + 1):
-                d = m * k
-                if d <= n:
-                    m_n += compute_mu_on_fly(d)
-
-        i = r + 1
-
-    return m_n
-
-
-def compute_d_formula(n: int) -> int:
-    """Reference computation of D(n) using a segmented Möbius summation.
-
-    This is a direct, readable translation of the original Ruby method and is
-    suitable for moderate n. For very large n (e.g., 10**10) prefer
-    compute_d_optimized.
-    """
-
-    sqrt_n = isqrt(n)
-    mu = [0] * (sqrt_n + 1)
-    is_composite = [False] * (sqrt_n + 1)
-    primes: List[int] = []
-
-    mu[1] = 1
-    for i in range(2, sqrt_n + 1):
-        if not is_composite[i]:
-            primes.append(i)
-            mu[i] = -1
-        for p in primes:
-            v = p * i
-            if v > sqrt_n:
-                break
-            is_composite[v] = True
+            is_composite[v] = 1
             if i % p == 0:
                 mu[v] = 0
                 break
             mu[v] = -mu[i]
 
-    m_n = compute_mertens(n, mu, sqrt_n)
-
-    main_sum = 0
-    i = 1
-    while i <= n:
-        k = n // i
-        l = n // (k + 1) + 1
-        r = n // k
-
-        left = max(i, l)
-        right = min(r, sqrt_n)
-        if left <= right:
-            sum_mu = sum(mu[left : right + 1])
-            main_sum += sum_mu * (k + 1) ** 3
-
-        remaining_left = max(i, l, sqrt_n + 1)
-        remaining_right = r
-        if remaining_left <= remaining_right:
-            sum_mu_remaining = compute_mu_sum_segment(
-                n, k, remaining_left, remaining_right, mu, sqrt_n
-            )
-            main_sum += sum_mu_remaining * (k + 1) ** 3
-
-        i = r + 1
-
-    return main_sum - m_n
-
-
-def compute_d_optimized(n: int) -> int:
-    """Optimized computation of D(n) using improved constant-floor technique.
-
-    The formula computes sum_{d=1}^n mu(d) * (floor(n/d) + 1)^3 - M(n)
-    where M(n) is the Mertens function.
-    """
-
-    sqrt_n = isqrt(n)
-    # Sieve Möbius values up to a generous limit
-    sieve_limit = min(2 * 10**6, n)
-    mu = _sieve_mobius(sieve_limit)
-
-    # Precompute prefix sums for fast range queries
+    # Prefix sums of mu
     mu_prefix = [0] * (sieve_limit + 1)
     for i in range(1, sieve_limit + 1):
         mu_prefix[i] = mu_prefix[i - 1] + mu[i]
 
+    # Compute Mertens function M(n) for all quotient values of N
+    # Quotient values: N//1, N//2, ..., N//sqrtN, and 1, 2, ..., sqrtN
+    # For small values (<= sieve_limit), M(n) = mu_prefix[n]
+    # For large values, use: M(n) = 1 - sum_{d=2}^n M(floor(n/d))
+
+    # We need M(v) for all v = N//k. Store in dict.
+    mertens_cache = {}
+
+    def mertens(n):
+        if n <= sieve_limit:
+            return mu_prefix[n]
+        if n in mertens_cache:
+            return mertens_cache[n]
+
+        # M(n) = 1 - sum_{d=2}^{n} M(floor(n/d))
+        s = 0
+        d = 2
+        while d <= n:
+            q = n // d
+            # Find the range of d values giving the same quotient
+            d_max = n // q
+            s += (d_max - d + 1) * mertens(q)
+            d = d_max + 1
+
+        result = 1 - s
+        mertens_cache[n] = result
+        return result
+
+    # Compute M(N) first (this fills the cache for all needed quotient values)
+    M_N = mertens(N)
+
+    # Main sum: sum_{d=1}^N mu(d) * (floor(N/d) + 1)^3
+    # Group by quotient q = floor(N/d)
     main_sum = 0
+    d = 1
+    while d <= N:
+        q = N // d
+        d_max = N // q
+        # sum of mu[d] for d in [d, d_max]
+        if d_max <= sieve_limit:
+            mu_range_sum = mu_prefix[d_max] - mu_prefix[d - 1]
+        elif d <= sieve_limit:
+            # Split: [d, sieve_limit] from prefix sums, [sieve_limit+1, d_max] from Mertens
+            mu_range_sum = mu_prefix[sieve_limit] - mu_prefix[d - 1]
+            # M(d_max) - M(sieve_limit) = sum of mu for [sieve_limit+1, d_max]
+            mu_range_sum += mertens(d_max) - mu_prefix[sieve_limit]
+        else:
+            # Both endpoints > sieve_limit
+            # sum mu[d..d_max] = M(d_max) - M(d-1)
+            mu_range_sum = mertens(d_max) - mertens(d - 1)
 
-    # Direct computation for d <= sieve_limit
-    for d in range(1, min(sieve_limit, n) + 1):
-        k = n // d
-        main_sum += mu[d] * (k + 1) ** 3
+        main_sum += mu_range_sum * (q + 1) ** 3
+        d = d_max + 1
 
-    # For d > sieve_limit, partition by constant floor(n/d)
-    if sieve_limit < n:
-        i = sieve_limit + 1
-        while i <= n:
-            k = n // i
-            j = n // k
-
-            # Sum mu(d) for d in [i, j] using on-the-fly computation
-            # Note: most large numbers have mu(d) = 0 due to square factors
-            for d in range(i, min(j, n) + 1):
-                main_sum += compute_mu_on_fly(d) * (k + 1) ** 3
-
-            i = j + 1
-
-    # Mertens M(n)
-    m_n = mu_prefix[min(sieve_limit, n)]
-    if sieve_limit < n:
-        for d in range(sieve_limit + 1, n + 1):
-            m_n += compute_mu_on_fly(d)
-
-    return main_sum - m_n
-
-
-def _format_result(result: int) -> tuple[str, str, str]:
-    """Return (first9, last9, combined) string representation for the answer."""
-
-    s = str(result)
-    if len(s) <= 9:
-        first_nine = s.rjust(9, "0")
-        last_nine = s.rjust(9, "0")
-    else:
-        first_nine = s[:9]
-        last_nine = s[-9:]
-    return first_nine, last_nine, first_nine + last_nine
-
-
-def main() -> None:
-    """Run basic verification and compute the Project Euler 388 answer."""
-
-    # Use optimized version for better performance
-    result = compute_d_optimized(N)
-    print(result)
+    return main_sum - M_N
 
 
 if __name__ == "__main__":
-    main()
+    result = solve(10**10)
+    s = str(result)
+    print(s[:9] + s[-9:])

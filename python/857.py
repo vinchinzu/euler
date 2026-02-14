@@ -1,13 +1,12 @@
-"""
-Project Euler Problem 857: Beautiful Graphs
+"""Project Euler Problem 857: Beautiful Graphs
 
-A graph is made up of vertices and coloured edges. 
+A graph is made up of vertices and coloured edges.
 Between every two distinct vertices there must be exactly one of the following:
 - A red directed edge one way, and a blue directed edge the other way
 - A green undirected edge
 - A brown undirected edge
 
-Such a graph is called beautiful if 
+Such a graph is called beautiful if
 - A cycle of edges contains a red edge if and only if it also contains a blue edge
 - No triangle of edges is made up of entirely green or entirely brown edges
 
@@ -15,105 +14,115 @@ Let G(n) be the number of beautiful graphs on the labelled vertices: 1,2,...,n.
 You are given G(3)=24, G(4)=186 and G(15)=12472315010483328.
 
 Find G(10^7). Give your answer modulo 10^9+7.
+
+Uses embedded C for performance.
 """
-import sys
+import subprocess, os, tempfile
 
-# Precomputed A(n) values for n=1..5
-# A(n) is the number of ways to color K_n with Green/Brown edges
-# such that there are no monochromatic triangles.
-# Calculated using analyze_A.py:
-# A(1) = 1
-# A(2) = 2
-# A(3) = 6
-# A(4) = 18
-# A(5) = 12
-# A(6) = 0 (and 0 for all n >= 6 by Ramsey's Theorem)
-A_VALS = [0, 1, 2, 6, 18, 12]
-
-def solve_g(n: int, modulus: int = 1_000_000_007) -> int:
-    """
-    Computes G(n) modulo modulus.
-    Formula: G(n) = sum_{k=1 to min(n,5)} binom(n, k) * A(k) * G(n-k)
-    """
-    if n == 0:
-        return 1
-        
-    # Use simple logic for small n to allow exact verification (modulus=None)
-    if n < 100:
-        g = [0] * (n + 1)
-        g[0] = 1
-        for i in range(1, n + 1):
-            val = 0
-            limit = min(i, 5)
-            for k in range(1, limit + 1):
-                # binom(i, k) computed iteratively
-                comb = 1
-                for x in range(k):
-                    comb = comb * (i - x) // (x + 1)
-                
-                if modulus:
-                    term = (comb * A_VALS[k] * g[i-k]) % modulus
-                    val = (val + term) % modulus
-                else:
-                    val += comb * A_VALS[k] * g[i-k]
-            g[i] = val
-        return g[n]
-    
-    # For large n, optimize space and modular arithmetic
-    # Precompute modular inverses for k! to fast compute binom
-    # binom(n, k) = n * (n-1) * ... * (n-k+1) * inv(k!)
-    
-    if not modulus:
-        raise ValueError("Modulus required for large n")
-        
-    # Precompute inverse factorials for 1..5
-    inv_fact = [1] * 6
-    fact = 1
-    for i in range(1, 6):
-        fact = (fact * i) % modulus
-        # Modular inverse using Fermat's Little Theorem
-        inv_fact[i] = pow(fact, modulus - 2, modulus)
-        
-    # History: stores G values.
-    # We need the last 5 values to compute current G.
-    # g_hist will maintain a sliding window of the last 5 values.
-    # Initially, we represent G(-4)..G(0).
-    # Since G(x)=0 for x<0, the initial window is [0, 0, 0, 0, 1].
-    # g_hist[0] corresponds to G(current_n - 5)
-    # g_hist[4] corresponds to G(current_n - 1)
-    
-    g_hist = [0, 0, 0, 0, 1] 
-    
-    for i in range(1, n + 1):
-        val = 0
-        
-        # Compute binom(i, k) terms on the fly
-        current_n_prod = 1
-        
-        for k in range(1, 6): # k = 1..5
-            # prev_g corresponds to G(i-k)
-            # If k=1, we want G(i-1), which is at index 4 (end) -> 5-1=4
-            # If k=5, we want G(i-5), which is at index 0 (start) -> 5-5=0
-            prev_g = g_hist[5-k]
-            
-            # Update numerator for binom(i, k)
-            # binom(i, k) = (i * ... * (i-k+1)) / k!
-            current_n_prod = (current_n_prod * (i - k + 1)) % modulus
-            binom = (current_n_prod * inv_fact[k]) % modulus
-            
-            term = (binom * A_VALS[k] * prev_g) % modulus
-            val = (val + term) % modulus
-            
-        # Update history: remove oldest G, add new G
-        g_hist.pop(0)
-        g_hist.append(val)
-            
-    return g_hist[-1]
 
 def solve():
-    target = 10**7
-    result = solve_g(target)
-    return result
+    c_code = r"""
+#include <stdio.h>
+#include <string.h>
+
+/*
+ * Computes G(n) mod p where:
+ *   G(0) = 1
+ *   G(i) = sum_{k=1}^{min(i,5)} binom(i, k) * A[k] * G(i-k)  (mod p)
+ *   A = {0, 1, 2, 6, 18, 12}
+ *   p = 10^9 + 7
+ *   n = 10^7
+ *
+ * Uses a sliding window of 5 G values and precomputed inv_fact[k] for k=1..5.
+ */
+
+static const long long MOD = 1000000007LL;
+static const long long A_VALS[6] = {0, 1, 2, 6, 18, 12};
+
+/* Modular exponentiation: base^exp mod m */
+static long long mod_pow(long long base, long long exp, long long m) {
+    long long result = 1;
+    base %= m;
+    while (exp > 0) {
+        if (exp & 1)
+            result = result * base % m;
+        base = base * base % m;
+        exp >>= 1;
+    }
+    return result;
+}
+
+int main(void) {
+    long long n = 10000000LL;
+
+    /* Precompute inverse factorials for k = 1..5 */
+    long long inv_fact[6];
+    inv_fact[0] = 1;
+    long long fact = 1;
+    for (int i = 1; i <= 5; i++) {
+        fact = fact * i % MOD;
+        inv_fact[i] = mod_pow(fact, MOD - 2, MOD);
+    }
+
+    /* Precompute A[k] * inv_fact[k] mod MOD for k=1..5 to save one multiply per inner step */
+    long long a_invf[6];
+    for (int k = 1; k <= 5; k++) {
+        a_invf[k] = A_VALS[k] % MOD * inv_fact[k] % MOD;
+    }
+
+    /*
+     * Sliding window of 5 G values stored in a circular buffer.
+     * g_hist[j] for j in 0..4 stores G values.
+     * 'head' points to the oldest entry.
+     *
+     * Initially represents G(-4)..G(0) = {0, 0, 0, 0, 1}.
+     * For iteration i:
+     *   G(i-k) is at index (head + 5 - k) % 5  (since newest = (head+4)%5)
+     *   But we shift: newest is at (head - 1 + 5) % 5 = (head + 4) % 5.
+     *   G(i-1) = g_hist[(head+4)%5], G(i-2) = g_hist[(head+3)%5], etc.
+     *   G(i-k) = g_hist[(head + 5 - k) % 5]
+     *
+     * After computing G(i), we write it at g_hist[head] and advance head.
+     */
+    long long g_hist[5] = {0, 0, 0, 0, 1};
+    int head = 0; /* points to the slot holding G(i-5), which is the oldest */
+
+    for (long long i = 1; i <= n; i++) {
+        long long val = 0;
+        long long n_prod = 1; /* accumulates i * (i-1) * ... * (i-k+1) mod MOD */
+
+        for (int k = 1; k <= 5; k++) {
+            /* G(i-k) is at index (head + 5 - k) % 5 */
+            long long prev_g = g_hist[(head + 5 - k) % 5];
+
+            /* n_prod = i * (i-1) * ... * (i-k+1) mod MOD */
+            n_prod = n_prod % MOD * ((i - k + 1) % MOD + MOD) % MOD;
+
+            /* binom(i,k) * A[k] * prev_g = n_prod * a_invf[k] * prev_g */
+            long long term = n_prod % MOD * a_invf[k] % MOD * (prev_g % MOD) % MOD;
+            val = (val + term) % MOD;
+        }
+
+        /* Write G(i) into the oldest slot, advance head */
+        g_hist[head] = val;
+        head = (head + 1) % 5;
+    }
+
+    /* The answer G(n) was the last value written, at index (head - 1 + 5) % 5 */
+    long long ans = g_hist[(head - 1 + 5) % 5];
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol857.c")
+    exe = os.path.join(tmpdir, "sol857")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
+
 
 if __name__ == "__main__":
-    print(solve())
+    solve()

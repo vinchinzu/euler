@@ -150,7 +150,7 @@ int main() {
     with open(src, 'w') as f:
         f.write(c_code)
     subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
-    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=30)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
     print(result.stdout.strip())
 
 if __name__ == "__main__":

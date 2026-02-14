@@ -1,52 +1,59 @@
-"""Project Euler Problem 558: Irrational base.
+"""Project Euler Problem 558: Irrational base — embedded C with GMP."""
 
-Let w(n) be the number of terms in the unique way to represent n as the sum of
-integer powers of r, where r is the real root of x³=x²+1. Find Σ_{j=1}^N w(j²).
+import subprocess, tempfile, os
 
-The powers of r are very close to integers, specifically the integers in the
-recurrence relation with characteristic polynomial x³=x²+1, i.e. a_n = a_{n-1}
-+ a_{n-3} with a_0 = 1, a_1 = 2, a_2 = 3. So if we multiply both sides of
-j² = Σ_e r^e by a large power of r, then all terms are approximately equal to
-integers. So we can start with the integer close to j²r^e, and greedily
-subtract the largest valid integer in the sequence (which corresponds to some
-power of r).
-"""
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <gmp.h>
 
-from __future__ import annotations
+#define N_VAL 5000000
+#define L_VAL 200
+#define TOTAL (2 * L_VAL)
 
+int main() {
+    mpz_t a[TOTAL], target;
+    for (int i = 0; i < TOTAL; i++) mpz_init(a[i]);
+    mpz_init(target);
 
-def solve() -> int:
-    """Solve Problem 558."""
-    N = 5000000
-    L = 200
+    for (int i = 0; i < TOTAL; i++) {
+        if (i < 3)
+            mpz_set_ui(a[i], (unsigned long)(i + 1));
+        else
+            mpz_add(a[i], a[i-1], a[i-3]);
+    }
 
-    # Generate recurrence sequence: a_n = a_{n-1} + a_{n-3}
-    a = [0] * (2 * L)
-    for i in range(2 * L):
-        if i < 3:
-            a[i] = i + 1
-        else:
-            a[i] = a[i - 1] + a[i - 3]
+    long long ans = 0;
+    for (int j = 1; j <= N_VAL; j++) {
+        mpz_mul_ui(target, a[L_VAL], (unsigned long)j);
+        mpz_mul_ui(target, target, (unsigned long)j);
 
-    ans = 0
-    for j in range(1, N + 1):
-        target = j * j * a[L]
-        count = 0
-        for i in range(2 * L - 1, -1, -1):
-            if target >= a[i]:
-                target -= a[i]
-                count += 1
-        ans += count
+        int count = 0;
+        for (int i = TOTAL - 1; i >= 0; i--) {
+            if (mpz_cmp(target, a[i]) >= 0) {
+                mpz_sub(target, target, a[i]);
+                count++;
+            }
+        }
+        ans += count;
+    }
 
-    return ans
+    printf("%lld\n", ans);
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    for (int i = 0; i < TOTAL; i++) mpz_clear(a[i]);
+    mpz_clear(target);
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lgmp'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,41 +1,32 @@
-"""Project Euler Problem 724: Drone Delivery.
+"""Project Euler Problem 724: Drone Delivery — embedded C."""
 
-N drones start at x=0 and are stationary. If at each second, a random drone's
-speed is increased by 1 unit per second, find the expected number of units a
-random drone moves before all drones start moving.
+import subprocess, tempfile, os
 
-After k seconds, the total distance traveled is tr(k), regardless of the
-chosen drones. However, there is some probability P(k) that the last drone is
-chosen at the kth second. We can use Inclusion Exclusion to compute this
-probability.
+def solve():
+    c_code = r'''
+#include <stdio.h>
+#include <stdint.h>
 
-The expected distance of a single drone is E/N = N Σ_{i=1}^N Σ_{j=1}^i 1/(ij).
-"""
-
-from __future__ import annotations
-
-
-def solve() -> int:
-    """Solve Problem 724."""
-    n = 10**8
-    harmonics = [0.0] * (n + 1)
-    for i in range(1, n + 1):
-        harmonics[i] = harmonics[i - 1] + 1.0 / i
-
-    ans = 0.0
-    for i in range(1, n + 1):
-        ans += harmonics[i] / i
-    ans *= n
-
-    return int(ans)
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+int main() {
+    int n = 100000000;
+    double h = 0.0, ans = 0.0;
+    for (int i = 1; i <= n; i++) {
+        h += 1.0 / i;
+        ans += h / i;
+    }
+    printf("%lld\n", (long long)(ans * n));
+    return 0;
+}
+'''
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(c_code.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    subprocess.run(['gcc', '-O3', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+    result = subprocess.check_output([exe], timeout=280).decode().strip()
+    os.unlink(c_file)
+    os.unlink(exe)
+    return int(result)
 
 if __name__ == "__main__":
-    main()
+    print(solve())

@@ -1,285 +1,173 @@
-"""Project Euler Problem 377 (Python 3.12 version).
+"""Project Euler Problem 377.
 
-This module computes the final value for Project Euler Problem 377 using
-matrix exponentiation and modular arithmetic.
+f(n) = sum of all positive integers (digits 1-9 only) with digit sum n.
+count(n) = number of such integers.
 
-Key ideas:
-- f(n): sum of all positive integers (no zero digits) with digit sum == n
-- We work modulo MOD (last 9 digits) for performance and to match the
-  problem's requirements.
-- A linear recurrence of fixed order (ORDER) is derived for f(n).
-- Matrix exponentiation is used to evaluate f(13**i) efficiently.
+Recurrence:
+  f(n) = 10*sum(f(n-k) for k=1..9) + sum(k*count(n-k) for k=1..9)
+  count(n) = sum(count(n-k) for k=1..9)
 
-The module exposes a small public API:
-- compute_initial_f
-- compute_recurrence_coeffs
-- verify_recurrence
-- compute_f_large
-- solve
-
-Running this file as a script prints the required answer.
+Use 18x18 companion matrix exponentiation to compute f(13^i) for i=1..17.
+Answer = sum(f(13^i) for i=1..17) mod 10^9.
 """
 from __future__ import annotations
-
-from dataclasses import dataclass
 from typing import List
 
-MOD: int = 1_000_000_000
-TARGET_DIGITS: int = 9
-MAX_INIT: int = 40  # For initial values (needs at least ORDER + ORDER)
-ORDER: int = 18  # Recurrence order
+MOD = 1_000_000_000
+ORDER = 18  # 9 for f values + 9 for count values
+MAX_INIT = 40
 
 
-@dataclass
-class ModularMatrix:
-    """Simple dense matrix with modular multiplication and exponentiation.
-
-    This is a minimal replacement for Ruby's Matrix usage in the original
-    script. It supports only the features required by this problem:
-    - matrix-matrix multiplication under a modulus
-    - exponentiation by squaring under a modulus
-    """
-
-    data: List[List[int]]
-
-    @property
-    def rows(self) -> int:
-        return len(self.data)
-
-    @property
-    def cols(self) -> int:
-        return len(self.data[0]) if self.data else 0
-
-    @staticmethod
-    def identity(size: int) -> "ModularMatrix":
-        """Return an identity matrix of given size.
-
-        Elements are plain integers (no modulus applied here).
-        """
-
-        return ModularMatrix(
-            [[1 if i == j else 0 for j in range(size)] for i in range(size)]
-        )
-
-    @staticmethod
-    def mult(a: "ModularMatrix", b: "ModularMatrix", mod: int) -> "ModularMatrix":
-        """Return (a * b) modulo mod.
-
-        The dimensions must be compatible: a.cols == b.rows.
-        """
-
-        if a.cols != b.rows:
-            msg = f"Incompatible matrix sizes: {a.rows}x{a.cols} vs {b.rows}x{b.cols}"
-            raise ValueError(msg)
-
-        result = [[0] * b.cols for _ in range(a.rows)]
-        for i in range(a.rows):
-            row_i = a.data[i]
-            for k in range(a.cols):
-                aik = row_i[k]
-                if aik:
-                    row_bk = b.data[k]
-                    for j in range(b.cols):
-                        result[i][j] = (result[i][j] + aik * row_bk[j]) % mod
-        return ModularMatrix(result)
-
-    @staticmethod
-    def pow(matrix: "ModularMatrix", exponent: int, mod: int) -> "ModularMatrix":
-        """Return (matrix ** exponent) modulo mod using fast exponentiation."""
-
-        if exponent < 0:
-            msg = "Negative exponents are not supported for ModularMatrix.pow."
-            raise ValueError(msg)
-        size = matrix.rows
-        result = ModularMatrix.identity(size)
-        base = matrix
-        exp = exponent
-
-        while exp > 0:
-            if exp & 1:
-                result = ModularMatrix.mult(result, base, mod)
-            base = ModularMatrix.mult(base, base, mod)
-            exp >>= 1
-        return result
+def mat_mult(A: List[List[int]], B: List[List[int]], mod: int) -> List[List[int]]:
+    n = len(A)
+    m = len(B[0])
+    k = len(B)
+    C = [[0] * m for _ in range(n)]
+    for i in range(n):
+        Ai = A[i]
+        for p in range(k):
+            aip = Ai[p]
+            if aip:
+                Bp = B[p]
+                for j in range(m):
+                    C[i][j] = (C[i][j] + aip * Bp[j]) % mod
+    return C
 
 
-def compute_initial_f(max_n: int) -> List[int]:
-    """Compute initial f(n) for 0 <= n <= max_n using digit DP.
+def mat_pow(M: List[List[int]], exp: int, mod: int) -> List[List[int]]:
+    n = len(M)
+    result = [[1 if i == j else 0 for j in range(n)] for i in range(n)]
+    base = [row[:] for row in M]
+    while exp > 0:
+        if exp & 1:
+            result = mat_mult(result, base, mod)
+        base = mat_mult(base, base, mod)
+        exp >>= 1
+    return result
 
-    f(n) is the sum of all positive integers (no zero digits) with digit sum n,
-    computed modulo MOD.
-    """
 
-    # dp[len][sum] = (count, sum_val)
-    dp: List[List[List[int]]] = [
-        [[0, 0] for _ in range(max_n + 1)] for _ in range(max_n + 1)
-    ]
-    # For the empty number: one way, sum 0.
-    dp[0][0][0] = 1
+def compute_initial_values(max_n: int):
+    """Compute f(n) and count(n) for 0 <= n <= max_n using digit DP."""
+    # dp[length][sum] = (count, sum_of_values)
+    dp = [[[0, 0] for _ in range(max_n + 1)] for _ in range(max_n + 1)]
+    dp[0][0][0] = 1  # empty number: count=1, sum=0
 
     for length in range(1, max_n + 1):
         for digit in range(1, 10):
             for s in range(max_n + 1 - digit):
-                count_add = dp[length - 1][s][0]
-                if not count_add:
+                cnt = dp[length - 1][s][0]
+                if not cnt:
                     continue
-                sum_add = (dp[length - 1][s][1] * 10 + count_add * digit) % MOD
-                new_sum = s + digit
-                dp[length][new_sum][0] = (
-                    dp[length][new_sum][0] + count_add
-                ) % MOD
-                dp[length][new_sum][1] = (
-                    dp[length][new_sum][1] + sum_add
-                ) % MOD
+                # Each number v of length-1 with digit sum s becomes 10*v + digit
+                sum_val = (dp[length - 1][s][1] * 10 + cnt * digit) % MOD
+                ns = s + digit
+                dp[length][ns][0] = (dp[length][ns][0] + cnt) % MOD
+                dp[length][ns][1] = (dp[length][ns][1] + sum_val) % MOD
 
-    f: List[int] = [0] * (max_n + 1)
+    f = [0] * (max_n + 1)
+    count = [0] * (max_n + 1)
     for length in range(1, max_n + 1):
         for s in range(max_n + 1):
             f[s] = (f[s] + dp[length][s][1]) % MOD
-    return f
+            count[s] = (count[s] + dp[length][s][0]) % MOD
+    return f, count
 
 
-def compute_recurrence_coeffs(order: int) -> List[int]:
-    """Compute recurrence coefficients for f(n).
+def verify_recurrence(f, count, max_n):
+    """Verify the recurrence holds for computed initial values."""
+    for n in range(10, max_n + 1):
+        expected_f = 0
+        for k in range(1, 10):
+            expected_f = (expected_f + 10 * f[n - k] + k * count[n - k]) % MOD
+        if expected_f != f[n]:
+            raise ValueError(f"f recurrence failed at n={n}: expected {expected_f}, got {f[n]}")
 
-    Returns q[0..order-1] such that for sufficiently large n:
-    f(n) = sum(q[j-1] * f(n-j)) for j in 1..order (mod MOD).
+        expected_c = 0
+        for k in range(1, 10):
+            expected_c = (expected_c + count[n - k]) % MOD
+        if expected_c != count[n]:
+            raise ValueError(f"count recurrence failed at n={n}: expected {expected_c}, got {count[n]}")
+
+
+def build_companion_matrix():
+    """Build the 18x18 companion matrix.
+
+    State vector: [f(n-1), f(n-2), ..., f(n-9), count(n-1), count(n-2), ..., count(n-9)]
+
+    Row 0 computes f(n):
+      f(n) = 10*f(n-1) + 10*f(n-2) + ... + 10*f(n-9) + 1*count(n-1) + 2*count(n-2) + ... + 9*count(n-9)
+    Rows 1-8 shift f values: row i copies from position i-1 (identity subdiagonal)
+    Row 9 computes count(n):
+      count(n) = count(n-1) + count(n-2) + ... + count(n-9)
+    Rows 10-17 shift count values: row i copies from position i-1
     """
+    M = [[0] * ORDER for _ in range(ORDER)]
 
-    # p(x) = 1 - x - x^2 - ... - x^9 (mod MOD)
-    p = [0] * (order + 1)
-    p[0] = 1
-    for k in range(1, 10):
-        if k <= order:
-            p[k] = MOD - 1  # -1 mod MOD
+    # Row 0: f(n) = 10*f(n-1) + ... + 10*f(n-9) + 1*c(n-1) + ... + 9*c(n-9)
+    for k in range(9):
+        M[0][k] = 10  # coefficient for f(n-k-1)
+    for k in range(9):
+        M[0][9 + k] = k + 1  # coefficient for count(n-k-1)
 
-    # q = p(x)^2, but we only need up to degree 2*order
-    q = [0] * (order * 2 + 1)
-    for i in range(len(p)):
-        for j in range(len(p)):
-            idx = i + j
-            if idx <= order * 2:
-                q[idx] = (q[idx] + p[i] * p[j]) % MOD
+    # Rows 1-8: shift f values (f(n-1) <- f(n-2), etc.)
+    for i in range(1, 9):
+        M[i][i - 1] = 1
 
-    # Recurrence coefficients derived as in the original Ruby code.
-    return [(MOD - coeff) % MOD for coeff in q[1 : order + 1]]
+    # Row 9: count(n) = count(n-1) + ... + count(n-9)
+    for k in range(9):
+        M[9][9 + k] = 1
 
+    # Rows 10-17: shift count values
+    for i in range(10, 18):
+        M[i][i - 1] = 1
 
-def verify_recurrence(f_vals: List[int], q_coeffs: List[int], mod: int) -> None:
-    """Verify that the recurrence holds for a prefix of f.
-
-    Raises ValueError if verification fails.
-    """
-
-    start = ORDER
-    for n in range(start, len(f_vals)):
-        expected = 0
-        for j in range(1, ORDER + 1):
-            if n - j >= 0:
-                expected = (expected + q_coeffs[j - 1] * f_vals[n - j]) % mod
-        actual = f_vals[n]
-        if actual != expected:
-            msg = (
-                f"Recurrence verification FAILED at n={n}: "
-                f"expected {expected}, got {actual}"
-            )
-            raise ValueError(msg)
+    return M
 
 
-def _build_companion_matrix(q_coeffs: List[int]) -> ModularMatrix:
-    """Create the ORDER x ORDER companion matrix for the recurrence."""
+def compute_f_at(n, f, count):
+    """Compute f(n) using matrix exponentiation."""
+    if n < len(f):
+        return f[n]
 
-    rows: List[List[int]] = []
+    # Build state vector at position 9 (using values f(1)..f(9), count(1)..count(9))
+    # State = [f(9), f(8), ..., f(1), count(9), count(8), ..., count(1)]
+    base_pos = 9
+    state = []
+    for i in range(9):
+        state.append(f[base_pos - i])   # f(9), f(8), ..., f(1)
+    for i in range(9):
+        state.append(count[base_pos - i])  # count(9), count(8), ..., count(1)
 
-    # First row: recurrence coefficients
-    rows.append(list(q_coeffs))
+    companion = build_companion_matrix()
+    power = n - base_pos
+    M = mat_pow(companion, power, MOD)
 
-    # Subdiagonal identity to shift state
-    for i in range(1, ORDER):
-        row = [0] * ORDER
-        row[i - 1] = 1
-        rows.append(row)
-
-    return ModularMatrix(rows)
-
-
-def compute_f_large(
-    n: int,
-    initial_f: List[int],
-    q_coeffs: List[int],
-    mod: int,
-) -> int:
-    """Compute f(n) for large n using the linear recurrence and matrix powers.
-
-    Uses the companion matrix to jump from known initial values to f(n).
-    """
-
-    if n < len(initial_f):
-        return initial_f[n]
-
-    # State vector: [f(k), f(k-1), ..., f(k-ORDER+1)]^T at k = ORDER
-    # Using ORDER consecutive known values.
-    start = ORDER
-    if len(initial_f) < start + ORDER:
-        msg = "Not enough initial values to build state for recurrence."
-        raise ValueError(msg)
-
-    state = [initial_f[start + i] for i in range(ORDER)][::-1]
-
-    if n == start:
-        return state[0]
-
-    companion = _build_companion_matrix(q_coeffs)
-    power = n - start
-    power_matrix = ModularMatrix.pow(companion, power, mod)
-
-    # Multiply power_matrix by state vector.
-    # result = power_matrix * state_vec (mod mod)
-    result0 = 0
-    first_row = power_matrix.data[0]
+    # result = M * state
+    result = 0
     for j in range(ORDER):
-        result0 = (result0 + first_row[j] * state[j]) % mod
+        result = (result + M[0][j] * state[j]) % MOD
+    return result
 
-    return result0
 
+def solve():
+    f, count = compute_initial_values(MAX_INIT)
 
-def solve() -> int:
-    """Solve Project Euler Problem 377.
+    # Sanity check
+    assert f[5] == 17891, f"f(5)={f[5]} != 17891"
 
-    Returns the last TARGET_DIGITS digits (as an int) of
-    sum_{i=1}^{17} f(13**i).
-    """
-
-    initial_f = compute_initial_f(MAX_INIT)
-
-    # Quick sanity check: f(5) should match the problem statement.
-    if initial_f[5] != 17_891:
-        msg = f"Sanity check failed: f(5)={initial_f[5]} != 17891"
-        raise RuntimeError(msg)
-
-    q_coeffs = compute_recurrence_coeffs(ORDER)
-    # Skip verification due to implementation mismatch
-    # verify_recurrence(initial_f, q_coeffs, MOD)
+    # Verify recurrence on initial values
+    verify_recurrence(f, count, MAX_INIT)
 
     total = 0
     power = 13
-    for _ in range(1, 18):
-        f_n = compute_f_large(power, initial_f, q_coeffs, MOD)
-        total = (total + f_n) % MOD
+    for i in range(1, 18):
+        fn = compute_f_at(power, f, count)
+        total = (total + fn) % MOD
         power *= 13
 
     return total
 
 
-def main() -> None:
-    """Entry point for CLI execution.
-
-    Prints the final answer as a zero-padded string of TARGET_DIGITS digits.
-    """
-
-    result = solve()
-    print(str(result).rjust(TARGET_DIGITS, "0"))
-
-
 if __name__ == "__main__":
-    main()
+    result = solve()
+    print(str(result).rjust(9, "0"))

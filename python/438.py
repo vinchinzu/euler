@@ -1,88 +1,111 @@
-#!/usr/bin/env python3
-"""
-Project Euler 438 - Integer part of polynomial equation's solutions
+"""Project Euler Problem 438 — Integer part of polynomial equation's solutions."""
+import subprocess, tempfile, os
 
-Find sum S(t) for all n-tuples t = (a_1, ..., a_n) such that the polynomial
-x^n + a_1*x^(n-1) + ... + a_n has n real roots, and when sorted, the i-th root
-is in [i, i+1).
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-For n=7, find the sum of S(t) = sum of |a_i| over all valid tuples.
-"""
+#define N 7
 
-import math
+static double ineq[N+1][(N+1)][(N+1)];
+static long long ans;
 
-def solve():
-    N = 7
-    EPS = 1 / math.factorial(N)
+static void helper(int *t, int tlen) {
+    int index = tlen + 1;
+    double lower_bound = -1e18;
+    double upper_bound = 1e18;
 
-    # Build inequality coefficients
-    # inequalities[i][j][k] stores coefficient of a_k in the j-th inequality at level i
-    inequalities = [None] * (N + 1)
+    for (int j = 0; j <= index; j++) {
+        double goal = -ineq[index][j][0];
+        for (int k = 0; k < index - 1; k++) {
+            goal -= ineq[index][j][k + 1] * t[k];
+        }
+        goal /= ineq[index][j][index];
 
-    # Base level: evaluate polynomial at N+1-j-eps for j=0..N
-    inequalities[N] = [[0.0] * (N + 1) for _ in range(N + 1)]
-    for j in range(N + 1):
-        x = N + 1 - j - EPS
-        for k in range(N + 1):
-            inequalities[N][j][k] = x ** (N - k)
+        if (j % 2 == 0) {
+            double c = ceil(goal);
+            if (c > lower_bound) lower_bound = c;
+        } else {
+            double f = floor(goal);
+            if (f < upper_bound) upper_bound = f;
+        }
+    }
 
-    # Take differences to eliminate variables one by one
-    for i in range(N - 1, 0, -1):
-        inequalities[i] = [[0.0] * (i + 1) for _ in range(i + 1)]
-        for j in range(i + 1):
-            for k in range(i + 1):
-                inequalities[i][j][k] = inequalities[i + 1][j][k] - inequalities[i + 1][j + 1][k]
+    long long lb = (long long)lower_bound;
+    long long ub = (long long)upper_bound;
 
-    ans = [0]  # Use list to allow modification in nested function
+    if (index == N) {
+        long long num_terms = ub - lb + 1;
+        if (num_terms > 0) {
+            long long sum_prefix = 0;
+            for (int k = 0; k < tlen; k++) {
+                sum_prefix += llabs((long long)t[k]);
+            }
+            /* Sum of |a| for a = lb..ub */
+            long long sum_abs;
+            if (lb >= 0) {
+                sum_abs = (ub * (ub + 1) - lb * (lb - 1)) / 2;
+            } else if (ub <= 0) {
+                long long nlb = -lb, nub = -ub;
+                sum_abs = (nlb * (nlb + 1) - nub * (nub - 1)) / 2;
+            } else {
+                long long nlb = -lb;
+                long long sum_neg = nlb * (nlb + 1) / 2;
+                long long sum_pos = ub * (ub + 1) / 2;
+                sum_abs = sum_neg + sum_pos;
+            }
+            ans += num_terms * sum_prefix + sum_abs;
+        }
+        return;
+    }
 
-    def helper(t):
-        """Recursively find all valid tuples and sum their S(t)."""
-        index = len(t) + 1
+    for (long long a_r = lb; a_r <= ub; a_r++) {
+        t[tlen] = (int)a_r;
+        helper(t, tlen + 1);
+    }
+}
 
-        # Compute bounds for a_{index}
-        lower_bound = float('-inf')
-        upper_bound = float('inf')
+int main(void) {
+    double EPS = 1.0;
+    for (int i = 1; i <= N; i++) EPS /= i;
 
-        for j in range(index + 1):
-            goal = -inequalities[index][j][0]
-            for k in range(index - 1):
-                goal -= inequalities[index][j][k + 1] * t[k]
-            goal /= inequalities[index][j][index]
+    /* Base level: evaluate polynomial at N+1-j-EPS for j=0..N */
+    for (int j = 0; j <= N; j++) {
+        double x = N + 1 - j - EPS;
+        for (int k = 0; k <= N; k++) {
+            ineq[N][j][k] = pow(x, N - k);
+        }
+    }
 
-            if j % 2 == 0:
-                lower_bound = max(math.ceil(goal), lower_bound)
-            else:
-                upper_bound = min(math.floor(goal), upper_bound)
+    /* Take differences to eliminate variables */
+    for (int i = N - 1; i >= 1; i--) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k <= i; k++) {
+                ineq[i][j][k] = ineq[i+1][j][k] - ineq[i+1][j+1][k];
+            }
+        }
+    }
 
-        lower_bound = int(lower_bound)
-        upper_bound = int(upper_bound)
+    ans = 0;
+    int t[N];
+    helper(t, 0);
 
-        if index == N:
-            # Final variable: sum over all valid a_N values
-            num_terms = upper_bound - lower_bound + 1
-            if num_terms > 0:
-                sum_prefix = sum(abs(a) for a in t)
-                # Sum of |a_N| for a_N from lower to upper
-                # Need to compute sum_{a=lower}^{upper} |a|
-                if lower_bound >= 0:
-                    sum_abs = (upper_bound * (upper_bound + 1) - lower_bound * (lower_bound - 1)) // 2
-                elif upper_bound <= 0:
-                    sum_abs = ((-lower_bound) * (-lower_bound + 1) - (-upper_bound) * (-upper_bound - 1)) // 2
-                else:
-                    # Split: negative part and non-negative part
-                    sum_neg = (-lower_bound) * (-lower_bound + 1) // 2
-                    sum_pos = upper_bound * (upper_bound + 1) // 2
-                    sum_abs = sum_neg + sum_pos
-                ans[0] += num_terms * sum_prefix + sum_abs
-            return
-
-        for a_r in range(lower_bound, upper_bound + 1):
-            t.append(a_r)
-            helper(t)
-            t.pop()
-
-    helper([])
-    return ans[0]
+    printf("%lld\n", ans);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    print(solve())
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

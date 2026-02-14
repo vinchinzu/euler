@@ -3,135 +3,192 @@
 Find the number of ways that N! can be written as the product of K distinct
 positive integers.
 
-Uses inclusion-exclusion over partitions of K, following the Java reference.
+Uses inclusion-exclusion over partitions of K, with embedded C for performance.
+Algorithm:
+  1. Sieve primes up to N=10000, compute exponents of each prime in 10000!
+  2. Enumerate all partitions of K=30 (5604 partitions) via DFS
+  3. For each partition, build DP array incrementally (coin change style)
+     f(c)[e] = number of ways to write e as c[0]*a_0 + c[1]*a_1 + ...
+  4. Product of f(c)[exponent_of_p] over all primes p, with sign/symmetry factors
+  5. Sum over all partitions
 """
-
-from __future__ import annotations
-from math import isqrt
-from functools import lru_cache
+import subprocess, os, tempfile
 
 
-def sieve_primes(limit: int) -> list[int]:
-    """Sieve of Eratosthenes."""
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#define N 10000
+#define K 30
+#define MOD 1000000007LL
 
-def num_factors_in_factorial(n: int, p: int) -> int:
-    """Count factors of p in n!."""
-    count = 0
-    power = p
-    while power <= n:
-        count += n // power
-        power *= p
-    return count
+static long long dp[K + 1][N + 1];  /* dp[depth][e] */
+static int primes[1300];
+static int exponents[1300];
+static int nprimes;
+static long long inv_val[K + 1];    /* modular inverse of i */
+static long long inv_fact[K + 1];   /* inverse factorial of i */
+static long long ans;
 
+/* Sieve primes up to N */
+static void sieve(void) {
+    char is_prime[N + 1];
+    memset(is_prime, 1, sizeof(is_prime));
+    is_prime[0] = is_prime[1] = 0;
+    int i, j;
+    for (i = 2; (long long)i * i <= N; i++) {
+        if (is_prime[i]) {
+            for (j = i * i; j <= N; j += i)
+                is_prime[j] = 0;
+        }
+    }
+    nprimes = 0;
+    for (i = 2; i <= N; i++) {
+        if (is_prime[i])
+            primes[nprimes++] = i;
+    }
+}
 
-def solve() -> int:
-    """Solve Problem 495."""
-    N = 10_000
-    K = 30
-    M = 10**9 + 7
+/* Count factors of p in N! */
+static int vp_factorial(int n, int p) {
+    int count = 0;
+    long long pw = p;
+    while (pw <= n) {
+        count += n / (int)pw;
+        pw *= p;
+    }
+    return count;
+}
 
-    primes = sieve_primes(N)
-    exponents = [num_factors_in_factorial(N, p) for p in primes]
+/* Precompute modular inverses and inverse factorials */
+static void precompute(void) {
+    inv_val[0] = 0;
+    inv_val[1] = 1;
+    int i;
+    for (i = 2; i <= K; i++) {
+        inv_val[i] = (MOD - MOD / i) * inv_val[MOD % i] % MOD;
+    }
+    long long fact = 1;
+    for (i = 1; i <= K; i++) fact = fact * i % MOD;
+    inv_fact[K] = 1;
+    /* inv_fact[K] = modular inverse of K! */
+    {
+        long long base = fact, exp = MOD - 2, result = 1;
+        while (exp > 0) {
+            if (exp & 1) result = result * base % MOD;
+            base = base * base % MOD;
+            exp >>= 1;
+        }
+        inv_fact[K] = result;
+    }
+    for (i = K - 1; i >= 0; i--) {
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) % MOD;
+    }
+}
 
-    # Precompute factorials and inverse factorials
-    fact = [1] * (K + 1)
-    for i in range(1, K + 1):
-        fact[i] = fact[i - 1] * i % M
-    inv_fact = [1] * (K + 1)
-    inv_fact[K] = pow(fact[K], M - 2, M)
-    for i in range(K - 1, -1, -1):
-        inv_fact[i] = inv_fact[i + 1] * (i + 1) % M
+/*
+ * DFS over partitions of K.
+ * coins[0..depth-1] is the current partition prefix.
+ * dp[depth] holds the DP array for this prefix.
+ * When remaining==0, evaluate the partition.
+ */
+static int coins[K + 1];
+static int freq[K + 1];  /* frequency of each coin value in current partition */
 
-    # Precompute inverses of 1..K
-    inv = [0] * (K + 1)
-    inv[1] = 1
-    for i in range(2, K + 1):
-        inv[i] = (M - M // i) * inv[M % i] % M
+static void helper(int min_val, int remaining, int depth) {
+    if (remaining == 0) {
+        /* Evaluate this partition */
+        long long res = 1;
+        int i;
 
-    # Memoized function f(c) returns array where f(c)[e] = number of solutions
-    # to c[0]*a_0 + c[1]*a_1 + ... = e, with a_i >= 0
-    cache = {}
+        /* Product of dp[depth][exponent_of_p] over all primes */
+        for (i = 0; i < nprimes; i++) {
+            res = res * dp[depth][exponents[i]] % MOD;
+        }
 
-    def f(c: tuple[int, ...]) -> list[int]:
-        if c in cache:
-            return cache[c]
+        /* Multiply by (-1)^(c_i+1) * inv(c_i) for each coin c_i */
+        for (i = 0; i < depth; i++) {
+            int c = coins[i];
+            /* (-1)^(c+1): positive when c+1 even (c odd), negative when c+1 odd (c even) */
+            if (c % 2 == 0) {
+                /* sign is -1, i.e., MOD-1 */
+                res = res * (MOD - 1) % MOD;
+            }
+            res = res * inv_val[c] % MOD;
+        }
 
-        result = [0] * (N + 1)
-        if len(c) == 0:
-            result[0] = 1
-            cache[c] = result
-            return result
+        /* Multiply by inv_fact of frequency of each distinct coin value */
+        /* Count frequencies from coins array */
+        /* Since coins are non-decreasing, we can count runs */
+        i = 0;
+        while (i < depth) {
+            int j = i;
+            while (j < depth && coins[j] == coins[i]) j++;
+            int cnt = j - i;
+            res = res * inv_fact[cnt] % MOD;
+            i = j;
+        }
 
-        # Compute from f(c[:-1])
-        prev_f = f(c[:-1])
-        last_c = c[-1]
+        ans = (ans + res) % MOD;
+        return;
+    }
 
-        for i in range(N + 1):
-            result[i] = prev_f[i]
-            if i >= last_c:
-                result[i] = (result[i] + result[i - last_c]) % M
+    int coeff;
+    for (coeff = min_val; coeff <= remaining; coeff++) {
+        /* Build dp[depth+1] from dp[depth] by adding coin of value coeff */
+        /* Copy dp[depth] to dp[depth+1], then do prefix sum with step coeff */
+        /* But we're going to use dp[depth] as the source for all coeff values
+           at this level, so dp[depth] must not be modified. */
 
-        cache[c] = result
-        return result
+        /* We store result in dp[depth+1] since depth+1 is the new depth */
+        int max_exp = N;  /* dp arrays go up to index N */
+        int e;
 
-    # parity: (-1)^(c_i - 1) = -1 if c_i even, 1 if c_i odd
-    def parity(c_i: int) -> int:
-        return 1 if c_i % 2 == 1 else -1
+        /* Copy parent DP */
+        memcpy(dp[depth + 1], dp[depth], (max_exp + 1) * sizeof(long long));
 
-    ans = 0
+        /* Coin change: for e from coeff to max_exp, dp[depth+1][e] += dp[depth+1][e-coeff] */
+        for (e = coeff; e <= max_exp; e++) {
+            dp[depth + 1][e] = (dp[depth + 1][e] + dp[depth + 1][e - coeff]) % MOD;
+        }
 
-    # Generate all partitions of K (non-decreasing sequences summing to K)
-    def helper(min_val: int, remaining: int, c: list[int]):
-        nonlocal ans
+        coins[depth] = coeff;
+        helper(coeff, remaining - coeff, depth + 1);
+    }
+}
 
-        if remaining == 0:
-            c_tuple = tuple(c)
-            f_c = f(c_tuple)
+int main(void) {
+    sieve();
+    precompute();
 
-            # Product over all exponents
-            res = 1
-            for e in exponents:
-                res = res * f_c[e] % M
+    int i;
+    for (i = 0; i < nprimes; i++) {
+        exponents[i] = vp_factorial(N, primes[i]);
+    }
 
-            # Multiply by -parity(c_i) * inv(c_i) for each c_i
-            # parity(c_i) = (-1)^c_i, so -parity(c_i) = (-1)^(c_i+1)
-            for c_i in c:
-                sign = 1 if (c_i + 1) % 2 == 0 else M - 1  # (-1)^(c_i+1) mod M
-                res = res * sign % M * inv[c_i] % M
+    /* Base case: dp[0] = [1, 0, 0, ...] */
+    memset(dp, 0, sizeof(dp));
+    dp[0][0] = 1;
 
-            # Multiply by inv_fact of frequency of each value in c
-            from collections import Counter
-            freq = Counter(c)
-            for count in freq.values():
-                res = res * inv_fact[count] % M
+    ans = 0;
+    helper(1, K, 0);
 
-            ans = (ans + res) % M
-            return
-
-        for coeff in range(min_val, remaining + 1):
-            c.append(coeff)
-            helper(coeff, remaining - coeff, c)
-            c.pop()
-
-    helper(1, K, [])
-
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol495.c")
+    exe = os.path.join(tmpdir, "sol495")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    solve()

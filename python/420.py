@@ -4,82 +4,88 @@ Find the number of 2x2 matrices with positive integer entries with trace
 less than N and that can be expressed as a square of a 2x2 matrix with
 positive integer entries in two different ways.
 
-Suppose that a 2x2 matrix X² is the square of a 2x2 matrix X. Then we have
-the following explicit formula for their entries:
-⌈ A  B ⌉    ⌈ a  b ⌉²  ⌈ a²+b*c  b(a+d) ⌉
-|      | = |      | = |                |
-⌊ C  D ⌋    ⌊ c  d ⌋   ⌊ c(a+d)  d²+b*c ⌋
-
-Note that (a+d)² - (A+D) = (a² + 2a*d + d²) - (a² + 2b*c + d²) = 2(a*d -
-b*c) is twice the discriminant of X. This means that given a matrix X²,
-the discriminant of X must be ±√|X²|, so the trace of X, a+d, must be one
-of two values: √(A+D ± (√|X²| / 2)).
-
-Suppose we only know the traces of the two square root matrices, T1 < T2,
-and we want to compute the number of valid square matrices [A B | C D]. From
-the previous formula, T1² + T2² = 2(A+D) ≤ 2N. And using the explicit
-formula above, A-D = (a²+b*c) - (d²+b*c) = a²-d² = (a-d)(a+d) = (a-d) T1.
-This means that T1 | (A-D), and by the same logic so does T2, so (A-D) =
-r LCM(T1, T2). For a fixed r, we can now derive formulas for A, D, and BC.
-
-The number of ways to split the factors of BC into positive B and C is just
-the number of divisors of (GCD(T1, T2)² - r²) / 4.
-
-We can let r≥0 without loss of generality, so a-d ≥ 0. This means that for
-strictly positive r, we need to multiply the number of results by 2.
-
-Since all entries must be positive, we must also have a-d < a+d. This means
-r LCM(T1, T2) / T1 < T1 => r T2 / GCD(T1, T2) < T1 => r T2 < T1 GCD(T1, T2).
-
-Finally, we need to include parity restrictions:
-- T1² + T2² = 2(A+D) must be even, so T1 and T2 must be the same parity.
-- GCD(T1, T2) and r must have the same parity in order to give valid values
-  for B and C.
+Uses embedded C for performance.
 """
-
-from __future__ import annotations
-
-from math import gcd, isqrt
+import subprocess, os, tempfile
 
 
-def sq(n: int) -> int:
-    """Return n squared."""
-    return n * n
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+/* num_divisors sieve up to limit */
+static int *num_divs;
 
-def num_divisors(limit: int) -> list[int]:
-    """Count divisors for each number up to limit."""
-    result = [0] * (limit + 1)
-    for i in range(1, limit + 1):
-        for j in range(i, limit + 1, i):
-            result[j] += 1
-    return result
+static long long gcd(long long a, long long b) {
+    while (b) { long long t = b; b = a % b; a = t; }
+    return a;
+}
 
+int main() {
+    long long N = 10000000LL;
+    long long limit = 2 * N;
 
-def solve() -> int:
-    """Solve Problem 420."""
-    N = 10**7
+    num_divs = (int *)calloc(limit + 1, sizeof(int));
+    if (!num_divs) { fprintf(stderr, "alloc fail\n"); return 1; }
 
-    num_divs = num_divisors(2 * N)
-    ans = 0
+    /* Sieve divisor counts */
+    for (long long i = 1; i <= limit; i++) {
+        for (long long j = i; j <= limit; j += i) {
+            num_divs[j]++;
+        }
+    }
 
-    for T1 in range(1, isqrt(N) + 1):
-        for T2 in range(T1 + 2, isqrt(2 * N - sq(T1)) + 1, 2):
-            g = gcd(T1, T2)
-            for r in range(g % 2, T1 * g // T2 + 1, 2):
-                val = (sq(g) - sq(r)) // 4
-                if val > 0 and val < len(num_divs):
-                    ans += (1 if r == 0 else 2) * num_divs[val]
+    long long ans = 0;
 
-    return ans
+    /* isqrt(N) */
+    long long sqN = 1;
+    while ((sqN + 1) * (sqN + 1) <= N) sqN++;
 
+    /* isqrt(2*N) */
+    long long sq2N = 1;
+    while ((sq2N + 1) * (sq2N + 1) <= 2 * N) sq2N++;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    for (long long T1 = 1; T1 <= sqN; T1++) {
+        /* T1^2 + T2^2 < 2*N  (strict: trace < N) */
+        long long T2_max_sq = 2 * N - 1 - T1 * T1;
+        if (T2_max_sq < 0) continue;
+        long long T2_max = 1;
+        while ((T2_max + 1) * (T2_max + 1) <= T2_max_sq) T2_max++;
+
+        for (long long T2 = T1 + 2; T2 <= T2_max; T2 += 2) {
+            long long g = gcd(T1, T2);
+            long long r_start = g % 2;
+            /* d >= 1 requires r*T2/g <= T1-2, i.e., r <= (T1-2)*g/T2 */
+            long long r_max = (T1 - 2) * g / T2;
+
+            for (long long r = r_start; r <= r_max; r += 2) {
+                long long val = (g * g - r * r) / 4;
+                if (val > 0 && val <= limit) {
+                    if (r == 0)
+                        ans += num_divs[val];
+                    else
+                        ans += 2 * num_divs[val];
+                }
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    free(num_divs);
+    return 0;
+}
+"""
+    tmpdir = tempfile.mkdtemp()
+    src = os.path.join(tmpdir, "sol420.c")
+    exe = os.path.join(tmpdir, "sol420")
+    with open(src, 'w') as f:
+        f.write(c_code)
+    subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True, capture_output=True)
+    result = subprocess.run([exe], capture_output=True, text=True, check=True, timeout=280)
+    print(result.stdout.strip())
 
 
 if __name__ == "__main__":
-    main()
+    solve()

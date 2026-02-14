@@ -1,107 +1,111 @@
-"""Project Euler Problem 258: A lagged Fibonacci sequence.
+"""Project Euler Problem 258 — A lagged Fibonacci sequence.
 
-Find g_N (mod M), where g_k = 1 for 0 ≤ k < K and
-g_k = g_(k-K) + g(k-K+1) for k ≥ K.
+Find g_N (mod M), where g_k = 1 for 0 <= k < K and
+g_k = g_(k-K) + g_(k-K+1) for k >= K.
+K=2000, N=10^18, M=20092010.
+
+Uses polynomial exponentiation: x^N mod (x^K - x - 1), evaluated at x=1.
+Ported to embedded C for speed.
 """
+import subprocess, tempfile, os
 
-from __future__ import annotations
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-from typing import List
+#define K 2000
+#define MOD 20092010LL
 
+/* Polynomial represented as array of K coefficients (degree < K) */
+/* After reduction, all polys have degree < K */
 
-class Polynomial:
-    """Polynomial with integer coefficients."""
+static long long tmp[2*K]; /* temp for multiplication */
 
-    def __init__(self, coeffs: List[int]) -> None:
-        """Initialize polynomial with coefficients."""
-        self.coeffs = coeffs[:]
-        while len(self.coeffs) > 1 and self.coeffs[-1] == 0:
-            self.coeffs.pop()
+/* Multiply a[0..K-1] * b[0..K-1] into tmp[0..2K-2], then reduce mod (x^K - x - 1) */
+/* The modular polynomial is x^K = x + 1 (mod MOD) */
+/* So x^{K+i} = x^{i+1} + x^i */
+static void poly_mul_mod(long long *a, long long *b, long long *out) {
+    int i, j;
+    memset(tmp, 0, sizeof(long long) * (2*K - 1));
 
-    def shift_up(self, n: int) -> "Polynomial":
-        """Shift polynomial up by n degrees."""
-        return Polynomial([0] * n + self.coeffs)
+    for (i = 0; i < K; i++) {
+        if (a[i] == 0) continue;
+        for (j = 0; j < K; j++) {
+            tmp[i+j] = (tmp[i+j] + a[i] * b[j]) % MOD;
+        }
+    }
 
-    def subtract(self, other: "Polynomial", mod: int) -> "Polynomial":
-        """Subtract another polynomial modulo mod."""
-        max_len = max(len(self.coeffs), len(other.coeffs))
-        result = [0] * max_len
-        for i in range(len(self.coeffs)):
-            result[i] = self.coeffs[i] % mod
-        for i in range(len(other.coeffs)):
-            result[i] = (result[i] - other.coeffs[i]) % mod
-        return Polynomial(result)
+    /* Reduce: for degree 2K-2 down to K, replace x^d with x^{d-K+1} + x^{d-K} */
+    for (i = 2*K - 2; i >= K; i--) {
+        if (tmp[i] == 0) continue;
+        long long c = tmp[i];
+        tmp[i] = 0;
+        /* x^i = x^{i-K} * x^K = x^{i-K} * (x + 1) = x^{i-K+1} + x^{i-K} */
+        tmp[i - K + 1] = (tmp[i - K + 1] + c) % MOD;
+        tmp[i - K]     = (tmp[i - K]     + c) % MOD;
+    }
 
-    def pow_mod(self, n: int, mod_poly: "Polynomial", mod: int) -> "Polynomial":
-        """Compute polynomial power modulo mod_poly and mod."""
-        if n == 0:
-            return Polynomial([1])
-        if n == 1:
-            return self.mod_reduce(mod_poly, mod)
-        half = self.pow_mod(n // 2, mod_poly, mod)
-        result = half.multiply(half, mod).mod_reduce(mod_poly, mod)
-        if n % 2 == 1:
-            result = result.multiply(self, mod).mod_reduce(mod_poly, mod)
-        return result
+    memcpy(out, tmp, sizeof(long long) * K);
+}
 
-    def multiply(self, other: "Polynomial", mod: int) -> "Polynomial":
-        """Multiply by another polynomial modulo mod."""
-        result = [0] * (len(self.coeffs) + len(other.coeffs) - 1)
-        for i, c1 in enumerate(self.coeffs):
-            for j, c2 in enumerate(other.coeffs):
-                result[i + j] = (result[i + j] + c1 * c2) % mod
-        return Polynomial(result)
+int main(void) {
+    long long *base = (long long *)calloc(K, sizeof(long long));
+    long long *result = (long long *)calloc(K, sizeof(long long));
+    long long *temp = (long long *)calloc(K, sizeof(long long));
 
-    def mod_reduce(self, mod_poly: "Polynomial", mod: int) -> "Polynomial":
-        """Reduce polynomial modulo mod_poly."""
-        if len(self.coeffs) < len(mod_poly.coeffs):
-            return self
-        result = Polynomial(self.coeffs[:])
-        while len(result.coeffs) >= len(mod_poly.coeffs):
-            if result.coeffs[-1] == 0:
-                result.coeffs.pop()
-                continue
-            factor = result.coeffs[-1]
-            shift = len(result.coeffs) - len(mod_poly.coeffs)
-            for i, c in enumerate(mod_poly.coeffs):
-                idx = shift + i
-                if idx < len(result.coeffs):
-                    result.coeffs[idx] = (result.coeffs[idx] - factor * c) % mod
-            result.coeffs.pop()
-        return result
+    if (!base || !result || !temp) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return 1;
+    }
 
-    def evaluate(self, x: int, mod: int) -> int:
-        """Evaluate polynomial at x modulo mod."""
-        result = 0
-        power = 1
-        for coeff in self.coeffs:
-            result = (result + coeff * power) % mod
-            power = (power * x) % mod
-        return result
+    /* base = x (polynomial) */
+    base[1] = 1;
 
+    /* result = 1 (polynomial) */
+    result[0] = 1;
 
-def solve() -> int:
-    """Solve Problem 258."""
-    N = 10**18
-    K = 2000
-    M = 20092010
+    /* Compute x^N mod (x^K - x - 1) mod MOD */
+    /* N = 10^18 */
+    long long N = 1000000000000000000LL;
 
-    # x^K - x - 1
-    mod_poly = Polynomial([1]).shift_up(K).subtract(Polynomial([1, 1]), M)
+    while (N > 0) {
+        if (N & 1) {
+            poly_mul_mod(result, base, temp);
+            memcpy(result, temp, sizeof(long long) * K);
+        }
+        poly_mul_mod(base, base, temp);
+        memcpy(base, temp, sizeof(long long) * K);
+        N >>= 1;
+    }
 
-    # x^N mod (x^K - x - 1)
-    result_poly = Polynomial([0, 1]).pow_mod(N, mod_poly, M)
+    /* Evaluate at x=1: sum of all coefficients */
+    long long ans = 0;
+    int i;
+    for (i = 0; i < K; i++) {
+        ans = (ans + result[i]) % MOD;
+    }
 
-    # Evaluate at x=1
-    return result_poly.evaluate(1, M)
+    printf("%lld\n", ans);
 
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+    free(base);
+    free(result);
+    free(temp);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)

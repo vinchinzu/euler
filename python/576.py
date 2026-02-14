@@ -1,132 +1,155 @@
-"""Project Euler Problem 576: Irrational jumps.
+"""Project Euler Problem 576 — Irrational jumps, embedded C port."""
+import subprocess, tempfile, os
 
-Let S(l, g, d) be the total distance a point travels if it starts on a circle
-and makes jumps of length l counter-clockwise until it falls into a gap at
-position d with size g. Find the maximum value of Σ_p S(√(1/p),g,d) for all
-primes p≤N over all d.
+C_CODE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
 
-We can generate all jump locations for the point, stopping once all jump
-locations for a given p are within d of each other (because it wouldn't be
-possible to jump further). Now maintain a sliding window of width d over the
-sorted jump locations. For each window, find Σ_p S(√(1/p),g,d), and take the
-maximum over all windows.
-"""
+/* Sieve primes up to limit */
+int sieve(int limit, int *primes) {
+    char *is_prime = calloc(limit + 1, 1);
+    int count = 0;
+    for (int i = 2; i <= limit; i++) is_prime[i] = 1;
+    for (int i = 2; (long long)i * i <= limit; i++)
+        if (is_prime[i])
+            for (int j = i * i; j <= limit; j += i)
+                is_prime[j] = 0;
+    for (int i = 2; i <= limit; i++)
+        if (is_prime[i]) primes[count++] = i;
+    free(is_prime);
+    return count;
+}
 
-from __future__ import annotations
+typedef struct {
+    int prime_idx;    /* index into primes array */
+    double total_len; /* i * sqrt(1/p) */
+} JumpPos;
 
-import math
-from dataclasses import dataclass
-from math import isqrt
-from typing import List
+static int cmp_frac(const void *a, const void *b) {
+    double fa = ((JumpPos*)a)->total_len - floor(((JumpPos*)a)->total_len);
+    double fb = ((JumpPos*)b)->total_len - floor(((JumpPos*)b)->total_len);
+    if (fa < fb) return -1;
+    if (fa > fb) return 1;
+    return 0;
+}
 
+int main(void) {
+    int N = 100;
+    double D = 0.00002;
 
-@dataclass
-class JumpPosition:
-    """Represents a jump position."""
+    int primes[30];
+    int nprimes = sieve(N, primes);
 
-    index: int
-    total_len: float
+    /* Generate all jump positions */
+    /* Estimate max positions: for each prime, up to ~1/D = 50000 jumps */
+    int max_total = nprimes * 60000;
+    JumpPos *all_pos = malloc(max_total * sizeof(JumpPos));
+    int total_count = 0;
 
+    for (int pi = 0; pi < nprimes; pi++) {
+        int p = primes[pi];
+        double sqrt_inv_p = sqrt(1.0 / p);
 
-def sieve(limit: int) -> List[int]:
-    """Generate all primes up to limit using Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+        /* Temp storage for this prime's positions */
+        int cap = 1024;
+        JumpPos *tmp = malloc(cap * sizeof(JumpPos));
+        int cnt = 0;
 
+        int i = 0;
+        while (1) {
+            if (cnt >= cap) {
+                cap *= 2;
+                tmp = realloc(tmp, cap * sizeof(JumpPos));
+            }
+            tmp[cnt].prime_idx = pi;
+            tmp[cnt].total_len = i * sqrt_inv_p;
+            cnt++;
+            i++;
 
-def fractional_part(x: float) -> float:
-    """Return fractional part of x."""
-    return x - math.floor(x)
+            /* Check if all positions are within D (at power-of-2-minus-1 boundaries) */
+            if (i > 1 && (i & (i + 1)) == 0) {
+                /* Sort tmp by fractional part */
+                qsort(tmp, cnt, sizeof(JumpPos), cmp_frac);
+                int all_within = 1;
+                for (int j = 1; j < cnt; j++) {
+                    double f1 = tmp[j].total_len - floor(tmp[j].total_len);
+                    double f0 = tmp[j-1].total_len - floor(tmp[j-1].total_len);
+                    if (f1 - f0 > D) {
+                        all_within = 0;
+                        break;
+                    }
+                }
+                if (all_within) break;
+            }
+        }
 
+        /* Add to global list */
+        if (total_count + cnt > max_total) {
+            max_total = (total_count + cnt) * 2;
+            all_pos = realloc(all_pos, max_total * sizeof(JumpPos));
+        }
+        memcpy(all_pos + total_count, tmp, cnt * sizeof(JumpPos));
+        total_count += cnt;
+        free(tmp);
+    }
 
-def solve() -> float:
-    """Solve Problem 576."""
-    N = 100
-    D = 0.00002
+    /* Sort all positions by fractional part */
+    qsort(all_pos, total_count, sizeof(JumpPos), cmp_frac);
 
-    primes = sieve(N)
-    all_jump_positions: List[JumpPosition] = []
+    /* Sliding window */
+    double ans = 0.0;
+    int start = 0;
+    int end = nprimes;
 
-    # Generate jump positions for each prime
-    for p in primes:
-        if p < 2:
-            continue
-        jump_positions: List[JumpPosition] = []
-        sqrt_inv_p = math.sqrt(1.0 / p)
+    /* For each prime, track the minimum total_len in current window */
+    double *min_len = malloc(nprimes * sizeof(double));
 
-        i = 0
-        while True:
-            jump_positions.append(JumpPosition(p, i * sqrt_inv_p))
-            i += 1
+    while (end < total_count) {
+        double frac_end = all_pos[end].total_len - floor(all_pos[end].total_len);
+        double frac_start = all_pos[start].total_len - floor(all_pos[start].total_len);
 
-            # Check if all positions are within D
-            if i > 1 and (i & (i + 1)) == 0:
-                jump_positions.sort(key=lambda pos: fractional_part(pos.total_len))
-                if len(jump_positions) > 1:
-                    all_within = True
-                    for j in range(1, len(jump_positions)):
-                        if (
-                            fractional_part(jump_positions[j].total_len)
-                            - fractional_part(jump_positions[j - 1].total_len)
-                            > D
-                        ):
-                            all_within = False
-                            break
-                    if all_within:
-                        break
+        while (frac_end - frac_start > D) {
+            start++;
+            frac_start = all_pos[start].total_len - floor(all_pos[start].total_len);
+        }
 
-        all_jump_positions.extend(jump_positions)
+        /* Compute S for each prime: minimum total_len in window */
+        for (int pi = 0; pi < nprimes; pi++) min_len[pi] = 1e18;
 
-    # Sort all positions by fractional part
-    all_jump_positions.sort(key=lambda pos: fractional_part(pos.total_len))
+        for (int idx = start; idx < end; idx++) {
+            int pi = all_pos[idx].prime_idx;
+            if (all_pos[idx].total_len < min_len[pi])
+                min_len[pi] = all_pos[idx].total_len;
+        }
 
-    # Sliding window
-    ans = 0.0
-    start = 0
-    end = len(primes)
+        double total = 0.0;
+        for (int pi = 0; pi < nprimes; pi++)
+            if (min_len[pi] < 1e17) total += min_len[pi];
 
-    while end < len(all_jump_positions):
-        # Adjust window
-        while (
-            fractional_part(all_jump_positions[end].total_len)
-            - fractional_part(all_jump_positions[start].total_len)
-            > D
-        ):
-            start += 1
+        if (total > ans) ans = total;
+        end++;
+    }
 
-        # Compute S for each prime
-        S: dict[int, float] = {}
-        for p in primes:
-            S[p] = float("inf")
+    printf("%.4f\n", ans);
 
-        for i in range(start, end):
-            pos = all_jump_positions[i]
-            if pos.total_len < S[pos.index]:
-                S[pos.index] = pos.total_len
-
-        # Sum S values
-        total = sum(S[p] for p in primes if S[p] != float("inf"))
-        if total > ans:
-            ans = total
-
-        end += 1
-
-    return ans
-
-
-def main() -> float:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.4f}")
-    return result
-
+    free(all_pos);
+    free(min_len);
+    return 0;
+}
+'''
 
 if __name__ == "__main__":
-    main()
+    with tempfile.NamedTemporaryFile(suffix='.c', delete=False) as f:
+        f.write(C_CODE.encode())
+        c_file = f.name
+    exe = c_file[:-2]
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, c_file, '-lm'], check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(c_file)
+        if os.path.exists(exe):
+            os.unlink(exe)
