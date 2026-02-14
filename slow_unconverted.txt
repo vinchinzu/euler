@@ -1,0 +1,49 @@
+# Slow Pure Python Problems NOT Yet Ported to Embedded C
+# Generated: 2026-02-14
+# Source: benchmarks.tsv (stale times, pre-C-port)
+#
+# These 31 problems are >30s in benchmarks and still pure Python.
+# The benchmark times are from BEFORE the C porting sessions, so
+# problems that were already ported will be much faster now.
+#
+# Note: P917, P211, P214 are listed in TODO.md as "Broken C Solutions"
+# but their .py files don't actually contain gcc/C embedding.
+
+# Problem  Time(s)  Notes
+P514       64.4     Geoboard Shapes
+P789       62.5
+P762       61.2
+P690       57.4
+P775       54.6
+P560       54.1
+P917       49.8     Listed as "Broken C / Error" in TODO
+P699       48.4
+P529       47.3
+P211       43.9     Listed as "Broken C / Error" in TODO
+P214       43.5     Listed as "Broken C / Error" in TODO
+P965       43.4
+P542       43.2
+P746       42.4
+P538       40.2
+P859       38.8
+P457       38.0
+P871       37.9
+P365       37.1
+P567       36.3
+P795       35.9
+P475       35.8
+P548       35.0
+P788       35.0
+P630       34.6
+P344       34.4
+P638       34.4
+P520       33.0
+P867       32.9
+P196       31.8
+P647       31.0
+
+# Summary:
+# 31 problems still pure Python, all >30s
+# Total stale time of these 31: ~1355s (~22.6min)
+# 71 problems >30s already have embedded C
+# 25 problems were C-ported on 2026-02-14 (need verification)

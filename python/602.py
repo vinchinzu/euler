@@ -1,83 +1,86 @@
 """Project Euler Problem 602: Product of Head Counts.
 
-Starting with Alice, Alice and n friends take turns flipping a coin that comes
-up tails with probability p. Let e(n, p) be the expected product of the number
-of heads that each friend flips before Alice flips heads for the first time.
-For a given n, e(n, p) is a polynomial in p; find the coefficient of p^k.
+Embedded C solution for speed. Loop from t=0 to K=4M computing t^N mod M,
+binomial coefficients, and accumulating the answer mod 10^9+7.
+"""
+import subprocess, tempfile, os, sys
 
-If each of Alice's friends flips r times before Alice flips heads, then the
-expected head count for each friend is r(1-p) and the expected product of all
-head counts is (r(1-p))^n. The expected product over all r is
-p(1-p)*(1-p) + p²(1-p)*(2(1-p))² + p³(1-p)*(3(1-p))³ + ...
-Each p^k term is obtained by multiplying a t^n*p^t term from the right with
-the p^(k-t) term on the left, which has coefficient (-1)^(k-t) nCr(n+1,k-t)
-from Binomial Theorem. Summing over all 0≤t≤k gives the answer.
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef long long ll;
+typedef unsigned long long ull;
+
+#define MOD 1000000007LL
+#define NN 10000000LL
+#define K 4000000
+
+ll power(ll base, ll exp, ll mod) {
+    ll result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+int main(void) {
+    /* Precompute modular inverses 1..K */
+    ll *inv = malloc((K + 1) * sizeof(ll));
+    if (!inv) return 1;
+    inv[1] = 1;
+    for (int i = 2; i <= K; i++)
+        inv[i] = (MOD - (MOD / i) * inv[MOD % i] % MOD) % MOD;
+
+    /* Compute binomial coefficients nCr(N+1, j) for j=0..K */
+    ll *nCr = malloc((K + 1) * sizeof(ll));
+    if (!nCr) return 1;
+    nCr[0] = 1;
+    for (int i = 1; i <= K; i++)
+        nCr[i] = nCr[i - 1] % MOD * ((NN + 2 - i) % MOD + MOD) % MOD * inv[i] % MOD;
+
+    /* Compute t^N mod MOD for t=0..K */
+    ll *pows = malloc((K + 1) * sizeof(ll));
+    if (!pows) return 1;
+    pows[0] = 0;
+    for (int t = 1; t <= K; t++)
+        pows[t] = power((ll)t, NN, MOD);
+
+    ll ans = 0;
+    for (int t = 0; t <= K; t++) {
+        ll sign = ((K - t) & 1) ? MOD - 1 : 1;
+        ll coeff = nCr[K - t] * sign % MOD * pows[t] % MOD;
+        ans = (ans + coeff) % MOD;
+    }
+
+    printf("%lld\n", ans);
+
+    free(inv);
+    free(nCr);
+    free(pows);
+    return 0;
+}
 """
 
-from __future__ import annotations
-
-
-def mod_inverse(a: int, m: int) -> int:
-    """Modular inverse using extended Euclidean algorithm."""
-    if m == 1:
-        return 0
-    t, new_t = 0, 1
-    r, new_r = m, a % m
-    while new_r != 0:
-        q = r // new_r
-        t, new_t = new_t, t - q * new_t
-        r, new_r = new_r, r - q * new_r
-    if r != 1:
-        raise ValueError("Modular inverse does not exist")
-    if t < 0:
-        t += m
-    return t
-
-
-def mod_invs(n: int, m: int) -> list[int]:
-    """Precompute modular inverses for 1..n modulo m."""
-    invs = [0] * (n + 1)
-    invs[1] = 1
-    for i in range(2, n + 1):
-        invs[i] = (m - (m // i) * invs[m % i] % m) % m
-    return invs
-
-
-def nth_pows(limit: int, exp: int, mod: int) -> list[int]:
-    """Compute 0^exp, 1^exp, 2^exp, ..., limit^exp modulo mod."""
-    pows = [0] * (limit + 1)
-    for i in range(limit + 1):
-        pows[i] = pow(i, exp, mod)
-    return pows
-
-
-def solve() -> int:
-    """Solve Problem 602."""
-    N = 10_000_000
-    K = 4_000_000
-    M = 10**9 + 7
-
-    mod_invs_list = mod_invs(K, M)
-    nCrs = [0] * (K + 1)
-    nCrs[0] = 1
-    for i in range(1, K + 1):
-        nCrs[i] = nCrs[i - 1] * (N + 2 - i) % M * mod_invs_list[i] % M
-
-    pows = nth_pows(K, N, M)
-    ans = 0
-    for t in range(K + 1):
-        sign = 1 if (K - t) % 2 == 0 else M - 1
-        coeff = nCrs[K - t] * sign % M * pows[t] % M
-        ans = (ans + coeff) % M
-    return ans % M
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
-
+def main():
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                timeout=280)
+        print(result.stdout.strip())
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 if __name__ == "__main__":
     main()

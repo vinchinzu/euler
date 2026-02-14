@@ -1,101 +1,169 @@
-from math import gcd, isqrt
+"""Project Euler Problem 880 — Fermat equation with cubes.
+
+Uses embedded C for performance.
+"""
+import subprocess, os, tempfile
+
 
 def solve():
-    N = 10**15
-    M = 1031**3 + 2  # 1095912793
+    c_code = r"""
+#include <stdio.h>
+#include <math.h>
 
-    ans = 0
+typedef long long ll;
+typedef unsigned long long ull;
+typedef __int128 lll;
 
-    def is_perfect_cube(n):
-        if n <= 0:
-            return n == 0
-        c = round(n ** (1.0/3.0))
-        for cc in (c-1, c, c+1):
-            if cc >= 0 and cc*cc*cc == n:
-                return True
-        return False
+/* Check if n is a perfect cube */
+static int is_perfect_cube(ll n) {
+    if (n <= 0) return n == 0;
+    ll c = (ll)round(cbrt((double)n));
+    ll c1;
+    c1 = c - 1;
+    if (c1 >= 0 && c1*c1*c1 == n) return 1;
+    if (c*c*c == n) return 1;
+    c1 = c + 1;
+    if (c1*c1*c1 == n) return 1;
+    return 0;
+}
 
-    # Iterate over (r, s) pairs first, then compute range of g
-    # r is odd, r >= 1
-    # sign_a = 1: x = g^2*r*(r-4s)^3 (abs), y = 4*g^2*s*(s+2r)^3
-    # sign_a = -1: x = g^2*r*(r+4s)^3 (abs), y = 4*g^2*s*(s-2r)^3 (abs)
-    # Constraints: |x| <= N, |y| <= N, gcd(r,s)=1, r odd
-    #
-    # For sign_a=1: loop bound was 4*g^2*s*(s+2r)^3 <= N and g^2*r^3 <= N
-    #   => g <= sqrt(N / (4*s*(s+2r)^3))  and  g <= (N/r^3)^(1/2)
-    #   Also need g^2*r*(r-4s)^3_abs <= N (the x<=N condition)
-    #
-    # For sign_a=-1: loop bound was g^2*r*(r+4s)^3 <= N and g^2*r^3 <= N
-    #   => g <= sqrt(N / (r*(r+4s)^3))  and  g <= (N/r^3)^(1/2)
-    #   Also need 4*g^2*s*(s-2r)^3_abs <= N (the y<=N condition)
+static ll gcd(ll a, ll b) {
+    while (b) { ll t = b; b = a % b; a = t; }
+    return a;
+}
 
-    # For sign_a = 1:
-    r = 1
-    while r * r * r <= N:  # g=1 requires r^3 <= N
-        s = 1
-        two_r = 2 * r
-        while True:
-            v = s + two_r
-            if 4 * s * v * v * v > N:  # g=1 case
-                break
-            if gcd(s, r) == 1:
-                val1 = r - 4 * s
-                val2 = s + two_r
-                av1_3 = abs(val1 * val1 * val1)
-                v2_3 = val2 * val2 * val2
-                maybeCube = 2 * r * s * s
-                if not is_perfect_cube(maybeCube):
-                    # x = g^2 * r * av1_3, y = 4 * g^2 * s * v2_3
-                    # Need x <= N and y <= N
-                    # g^2 <= N / (r * av1_3) if av1_3 > 0, else g^2 <= anything (x=0<=N)
-                    # g^2 <= N / (4 * s * v2_3)
-                    max_g2 = N // (4 * s * v2_3)
-                    if av1_3 > 0:
-                        max_g2_x = N // (r * av1_3)
-                        if max_g2_x < max_g2:
-                            max_g2 = max_g2_x
-                    max_g = isqrt(max_g2)
-                    if max_g >= 1:
-                        # Sum over g=1..max_g of (g^2*(r*av1_3 + 4*s*v2_3)) mod M
-                        # = (r*av1_3 + 4*s*v2_3) * sum(g^2, g=1..max_g) mod M
-                        coeff = r * av1_3 + 4 * s * v2_3
-                        # sum of g^2 from 1 to max_g = max_g*(max_g+1)*(2*max_g+1)//6
-                        sg = max_g * (max_g + 1) * (2 * max_g + 1) // 6
-                        ans = (ans + coeff % M * (sg % M)) % M
-            s += 1
-        r += 2
+static ll llabs_val(ll x) {
+    return x < 0 ? -x : x;
+}
 
-    # For sign_a = -1:
-    r = 1
-    while r * r * r <= N:
-        s = 1
-        while True:
-            v = r + 4 * s
-            if r * v * v * v > N:  # g=1 case
-                break
-            if gcd(r, s) == 1:
-                val1 = r + 4 * s
-                val2 = s - 2 * r
-                v1_3 = val1 * val1 * val1  # always positive since r,s>0
-                av2_3 = abs(val2 * val2 * val2)
-                maybeCube = 2 * r * s * s
-                if not is_perfect_cube(maybeCube):
-                    # x = g^2 * r * v1_3, y = 4 * g^2 * s * av2_3
-                    # Need x <= N and y <= N
-                    max_g2 = N // (r * v1_3)
-                    if av2_3 > 0:
-                        max_g2_y = N // (4 * s * av2_3)
-                        if max_g2_y < max_g2:
-                            max_g2 = max_g2_y
-                    max_g = isqrt(max_g2)
-                    if max_g >= 1:
-                        coeff = r * v1_3 + 4 * s * av2_3
-                        sg = max_g * (max_g + 1) * (2 * max_g + 1) // 6
-                        ans = (ans + coeff % M * (sg % M)) % M
-            s += 1
-        r += 2
+static ll isqrt_ll(ll n) {
+    if (n <= 0) return 0;
+    ll x = (ll)sqrt((double)n);
+    while ((x+1)*(x+1) <= n) x++;
+    while (x*x > n) x--;
+    return x;
+}
 
-    print(ans)
+int main(void) {
+    ll N = 1000000000000000LL; /* 10^15 */
+    ll M = 1095912793LL;       /* 1031^3 + 2 */
+    ll ans = 0;
+    ll r, s;
+
+    /* sign_a = 1 */
+    for (r = 1; r*r*r <= N; r += 2) {
+        for (s = 1; ; s++) {
+            ll v = s + 2*r;
+            /* Check 4*s*v^3 > N without overflow: use __int128 */
+            lll check = (lll)4 * s * v * v * v;
+            if (check > N) break;
+            if (gcd(r, s) != 1) continue;
+
+            ll val1 = r - 4*s;
+            ll val2 = s + 2*r;
+            ll av1 = llabs_val(val1);
+            lll av1_3 = (lll)av1*av1*av1;
+            lll v2_3 = (lll)val2*val2*val2;
+            ll maybeCube = 2*r*s*s;
+
+            if (!is_perfect_cube(maybeCube)) {
+                /* max_g2 = N / (4*s*v2_3), but v2_3 could be large */
+                lll denom_y = (lll)4 * s * v2_3;
+                ll max_g2;
+                if (denom_y == 0 || denom_y > N)
+                    max_g2 = 0;
+                else
+                    max_g2 = (ll)(N / denom_y);
+
+                if (av1_3 > 0) {
+                    lll denom_x = (lll)r * av1_3;
+                    if (denom_x > 0 && denom_x <= N) {
+                        ll max_g2_x = (ll)(N / denom_x);
+                        if (max_g2_x < max_g2) max_g2 = max_g2_x;
+                    } else if (denom_x > N) {
+                        max_g2 = 0;
+                    }
+                }
+
+                ll max_g = isqrt_ll(max_g2);
+
+                if (max_g >= 1) {
+                    /* coeff = r*av1_3 + 4*s*v2_3 - can overflow ll, use __int128 */
+                    lll coeff = (lll)r * av1_3 + (lll)4 * s * v2_3;
+                    /* sg = max_g*(max_g+1)*(2*max_g+1)/6 - can overflow ll */
+                    lll sg = (lll)max_g * (max_g+1) * (2*max_g+1) / 6;
+                    ll coeff_mod = (ll)(coeff % M);
+                    ll sg_mod = (ll)(sg % M);
+                    ans = (ans + coeff_mod * sg_mod) % M;
+                }
+            }
+        }
+    }
+
+    /* sign_a = -1 */
+    for (r = 1; r*r*r <= N; r += 2) {
+        for (s = 1; ; s++) {
+            ll v = r + 4*s;
+            lll check = (lll)r * v * v * v;
+            if (check > N) break;
+            if (gcd(r, s) != 1) continue;
+
+            ll val1 = r + 4*s;
+            ll val2 = s - 2*r;
+            lll v1_3 = (lll)val1*val1*val1;
+            ll av2 = llabs_val(val2);
+            lll av2_3 = (lll)av2*av2*av2;
+            ll maybeCube = 2*r*s*s;
+
+            if (!is_perfect_cube(maybeCube)) {
+                lll denom_x = (lll)r * v1_3;
+                ll max_g2;
+                if (denom_x == 0 || denom_x > N)
+                    max_g2 = 0;
+                else
+                    max_g2 = (ll)(N / denom_x);
+
+                if (av2_3 > 0) {
+                    lll denom_y = (lll)4 * s * av2_3;
+                    if (denom_y > 0 && denom_y <= N) {
+                        ll max_g2_y = (ll)(N / denom_y);
+                        if (max_g2_y < max_g2) max_g2 = max_g2_y;
+                    } else if (denom_y > N) {
+                        max_g2 = 0;
+                    }
+                }
+
+                ll max_g = isqrt_ll(max_g2);
+
+                if (max_g >= 1) {
+                    lll coeff = (lll)r * v1_3 + (lll)4 * s * av2_3;
+                    lll sg = (lll)max_g * (max_g+1) * (2*max_g+1) / 6;
+                    ll coeff_mod = (ll)(coeff % M);
+                    ll sg_mod = (ll)(sg % M);
+                    ans = (ans + coeff_mod * sg_mod) % M;
+                }
+            }
+        }
+    }
+
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
+    tmp = tempfile.NamedTemporaryFile(suffix='.c', delete=False, mode='w')
+    tmp.write(c_code)
+    tmp.close()
+    exe = tmp.name.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, tmp.name, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(tmp.name)
+        if os.path.exists(exe):
+            os.unlink(exe)
+
 
 if __name__ == "__main__":
     solve()

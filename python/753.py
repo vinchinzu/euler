@@ -1,87 +1,111 @@
-"""Project Euler Problem 753: Fermat Equation.
-
-Let F(p) be the number of solutions to a³+b³≡c³ (mod p) for 1 ≤ a,b,c < p.
-Find the sum of F(p) for all primes p ≤ N.
-
-If p≢1 (mod 3), then all numbers (mod p) are perfect cubes. So a³ can be
-any of p-1 different values, and b³ can be any of the p-2 values such that
-a³+b³≢0.
-
-If p≡1 (mod 3), then Gauss showed that the number of solutions to 1+b³≡c³
-is equal to L+p-8, where L≡1 (mod 3) satisfies L²+27M²=4p. We can then
-multiply this equation by any of the p-1 units, for a total of
-(L+p-8)(p-1) solutions. Instead of computing L for a given p, we enumerate
-all L and M and filter for when (L²+27M²)/4 is a prime.
-"""
+"""Project Euler Problem 753: Fermat Equation — embedded C for speedup."""
 
 from __future__ import annotations
 
-from math import isqrt
-from typing import List
+import os
+import subprocess
+import sys
+import tempfile
 
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(2, limit + 1) if is_prime[i]]
+/*
+ * Sieve primes up to N=6000000, then:
+ * 1) For p%3!=1, add (p-1)*(p-2)
+ * 2) Enumerate L,M with L^2+27*M^2=4p, p prime, add (L+p-8)*(p-1)
+ * Answer fits in unsigned long long.
+ */
 
+#define N 6000000
 
-def is_prime(n: int) -> bool:
-    """Check if n is prime."""
-    if n < 2:
-        return False
-    if n == 2:
-        return True
-    if n % 2 == 0:
-        return False
-    for i in range(3, isqrt(n) + 1, 2):
-        if n % i == 0:
-            return False
-    return True
+static char is_prime_arr[N + 1];
 
+void sieve(void) {
+    memset(is_prime_arr, 1, sizeof(is_prime_arr));
+    is_prime_arr[0] = is_prime_arr[1] = 0;
+    for (int i = 2; (long long)i * i <= N; i++) {
+        if (is_prime_arr[i]) {
+            for (int j = i * i; j <= N; j += i)
+                is_prime_arr[j] = 0;
+        }
+    }
+}
 
-def solve() -> int:
-    """Solve Problem 753."""
-    N = 6_000_000
-    primes = sieve_primes(N)
-    ans = 0
+int trial_is_prime(long long n) {
+    if (n < 2) return 0;
+    if (n <= N) return is_prime_arr[n];
+    if (n % 2 == 0) return 0;
+    for (long long i = 3; i * i <= n; i += 2) {
+        if (n % i == 0) return 0;
+    }
+    return 1;
+}
 
-    # Case 1: p ≢ 1 (mod 3)
-    for p in primes:
-        if p % 3 != 1:
-            ans += (p - 1) * (p - 2)
+int main(void) {
+    sieve();
 
-    # Case 2: p ≡ 1 (mod 3)
-    # Enumerate L and M such that L²+27M²=4p
-    max_abs_l = isqrt(4 * N)
-    for abs_l in range(1, max_abs_l + 1):
-        for L in [-abs_l, abs_l]:
-            if L % 3 != 1:
-                continue
-            # M must have same parity as L for 4p to be even
-            M_start = abs(L) % 2
-            M = M_start
-            while True:
-                p_val = (L * L + 27 * M * M) // 4
-                if p_val > N:
-                    break
-                if is_prime(p_val):
-                    ans += (L + p_val - 8) * (p_val - 1)
-                M += 2
+    unsigned long long ans = 0;
 
-    return ans
+    /* Case 1: p % 3 != 1 */
+    for (int p = 2; p <= N; p++) {
+        if (is_prime_arr[p] && p % 3 != 1) {
+            ans += (unsigned long long)(p - 1) * (unsigned long long)(p - 2);
+        }
+    }
+
+    /* Case 2: enumerate L, M with L^2 + 27*M^2 = 4p, L ≡ 1 (mod 3) */
+    int max_abs_l = (int)sqrt(4.0 * N) + 1;
+    for (int abs_l = 1; abs_l <= max_abs_l; abs_l++) {
+        int signs[2] = {-abs_l, abs_l};
+        for (int si = 0; si < 2; si++) {
+            int L = signs[si];
+            /* L % 3 must be 1. In C, (-2)%3 can be -2, so normalize. */
+            int lmod3 = ((L % 3) + 3) % 3;
+            if (lmod3 != 1) continue;
+
+            int M_start = abs_l % 2;  /* same parity as L */
+            for (int M = M_start; ; M += 2) {
+                long long p_val = ((long long)L * L + 27LL * M * M) / 4;
+                if (p_val > N) break;
+                if (p_val >= 2 && is_prime_arr[p_val]) {
+                    ans += (unsigned long long)(L + p_val - 8) * (unsigned long long)(p_val - 1);
+                }
+            }
+        }
+    }
+
+    printf("%llu\n", ans);
+    return 0;
+}
+"""
 
 
 def main() -> int:
     """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace(".c", "")
+    try:
+        subprocess.run(
+            ["gcc", "-O2", "-o", bin_path, c_path, "-lm"],
+            check=True, capture_output=True,
+        )
+        result = subprocess.run(
+            [bin_path],
+            capture_output=True, text=True, timeout=280,
+        )
+        answer = int(result.stdout.strip())
+        print(answer)
+        return answer
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 
 if __name__ == "__main__":

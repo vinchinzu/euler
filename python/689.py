@@ -1,78 +1,84 @@
 """Project Euler Problem 689: Binary Series.
 
-Let d_i(x) be the ith digit after the binary point of the binary representation
-of x. Find the probability that (Σ_{i=1}^∞ d_i(x) / i²) > N if x is uniformly
-distributed from 0 to 1.
+Embedded C solution for speed. Enumerate all 2^22 subsets, compute partial sums
+of 1/i^2, use erf approximation for tail probability. Output 8 decimal places.
+"""
+import subprocess, tempfile, os, sys
 
-As k goes to ∞, the distribution of Σ_{i=k]^∞ d_i(x) / i² becomes similar to a
-normal distribution, with mean equal to half the sum of all terms, and variance
-equal to half the variance of the terms. So we can brute force the sums of
-subsets of small terms, and for each subset use the erf function to compute the
-approximate probability that the value of the remaining normal distribution is
-higher than the required threshold.
+C_CODE = r"""
+#include <stdio.h>
+#include <math.h>
+
+static double my_erf(double z) {
+    if (z > 5.0) return 1.0;
+    if (z < -5.0) return -1.0;
+    double az = fabs(z);
+    double a1 = 0.254829592;
+    double a2 = -0.284496736;
+    double a3 = 1.421413741;
+    double a4 = -1.453152027;
+    double a5 = 1.061405429;
+    double p = 0.3275911;
+    double t = 1.0 / (1.0 + p * az);
+    double val = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1) * t * exp(-z*z);
+    return z >= 0 ? val : -val;
+}
+
+int main(void) {
+    int L = 22;
+    double N = 0.5;
+
+    /* Precompute 1/i^2 for i=1..L */
+    double inv_sq[23];
+    for (int i = 1; i <= L; i++)
+        inv_sq[i] = 1.0 / ((double)i * (double)i);
+
+    /* Compute mean and stddev of the tail (i > L) */
+    double pi2_6 = M_PI * M_PI / 6.0;
+    double pi4_90 = M_PI * M_PI * M_PI * M_PI / 90.0;
+    double mean = pi2_6;
+    double var = pi4_90;
+    for (int i = 1; i <= L; i++) {
+        mean -= inv_sq[i];
+        var -= 1.0 / ((double)i * (double)i * (double)i * (double)i);
+    }
+    mean /= 2.0;
+    double stddev = sqrt(var / 2.0);
+
+    double ans = 0.0;
+    int total = 1 << L;
+    for (int subset = 0; subset < total; subset++) {
+        double sum_val = 0.0;
+        int s = subset;
+        while (s) {
+            int bit = __builtin_ctz(s);
+            sum_val += inv_sq[bit + 1];
+            s &= s - 1;
+        }
+        ans += (1.0 - my_erf((N - mean - sum_val) / stddev)) / 2.0;
+    }
+    ans /= (double)total;
+
+    printf("%.8f\n", ans);
+    return 0;
+}
 """
 
-from __future__ import annotations
-
-import math
-
-
-def fsq(n: float) -> float:
-    """Square of n."""
-    return n * n
-
-
-def erf(z: float) -> float:
-    """Error function approximation."""
-    if abs(z) > 5:
-        return 1.0 if z > 0 else -1.0
-    a1 = 0.254829592
-    a2 = -0.284496736
-    a3 = 1.421413741
-    a4 = -1.453152027
-    a5 = 1.061405429
-    p = 0.3275911
-    t = 1 / (1 + p * abs(z))
-    sign = 1.0 if z > 0 else -1.0
-    return sign * (
-        1
-        - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1)
-        * t
-        * math.exp(-fsq(z))
-    )
-
-
-def solve() -> float:
-    """Solve Problem 689."""
-    N = 0.5
-    L = 22
-
-    mean = fsq(math.pi) / 6
-    stddev = math.pow(math.pi, 4) / 90
-    for i in range(1, L + 1):
-        mean -= 1 / fsq(i)
-        stddev -= 1 / math.pow(i, 4)
-    mean /= 2
-    stddev = math.sqrt(stddev / 2)
-
-    ans = 0.0
-    for subset in range(1 << L):
-        sum_val = 0.0
-        for i in range(L):
-            if (subset & (1 << i)) > 0:
-                sum_val += 1 / fsq(i + 1)
-        ans += (1 - erf((N - mean - sum_val) / stddev)) / 2
-
-    ans /= 1 << L
-    return ans
-
-
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(f"{result:.8f}")
-    return int(result * 10**8)
-
+def main():
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                timeout=280)
+        print(result.stdout.strip())
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 if __name__ == "__main__":
     main()

@@ -1,88 +1,203 @@
 """Project Euler Problem 320 - Factorials divisible by large power.
 
-Find sum_{i=10}^{1000000} N(i) mod 10^18, where N(i) is the smallest n
-such that n! is divisible by (i!)^1234567890.
+Embedded C solution for speed. Sieve smallest prime factors, track prime
+exponents in i!, compute N(i) via Legendre's formula, sum mod 10^18.
+
+Key optimization: cache the Legendre sum for each prime so we never recompute
+from scratch -- we only step forward from the cached position.
 """
-from math import isqrt
+import subprocess, tempfile, os, sys
 
-def solve():
-    MOD = 10**18
-    K = 1234567890
-    MIN_I = 10
-    MAX_I = 1000000
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    # Sieve smallest prime factor
-    spf = list(range(MAX_I + 1))
-    for i in range(2, isqrt(MAX_I) + 1):
-        if spf[i] == i:
-            for j in range(i * i, MAX_I + 1, i):
-                if spf[j] == j:
-                    spf[j] = i
+typedef long long ll;
+typedef unsigned long long ull;
 
-    # Sieve to get exponent of each prime in i! as i increases
-    # primes up to MAX_I
-    primes = []
-    for i in range(2, MAX_I + 1):
-        if spf[i] == i:
-            primes.append(i)
+#define MAX_I 1000000
+#define MIN_I 10
+#define K 1234567890LL
 
-    # For each prime, track cumulative exponent in i!
-    # Use a flat array indexed by prime's position
-    np = len(primes)
-    pidx = [0] * (MAX_I + 1)  # pidx[p] = index of p in primes array
-    for i, p in enumerate(primes):
-        pidx[p] = i
+/* Compute Legendre sum: sum_{k>=1} floor(n / p^k) */
+static ll legendre(ll n, ll p) {
+    ll cur = 0;
+    ll pk = p;
+    while (pk <= n) {
+        cur += n / pk;
+        if (pk > n / p) break; /* overflow guard */
+        pk *= p;
+    }
+    return cur;
+}
 
-    exp_f = [0] * np  # exp_f[idx] = exponent of primes[idx] in current i!
+/* Given current n_val (multiple of p) with leg_sum = legendre(n_val, p),
+   advance until leg_sum >= needed. Return updated n_val and leg_sum. */
+static void advance(ll p, ll needed, ll *pn_val, ll *pleg_sum) {
+    ll n_val = *pn_val;
+    ll cur = *pleg_sum;
+    while (cur < needed) {
+        n_val += p;
+        ll kk = n_val;
+        while (kk % p == 0) {
+            cur++;
+            kk /= p;
+        }
+    }
+    *pn_val = n_val;
+    *pleg_sum = cur;
+}
 
-    # Pre-accumulate for 2..MIN_I-1
-    for j in range(2, MIN_I):
-        n = j
-        while n > 1:
-            p = spf[n]
-            idx = pidx[p]
-            while n % p == 0:
-                n //= p
-                exp_f[idx] += 1
+int main(void) {
+    ull MOD_VAL = 1000000000000000000ULL; /* 10^18 */
 
-    max_n = 0
-    ans = 0
+    /* Sieve smallest prime factor */
+    int *spf = malloc((MAX_I + 1) * sizeof(int));
+    if (!spf) return 1;
+    for (int i = 0; i <= MAX_I; i++) spf[i] = i;
+    for (int i = 2; (ll)i * i <= MAX_I; i++) {
+        if (spf[i] == i) {
+            for (int j = i * i; j <= MAX_I; j += i) {
+                if (spf[j] == j) spf[j] = i;
+            }
+        }
+    }
 
-    for i in range(MIN_I, MAX_I + 1):
-        # Factorize i, update exp_f
-        n = i
-        changed = []
-        while n > 1:
-            p = spf[n]
-            idx = pidx[p]
-            while n % p == 0:
-                n //= p
-                exp_f[idx] += 1
-            changed.append((p, idx))
+    /* Collect primes */
+    int np = 0;
+    for (int i = 2; i <= MAX_I; i++)
+        if (spf[i] == i) np++;
 
-        for p, idx in changed:
-            num_needed = K * exp_f[idx]
-            n_p = (p - 1) * num_needed
-            n_p -= n_p % p
-            # Compute legendre(n_p, p)
-            cur = 0
-            pk = p
-            while pk <= n_p:
-                cur += n_p // pk
-                pk *= p
-            # Increment until we have enough
-            while cur < num_needed:
-                n_p += p
-                k = n_p
-                while k % p == 0:
-                    cur += 1
-                    k //= p
-            if n_p > max_n:
-                max_n = n_p
+    int *primes = malloc(np * sizeof(int));
+    if (!primes) return 1;
+    int *pidx = calloc(MAX_I + 1, sizeof(int));
+    if (!pidx) return 1;
 
-        ans = (ans + max_n) % MOD
+    int idx = 0;
+    for (int i = 2; i <= MAX_I; i++) {
+        if (spf[i] == i) {
+            primes[idx] = i;
+            pidx[i] = idx;
+            idx++;
+        }
+    }
 
-    return ans
+    /* exp_f[j] = exponent of primes[j] in current i! */
+    ll *exp_f = calloc(np, sizeof(ll));
+    if (!exp_f) return 1;
+
+    /* n_for_prime[j] = current N(p) value for prime j (always a multiple of p) */
+    ll *n_for_prime = calloc(np, sizeof(ll));
+    if (!n_for_prime) return 1;
+
+    /* leg_cache[j] = cached legendre(n_for_prime[j], primes[j]) */
+    ll *leg_cache = calloc(np, sizeof(ll));
+    if (!leg_cache) return 1;
+
+    /* Pre-accumulate exponents for 2..MIN_I-1 */
+    for (int j = 2; j < MIN_I; j++) {
+        int n = j;
+        while (n > 1) {
+            int p = spf[n];
+            int pi = pidx[p];
+            while (n % p == 0) {
+                n /= p;
+                exp_f[pi]++;
+            }
+        }
+    }
+
+    /* For primes that already have nonzero exponent, compute initial n_for_prime */
+    for (int j = 0; j < np; j++) {
+        if (exp_f[j] == 0) continue;
+        ll needed = K * exp_f[j];
+        ll p = primes[j];
+        /* Initial estimate: floor((p-1)*needed / p) * p */
+        ll np_val = (p - 1) * needed;
+        np_val -= np_val % p;
+        ll cur = legendre(np_val, p);
+        advance(p, needed, &np_val, &cur);
+        n_for_prime[j] = np_val;
+        leg_cache[j] = cur;
+    }
+
+    ll max_n = 0;
+    for (int j = 0; j < np; j++) {
+        if (n_for_prime[j] > max_n) max_n = n_for_prime[j];
+    }
+
+    ull ans = 0;
+    int changed_buf[20];
+
+    for (int i = MIN_I; i <= MAX_I; i++) {
+        int n = i;
+        int num_changed = 0;
+        while (n > 1) {
+            int p = spf[n];
+            int pi = pidx[p];
+            int already = 0;
+            for (int c = 0; c < num_changed; c++) {
+                if (changed_buf[c] == pi) { already = 1; break; }
+            }
+            if (!already) changed_buf[num_changed++] = pi;
+            while (n % p == 0) {
+                n /= p;
+                exp_f[pi]++;
+            }
+        }
+
+        for (int c = 0; c < num_changed; c++) {
+            int pi = changed_buf[c];
+            ll p = primes[pi];
+            ll needed = K * exp_f[pi];
+            ll np_val = n_for_prime[pi];
+            ll cur = leg_cache[pi];
+
+            if (np_val == 0) {
+                /* First time this prime is seen */
+                np_val = (p - 1) * needed;
+                np_val -= np_val % p;
+                cur = legendre(np_val, p);
+            }
+            /* Advance from cached position */
+            advance(p, needed, &np_val, &cur);
+            n_for_prime[pi] = np_val;
+            leg_cache[pi] = cur;
+
+            if (np_val > max_n) max_n = np_val;
+        }
+
+        ans = (ans + (ull)max_n) % MOD_VAL;
+    }
+
+    printf("%llu\n", ans);
+
+    free(spf);
+    free(primes);
+    free(pidx);
+    free(exp_f);
+    free(n_for_prime);
+    free(leg_cache);
+    return 0;
+}
+"""
+
+def main():
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w', delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', bin_path, c_path, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([bin_path], capture_output=True, text=True,
+                                timeout=280)
+        print(result.stdout.strip())
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 if __name__ == "__main__":
-    print(solve())
+    main()

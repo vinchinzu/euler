@@ -1,88 +1,182 @@
-"""Project Euler Problem 155: Counting Capacitor Circuits."""
+"""Project Euler Problem 155: Counting Capacitor Circuits — Embedded C version.
 
-from math import gcd
-from typing import Set, Tuple, List
+Count distinct capacitance values achievable with N=18 unit capacitors
+connected in series/parallel combinations.
 
-def main() -> int:
-    """Count distinct resistance values using n=18 1-ohm resistors."""
-    N = 18
-    # Using tuples (n, d) to represent fraction n/d
-    # exact[k] stores set of values for k resistors.
-    # We implicitly know 1/v is also in exact[k] if v is.
-    # But for simplicity and set merging, we store all canonical forms.
-    # Actually, we can just store ALL.
-    # Optimization: Only compute sums (Series), then add reciprocals (Parallel).
-    
-    exact = [set() for _ in range(N + 1)]
-    exact[1].add((1, 1))
-    
-    # Store exact[k] as list for faster iteration? No, set for 'in' check? 
-    # Actually we iterate one and iterate other.
-    # List is better for triangular loop.
-    exact_lists = [[] for _ in range(N + 1)]
-    exact_lists[1] = [(1, 1)]
+Uses hash sets of reduced fractions (n, d) with GCD normalization.
+"""
 
-    for k in range(2, N + 1):
-        found_values = set()
-        
-        # Iterate split
-        for i in range(1, (k // 2) + 1):
-            j = k - i
-            
-            # Get sets (lists)
-            L1 = exact_lists[i]
-            L2 = exact_lists[j]
-            
-            # Series combination: x + y
-            # x = n1/d1, y = n2/d2
-            # sum = (n1 d2 + n2 d1) / (d1 d2)
-            
-            # If i == j, use triangular
-            if i == j:
-                len_L1 = len(L1)
-                for idx1 in range(len_L1):
-                    n1, d1 = L1[idx1]
-                    # Self pair
-                    # x+x = 2x. (2n1, d1)
-                    # Parallel x,x = x/2. (n1, 2d1)
-                    
-                    # Optimization: x+x is sum. 1/(x+x) is parallel.
-                    # Add sums
-                    
-                    # Inner loop
-                    for idx2 in range(idx1, len_L1):
-                        n2, d2 = L1[idx2]
-                        
-                        # Add
-                        num = n1 * d2 + n2 * d1
-                        den = d1 * d2
-                        g = gcd(num, den)
-                        s = (num // g, den // g)
-                        found_values.add(s)
-                        # Also add reciprocal (Parallel)
-                        found_values.add((s[1], s[0]))
-            else:
-                # Cartesian product
-                for n1, d1 in L1:
-                    for n2, d2 in L2:
-                         # Add
-                        num = n1 * d2 + n2 * d1
-                        den = d1 * d2
-                        g = gcd(num, den)
-                        s = (num // g, den // g)
-                        found_values.add(s)
-                        # Also add reciprocal
-                        found_values.add((s[1], s[0]))
+import subprocess, tempfile, os
 
-        exact[k] = found_values
-        exact_lists[k] = list(found_values)
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    # Collect all
-    all_values = set()
-    for k in range(1, N + 1):
-        all_values.update(exact[k])
-        
-    return len(all_values)
+/* Hash set for (int, int) pairs representing reduced fractions */
+#define INIT_CAP 1024
+
+typedef struct {
+    int n, d;
+} Frac;
+
+typedef struct {
+    Frac *data;
+    int count;
+    int cap;
+    int *buckets;   /* bucket heads: index into data, -1 = empty */
+    int *next;      /* next chain: index into data, -1 = end */
+    int nbuckets;
+} FracSet;
+
+static unsigned int hash_frac(int n, int d, int nbuckets) {
+    unsigned int h = (unsigned int)n * 2654435761u ^ (unsigned int)d * 2246822519u;
+    return h % (unsigned int)nbuckets;
+}
+
+static void fs_init(FracSet *s, int cap) {
+    s->cap = cap;
+    s->count = 0;
+    s->data = (Frac *)malloc(cap * sizeof(Frac));
+    s->next = (int *)malloc(cap * sizeof(int));
+    s->nbuckets = cap * 2;
+    s->buckets = (int *)malloc(s->nbuckets * sizeof(int));
+    memset(s->buckets, -1, s->nbuckets * sizeof(int));
+}
+
+static void fs_free(FracSet *s) {
+    free(s->data);
+    free(s->next);
+    free(s->buckets);
+}
+
+static void fs_rehash(FracSet *s) {
+    int new_nbuckets = s->nbuckets * 2;
+    int *new_buckets = (int *)malloc(new_nbuckets * sizeof(int));
+    memset(new_buckets, -1, new_nbuckets * sizeof(int));
+    for (int i = 0; i < s->count; i++) {
+        unsigned int h = hash_frac(s->data[i].n, s->data[i].d, new_nbuckets);
+        s->next[i] = new_buckets[h];
+        new_buckets[h] = i;
+    }
+    free(s->buckets);
+    s->buckets = new_buckets;
+    s->nbuckets = new_nbuckets;
+}
+
+static int fs_contains(FracSet *s, int n, int d) {
+    unsigned int h = hash_frac(n, d, s->nbuckets);
+    int idx = s->buckets[h];
+    while (idx != -1) {
+        if (s->data[idx].n == n && s->data[idx].d == d) return 1;
+        idx = s->next[idx];
+    }
+    return 0;
+}
+
+static void fs_insert(FracSet *s, int n, int d) {
+    if (fs_contains(s, n, d)) return;
+    if (s->count >= s->cap) {
+        s->cap *= 2;
+        s->data = (Frac *)realloc(s->data, s->cap * sizeof(Frac));
+        s->next = (int *)realloc(s->next, s->cap * sizeof(int));
+        fs_rehash(s);
+    }
+    if (s->count * 3 > s->nbuckets * 2) {
+        fs_rehash(s);
+    }
+    int idx = s->count++;
+    s->data[idx].n = n;
+    s->data[idx].d = d;
+    unsigned int h = hash_frac(n, d, s->nbuckets);
+    s->next[idx] = s->buckets[h];
+    s->buckets[h] = idx;
+}
+
+static int gcd(int a, int b) {
+    while (b) { int t = b; b = a % b; a = t; }
+    return a;
+}
+
+#define MAXN 18
+
+int main(void) {
+    FracSet exact[MAXN + 1];
+    for (int i = 0; i <= MAXN; i++) {
+        fs_init(&exact[i], (i <= 2) ? 16 : INIT_CAP);
+    }
+
+    fs_insert(&exact[1], 1, 1);
+
+    for (int k = 2; k <= MAXN; k++) {
+        FracSet *found = &exact[k];
+
+        for (int i = 1; i <= k / 2; i++) {
+            int j = k - i;
+            FracSet *L1 = &exact[i];
+            FracSet *L2 = &exact[j];
+
+            if (i == j) {
+                int len = L1->count;
+                for (int a = 0; a < len; a++) {
+                    int n1 = L1->data[a].n, d1 = L1->data[a].d;
+                    for (int b = a; b < len; b++) {
+                        int n2 = L1->data[b].n, d2 = L1->data[b].d;
+                        /* Series: n1/d1 + n2/d2 */
+                        long long num = (long long)n1 * d2 + (long long)n2 * d1;
+                        long long den = (long long)d1 * d2;
+                        int g = gcd((int)(num < 0 ? -num : num), (int)(den < 0 ? -den : den));
+                        int sn = (int)(num / g), sd = (int)(den / g);
+                        fs_insert(found, sn, sd);
+                        /* Parallel (reciprocal of series) */
+                        fs_insert(found, sd, sn);
+                    }
+                }
+            } else {
+                int len1 = L1->count, len2 = L2->count;
+                for (int a = 0; a < len1; a++) {
+                    int n1 = L1->data[a].n, d1 = L1->data[a].d;
+                    for (int b = 0; b < len2; b++) {
+                        int n2 = L2->data[b].n, d2 = L2->data[b].d;
+                        long long num = (long long)n1 * d2 + (long long)n2 * d1;
+                        long long den = (long long)d1 * d2;
+                        int g = gcd((int)(num < 0 ? -num : num), (int)(den < 0 ? -den : den));
+                        int sn = (int)(num / g), sd = (int)(den / g);
+                        fs_insert(found, sn, sd);
+                        fs_insert(found, sd, sn);
+                    }
+                }
+            }
+        }
+    }
+
+    /* Collect all distinct fractions */
+    FracSet all;
+    fs_init(&all, 1 << 20);
+    for (int k = 1; k <= MAXN; k++) {
+        for (int i = 0; i < exact[k].count; i++) {
+            fs_insert(&all, exact[k].data[i].n, exact[k].data[i].d);
+        }
+    }
+
+    printf("%d\n", all.count);
+
+    fs_free(&all);
+    for (int i = 0; i <= MAXN; i++) fs_free(&exact[i]);
+
+    return 0;
+}
+"""
+
+def solve():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "p155.c")
+        exe = os.path.join(tmpdir, "p155")
+        with open(src, "w") as f:
+            f.write(C_CODE)
+        subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    print(main())
+    print(solve())

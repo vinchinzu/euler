@@ -1,4 +1,4 @@
-"""Project Euler Problem 332 - Spherical triangles.
+"""Project Euler Problem 332 - Spherical triangles — Embedded C version.
 
 Find sum_{r=1}^{50} A(r), where A(r) is the area of the smallest
 non-degenerate spherical triangle with vertices on lattice points
@@ -6,77 +6,108 @@ of the sphere with radius r.
 
 Uses L'Huilier's theorem for spherical excess.
 """
-import math
+
+import subprocess, tempfile, os
+
+C_CODE = r"""
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+
+typedef struct { int x, y, z; } Point;
+
+int main(void) {
+    double total = 0.0;
+
+    for (int r = 1; r <= 50; r++) {
+        int r2 = r * r;
+
+        // Count lattice points first
+        int count = 0;
+        for (int x = 0; x <= r; x++)
+            for (int y = -r; y <= r; y++)
+                for (int z = -r; z <= r; z++)
+                    if (x*x + y*y + z*z == r2)
+                        count++;
+
+        if (count < 3) continue;
+
+        Point *pts = (Point *)malloc(count * sizeof(Point));
+        int idx = 0;
+        for (int x = 0; x <= r; x++)
+            for (int y = -r; y <= r; y++)
+                for (int z = -r; z <= r; z++)
+                    if (x*x + y*y + z*z == r2)
+                        pts[idx++] = (Point){x, y, z};
+
+        int n = count;
+
+        // Precompute pairwise angles
+        double *angles = (double *)malloc((long long)n * n * sizeof(double));
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                double dot = (double)pts[i].x * pts[j].x +
+                             (double)pts[i].y * pts[j].y +
+                             (double)pts[i].z * pts[j].z;
+                double cos_val = dot / r2;
+                if (cos_val > 1.0) cos_val = 1.0;
+                if (cos_val < -1.0) cos_val = -1.0;
+                angles[i * n + j] = acos(cos_val);
+            }
+        }
+
+        double min_area = 1e30;
+
+        for (int i = 0; i < n; i++) {
+            int ax = pts[i].x, ay = pts[i].y, az = pts[i].z;
+            for (int j = i + 1; j < n; j++) {
+                int bx = pts[j].x, by = pts[j].y, bz = pts[j].z;
+                for (int k = j + 1; k < n; k++) {
+                    int cx = pts[k].x, cy = pts[k].y, cz = pts[k].z;
+
+                    // Cross product A x B dot C
+                    long long cross_x = (long long)ay * bz - (long long)az * by;
+                    long long cross_y = (long long)az * bx - (long long)ax * bz;
+                    long long cross_z = (long long)ax * by - (long long)ay * bx;
+                    long long det = cross_x * cx + cross_y * cy + cross_z * cz;
+                    if (det == 0) continue;
+
+                    double a = angles[i * n + j];
+                    double b = angles[i * n + k];
+                    double c = angles[j * n + k];
+                    double s = (a + b + c) / 2.0;
+
+                    double val = tan(s / 2.0) * tan((s - a) / 2.0) *
+                                 tan((s - b) / 2.0) * tan((s - c) / 2.0);
+                    if (val < 0.0) val = 0.0;
+                    double E = 4.0 * atan(sqrt(val));
+                    double area = (double)r2 * E;
+
+                    if (area < min_area) min_area = area;
+                }
+            }
+        }
+
+        if (min_area < 1e29) total += min_area;
+
+        free(angles);
+        free(pts);
+    }
+
+    printf("%.6f\n", total);
+    return 0;
+}
+"""
 
 def solve():
-    N = 50
-
-    def A(r):
-        r2 = r * r
-        # Generate lattice points on sphere x^2+y^2+z^2 = r^2
-        # Only need half (x >= 0) since we check all triples
-        points = []
-        for x in range(r + 1):
-            for y in range(-r, r + 1):
-                for z in range(-r, r + 1):
-                    if x * x + y * y + z * z == r2:
-                        points.append((x, y, z))
-
-        n = len(points)
-        if n < 3:
-            return 0.0
-
-        # Precompute pairwise angles
-        angles = [[0.0] * n for _ in range(n)]
-        for i in range(n):
-            ax, ay, az = points[i]
-            for j in range(n):
-                bx, by, bz = points[j]
-                dot = ax * bx + ay * by + az * bz
-                cos_val = dot / r2
-                # Clamp to [-1, 1] for numerical safety
-                cos_val = max(-1.0, min(1.0, cos_val))
-                angles[i][j] = math.acos(cos_val)
-
-        min_area = float('inf')
-        for i in range(n):
-            ax, ay, az = points[i]
-            for j in range(i + 1, n):
-                bx, by, bz = points[j]
-                for k in range(j + 1, n):
-                    cx, cy, cz = points[k]
-                    # Check non-degeneracy: cross product A x B dot C != 0
-                    # A x B = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
-                    cross_x = ay * bz - az * by
-                    cross_y = az * bx - ax * bz
-                    cross_z = ax * by - ay * bx
-                    det = cross_x * cx + cross_y * cy + cross_z * cz
-                    if det == 0:
-                        continue
-
-                    a = angles[i][j]
-                    b = angles[i][k]
-                    c = angles[j][k]
-                    s = (a + b + c) / 2.0
-
-                    # L'Huilier's theorem
-                    val = (math.tan(s / 2) * math.tan((s - a) / 2) *
-                           math.tan((s - b) / 2) * math.tan((s - c) / 2))
-                    if val < 0:
-                        val = 0.0
-                    E = 4 * math.atan(math.sqrt(val))
-                    area = r2 * E
-
-                    if area < min_area:
-                        min_area = area
-
-        return min_area if min_area != float('inf') else 0.0
-
-    total = 0.0
-    for r in range(1, N + 1):
-        total += A(r)
-
-    return f"{total:.6f}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "p332.c")
+        exe = os.path.join(tmpdir, "p332")
+        with open(src, "w") as f:
+            f.write(C_CODE)
+        subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        return result.stdout.strip()
 
 if __name__ == "__main__":
     print(solve())

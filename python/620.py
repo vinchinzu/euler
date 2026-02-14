@@ -1,55 +1,60 @@
-"""Project Euler Problem 620: Gears.
-
-Let a circle of circumference s lie inside a circle of circumference c such that
-they are at least 1 unit apart, and four circles of circumferences p,p,q,q can
-be placed between them and tangent to both circles. Also add the restriction
-that each circle is a gear with one tooth per unit length (so a circle of
-circumference n has n teeth), and all gears mesh perfectly. Let g(c,s,p,q) be
-the number of configurations that satisfy these restrictions. Find
-Σ_{s+p+q≤N} g(s+p+q,s,p,q).
-
-Let A,B,C,D be the centers of the circles with circumferences c,s,p,q
-respectively. Let d=AB. Then triangles ABC and ABD both have sides d,s+p,s+q,
-and are congruent. Let α=∠ABC and β=∠ABD.
-
-Now we start at the point where circles A and D touch, and walk along the
-circumferences of the four circles in a loop until we get back to where we
-start. The total distance must be an integer in order for the gears to mesh
-perfectly. We compute this value for the two extreme configurations and find
-the number of integers within the range.
-"""
+"""Project Euler Problem 620: Gears — embedded C for speedup."""
 
 from __future__ import annotations
 
-import math
+import os
+import subprocess
+import sys
+import tempfile
 
+C_CODE = r"""
+#include <stdio.h>
+#include <math.h>
 
-def g(s: int, p: int, q: int) -> int:
-    """Compute g(s+p+q, s, p, q)."""
-    a = s + p
-    b = p + q - 2 * math.pi
-    c = s + q
-    alpha = math.acos((a * a + b * b - c * c) / (2 * a * b))
-    beta = math.asin(a * math.sin(alpha) / c)
-    return int(((s + q) * beta - (s + p) * alpha) / math.pi + s + p)
-
-
-def solve() -> int:
-    """Solve Problem 620."""
-    N = 500
-    ans = 0
-    for s in range(5, N - 9):
-        for p in range(5, N - s):
-            for q in range(p + 1, N - s - p + 1):
-                ans += g(s, p, q)
-    return ans
+int main(void) {
+    int N = 500;
+    long long ans = 0;
+    for (int s = 5; s < N - 9; s++) {
+        for (int p = 5; p < N - s; p++) {
+            for (int q = p + 1; q <= N - s - p; q++) {
+                double a = s + p;
+                double b = p + q - 2.0 * M_PI;
+                double c = s + q;
+                double alpha = acos((a*a + b*b - c*c) / (2.0 * a * b));
+                double beta = asin(a * sin(alpha) / c);
+                int g = (int)(((s + q) * beta - (s + p) * alpha) / M_PI + s + p);
+                ans += g;
+            }
+        }
+    }
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
 
 
 def main() -> int:
     """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace(".c", "")
+    try:
+        subprocess.run(
+            ["gcc", "-O2", "-o", bin_path, c_path, "-lm"],
+            check=True, capture_output=True,
+        )
+        result = subprocess.run(
+            [bin_path],
+            capture_output=True, text=True, timeout=280,
+        )
+        answer = int(result.stdout.strip())
+        print(answer)
+        return answer
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 
 if __name__ == "__main__":

@@ -1,103 +1,168 @@
-"""Project Euler Problem 801: x^y ≡ y^x (mod n).
+"""Project Euler Problem 801: x^y = y^x (mod n).
 
-Let f(n) be the number of solutions to x^y ≡ y^x (mod n) for 0 < x,y ≤ n²-n.
-Find the sum of f(p) for all p from A to A+B.
-
-Let x≡a (mod n) and x≡b (mod n-1), and let y≡c (mod n) and y≡d (mod n-1).
-Then the equation becomes a^d ≡ b^c (mod n). For each r (mod n), let c(r)
-be the number of solutions to a^d ≡ r (mod n); then f(n) is just
-Σ_{r=0}^{n-1} c(r)². For r=0, c(r)=n-1 (the base a must be zero, the
-exponent d can be anything). Otherwise, taking the logarithm of both sides
-gives d*log(a) ≡ c*log(b), where all elements are now in Z_{n-1}, so this
-is just the number of 2x2 matrices [[log a, log b] [c d]] with determinant
-zero. For n-1 = p^e, this number is p^{3e} + p^{3e-1} - p^{2e-1} (see
-https://oeis.org/A020478), and the function is multiplicative, so can be
-computed for arbitrary n-1.
-
-We use a sieve over the range [A, A+B] to compute the above prime
-factorizations efficiently.
+Uses embedded C for performance. Sieve primes, factor p-1 for primes p
+in [A, A+B], compute multiplicative function, sum results.
 """
-
-from __future__ import annotations
-
-from math import isqrt
-from typing import Dict, List
+import subprocess, os, tempfile
 
 
-def sieve_primes(limit: int) -> List[int]:
-    """Sieve of Eratosthenes."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, isqrt(limit) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i in range(limit + 1) if is_prime[i]]
+def solve():
+    c_code = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
+#define A_VAL 10000000000000000LL  /* 10^16 */
+#define B_VAL 1000000
+#define M_VAL 993353399LL
 
-def imod(a: int, m: int) -> int:
-    """Return a mod m, handling negative values correctly."""
-    return ((a % m) + m) % m
+static long long mod_pow(long long base, long long exp, long long mod) {
+    long long result = 1;
+    base %= mod;
+    if (base < 0) base += mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
+int main(void) {
+    long long A = A_VAL;
+    int B = B_VAL;
+    long long M = M_VAL;
+    int L = (int)sqrt((double)(A + B)) + 1;
 
-def prime_factorize(n: int, prime_factors: List[int]) -> Dict[int, int]:
-    """Factorize n using given prime factors."""
-    factors: Dict[int, int] = {}
-    for p in prime_factors:
-        e = 0
-        while n % p == 0:
-            n //= p
-            e += 1
-        if e > 0:
-            factors[p] = e
-    if n > 1:
-        factors[n] = 1
-    return factors
+    /* Sieve primes up to L */
+    char *is_prime = (char *)calloc(L + 1, 1);
+    memset(is_prime, 1, L + 1);
+    is_prime[0] = is_prime[1] = 0;
+    int sq = (int)sqrt((double)L);
+    for (int i = 2; i <= sq; i++) {
+        if (is_prime[i]) {
+            for (int j = i*i; j <= L; j += i)
+                is_prime[j] = 0;
+        }
+    }
 
+    /* Collect primes */
+    int nprimes = 0;
+    for (int i = 2; i <= L; i++)
+        if (is_prime[i]) nprimes++;
+    int *primes = (int *)malloc(nprimes * sizeof(int));
+    int idx = 0;
+    for (int i = 2; i <= L; i++)
+        if (is_prime[i]) primes[idx++] = i;
+    free(is_prime);
 
-def solve() -> int:
-    """Solve Problem 801."""
-    A = 10**16
-    B = 10**6
-    M = 993353399
-    L = isqrt(A + B)
+    /* For each index in [0, B], store list of small prime factors.
+       Use a flat array with linked-list approach. */
 
-    # Sieve to find prime factors for each number in [A, A+B]
-    all_factors: List[List[int]] = [[] for _ in range(B + 1)]
-    primes = sieve_primes(L)
-    for p in primes:
-        start_idx = imod(-A, p)
-        for i in range(start_idx, B + 1, p):
-            if p < A + i:
-                all_factors[i].append(p)
+    /* all_factors[i]: list of primes dividing A+i */
+    /* Use array-of-arrays approach with pre-allocated storage */
+    /* First pass: count factors per index */
+    int *factor_count = (int *)calloc(B + 1, sizeof(int));
+    for (int pi = 0; pi < nprimes; pi++) {
+        int p = primes[pi];
+        /* First index >= 0 where (A + idx) % p == 0 */
+        long long rem = A % p;
+        int start = (rem == 0) ? 0 : (int)(p - rem);
+        for (int i = start; i <= B; i += p) {
+            if ((long long)p < A + i)  /* p must be < A+i (not equal) */
+                factor_count[i]++;
+        }
+    }
 
-    ans = 0
-    for i in range(1, B + 1):
-        if not all_factors[i]:
-            # A + i is prime, so p = A + i and p - 1 = A + i - 1
-            n = A + i - 1  # n = p - 1
-            res = 1
-            factors = prime_factorize(n, all_factors[i - 1])
-            for p, e in factors.items():
-                term = (
-                    pow(p, 3 * e, M)
-                    + pow(p, 3 * e - 1, M)
-                    - pow(p, 2 * e - 1, M)
-                )
-                res = (res * term) % M
-            ans = (ans + pow(n, 2, M) + res) % M
+    /* Allocate factor storage */
+    int *factor_offsets = (int *)malloc((B + 2) * sizeof(int));
+    factor_offsets[0] = 0;
+    for (int i = 0; i <= B; i++)
+        factor_offsets[i + 1] = factor_offsets[i] + factor_count[i];
+    int total_factors = factor_offsets[B + 1];
+    int *factors = (int *)malloc(total_factors * sizeof(int));
+    int *cur_pos = (int *)calloc(B + 1, sizeof(int));
 
-    return ans
+    /* Second pass: fill factors */
+    for (int pi = 0; pi < nprimes; pi++) {
+        int p = primes[pi];
+        long long rem = A % p;
+        int start = (rem == 0) ? 0 : (int)(p - rem);
+        for (int i = start; i <= B; i += p) {
+            if ((long long)p < A + i) {
+                int off = factor_offsets[i] + cur_pos[i];
+                factors[off] = p;
+                cur_pos[i]++;
+            }
+        }
+    }
+    free(cur_pos);
 
+    long long ans = 0;
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    for (int i = 1; i <= B; i++) {
+        /* Check if A+i is prime: it's prime if it has no small factors */
+        if (factor_count[i] == 0) {
+            /* A+i is prime, p = A+i, n = p-1 = A+i-1 */
+            long long n = A + i - 1;
+
+            /* Factorize n using factors of index i-1 */
+            long long temp = n;
+            long long res = 1;
+
+            int nf = factor_count[i - 1];
+            int off = factor_offsets[i - 1];
+            for (int j = 0; j < nf; j++) {
+                int p = factors[off + j];
+                if (temp % p != 0) continue;
+                int e = 0;
+                while (temp % p == 0) {
+                    temp /= p;
+                    e++;
+                }
+                /* term = p^(3e) + p^(3e-1) - p^(2e-1) */
+                long long term = (mod_pow(p, 3*e, M) + mod_pow(p, 3*e - 1, M)
+                                  - mod_pow(p, 2*e - 1, M) + M) % M;
+                res = res * term % M;
+            }
+            /* If temp > 1, there's a remaining prime factor */
+            if (temp > 1) {
+                /* e = 1 for this factor */
+                long long p = temp;
+                long long term = (mod_pow(p, 3, M) + mod_pow(p, 2, M)
+                                  - mod_pow(p, 1, M) + M) % M;
+                res = res * term % M;
+            }
+
+            /* ans += n^2 mod M + res */
+            ans = (ans + mod_pow(n, 2, M) + res) % M;
+        }
+    }
+
+    printf("%lld\n", ans);
+
+    free(primes);
+    free(factor_count);
+    free(factor_offsets);
+    free(factors);
+    return 0;
+}
+"""
+    tmp = tempfile.NamedTemporaryFile(suffix='.c', delete=False, mode='w')
+    tmp.write(c_code)
+    tmp.close()
+    exe = tmp.name.replace('.c', '')
+    try:
+        subprocess.run(['gcc', '-O2', '-o', exe, tmp.name, '-lm'],
+                       check=True, capture_output=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        print(result.stdout.strip())
+    finally:
+        os.unlink(tmp.name)
+        if os.path.exists(exe):
+            os.unlink(exe)
 
 
 if __name__ == "__main__":
-    main()
+    solve()

@@ -1,62 +1,95 @@
-"""Project Euler Problem 429: Unitary divisors.
+"""Project Euler Problem 429: Unitary divisors — Embedded C version.
 
 A unitary divisor d is a divisor of n such that GCD(d, n/d) = 1. Find
 S(N), the sum of the squares of the unitary divisors of N!.
 
-For every prime divisor p of N!, we can compute c(N, p), the number of
-times p divides N!. A unitary divisor must have either none of the factors
-p, or all c(N, p) of them. We can then factor the sum of the squares of
-these 2^k divisors:
-
-S(N) = Π_p (1 + p^{2c(N, p)}).
+S(N) = prod_p (1 + p^{2c(N, p)}) mod M, where c(N,p) counts factors of p in N!.
 """
 
-from __future__ import annotations
+import subprocess, tempfile, os, sys
 
-from sympy import primerange
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#define N 100000000
+#define MOD 1000000009ULL
 
-def pow_mod(base: int, exp: int, mod: int) -> int:
-    """Compute base^exp mod mod."""
-    result = 1
-    base %= mod
-    while exp:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
+typedef unsigned long long ull;
 
+// Sieve of Eratosthenes using a bit array (only odd numbers)
+// Bit i represents number 2*i+1
+// Total: N/2 bits ~ 6.25 MB for N=10^8
+static unsigned char sieve[(N/2)/8 + 1];
 
-def num_factors_in_factorial(n: int, p: int) -> int:
-    """Count how many times prime p divides n!."""
-    count = 0
-    power = p
-    while power <= n:
-        count += n // power
-        power *= p
-    return count
+#define IS_COMPOSITE(i) (sieve[(i)>>3] & (1 << ((i)&7)))
+#define SET_COMPOSITE(i) (sieve[(i)>>3] |= (1 << ((i)&7)))
 
+ull pow_mod(ull base, ull exp, ull mod) {
+    ull result = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) result = result * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return result;
+}
 
-def solve() -> int:
-    """Solve Problem 429."""
-    N = 10**8
-    M = 10**9 + 9
+int main(void) {
+    // Sieve
+    memset(sieve, 0, sizeof(sieve));
 
-    ans = 1
-    for p in primerange(2, N + 1):
-        exp = 2 * num_factors_in_factorial(N, p)
-        ans = (ans * (1 + pow_mod(p, exp, M))) % M
+    // Sieve odd composites
+    for (long long i = 3; (long long)i * i <= N; i += 2) {
+        if (!IS_COMPOSITE(i/2)) {
+            for (long long j = (long long)i * i; j <= N; j += 2*i) {
+                SET_COMPOSITE(j/2);
+            }
+        }
+    }
 
-    return ans
+    ull ans = 1;
 
+    // Handle p=2
+    {
+        ull c = 0;
+        long long power = 2;
+        while (power <= N) {
+            c += N / power;
+            power *= 2;
+        }
+        ans = ans * ((1 + pow_mod(2, 2*c, MOD)) % MOD) % MOD;
+    }
 
-def main() -> int:
-    """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    // Handle odd primes
+    for (long long p = 3; p <= N; p += 2) {
+        if (!IS_COMPOSITE(p/2)) {
+            ull c = 0;
+            long long power = p;
+            while (power <= N) {
+                c += N / power;
+                power *= p;
+            }
+            ans = ans * ((1 + pow_mod((ull)p, 2*c, MOD)) % MOD) % MOD;
+        }
+    }
 
+    printf("%llu\n", ans);
+    return 0;
+}
+"""
+
+def solve():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src = os.path.join(tmpdir, "p429.c")
+        exe = os.path.join(tmpdir, "p429")
+        with open(src, "w") as f:
+            f.write(C_CODE)
+        subprocess.run(["gcc", "-O2", "-o", exe, src, "-lm"], check=True)
+        result = subprocess.run([exe], capture_output=True, text=True, timeout=280)
+        return int(result.stdout.strip())
 
 if __name__ == "__main__":
-    main()
+    print(solve())

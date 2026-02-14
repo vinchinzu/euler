@@ -1,93 +1,109 @@
-"""Project Euler Problem 839: Beans in Bowls.
-
-Suppose there are N bowls, each with a given starting number of beans. At
-each step, find the left-most bowl with more beans than the bowl to its
-right, and move one bean to the bowl to its right. Find the number of
-steps until the bowls are sorted by number of beans.
-
-We process the bowls from left to right. If we find a bowl which has fewer
-beans than the previous bowl, we need to "even out" the two bowls by having
-each bowl have the average number of beans, with the rightmost bowls
-getting the remainders. For performance, we then treat these two bowls as
-a single "block". Later, two adjacent blocks can also be evened out to
-form a larger block. This solves the problem in linear time, since each
-block is processed at most once.
-
-Given the final state of beans, we can then count the number of steps to
-get there by moving the beans from left to right.
-"""
+"""Project Euler Problem 839: Beans in Bowls — embedded C for speedup."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List
+import os
+import subprocess
+import sys
+import tempfile
 
+C_CODE = r"""
+#include <stdio.h>
+#include <stdlib.h>
 
-@dataclass
-class Block:
-    """Block of bowls with total value and length."""
+#define NMAX 10000000
 
-    value: int
-    length: int
+/*
+ * Block: a merged group of bowls.
+ * value = total beans, length = number of bowls in the block.
+ */
+typedef struct {
+    long long value;
+    int length;
+} Block;
 
+static long long S[NMAX];      /* BBS sequence / reused for diffs */
+static Block blocks[NMAX];     /* stack of blocks */
+static long long T[NMAX];      /* final state */
 
-def blum_blum_shub(seed: int, n: int) -> List[int]:
-    """Generate Blum Blum Shub sequence.
-    S_0 = 290797, S_n = S_{n-1}^2 mod 50515093.
-    """
-    m = 50515093
-    result = [seed]  # S_0 = seed
-    x = seed
-    for _ in range(n - 1):
-        x = (x * x) % m
-        result.append(x)
-    return result
+int main(void) {
+    int N = NMAX;
+    long long seed = 290797LL;
+    long long m = 50515093LL;
 
+    /* Generate BBS sequence */
+    S[0] = seed;
+    for (int i = 1; i < N; i++) {
+        S[i] = (S[i-1] * S[i-1]) % m;
+    }
 
-def solve() -> int:
-    """Solve Problem 839."""
-    N = 10**7
-    seed = 290797  # S_0 = 290797
+    /* Merge blocks */
+    int nb = 0;  /* number of blocks on stack */
+    for (int i = 0; i < N; i++) {
+        blocks[nb].value = S[i];
+        blocks[nb].length = 1;
+        nb++;
+        while (nb >= 2) {
+            Block *b1 = &blocks[nb - 2];
+            Block *b2 = &blocks[nb - 1];
+            /* avg1 = ceil(b1->value / b1->length) = (val + len - 1) / len */
+            long long avg1 = (b1->value + b1->length - 1) / b1->length;
+            /* avg2 = floor(b2->value / b2->length) */
+            long long avg2 = b2->value / b2->length;
+            if (avg1 <= avg2) break;
+            /* Merge */
+            b1->value += b2->value;
+            b1->length += b2->length;
+            nb--;
+        }
+    }
 
-    S = blum_blum_shub(seed, N)
+    /* Compute final state T */
+    int idx = 0;
+    for (int b = 0; b < nb; b++) {
+        long long v = blocks[b].value;
+        int len = blocks[b].length;
+        for (int i = 0; i < len; i++) {
+            T[idx++] = (v + i) / len;
+        }
+    }
 
-    blocks: List[Block] = []
-    for n in S:
-        blocks.append(Block(n, 1))
-        while len(blocks) >= 2:
-            # Check if we need to merge blocks
-            block1 = blocks[-2]
-            block2 = blocks[-1]
-            avg1 = (block1.value + block1.length - 1) // block1.length
-            avg2 = block2.value // block2.length
-            if avg1 <= avg2:
-                break
-            # Merge blocks
-            blocks.pop()
-            blocks.pop()
-            blocks.append(Block(block1.value + block2.value, block1.length + block2.length))
+    /* Count steps: accumulate diffs left to right */
+    long long ans = 0;
+    for (int i = 0; i < N - 1; i++) {
+        long long diff = S[i] - T[i];
+        S[i + 1] += diff;
+        ans += diff;
+    }
 
-    # Compute final state
-    T: List[int] = []
-    for block in blocks:
-        for i in range(block.length):
-            T.append((block.value + i) // block.length)
-
-    # Count steps
-    ans = 0
-    for i in range(N - 1):
-        diff = S[i] - T[i]
-        S[i + 1] += diff
-        ans += diff
-
-    return ans
+    printf("%lld\n", ans);
+    return 0;
+}
+"""
 
 
 def main() -> int:
     """Main entry point."""
-    result = solve()
-    print(result)
-    return result
+    with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as f:
+        f.write(C_CODE)
+        c_path = f.name
+    bin_path = c_path.replace(".c", "")
+    try:
+        subprocess.run(
+            ["gcc", "-O2", "-o", bin_path, c_path, "-lm"],
+            check=True, capture_output=True,
+        )
+        result = subprocess.run(
+            [bin_path],
+            capture_output=True, text=True, timeout=280,
+        )
+        answer = int(result.stdout.strip())
+        print(answer)
+        return answer
+    finally:
+        for p in [c_path, bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
 
 if __name__ == "__main__":

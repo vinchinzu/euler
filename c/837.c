@@ -1,0 +1,75 @@
+/*
+ * Project Euler 837: Amidakuji
+ * Extracted from embedded C in Python solution.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+typedef __int128 i128;
+typedef int64_t i64;
+
+#define A 123456789
+#define B 987654321
+#define MOD 1234567891LL
+
+i64 mod_pow(i64 base, i64 exp, i64 m) {
+    i128 result = 1;
+    i128 b = base % m;
+    while (exp > 0) {
+        if (exp & 1) result = (result * b) % m;
+        b = (b * b) % m;
+        exp >>= 1;
+    }
+    return (i64)result;
+}
+
+i64 mod_inv(i64 a, i64 m) {
+    return mod_pow(a, m - 2, m);
+}
+
+int main() {
+    /* Precompute modular inverses 1..A */
+    i64 *mod_invs = malloc((A + 1) * sizeof(i64));
+    mod_invs[1] = 1;
+    for (int i = 2; i <= A; i++) {
+        mod_invs[i] = (MOD - (MOD / i) * mod_invs[MOD % i] % MOD) % MOD;
+    }
+
+    /* Compute factorial((A-1)/2) and factorial((B-1)/2) */
+    i64 fact_a = 1;
+    for (i64 i = 2; i <= (A - 1) / 2; i++) {
+        fact_a = (i128)fact_a * i % MOD;
+    }
+    i64 fact_b = 1;
+    for (i64 i = 2; i <= (B - 1) / 2; i++) {
+        fact_b = (i128)fact_b * i % MOD;
+    }
+
+    i64 term1 = mod_inv((i128)fact_a * fact_b % MOD, MOD);
+    i64 term2 = 0;
+    i64 ans = 0;
+
+    for (int t = 3; t <= A; t += 2) {
+        term1 = (i128)term1 * mod_invs[t - 1] % MOD;
+        term1 = (i128)term1 * mod_invs[t] % MOD;
+        term1 = (i128)term1 * ((A - t + 2) / 2) % MOD;
+        term1 = (i128)term1 * ((B - t + 2) / 2) % MOD;
+
+        term2 = (4 * term2 + 2) % MOD;
+
+        ans = (ans + (i128)term1 * term2) % MOD;
+    }
+
+    /* Multiply by ((A+B)/2)! */
+    i64 fact_total = 1;
+    for (i64 i = 2; i <= (A + B) / 2; i++) {
+        fact_total = (i128)fact_total * i % MOD;
+    }
+
+    ans = (i128)ans * fact_total % MOD;
+    printf("%lld\n", (long long)ans);
+
+    free(mod_invs);
+    return 0;
+}
