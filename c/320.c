@@ -4,6 +4,9 @@
  * Sieve smallest prime factors, track prime exponents in i!,
  * compute N(i) via Legendre's formula, sum mod 10^18.
  * (Extracted from embedded C in Python solution)
+ *
+ * Fixed: Use binary search instead of linear stepping in advance()
+ * to handle small primes (p=2,3,5) where needed can jump by K per step.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,9 +30,62 @@ static ll legendre(ll n, ll p) {
     return cur;
 }
 
+/* Find the smallest multiple of p, n_val, such that legendre(n_val, p) >= needed.
+ * Start from *pn_val (a multiple of p) with legendre sum *pleg_sum.
+ * If the gap is large, use binary search first. */
 static void advance(ll p, ll needed, ll *pn_val, ll *pleg_sum) {
     ll n_val = *pn_val;
     ll cur = *pleg_sum;
+
+    if (cur >= needed) {
+        /* Already there */
+        *pn_val = n_val;
+        *pleg_sum = cur;
+        return;
+    }
+
+    /* If gap is large, use binary search to find approximate position */
+    ll gap = needed - cur;
+    if (gap > 1000) {
+        /* Estimate: legendre(n, p) ~ n/(p-1). So we need roughly delta_n = gap * (p-1) more. */
+        ll est = n_val + gap * (p - 1);
+        /* Round down to multiple of p */
+        est -= est % p;
+        /* Make sure est >= n_val */
+        if (est < n_val) est = n_val;
+
+        /* Binary search between n_val and est*2 for the right position */
+        ll lo = n_val, hi = est + gap * (p - 1);
+        hi -= hi % p;
+        if (hi < lo) hi = lo;
+
+        /* First check if legendre(hi) >= needed */
+        ll leg_hi = legendre(hi, p);
+        while (leg_hi < needed) {
+            hi *= 2;
+            hi -= hi % p;
+            leg_hi = legendre(hi, p);
+        }
+
+        /* Binary search for smallest multiple of p with legendre >= needed */
+        while (lo < hi) {
+            ll mid = lo + (hi - lo) / 2;
+            mid -= mid % p;
+            if (mid < lo) { mid = lo; break; }
+            if (mid == lo) break;
+            ll leg_mid = legendre(mid, p);
+            if (leg_mid >= needed) {
+                hi = mid;
+            } else {
+                lo = mid + p;
+                lo -= lo % p;
+            }
+        }
+        n_val = lo;
+        cur = legendre(n_val, p);
+    }
+
+    /* Fine-tune with linear stepping (should be at most a few steps) */
     while (cur < needed) {
         n_val += p;
         ll kk = n_val;
@@ -38,6 +94,11 @@ static void advance(ll p, ll needed, ll *pn_val, ll *pleg_sum) {
             kk /= p;
         }
     }
+
+    /* Also go back if we overshot too far (find the SMALLEST multiple with leg >= needed) */
+    /* Actually, we want the smallest n_val (multiple of p) with legendre >= needed.
+     * The linear stepping above guarantees we stop at the first one from below. */
+
     *pn_val = n_val;
     *pleg_sum = cur;
 }

@@ -8,6 +8,10 @@
  * The greedy factoriadic decomposition of f gives g: the sorted-ascending
  * number whose digit-factorial-sum equals f. We maintain g incrementally
  * using a stack, tracking digit counts for is_better comparisons.
+ *
+ * The g string stores digits in descending order (highest digit first).
+ * To compare two g strings of same length, we compare from the END
+ * (least significant digit), matching Python's comparison logic.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,17 +24,17 @@ typedef long long ll;
 #define NVAL 150
 #define C_MAX 63       /* max digit sum of 9999999 */
 
-/* g stored as a stack of digits */
+/* g stored as a stack of digits (descending order: highest digit at index 0) */
 #define MAX_G_LEN 10000100
 static unsigned char *g_stack;
 static int g_len;
 
-/* Digit counts of g, and sg = digit sum of g */
-static int dcnt[B];
+/* sg = digit sum of g */
 static int sg;
 
 /* Best for each sf value */
-static int best_dcnt[C_MAX + 1][B];
+#define MAX_BEST_LEN 200  /* g strings are at most ~40 digits */
+static unsigned char best_g[C_MAX + 1][MAX_BEST_LEN];
 static int best_len[C_MAX + 1];
 static int best_sg[C_MAX + 1];
 static int best_valid[C_MAX + 1];
@@ -39,11 +43,12 @@ static int is_better(int sf) {
     if (!best_valid[sf]) return 1;
     if (g_len < best_len[sf]) return 1;
     if (g_len > best_len[sf]) return 0;
-    /* Same length: compare digit counts from highest digit down.
-     * Fewer high digits means smaller number (since digits sorted ascending). */
-    for (int d = B - 1; d >= 1; d--) {
-        if (dcnt[d] < best_dcnt[sf][d]) return 1;
-        if (dcnt[d] > best_dcnt[sf][d]) return 0;
+    /* Same length: compare from the end (least significant digit first).
+     * The string is in descending order, so the last char is the smallest digit.
+     * Smaller at the end => number is smaller => better. */
+    for (int i = g_len - 1; i >= 0; i--) {
+        if (g_stack[i] < best_g[sf][i]) return 1;
+        if (g_stack[i] > best_g[sf][i]) return 0;
     }
     return 0; /* equal */
 }
@@ -52,7 +57,8 @@ static void save_best(int sf) {
     best_valid[sf] = 1;
     best_sg[sf] = sg;
     best_len[sf] = g_len;
-    memcpy(best_dcnt[sf], dcnt, sizeof(dcnt));
+    if (g_len <= MAX_BEST_LEN)
+        memcpy(best_g[sf], g_stack, g_len);
 }
 
 static ll factorial(int n) {
@@ -65,7 +71,6 @@ int main(void) {
     g_stack = (unsigned char*)malloc(MAX_G_LEN);
     g_len = 0;
     sg = 0;
-    memset(dcnt, 0, sizeof(dcnt));
     memset(best_valid, 0, sizeof(best_valid));
 
     int sf = 0;
@@ -83,7 +88,6 @@ int main(void) {
 
         /* Append "1" to g */
         g_stack[g_len++] = 1;
-        dcnt[1]++;
         sg += 1;
 
         /* Consolidate: for d=2,3,...,9 while f%d==0 */
@@ -91,16 +95,12 @@ int main(void) {
             ll n = f;
             int d = 2;
             while (d < B && n % d == 0) {
-                /* Remove last d characters from g */
+                /* Remove last d characters from g, add digit d */
                 for (int i = 0; i < d; i++) {
-                    int removed = g_stack[g_len - 1 - i];
-                    dcnt[removed]--;
-                    sg -= removed;
+                    sg -= g_stack[g_len - 1 - i];
                 }
                 g_len -= d;
-                /* Append digit d */
                 g_stack[g_len++] = (unsigned char)d;
-                dcnt[d]++;
                 sg += d;
 
                 n /= d;
@@ -131,11 +131,11 @@ int main(void) {
         for (int i = 0; i < sf2 / (B-1); i++) power *= B;
         f_val = f_val * power - 1;
 
-        int sg_val = 0;
+        ll sg_val = 0;
         for (int d = 9; d >= 1; d--) {
-            int c = (int)(f_val / facts[d]);
-            f_val -= (ll)c * facts[d];
-            sg_val += d * c;
+            ll c = f_val / facts[d];
+            f_val -= c * facts[d];
+            sg_val += (ll)d * c;
         }
         ans += sg_val;
     }

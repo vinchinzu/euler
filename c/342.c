@@ -110,7 +110,7 @@ void add_prime(long long n, PhiState phi, int p, int start_e, int max_prime_for_
     }
 
     for (int e = start_e; ; e += 3) {
-        if (n >= MAXN / pe) break;
+        if (n > (MAXN - 1) / pe) break;
 
         PhiState new_phi = phi;
 

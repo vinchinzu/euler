@@ -22,7 +22,7 @@ ll mod_pow(ll base, ll exp, ll mod) {
 }
 
 ll W(int N, int C, ll mod) {
-    int k = C / 2 + 1;  /* 51 for C=100 */
+    int k = C - C / 2;  /* 50 for C=100 */
 
     /* Precompute factorials and inverse factorials */
     ll *fact = (ll*)malloc((N + 1) * sizeof(ll));

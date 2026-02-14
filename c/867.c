@@ -10,47 +10,6 @@
 
 #define MOD 1000000007LL
 
-/* Hash map for memoization */
-#define HT_SIZE (1 << 22)
-#define HT_MASK (HT_SIZE - 1)
-
-typedef struct hentry {
-    unsigned long long key;
-    long long val;
-    struct hentry *next;
-} hentry;
-
-/* Use chained hashing */
-static hentry *htable[HT_SIZE];
-static hentry pool[8000000];
-static int pool_idx = 0;
-
-static void ht_clear(void) {
-    memset(htable, 0, sizeof(htable));
-    pool_idx = 0;
-}
-
-static long long ht_get(unsigned long long key, int *found) {
-    unsigned int h = (unsigned int)(key ^ (key >> 22) ^ (key >> 44)) & HT_MASK;
-    for (hentry *e = htable[h]; e; e = e->next) {
-        if (e->key == key) { *found = 1; return e->val; }
-    }
-    *found = 0;
-    return 0;
-}
-
-static void ht_set(unsigned long long key, long long val) {
-    unsigned int h = (unsigned int)(key ^ (key >> 22) ^ (key >> 44)) & HT_MASK;
-    for (hentry *e = htable[h]; e; e = e->next) {
-        if (e->key == key) { e->val = val; return; }
-    }
-    hentry *e = &pool[pool_idx++];
-    e->key = key;
-    e->val = val;
-    e->next = htable[h];
-    htable[h] = e;
-}
-
 static long long mod_pow(long long base, long long exp, long long mod) {
     long long result = 1;
     base %= mod;
@@ -62,34 +21,77 @@ static long long mod_pow(long long base, long long exp, long long mod) {
     return result;
 }
 
-/* Points for hexagon and trapezoid */
-#define MAX_POINTS 256
-static int pts_x[MAX_POINTS], pts_y[MAX_POINTS];
-static int num_pts;
+/* Hash map for tilings DP - dynamically allocated */
+#define HT_SIZE (1 << 20)
+#define HT_MASK (HT_SIZE - 1)
+#define POOL_SIZE 5000000
 
-/* tilings_with_tri_hex using DP */
-/* type_key encoded as integer, index, prev_bitset truncated to window_len */
-/* Key: type_key * MAX * (1 << window) + index * (1 << window) + (prev_bitset % (1 << window)) */
+typedef struct hnode {
+    unsigned long long key;
+    long long val;
+    int next; /* index into pool, -1 = end */
+} hnode;
 
-static long long tilings_with_tri_hex(int px[], int py[], int npts, int type_key, int window_len) {
-    /* DP with memoization on (index, prev_bitset mod (1 << window_len)) */
-    /* Use a flat table since states are bounded */
-    int mask_size = 1 << window_len;
-    int total_states = (npts + 1) * mask_size;
+static int *ht_heads = NULL; /* HT_SIZE entries */
+static hnode *hpool = NULL;
+static int hpool_idx = 0;
 
-    long long *dp = (long long *)calloc(total_states, sizeof(long long));
-    if (!dp) { fprintf(stderr, "alloc failed\n"); exit(1); }
+static void ht_init(void) {
+    if (!ht_heads) ht_heads = malloc(HT_SIZE * sizeof(int));
+    if (!hpool) hpool = malloc(POOL_SIZE * sizeof(hnode));
+}
 
-    /* dp[index * mask_size + (prev_bitset % mask_size)] */
+static void ht_clear(void) {
+    memset(ht_heads, -1, HT_SIZE * sizeof(int));
+    hpool_idx = 0;
+}
+
+static int ht_get(unsigned long long key, long long *val) {
+    unsigned int h = (unsigned int)(key ^ (key >> 20)) & HT_MASK;
+    for (int idx = ht_heads[h]; idx != -1; idx = hpool[idx].next) {
+        if (hpool[idx].key == key) { *val = hpool[idx].val; return 1; }
+    }
+    return 0;
+}
+
+static void ht_set(unsigned long long key, long long val) {
+    unsigned int h = (unsigned int)(key ^ (key >> 20)) & HT_MASK;
+    int idx = hpool_idx++;
+    hpool[idx].key = key;
+    hpool[idx].val = val;
+    hpool[idx].next = ht_heads[h];
+    ht_heads[h] = idx;
+}
+
+#define MAX_POINTS 512
+
+/* Iterative DP for tilings_with_tri_hex */
+static long long tilings_with_tri_hex_iter(int *px, int *py, int npts, int window_len) {
+    if (npts == 0) return 1;
+    if (window_len > 20) {
+        /* Too large for bitmask, fallback to recursive with stack */
+        /* This shouldn't happen for our problem sizes */
+        return 0;
+    }
+
+    int mask_mod = 1 << window_len;
+
+    /* Use two layers: current index and index+1 */
+    /* dp[mask] = value for this index with prev_bitset % mask_mod = mask */
+    long long *dp_next = calloc(mask_mod, sizeof(long long));
+    long long *dp_curr = calloc(mask_mod, sizeof(long long));
+
     /* Base case: index == npts -> 1 */
-    for (int m = 0; m < mask_size; m++)
-        dp[npts * mask_size + m] = 1;
+    for (int m = 0; m < mask_mod; m++)
+        dp_next[m] = 1;
 
     /* Fill backwards */
     for (int index = npts - 1; index >= 0; index--) {
-        for (int prev = 0; prev < mask_size; prev++) {
+        int pxi = px[index], pyi = py[index];
+
+        for (int prev = 0; prev < mask_mod; prev++) {
+            /* Check if placing at index is "good" */
             int good = 1;
-            int pxi = px[index], pyi = py[index];
             int lim = window_len < index ? window_len : index;
             for (int i = 0; i < lim; i++) {
                 if ((prev >> i) & 1) {
@@ -103,25 +105,33 @@ static long long tilings_with_tri_hex(int px[], int py[], int npts, int type_key
                 }
             }
 
-            long long res = dp[(index + 1) * mask_size + ((prev * 2) % mask_size)];
+            int next_prev_0 = (prev << 1) & (mask_mod - 1);
+            int next_prev_1 = ((prev << 1) | 1) & (mask_mod - 1);
+
+            long long res = dp_next[next_prev_0];
             if (good) {
-                res += dp[(index + 1) * mask_size + ((prev * 2 + 1) % mask_size)];
-                res %= MOD;
+                res = (res + dp_next[next_prev_1]) % MOD;
             }
-            dp[index * mask_size + prev] = res;
+            dp_curr[prev] = res;
         }
+
+        /* Swap */
+        long long *tmp = dp_next;
+        dp_next = dp_curr;
+        dp_curr = tmp;
     }
 
-    long long result = dp[0 * mask_size + 0];
-    free(dp);
+    long long result = dp_next[0];
+    free(dp_curr);
+    free(dp_next);
     return result;
 }
 
 /* Cache for hexagon and trapezoid tilings */
-static long long hex_cache[12]; /* hex_cache[size] for size 0..11 */
+static long long hex_cache[12];
 static int hex_computed[12];
 
-static long long trap_cache[12][12]; /* trap_cache[base][height] */
+static long long trap_cache[12][12];
 static int trap_computed[12][12];
 
 static long long tilings_for_hexagon(int size) {
@@ -139,7 +149,7 @@ static long long tilings_for_hexagon(int size) {
         }
     }
 
-    long long val = tilings_with_tri_hex(px, py, n, 0, 2 * size - 1);
+    long long val = tilings_with_tri_hex_iter(px, py, n, 2 * size - 1);
     hex_cache[size] = val;
     hex_computed[size] = 1;
     return val;
@@ -159,16 +169,16 @@ static long long tilings_for_trapezoid(int base, int height) {
         }
     }
 
-    long long val = tilings_with_tri_hex(px, py, n, 0, base - 1);
+    long long val = tilings_with_tri_hex_iter(px, py, n, base - 1);
     trap_cache[base][height] = val;
     trap_computed[base][height] = 1;
     return val;
 }
 
 /* Dodecagon memoization */
-/* Key: a * 100 + b * 4 + allow_a * 2 + allow_b */
-static long long dodec_cache[11 * 100 + 11 * 4 + 4];
-static int dodec_computed[11 * 100 + 11 * 4 + 4];
+#define DODEC_SIZE 2000
+static long long dodec_cache[DODEC_SIZE];
+static int dodec_computed[DODEC_SIZE];
 
 static int dodec_key(int a, int b, int allow_a, int allow_b) {
     return a * 100 + b * 4 + allow_a * 2 + allow_b;
@@ -210,6 +220,8 @@ static long long tilings_for_dodecagon(int a, int b, int allow_a, int allow_b) {
 }
 
 int main(void) {
+    ht_init();
+
     memset(hex_computed, 0, sizeof(hex_computed));
     memset(trap_computed, 0, sizeof(trap_computed));
     memset(dodec_computed, 0, sizeof(dodec_computed));

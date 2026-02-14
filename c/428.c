@@ -488,7 +488,7 @@ int main(void) {
         big_pi2[k] = (V + 1) / 3;
     }
 
-    /* Collect quotients descending */
+    /* Collect quotients in descending order (naturally produced) */
     ll *quotients_desc = (ll *)malloc((2 * sqrtN_val + 10) * sizeof(ll));
     int n_quot = 0;
     {
@@ -498,12 +498,7 @@ int main(void) {
             d = N / (N / d) + 1;
         }
     }
-    /* Sort descending */
-    for (int i = 0; i < n_quot / 2; i++) {
-        ll t = quotients_desc[i];
-        quotients_desc[i] = quotients_desc[n_quot - 1 - i];
-        quotients_desc[n_quot - 1 - i] = t;
-    }
+    /* Already in descending order: N, N/2, N/3, ... */
 
     /* Primes up to sqrtN for Lucy DP */
     int *primes_small = NULL;

@@ -1,8 +1,9 @@
 /*
  * Project Euler 847
  *
- * Uses digit DP with bit-level processing.
- * Counting triples (A,B,C) with various carry/check constraints.
+ * Uses iterative layer-by-layer digit DP with bit-level processing.
+ * For each bit level j (from MSB down to LSB), maintain a hash map
+ * of (R, carries, c_states) -> count mod MOD.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,47 +11,72 @@
 
 #define MOD 1000000007LL
 
-/*
- * State: (j, R, carries, c_states)
- * j: current bit position (processing MSB to LSB), -1 = done
- * R: excess value, range [-3, 2] -> offset by 3, so 0..5
- * carries: (cA, cB, cC), 3 bits -> 0..7
- * c_states: for each check, a frozenset of (psA, psB, psC) triples
- *           Each ps is 0 or 1, so triple is 3 bits -> 0..7.
- *           A frozenset is a bitmask of 8 possible triples -> 0..255.
- *           For up to 3 checks, c_states is 3 bytes packed into 24 bits.
- *
- * We use a hash map for memoization.
- */
-
-/* Global parameters for current DP call */
-static int num_bits_g;
-static int L_bits_g[100]; /* binary digits of limit, LSB first */
-static int K_g;
-static int num_checks_g;
-static int checks_g[3][3]; /* checks_g[i] = {flagA, flagB, flagC} */
-
-/* Hash map for memoization */
-#define HASH_SIZE (1 << 22) /* 4M entries */
-#define HASH_MASK (HASH_SIZE - 1)
+/* Hash map: key = packed state, value = count mod MOD */
+#define HM_CAP_BITS 20
+#define HM_CAP (1 << HM_CAP_BITS)
+#define HM_MASK (HM_CAP - 1)
 
 typedef struct {
     unsigned long long key;
     long long val;
-    int used;
-} hash_entry;
+} hm_slot;
 
-static hash_entry htable[HASH_SIZE];
+typedef struct {
+    hm_slot *slots;
+    int *used; /* 0 = empty, 1 = occupied */
+    int count;
+} hashmap;
 
-static void hash_clear(void) {
-    memset(htable, 0, sizeof(htable));
+static void hm_init(hashmap *m) {
+    m->slots = calloc(HM_CAP, sizeof(hm_slot));
+    m->used = calloc(HM_CAP, sizeof(int));
+    m->count = 0;
 }
 
-static unsigned long long pack_state(int j, int R_off, int carries, int c0, int c1, int c2) {
-    /* j: 0..100, R_off: 0..5, carries: 0..7, c0,c1,c2: 0..255 */
-    unsigned long long k = 0;
-    k = (unsigned long long)(j + 1); /* 0..101 */
-    k = k * 6 + R_off;
+static void hm_clear(hashmap *m) {
+    if (m->count > 0) {
+        memset(m->used, 0, HM_CAP * sizeof(int));
+        m->count = 0;
+    }
+}
+
+static void hm_free(hashmap *m) {
+    free(m->slots);
+    free(m->used);
+}
+
+static inline unsigned int hm_hash(unsigned long long key) {
+    return (unsigned int)(key * 2654435761ULL) & HM_MASK;
+}
+
+static void hm_add(hashmap *m, unsigned long long key, long long val) {
+    unsigned int h = hm_hash(key);
+    for (;;) {
+        int idx = h & HM_MASK;
+        if (!m->used[idx]) {
+            m->slots[idx].key = key;
+            m->slots[idx].val = val;
+            m->used[idx] = 1;
+            m->count++;
+            return;
+        }
+        if (m->slots[idx].key == key) {
+            m->slots[idx].val = (m->slots[idx].val + val) % MOD;
+            return;
+        }
+        h++;
+    }
+}
+
+/* Iterate over all entries */
+typedef struct {
+    unsigned long long key;
+    long long val;
+} hm_entry;
+
+/* Pack state: R_off (0..5), carries (0..7), c0 (0..255), c1 (0..255), c2 (0..255) */
+static inline unsigned long long pack_state(int R_off, int carries, int c0, int c1, int c2) {
+    unsigned long long k = (unsigned long long)R_off;
     k = k * 8 + carries;
     k = k * 256 + c0;
     k = k * 256 + c1;
@@ -58,218 +84,233 @@ static unsigned long long pack_state(int j, int R_off, int carries, int c0, int 
     return k;
 }
 
-static long long hash_get(unsigned long long key, int *found) {
-    unsigned int h = (unsigned int)(key ^ (key >> 22)) & HASH_MASK;
-    for (int i = 0; i < 16; i++) {
-        int idx = (h + i) & HASH_MASK;
-        if (!htable[idx].used) { *found = 0; return 0; }
-        if (htable[idx].key == key) { *found = 1; return htable[idx].val; }
-    }
-    *found = 0;
-    return 0;
+static inline void unpack_state(unsigned long long k, int *R_off, int *carries, int *c0, int *c1, int *c2) {
+    *c2 = k & 255; k >>= 8;
+    *c1 = k & 255; k >>= 8;
+    *c0 = k & 255; k >>= 8;
+    *carries = k & 7; k >>= 3;
+    *R_off = (int)k;
 }
 
-static void hash_set(unsigned long long key, long long val) {
-    unsigned int h = (unsigned int)(key ^ (key >> 22)) & HASH_MASK;
-    for (int i = 0; i < 16; i++) {
-        int idx = (h + i) & HASH_MASK;
-        if (!htable[idx].used || htable[idx].key == key) {
-            htable[idx].key = key;
-            htable[idx].val = val;
-            htable[idx].used = 1;
-            return;
+static long long solve_dp(long long limit, int kval, int checks[][3], int nchk) {
+    int L_bits[100];
+    memset(L_bits, 0, sizeof(L_bits));
+    int actual_bits = 0;
+    {
+        long long tmp = limit;
+        while (tmp > 0) {
+            L_bits[actual_bits++] = (int)(tmp & 1);
+            tmp >>= 1;
         }
     }
-    /* Evict first slot */
-    int idx = h & HASH_MASK;
-    htable[idx].key = key;
-    htable[idx].val = val;
-    htable[idx].used = 1;
-}
+    int nb = actual_bits;
+    if (kval > nb) nb = kval;
 
-static long long dp(int j, int R, int cA, int cB, int cC, int cs0, int cs1, int cs2) {
-    if (j == -1) {
-        if (cA && cB && cC && R <= 0)
-            return 1;
-        return 0;
-    }
+    hashmap cur, nxt;
+    hm_init(&cur);
+    hm_init(&nxt);
 
-    int R_off = R + 3; /* offset: R in [-3,2] -> [0,5] */
-    int carries = (cA << 2) | (cB << 1) | cC;
-    int c0 = (num_checks_g > 0) ? cs0 : 0;
-    int c1 = (num_checks_g > 1) ? cs1 : 0;
-    int c2 = (num_checks_g > 2) ? cs2 : 0;
+    /* Initial state: j = nb-1 (MSB), R=0 (R_off=3), carries=0, c_states = {(0,0,0)} = bitmask 1 */
+    int init_cs = 1; /* bit 0 set = (0,0,0) */
+    int c0_init = (nchk > 0) ? init_cs : 0;
+    int c1_init = (nchk > 1) ? init_cs : 0;
+    int c2_init = (nchk > 2) ? init_cs : 0;
 
-    unsigned long long key = pack_state(j, R_off, carries, c0, c1, c2);
-    int found;
-    long long cached = hash_get(key, &found);
-    if (found) return cached;
+    unsigned long long init_key = pack_state(3, 0, c0_init, c1_init, c2_init);
+    hm_add(&cur, init_key, 1);
 
-    long long res = 0;
-    int limit_bit = (j < num_bits_g) ? L_bits_g[j] : 0;
+    /* Process levels from j = nb-1 down to j = 0 */
+    for (int j = nb - 1; j >= 0; j--) {
+        hm_clear(&nxt);
+        int limit_bit = (j < actual_bits) ? L_bits[j] : 0;
+        int has_source = (j < kval);
 
-    for (int a = 0; a < 2; a++) {
-        for (int b = 0; b < 2; b++) {
-            for (int c = 0; c < 2; c++) {
-                int sum_val = a + b + c;
-                int new_R = 2 * R + sum_val - limit_bit;
-                if (new_R >= 2) continue;
-                if (new_R <= -3) new_R = -3;
+        /* Iterate over all current states */
+        for (int slot = 0; slot < HM_CAP; slot++) {
+            if (!cur.used[slot]) continue;
+            unsigned long long skey = cur.slots[slot].key;
+            long long sval = cur.slots[slot].val;
+            if (sval == 0) continue;
 
-                /* Update carries for A */
-                int valid_ncA[2], ncA_count = 0;
-                if (cA) {
-                    if (a == 1) { valid_ncA[ncA_count++] = 1; }
-                    else continue;
-                } else {
-                    if (a == 0) { valid_ncA[ncA_count++] = 0; valid_ncA[ncA_count++] = 1; }
-                    else { valid_ncA[ncA_count++] = 0; }
-                }
+            int R_off, carries_packed, cs0, cs1, cs2;
+            unpack_state(skey, &R_off, &carries_packed, &cs0, &cs1, &cs2);
+            int R = R_off - 3;
+            int cA = (carries_packed >> 2) & 1;
+            int cB = (carries_packed >> 1) & 1;
+            int cC = carries_packed & 1;
 
-                /* Update carries for B */
-                int valid_ncB[2], ncB_count = 0;
-                if (cB) {
-                    if (b == 1) { valid_ncB[ncB_count++] = 1; }
-                    else continue;
-                } else {
-                    if (b == 0) { valid_ncB[ncB_count++] = 0; valid_ncB[ncB_count++] = 1; }
-                    else { valid_ncB[ncB_count++] = 0; }
-                }
+            for (int a = 0; a < 2; a++) {
+                for (int b = 0; b < 2; b++) {
+                    for (int c = 0; c < 2; c++) {
+                        int new_R = 2 * R + (a + b + c) - limit_bit;
+                        if (new_R >= 2) continue;
+                        if (new_R <= -3) new_R = -3;
 
-                /* Update carries for C */
-                int valid_ncC[2], ncC_count = 0;
-                if (cC) {
-                    if (c == 1) { valid_ncC[ncC_count++] = 1; }
-                    else continue;
-                } else {
-                    if (c == 0) { valid_ncC[ncC_count++] = 0; valid_ncC[ncC_count++] = 1; }
-                    else { valid_ncC[ncC_count++] = 0; }
-                }
+                        /* Carry transitions for A */
+                        int valid_ncA[2], ncA_count = 0;
+                        if (cA) {
+                            if (a == 1) { valid_ncA[ncA_count++] = 1; }
+                            else continue;
+                        } else {
+                            if (a == 0) { valid_ncA[ncA_count++] = 0; valid_ncA[ncA_count++] = 1; }
+                            else { valid_ncA[ncA_count++] = 0; }
+                        }
 
-                for (int iA = 0; iA < ncA_count; iA++) {
-                    int ncA = valid_ncA[iA];
-                    int bitA = a;
-                    int bitA1 = a + ncA - 2 * cA;
-                    for (int iB = 0; iB < ncB_count; iB++) {
-                        int ncB = valid_ncB[iB];
-                        int bitB = b;
-                        int bitB1 = b + ncB - 2 * cB;
-                        for (int iC = 0; iC < ncC_count; iC++) {
-                            int ncC = valid_ncC[iC];
-                            int bitC = c;
-                            int bitC1 = c + ncC - 2 * cC;
+                        int valid_ncB[2], ncB_count = 0;
+                        if (cB) {
+                            if (b == 1) { valid_ncB[ncB_count++] = 1; }
+                            else continue;
+                        } else {
+                            if (b == 0) { valid_ncB[ncB_count++] = 0; valid_ncB[ncB_count++] = 1; }
+                            else { valid_ncB[ncB_count++] = 0; }
+                        }
 
-                            int has_source = (j < K_g);
-                            int possible = 1;
-                            int new_cs[3] = {0, 0, 0};
+                        int valid_ncC[2], ncC_count = 0;
+                        if (cC) {
+                            if (c == 1) { valid_ncC[ncC_count++] = 1; }
+                            else continue;
+                        } else {
+                            if (c == 0) { valid_ncC[ncC_count++] = 0; valid_ncC[ncC_count++] = 1; }
+                            else { valid_ncC[ncC_count++] = 0; }
+                        }
 
-                            for (int idx = 0; idx < num_checks_g; idx++) {
-                                int bA = checks_g[idx][0] ? bitA1 : bitA;
-                                int bB = checks_g[idx][1] ? bitB1 : bitB;
-                                int bC = checks_g[idx][2] ? bitC1 : bitC;
+                        for (int iA = 0; iA < ncA_count; iA++) {
+                            int ncA = valid_ncA[iA];
+                            int bitA = a;
+                            int bitA1 = a + ncA - 2 * cA;
+                            for (int iB = 0; iB < ncB_count; iB++) {
+                                int ncB = valid_ncB[iB];
+                                int bitB = b;
+                                int bitB1 = b + ncB - 2 * cB;
+                                for (int iC = 0; iC < ncC_count; iC++) {
+                                    int ncC = valid_ncC[iC];
+                                    int bitC = c;
+                                    int bitC1 = c + ncC - 2 * cC;
 
-                                int prev_states;
-                                if (idx == 0) prev_states = cs0;
-                                else if (idx == 1) prev_states = cs1;
-                                else prev_states = cs2;
+                                    int possible = 1;
+                                    int new_cs[3] = {0, 0, 0};
 
-                                int current_possible = 0;
+                                    for (int idx = 0; idx < nchk; idx++) {
+                                        int bA = checks[idx][0] ? bitA1 : bitA;
+                                        int bB = checks[idx][1] ? bitB1 : bitB;
+                                        int bC = checks[idx][2] ? bitC1 : bitC;
 
-                                for (int ps = 0; ps < 8; ps++) {
-                                    if (!(prev_states & (1 << ps))) continue;
-                                    int psA = (ps >> 2) & 1;
-                                    int psB = (ps >> 1) & 1;
-                                    int psC = ps & 1;
+                                        int prev_states;
+                                        if (idx == 0) prev_states = cs0;
+                                        else if (idx == 1) prev_states = cs1;
+                                        else prev_states = cs2;
 
-                                    int max_owner = has_source ? 3 : 1;
-                                    for (int oi = 0; oi < max_owner; oi++) {
-                                        int owner = has_source ? oi : -1;
-                                        int valid_owner = 1;
-                                        int nsA = psA, nsB = psB, nsC = psC;
+                                        int current_possible = 0;
 
-                                        /* Check A */
-                                        if (owner == 0) {
-                                            if (psA == 0 && bA == 0) nsA = 1;
-                                        } else {
-                                            if (psA == 0 && bA == 1) valid_owner = 0;
+                                        for (int ps = 0; ps < 8; ps++) {
+                                            if (!(prev_states & (1 << ps))) continue;
+                                            int psA = (ps >> 2) & 1;
+                                            int psB = (ps >> 1) & 1;
+                                            int psC = ps & 1;
+
+                                            int max_owner = has_source ? 3 : 1;
+                                            for (int oi = 0; oi < max_owner; oi++) {
+                                                int owner = has_source ? oi : -1;
+                                                int valid_owner = 1;
+                                                int nsA = psA, nsB = psB, nsC = psC;
+
+                                                if (owner == 0) {
+                                                    if (psA == 0 && bA == 0) nsA = 1;
+                                                } else {
+                                                    if (psA == 0 && bA == 1) valid_owner = 0;
+                                                }
+                                                if (!valid_owner) continue;
+
+                                                if (owner == 1) {
+                                                    if (psB == 0 && bB == 0) nsB = 1;
+                                                } else {
+                                                    if (psB == 0 && bB == 1) valid_owner = 0;
+                                                }
+                                                if (!valid_owner) continue;
+
+                                                if (owner == 2) {
+                                                    if (psC == 0 && bC == 0) nsC = 1;
+                                                } else {
+                                                    if (psC == 0 && bC == 1) valid_owner = 0;
+                                                }
+                                                if (!valid_owner) continue;
+
+                                                int ns = (nsA << 2) | (nsB << 1) | nsC;
+                                                current_possible |= (1 << ns);
+                                            }
                                         }
-                                        if (!valid_owner) continue;
 
-                                        /* Check B */
-                                        if (owner == 1) {
-                                            if (psB == 0 && bB == 0) nsB = 1;
-                                        } else {
-                                            if (psB == 0 && bB == 1) valid_owner = 0;
-                                        }
-                                        if (!valid_owner) continue;
+                                        if (!current_possible) { possible = 0; break; }
+                                        new_cs[idx] = current_possible;
+                                    }
 
-                                        /* Check C */
-                                        if (owner == 2) {
-                                            if (psC == 0 && bC == 0) nsC = 1;
-                                        } else {
-                                            if (psC == 0 && bC == 1) valid_owner = 0;
-                                        }
-                                        if (!valid_owner) continue;
+                                    if (possible) {
+                                        int new_R_off = new_R + 3;
+                                        int new_carries = (ncA << 2) | (ncB << 1) | ncC;
+                                        int nc0 = (nchk > 0) ? new_cs[0] : 0;
+                                        int nc1 = (nchk > 1) ? new_cs[1] : 0;
+                                        int nc2 = (nchk > 2) ? new_cs[2] : 0;
 
-                                        int ns = (nsA << 2) | (nsB << 1) | nsC;
-                                        current_possible |= (1 << ns);
+                                        unsigned long long nkey = pack_state(new_R_off, new_carries, nc0, nc1, nc2);
+                                        hm_add(&nxt, nkey, sval);
                                     }
                                 }
-
-                                if (!current_possible) { possible = 0; break; }
-                                new_cs[idx] = current_possible;
-                            }
-
-                            if (possible) {
-                                res += dp(j - 1, new_R, ncA, ncB, ncC,
-                                          new_cs[0], new_cs[1], new_cs[2]);
                             }
                         }
                     }
                 }
             }
         }
+
+        /* Swap cur and nxt */
+        hashmap tmp = cur;
+        cur = nxt;
+        nxt = tmp;
     }
 
-    hash_set(key, res);
-    return res;
-}
-
-static long long solve_dp(long long limit, int k, int checks[][3], int nchk) {
-    num_bits_g = 0;
-    {
-        long long tmp = limit;
-        while (tmp > 0) {
-            L_bits_g[num_bits_g++] = (int)(tmp & 1);
-            tmp >>= 1;
+    /* Sum over final states where all carries are set and R <= 0 */
+    long long result = 0;
+    for (int slot = 0; slot < HM_CAP; slot++) {
+        if (!cur.used[slot]) continue;
+        int R_off, carries_packed, cs0, cs1, cs2;
+        unpack_state(cur.slots[slot].key, &R_off, &carries_packed, &cs0, &cs1, &cs2);
+        int R = R_off - 3;
+        int cA = (carries_packed >> 2) & 1;
+        int cB = (carries_packed >> 1) & 1;
+        int cC = carries_packed & 1;
+        if (cA && cB && cC && R <= 0) {
+            result = (result + cur.slots[slot].val) % MOD;
         }
     }
-    int nb = num_bits_g;
-    if (k > nb) nb = k;
-    num_bits_g = nb;
-    /* Pad L_bits with 0s */
 
-    K_g = k;
-    num_checks_g = nchk;
-    for (int i = 0; i < nchk; i++) {
-        checks_g[i][0] = checks[i][0];
-        checks_g[i][1] = checks[i][1];
-        checks_g[i][2] = checks[i][2];
-    }
-
-    hash_clear();
-
-    int init_cs = 1; /* frozenset({(0,0,0)}) = bit 0 set */
-    return dp(nb - 1, 0, 0, 0, 0, init_cs, init_cs, init_cs);
+    hm_free(&cur);
+    hm_free(&nxt);
+    return result;
 }
 
-static long long C_val(long long n) {
+static long long mod_pow(long long base, long long exp, long long mod) {
+    long long r = 1;
+    base %= mod;
+    while (exp > 0) {
+        if (exp & 1) r = r * base % mod;
+        base = base * base % mod;
+        exp >>= 1;
+    }
+    return r;
+}
+
+static long long C_val_mod(long long n) {
     if (n < 0) return 0;
-    return (n + 3) * (n + 2) * (n + 1) / 6 - 1;
+    long long a = (n + 3) % MOD;
+    long long b = (n + 2) % MOD;
+    long long c = (n + 1) % MOD;
+    long long inv6 = mod_pow(6, MOD - 2, MOD);
+    long long val = a * b % MOD * c % MOD * inv6 % MOD;
+    val = (val - 1 + MOD) % MOD;
+    return val;
 }
 
 int main(void) {
-    /* N = 1111111111111111111 (19 ones) */
     long long N = 0;
     {
         long long p = 1;
@@ -278,6 +319,8 @@ int main(void) {
             p *= 10;
         }
     }
+
+    long long C_N_mod = C_val_mod(N);
 
     long long total_H = 0;
     int k = 0;
@@ -292,17 +335,17 @@ int main(void) {
         int chk3[3][3] = {{0, 1, 1}, {1, 0, 1}, {1, 1, 0}};
         long long t3 = solve_dp(N - 3, k, chk3, 3);
 
-        long long size_Sk = 3 * t1 - 3 * t2 + t3;
-        long long term = C_val(N) - size_Sk;
+        long long size_Sk = ((3 * t1 % MOD - 3 * t2 % MOD + t3 % MOD) % MOD + MOD) % MOD;
+        long long term = (C_N_mod - size_Sk % MOD + MOD) % MOD;
 
         if (term == 0)
             break;
 
-        total_H = (total_H + term % MOD) % MOD;
+        total_H = (total_H + term) % MOD;
         k++;
         if (k > 100) break;
     }
 
-    printf("%lld\n", (total_H % MOD + MOD) % MOD);
+    printf("%lld\n", total_H);
     return 0;
 }

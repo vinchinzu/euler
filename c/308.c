@@ -3,7 +3,9 @@
  *
  * Conway's PRIMEGAME FRACTRAN program. Count steps to reach 10001st prime power of 2.
  * Uses optimized state machine with loop shortcuts.
- * (Extracted from embedded C in Python solution)
+ *
+ * State machine encodes n = 2^two * 3^three * 5^five * 7^seven with 5 states.
+ * All loops that can be batched are optimized away.
  */
 #include <stdio.h>
 #include <stdint.h>
@@ -24,8 +26,13 @@ int main(void) {
         switch (state) {
         case 0: /* S_ */
             if (two > 0) {
-                two--; three++; five++;
-                steps++;
+                /* Optimization: batch all two iterations at once.
+                 * Each step: two--, three++, five++, steps++
+                 * seven doesn't change in this branch. */
+                steps += two;
+                three += two;
+                five += two;
+                two = 0;
             } else if (seven > 0) {
                 seven--;
                 steps++;
@@ -38,6 +45,7 @@ int main(void) {
 
         case 1: /* S11 */
             if (three > 0) {
+                /* Optimized S11<->S29 loop */
                 steps += 2 * three;
                 seven += three;
                 three = 0;
@@ -49,6 +57,7 @@ int main(void) {
 
         case 2: /* S13 */
             if (five > 0 && seven > 0) {
+                /* Optimized S13<->S17 loop */
                 int64_t min_val = five < seven ? five : seven;
                 steps += 2 * min_val;
                 two += min_val;
@@ -85,6 +94,7 @@ int main(void) {
 
         case 4: /* S19 */
             if (two > 0) {
+                /* Optimized S19<->S23 loop */
                 steps += 2 * two;
                 five += two;
                 two = 0;

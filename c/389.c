@@ -27,7 +27,7 @@ int main(void) {
     double mu_12 = 6.5;
     double var_12 = 143.0 / 12.0; /* (144-1)/12 */
     double e_d = mu_12 * e_o;
-    double var_d = var_12 * e_d + mu_12 * mu_12 * var_o;
+    double var_d = var_12 * e_o + mu_12 * mu_12 * var_o;
 
     /* I stage: 20-sided dice */
     double mu_20 = 10.5;

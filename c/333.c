@@ -1,34 +1,23 @@
 /*
  * Project Euler Problem 333 - Special partitions
  *
- * Partitions into parts 2^i * 3^j. A partition is "special" if no part
- * divides another. Sum of primes q < 1000000 with exactly 1 special partition.
+ * Partitions into parts 2^i * 3^j (no part divides another).
+ * Sum of primes q < 1000000 with exactly 1 special partition.
  *
- * Generate all terms 2^i * 3^j <= LIMIT (excluding 1).
- * Sort by (exp2 ascending, exp3 descending).
+ * Algorithm: generate terms, sort by (exp2 asc, exp3 desc).
  * Predecessors: term j can follow term i if exp2[i] < exp2[j] and exp3[i] > exp3[j].
- * DP: for each term, accumulate sums from predecessors.
+ * DP using counts array: for each term, track reachable sums via predecessors.
+ *
+ * Uses a flat array DP instead of linked lists to avoid excessive memory.
+ * For each term, maintain a boolean array of which sums are reachable (and their counts).
+ * Since predecessors form a DAG, process in order and combine.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #define LIMIT 1000000
 
-/* Sieve primes */
-static char sieve[LIMIT];
-
-void make_sieve(void) {
-    memset(sieve, 1, LIMIT);
-    sieve[0] = sieve[1] = 0;
-    for (int i = 2; (long long)i * i < LIMIT; i++)
-        if (sieve[i])
-            for (int j = i * i; j < LIMIT; j += i)
-                sieve[j] = 0;
-}
-
-/* Terms: 2^e2 * 3^e3, excluding 1 */
 typedef struct {
     int value;
     int exp2;
@@ -39,36 +28,24 @@ int term_cmp(const void *a, const void *b) {
     const Term *ta = (const Term *)a;
     const Term *tb = (const Term *)b;
     if (ta->exp2 != tb->exp2) return ta->exp2 - tb->exp2;
-    return tb->exp3 - ta->exp3; /* descending exp3 */
+    return tb->exp3 - ta->exp3;
 }
 
-/* For DP: each term has a dictionary of (sum -> count).
- * Use a simple linked list of (sum, count) pairs. */
-typedef struct Entry {
-    int sum;
-    int count;
-    struct Entry *next;
-} Entry;
-
-/* Pool allocator for entries */
-#define POOL_SIZE 40000000
-static Entry pool[POOL_SIZE];
-static int pool_idx = 0;
-
-Entry *alloc_entry(void) {
-    return &pool[pool_idx++];
-}
-
-/* Counts array for accumulating */
+static char sieve[LIMIT];
 static int counts[LIMIT + 1];
 
 int main(void) {
-    make_sieve();
+    /* Sieve primes */
+    memset(sieve, 1, LIMIT);
+    sieve[0] = sieve[1] = 0;
+    for (int i = 2; (long long)i * i < LIMIT; i++)
+        if (sieve[i])
+            for (int j = i * i; j < LIMIT; j += i)
+                sieve[j] = 0;
 
     /* Generate terms */
     Term terms[200];
     int nterms = 0;
-
     long long v2 = 1;
     int e2 = 0;
     while (v2 <= LIMIT) {
@@ -87,63 +64,96 @@ int main(void) {
         v2 *= 2;
         e2++;
     }
-
     qsort(terms, nterms, sizeof(Term), term_cmp);
 
     /* Build predecessors */
     int preds[200][200];
     int npreds[200];
     memset(npreds, 0, sizeof(npreds));
-
-    for (int j = 0; j < nterms; j++) {
-        for (int i = 0; i < j; i++) {
-            if (terms[i].exp2 < terms[j].exp2 && terms[i].exp3 > terms[j].exp3) {
+    for (int j = 0; j < nterms; j++)
+        for (int i = 0; i < j; i++)
+            if (terms[i].exp2 < terms[j].exp2 && terms[i].exp3 > terms[j].exp3)
                 preds[j][npreds[j]++] = i;
-            }
-        }
-    }
 
-    /* DP using linked lists of (sum, count) */
-    Entry *dp_heads[200];
-    memset(dp_heads, 0, sizeof(dp_heads));
+    /* DP using per-term count arrays.
+     * dp[idx] is a dynamically allocated array of size (LIMIT+1) storing counts.
+     * To save memory, only allocate for terms that have predecessors or where it's needed.
+     * Actually, the Python uses dicts. In C, use sparse representation via sorted lists.
+     */
+
+    /* Use a simpler approach: for each term, maintain a list of (sum, count) pairs.
+     * Use a dynamic array (growing as needed). */
+    typedef struct { int sum; int count; } Pair;
+
+    /* Pool for pairs */
+    int pool_cap = 20000000;
+    Pair *pool = (Pair *)malloc(pool_cap * sizeof(Pair));
+    if (!pool) { fprintf(stderr, "malloc failed\n"); return 1; }
+    int pool_used = 0;
+
+    /* For each term: start index and count in pool */
+    int dp_start[200];
+    int dp_count[200];
+    memset(dp_count, 0, sizeof(dp_count));
+
     memset(counts, 0, sizeof(counts));
 
     for (int idx = 0; idx < nterms; idx++) {
         int value = terms[idx].value;
 
-        /* Start new partition with just this term */
-        if (value <= LIMIT) {
-            Entry *e = alloc_entry();
-            e->sum = value;
-            e->count = 1;
-            e->next = dp_heads[idx];
-            dp_heads[idx] = e;
-            counts[value]++;
-        }
+        /* Temporary buffer: use a hash map approach with the counts array as workspace.
+         * We'll use a separate temp array for this term's results. */
 
-        /* Extend from predecessors */
+        /* Collect all (sum, count) pairs for this term */
+        /* Start with just {value: 1} */
+        /* Then merge in all predecessor entries + value */
+
+        /* Use a temporary array to accumulate */
+        /* Strategy: mark sums in a temporary array, then extract */
+        int *temp = (int *)calloc(LIMIT + 1, sizeof(int));
+        if (!temp) { fprintf(stderr, "calloc failed\n"); return 1; }
+
+        if (value <= LIMIT)
+            temp[value] = 1;
+
         for (int pi = 0; pi < npreds[idx]; pi++) {
             int pred = preds[idx][pi];
-            for (Entry *e = dp_heads[pred]; e; e = e->next) {
-                int new_sum = e->sum + value;
-                if (new_sum > LIMIT) continue;
-                Entry *ne = alloc_entry();
-                ne->sum = new_sum;
-                ne->count = e->count;
-                ne->next = dp_heads[idx];
-                dp_heads[idx] = ne;
-                counts[new_sum] += e->count;
+            for (int k = dp_start[pred]; k < dp_start[pred] + dp_count[pred]; k++) {
+                int new_sum = pool[k].sum + value;
+                if (new_sum <= LIMIT) {
+                    temp[new_sum] += pool[k].count;
+                }
             }
         }
+
+        /* Store results in pool */
+        dp_start[idx] = pool_used;
+        dp_count[idx] = 0;
+        for (int s = 1; s <= LIMIT; s++) {
+            if (temp[s] > 0) {
+                if (pool_used >= pool_cap) {
+                    pool_cap *= 2;
+                    pool = (Pair *)realloc(pool, pool_cap * sizeof(Pair));
+                    if (!pool) { fprintf(stderr, "realloc failed\n"); return 1; }
+                }
+                pool[pool_used].sum = s;
+                pool[pool_used].count = temp[s];
+                pool_used++;
+                dp_count[idx]++;
+                counts[s] += temp[s];
+            }
+        }
+
+        free(temp);
     }
 
     /* Sum primes with exactly 1 special partition */
     long long total = 0;
-    for (int p = 2; p < LIMIT; p++) {
+    for (int p = 2; p < LIMIT; p++)
         if (sieve[p] && counts[p] == 1)
             total += p;
-    }
 
     printf("%lld\n", total);
+    free(pool);
     return 0;
 }

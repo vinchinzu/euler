@@ -15,6 +15,7 @@
 #include <stdlib.h>
 
 typedef long long ll;
+typedef __int128 lll;
 
 #define BBS_MOD 50515093LL
 
@@ -37,13 +38,12 @@ int main(void) {
     /* Compute M(n) using stack algorithm */
     /* We need to do this 3 times for n = start+period, start+2*period, start+3*period */
 
-    ll points[3];
+    lll points[3];
 
     for (int mult = 1; mult <= 3; mult++) {
         ll n = start + (ll)mult * period;
 
         /* Stack: pairs of (position, value) */
-        /* Use arrays for stack */
         int stack_cap = 1024;
         ll *stack_pos = (ll *)malloc(stack_cap * sizeof(ll));
         ll *stack_val = (ll *)malloc(stack_cap * sizeof(ll));
@@ -54,7 +54,7 @@ int main(void) {
         stack_val[stack_size] = -1;
         stack_size++;
 
-        ll M = 0;
+        lll M = 0;
         ll sv = 290797;
 
         for (ll pos = 1; pos <= n; pos++) {
@@ -65,7 +65,7 @@ int main(void) {
                 ll v = stack_val[stack_size];
                 ll p = stack_pos[stack_size];
                 ll prev_p = stack_pos[stack_size - 1];
-                M += v * (p - prev_p) * (pos - p);
+                M += (lll)v * (p - prev_p) * (pos - p);
             }
 
             if (stack_size >= stack_cap) {
@@ -85,7 +85,7 @@ int main(void) {
             ll v = stack_val[stack_size];
             ll p = stack_pos[stack_size];
             ll prev_p = stack_pos[stack_size - 1];
-            M += v * (p - prev_p) * (pos - p);
+            M += (lll)v * (p - prev_p) * (pos - p);
         }
 
         points[mult - 1] = M;
@@ -96,13 +96,13 @@ int main(void) {
     /* Lagrange interpolation: f(x) through (1, y0), (2, y1), (3, y2) */
     ll k = N_val / period;
 
-    ll y0 = points[0], y1 = points[1], y2 = points[2];
-    ll d0 = y0;
-    ll d1 = y1 - y0;
-    ll d2 = y2 - 2 * y1 + y0;
+    lll y0 = points[0], y1 = points[1], y2 = points[2];
+    lll d0 = y0;
+    lll d1 = y1 - y0;
+    lll d2 = y2 - 2 * y1 + y0;
 
-    ll result = d0 + d1 * (k - 1) + d2 * (k - 1) * (k - 2) / 2;
+    lll result = d0 + d1 * (k - 1) + d2 * (k - 1) * (k - 2) / 2;
 
-    printf("%lld\n", result);
+    printf("%lld\n", (ll)result);
     return 0;
 }

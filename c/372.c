@@ -29,7 +29,13 @@ static ll isqrt_ll(ll n) {
 static ll exact_floor_n_alpha(ll n, ll d, ll P, ll Q) {
     if (n == 0) return 0;
     lll nd = (lll)n * n * d;
-    ll S = isqrt_ll((ll)((double)n * sqrt((double)d)));
+    /* S = isqrt(n^2 * d) = floor(n * sqrt(d)) */
+    ll S;
+    if (nd <= (lll)9000000000000000000LL) {
+        S = isqrt_ll((ll)nd);
+    } else {
+        S = (ll)((double)n * sqrt((double)d));
+    }
     /* Refine S so that S^2 <= n^2*d < (S+1)^2 */
     while ((lll)S * S > nd) S--;
     while ((lll)(S + 1) * (S + 1) <= nd) S++;
@@ -48,13 +54,13 @@ static ll exact_floor_n_alpha(ll n, ll d, ll P, ll Q) {
 static ll sum_floor(ll n, ll d) {
     if (n <= 0) return 0;
     ll s = isqrt_ll(d);
-    if (s * s == d) return s * n * (n + 1) / 2;
+    if (s * s == d) return (ll)((lll)s * n * (n + 1) / 2);
 
-    ll base = s * n * (n + 1) / 2;
+    lll base = (lll)s * n * (n + 1) / 2;
     ll P_cur = -s, Q_cur = 1;
     ll n_cur = n;
     int sign = 1;
-    ll result = base;
+    lll result = base;
 
     while (n_cur > 0) {
         ll m = exact_floor_n_alpha(n_cur, d, P_cur, Q_cur);
@@ -66,10 +72,11 @@ static ll sum_floor(ll n, ll d) {
 
         ll a = exact_floor_n_alpha(1, d, P_inv, Q_new);
 
+        lll term = (lll)n_cur * m - (lll)a * m * (m + 1) / 2;
         if (sign > 0)
-            result += n_cur * m - a * m * (m + 1) / 2;
+            result += term;
         else
-            result -= n_cur * m - a * m * (m + 1) / 2;
+            result -= term;
 
         P_cur = P_inv - a * Q_new;
         Q_cur = Q_new;
@@ -77,14 +84,15 @@ static ll sum_floor(ll n, ll d) {
         sign = -sign;
     }
 
-    return result;
+    return (ll)result;
 }
 
 static ll floor_div_sqrt(ll num, ll den) {
     if (den == 0 || num <= 0) return 0;
     lll num2 = (lll)num * num;
-    lll z2_den = num2 / den;
-    ll z = isqrt_ll((ll)((double)num / sqrt((double)den)));
+    /* floor(num / sqrt(den)) = floor(sqrt(num^2 / den)) */
+    ll val = (ll)(num2 / den);
+    ll z = isqrt_ll(val);
     while ((lll)(z + 1) * (z + 1) * den <= num2) z++;
     while ((lll)z * z * den > num2) z--;
     return z;

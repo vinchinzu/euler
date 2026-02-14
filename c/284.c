@@ -120,6 +120,7 @@ static void bn_mul(BigNum *a, const BigNum *b, const BigNum *c, int maxlen) {
             k++;
         }
     }
+    memset(a->digits, 0, sizeof(a->digits));
     memcpy(a->digits, tmp, maxlen * sizeof(int));
     a->len = maxlen;
     while (a->len > 1 && a->digits[a->len - 1] == 0) a->len--;
@@ -134,27 +135,27 @@ static void bn_hensel_step(BigNum *a, const BigNum *b, int maxlen) {
     /* b2 = b * b mod 14^maxlen */
     bn_mul(&b2, b, b, maxlen);
 
-    /* factor = 3 - 2*b mod 14^maxlen */
-    /* First compute 2*b */
+    /* factor = (3 - 2*b) mod 14^maxlen */
+    /* Compute as: factor = 3, then subtract 2*b with borrow chain */
     bn_zero(&factor);
-    for (int i = 0; i < maxlen; i++) {
-        factor.digits[i] = (14 + 3 * (i == 0) - 2 * b->digits[i]) % 14;
-    }
-    /* Actually, let's do this properly with borrow */
-    /* factor = 3 - 2*b (mod 14^maxlen) */
-    /* Compute as: start with 3, subtract 2*b with borrows */
-    int borrow = 0;
     factor.digits[0] = 3;
+    factor.len = 1;
+
+    int borrow = 0;
     for (int i = 0; i < maxlen; i++) {
         int val = factor.digits[i] - 2 * b->digits[i] - borrow;
         if (val < 0) {
-            val += 14 * (((-val) + 13) / 14);
-            borrow = (2 * b->digits[i] + borrow - factor.digits[i] + 13) / 14;
+            /* Need to borrow: add enough multiples of 14 to make val non-negative */
+            int neg = -val;
+            int borrows_needed = (neg + 13) / 14;
+            val += borrows_needed * 14;
+            borrow = borrows_needed;
         } else {
             borrow = 0;
         }
         factor.digits[i] = val % 14;
     }
+    /* Any remaining borrow is absorbed by the mod 14^maxlen */
     factor.len = maxlen;
     while (factor.len > 1 && factor.digits[factor.len - 1] == 0) factor.len--;
 

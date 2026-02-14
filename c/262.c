@@ -5,8 +5,13 @@
  * f_min = max H(0,y) for y in [0,1600].
  * Shortest path = straight A->T1 + arc along contour H=f_min + straight T2->B.
  *
- * Pure C numerical approach: golden-section search for f_min, then trace contour
- * using marching, find tangent points, compute path length.
+ * The contour H=f_min in the x>y region consists of an outer boundary
+ * (close to the edges) and possibly inner boundaries near the diagonal.
+ * The outer boundary is what the mosquito must fly around.
+ *
+ * We trace the outer contour from one diagonal crossing (~273,273) to the
+ * other (~1293,1293), following the boundary that goes away from the diagonal
+ * (toward small y / large x).
  */
 #include <stdio.h>
 #include <math.h>
@@ -16,7 +21,12 @@ static double H(double x, double y) {
          * exp(-fabs(0.000001 * (x*x + y*y) - 0.0015 * (x + y) + 0.7));
 }
 
-/* Find max H(0, y) using golden section search */
+static void grad_H(double x, double y, double *gx, double *gy) {
+    double eps = 1e-7;
+    *gx = (H(x + eps, y) - H(x - eps, y)) / (2.0 * eps);
+    *gy = (H(x, y + eps) - H(x, y - eps)) / (2.0 * eps);
+}
+
 static double find_fmin(void) {
     double a = 0.0, b = 1600.0;
     double gr = (sqrt(5.0) + 1.0) / 2.0;
@@ -31,39 +41,26 @@ static double find_fmin(void) {
     return H(0, (a + b) / 2.0);
 }
 
-/* Trace contour H(x,y) = fmin in the lower half (x > y region) */
-/* Use parametric marching from the diagonal crossing */
-
-#define MAX_CONTOUR 200000
-
-static double cx[MAX_CONTOUR], cy[MAX_CONTOUR];
-static int contour_len = 0;
-
-/* Gradient of H */
-static void grad_H(double x, double y, double *gx, double *gy) {
-    double eps = 1e-6;
-    *gx = (H(x + eps, y) - H(x - eps, y)) / (2.0 * eps);
-    *gy = (H(x, y + eps) - H(x, y - eps)) / (2.0 * eps);
-}
-
-/* Find point on contour H=fmin near (x0,y0) by Newton on H(x,y0)=fmin */
-static double find_x_on_contour(double x0, double y, double fmin) {
-    double x = x0;
-    for (int i = 0; i < 100; i++) {
-        double val = H(x, y) - fmin;
+static void project_to_contour(double *x, double *y, double fmin) {
+    for (int i = 0; i < 80; i++) {
+        double val = H(*x, *y) - fmin;
+        if (fabs(val) < 1e-14) break;
         double gx, gy;
-        grad_H(x, y, &gx, &gy);
-        if (fabs(gx) < 1e-15) break;
-        x -= val / gx;
+        grad_H(*x, *y, &gx, &gy);
+        double g2 = gx * gx + gy * gy;
+        if (g2 < 1e-30) break;
+        double t = val / g2;
+        *x -= t * gx;
+        *y -= t * gy;
     }
-    return x;
 }
 
-/* Find y on contour at given x */
+/* Find y on contour H=fmin at given x, starting from y0 */
 static double find_y_on_contour(double x, double y0, double fmin) {
     double y = y0;
     for (int i = 0; i < 100; i++) {
         double val = H(x, y) - fmin;
+        if (fabs(val) < 1e-14) break;
         double gx, gy;
         grad_H(x, y, &gx, &gy);
         if (fabs(gy) < 1e-15) break;
@@ -72,11 +69,30 @@ static double find_y_on_contour(double x, double y0, double fmin) {
     return y;
 }
 
-/* Trace contour in direction perpendicular to gradient */
+#define MAX_CONTOUR 500000
+
+static double cx[MAX_CONTOUR], cy[MAX_CONTOUR];
+static int contour_len = 0;
+
 static void trace_contour(double fmin) {
-    /* Start near diagonal crossing point around (273, 273) */
-    /* Find where H(t, t) = fmin for small t */
-    double t0 = 200.0, t1 = 400.0;
+    /* Find first diagonal crossing: H < fmin -> H > fmin transition near t~273 */
+    double t0 = 200.0, t1 = 300.0;
+    /* Ensure t0 is below fmin and t1 is above fmin */
+    while (H(t1, t1) < fmin) t1 += 10;
+    while (H(t0, t0) > fmin) t0 -= 10;
+    for (int i = 0; i < 100; i++) {
+        double tm = (t0 + t1) / 2.0;
+        if (H(tm, tm) < fmin)
+            t0 = tm;
+        else
+            t1 = tm;
+    }
+    double cross1 = (t0 + t1) / 2.0;
+
+    /* Find last diagonal crossing: H > fmin -> H < fmin transition near t~1293 */
+    t0 = 1200.0; t1 = 1400.0;
+    while (H(t0, t0) < fmin) t0 -= 10;
+    while (H(t1, t1) > fmin) t1 += 10;
     for (int i = 0; i < 100; i++) {
         double tm = (t0 + t1) / 2.0;
         if (H(tm, tm) > fmin)
@@ -84,49 +100,88 @@ static void trace_contour(double fmin) {
         else
             t1 = tm;
     }
-    double start_t = (t0 + t1) / 2.0;
+    double cross2 = (t0 + t1) / 2.0;
 
-    /* Start slightly below diagonal (x > y) */
-    double px = start_t + 0.1;
-    double py = find_y_on_contour(px, start_t - 0.1, fmin);
+    /* Start at the first diagonal crossing.
+     * We want to trace the OUTER contour, which goes AWAY from the diagonal
+     * (toward y=0 side). At the diagonal crossing, the gradient points inward
+     * (toward the mountain peak). The outer contour tangent should go in the
+     * direction that decreases y relative to the diagonal.
+     */
+    double px = cross1;
+    double py = cross1;
+    project_to_contour(&px, &py, fmin);
 
-    double ds = 0.5; /* step size */
+    double ds = 0.05; /* small step size for accuracy */
     contour_len = 0;
-
     cx[0] = px; cy[0] = py;
     contour_len = 1;
 
-    /* March along contour in x > y region */
-    for (int step = 0; step < MAX_CONTOUR - 1; step++) {
-        double gx, gy;
+    /* At the diagonal crossing, choose direction that goes toward smaller y
+     * (outer contour goes away from diagonal toward y=0 edge) */
+    double gx, gy;
+    grad_H(px, py, &gx, &gy);
+    double gn = sqrt(gx * gx + gy * gy);
+
+    /* Two tangent directions: (-gy, gx)/gn and (gy, -gx)/gn */
+    /* Choose the one where dy < dx (moves away from diagonal downward) */
+    double tx1 = -gy / gn, ty1 = gx / gn;
+    double tx2 = gy / gn, ty2 = -gx / gn;
+
+    double tx, ty;
+    /* The outer contour goes toward smaller y, so ty < tx (moving below diagonal) */
+    if (ty1 - tx1 < ty2 - tx2) {
+        tx = tx1; ty = ty1;
+    } else {
+        tx = tx2; ty = ty2;
+    }
+
+    /* Take initial step */
+    double nx = px + ds * tx;
+    double ny = py + ds * ty;
+    project_to_contour(&nx, &ny, fmin);
+    px = nx; py = ny;
+    cx[contour_len] = px; cy[contour_len] = py;
+    contour_len++;
+
+    /* Now march along the outer contour.
+     * At each step, the tangent direction is perpendicular to gradient.
+     * Choose direction that maintains continuity (dot product with previous tangent > 0).
+     */
+    double prev_tx = tx, prev_ty = ty;
+
+    for (int step = 0; step < MAX_CONTOUR - 2; step++) {
         grad_H(px, py, &gx, &gy);
-        double gn = sqrt(gx * gx + gy * gy);
+        gn = sqrt(gx * gx + gy * gy);
         if (gn < 1e-15) break;
 
-        /* Tangent direction (perpendicular to gradient, going towards larger x) */
-        double tx = -gy / gn;
-        double ty = gx / gn;
+        tx1 = -gy / gn; ty1 = gx / gn;
+        tx2 = gy / gn; ty2 = -gx / gn;
 
-        /* We want to go from small x to large x */
-        if (tx < 0) { tx = -tx; ty = -ty; }
+        /* Choose direction consistent with previous */
+        double dot1 = tx1 * prev_tx + ty1 * prev_ty;
+        double dot2 = tx2 * prev_tx + ty2 * prev_ty;
+        if (dot1 >= dot2) {
+            tx = tx1; ty = ty1;
+        } else {
+            tx = tx2; ty = ty2;
+        }
 
-        double nx = px + ds * tx;
-        double ny = py + ds * ty;
+        nx = px + ds * tx;
+        ny = py + ds * ty;
+        project_to_contour(&nx, &ny, fmin);
 
-        /* Project back onto contour */
-        ny = find_y_on_contour(nx, ny, fmin);
-
-        /* Check if we've crossed the diagonal on the far side */
-        if (ny > nx) {
-            /* We've passed the second diagonal crossing, interpolate */
-            /* Binary search for the crossing point */
+        /* Check if we've reached the second diagonal crossing */
+        if (nx > cross2 - 5 && ny > cross2 - 5 && fabs(nx - ny) < 5) {
+            /* Close to second crossing, binary search for exact point */
             double ax = px, ay = py;
             double bx = nx, by = ny;
-            for (int i = 0; i < 60; i++) {
+            for (int i = 0; i < 80; i++) {
                 double mx = (ax + bx) / 2.0;
                 double my = (ay + by) / 2.0;
-                my = find_y_on_contour(mx, my, fmin);
-                if (my < mx) {
+                project_to_contour(&mx, &my, fmin);
+                /* Still in x>y region? */
+                if (mx > my + 0.001) {
                     ax = mx; ay = my;
                 } else {
                     bx = mx; by = my;
@@ -139,6 +194,7 @@ static void trace_contour(double fmin) {
         }
 
         px = nx; py = ny;
+        prev_tx = tx; prev_ty = ty;
         cx[contour_len] = px;
         cy[contour_len] = py;
         contour_len++;
@@ -150,63 +206,58 @@ int main(void) {
 
     trace_contour(fmin);
 
-    double Ax = 200.0, Ay = 200.0;
-    double Bx = 1400.0, By = 1400.0;
-
-    /* Find tangent points T1 (from A) and T2 (to B) on the contour */
-    /* T1: point where line A->P is tangent to contour
-       Cross product (P - A) x tangent = 0 */
-
-    int T1_idx = -1, T2_idx = -1;
-
-    for (int i = 1; i < contour_len - 1; i++) {
-        /* Tangent at i */
-        double tx = cx[i+1] - cx[i-1];
-        double ty = cy[i+1] - cy[i-1];
-
-        /* Vector from A to point i */
-        double vx = cx[i] - Ax;
-        double vy = cy[i] - Ay;
-        double cross_a = vx * ty - vy * tx;
-
-        /* Same for i-1 */
-        double vx_prev = cx[i-1] - Ax;
-        double vy_prev = cy[i-1] - Ay;
-        double tx_prev, ty_prev;
-        if (i >= 2) {
-            tx_prev = cx[i] - cx[i-2];
-            ty_prev = cy[i] - cy[i-2];
-        } else {
-            tx_prev = cx[1] - cx[0];
-            ty_prev = cy[1] - cy[0];
-        }
-        double cross_a_prev = vx_prev * ty_prev - vy_prev * tx_prev;
-
-        if (T1_idx < 0 && cross_a_prev * cross_a <= 0 && (fabs(cross_a_prev) + fabs(cross_a)) > 0) {
-            T1_idx = i;
-        }
-
-        /* Vector from B to point i */
-        vx = cx[i] - Bx;
-        vy = cy[i] - By;
-        double cross_b = vx * ty - vy * tx;
-
-        vx_prev = cx[i-1] - Bx;
-        vy_prev = cy[i-1] - By;
-        double cross_b_prev = vx_prev * ty_prev - vy_prev * tx_prev;
-
-        if (T1_idx >= 0 && T2_idx < 0 && cross_b_prev * cross_b <= 0 && (fabs(cross_b_prev) + fabs(cross_b)) > 0) {
-            T2_idx = i;
-        }
-    }
-
-    if (T1_idx < 0 || T2_idx < 0) {
-        /* Fallback: use finer trace */
-        fprintf(stderr, "Error: tangent points not found\n");
+    if (contour_len < 10) {
+        fprintf(stderr, "Error: contour too short (%d points)\n", contour_len);
         return 1;
     }
 
-    /* Path = A->T1 + arc T1->T2 + T2->B */
+    double Ax = 200.0, Ay = 200.0;
+    double Bx = 1400.0, By = 1400.0;
+
+    /* Find tangent points on contour.
+     * T1: from A, the tangent to the outer contour (first sign change of cross product)
+     * T2: from B, the tangent to the outer contour (last sign change of cross product going from T1 to end)
+     */
+    int T1_idx = -1, T2_idx = -1;
+
+    double prev_cross_a = 0, prev_cross_b = 0;
+    int first_a = 1, first_b = 1;
+
+    for (int i = 1; i < contour_len - 1; i++) {
+        double tanx = cx[i+1] - cx[i-1];
+        double tany = cy[i+1] - cy[i-1];
+
+        double vax = cx[i] - Ax, vay = cy[i] - Ay;
+        double cross_a = vax * tany - vay * tanx;
+
+        double vbx = cx[i] - Bx, vby = cy[i] - By;
+        double cross_b = vbx * tany - vby * tanx;
+
+        if (!first_a) {
+            if (T1_idx < 0 && prev_cross_a * cross_a < 0) {
+                T1_idx = i;
+            }
+        }
+        if (!first_b && T1_idx >= 0) {
+            if (T2_idx < 0 && prev_cross_b * cross_b < 0) {
+                T2_idx = i;
+            }
+        }
+
+        prev_cross_a = cross_a;
+        prev_cross_b = cross_b;
+        first_a = 0;
+        first_b = 0;
+    }
+
+    if (T1_idx < 0 || T2_idx < 0) {
+        fprintf(stderr, "Error: tangent points not found (T1=%d, T2=%d, len=%d)\n",
+                T1_idx, T2_idx, contour_len);
+        fprintf(stderr, "First point: (%.2f, %.2f)\n", cx[0], cy[0]);
+        fprintf(stderr, "Last point: (%.2f, %.2f)\n", cx[contour_len-1], cy[contour_len-1]);
+        return 1;
+    }
+
     double d_A_T1 = sqrt((cx[T1_idx]-Ax)*(cx[T1_idx]-Ax) + (cy[T1_idx]-Ay)*(cy[T1_idx]-Ay));
     double d_T2_B = sqrt((Bx-cx[T2_idx])*(Bx-cx[T2_idx]) + (By-cy[T2_idx])*(By-cy[T2_idx]));
 

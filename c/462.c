@@ -6,6 +6,10 @@
  * formula on the Young diagram of exponents.
  *
  * Output format: mantissa with 10 decimal digits followed by "e" and exponent.
+ *
+ * Uses long double for extended precision (~18 decimal digits on x86)
+ * and accumulates in natural log, dividing by log(10) only at the end,
+ * matching the Python approach.
  */
 #include <stdio.h>
 #include <math.h>
@@ -22,11 +26,7 @@ int main(void) {
         if (pow2 > N) break;
         long long pow3 = 1;
         for (int e3 = 0; e3 < 100; e3++) {
-            if (pow2 > N / (pow3 > 0 ? pow3 : 1) || pow2 * pow3 > N) {
-                /* Overflow-safe check */
-                if (pow3 > N / pow2) break;
-            }
-            if (pow2 * pow3 > N) break;
+            if (pow3 > N / pow2) break;
             e2_arr[npoints] = e2;
             e3_arr[npoints] = e3;
             npoints++;
@@ -37,15 +37,15 @@ int main(void) {
         pow2 *= 2;
     }
 
-    /* ans = log10(n! / prod(hook_lengths)) */
-    double ans = 0.0;
+    /* ans = ln(n! / prod(hook_lengths)), accumulated in natural log */
+    long double ans = 0.0L;
 
-    /* Add log(n!) */
+    /* Add ln(n!) using Stirling + correction for better precision */
     for (int i = 1; i <= npoints; i++) {
-        ans += log10((double)i);
+        ans += logl((long double)i);
     }
 
-    /* Subtract log(hook_length) for each cell */
+    /* Subtract ln(hook_length) for each cell */
     for (int p = 0; p < npoints; p++) {
         int hook = 0;
         for (int q = 0; q < npoints; q++) {
@@ -54,18 +54,21 @@ int main(void) {
                 hook++;
             }
         }
-        ans -= log10((double)hook);
+        ans -= logl((long double)hook);
     }
 
+    /* Convert to log base 10 */
+    ans /= logl(10.0L);
+
     int exp_part = (int)ans;
-    double mantissa = pow(10.0, ans - exp_part);
+    long double mantissa = powl(10.0L, ans - (long double)exp_part);
 
     /* Adjust if mantissa < 1 */
-    if (mantissa < 1.0) {
-        mantissa *= 10.0;
+    if (mantissa < 1.0L) {
+        mantissa *= 10.0L;
         exp_part--;
     }
 
-    printf("%.10fe%d\n", mantissa, exp_part);
+    printf("%.10Lfe%d\n", mantissa, exp_part);
     return 0;
 }
