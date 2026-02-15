@@ -72,13 +72,13 @@ fn main() {
             if n > nn / (p * p) {
                 break;
             }
-            let mut nn_local = n * p;
+            let mut nn_local = n * p * p; // exponent starts at 2
             for e in 2..=prev_e {
-                nn_local *= p;
-                if nn_local > nn / p {
+                if nn_local > nn {
                     break;
                 }
-                find_powerfuls(index + 1, nn_local * p, e, prime_list, nn, ans);
+                find_powerfuls(index + 1, nn_local, e, prime_list, nn, ans);
+                nn_local *= p;
             }
         }
     }

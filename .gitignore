@@ -7,3 +7,19 @@ __pycache__/
 # Generated validation outputs
 validation_results.json
 validation_run.log
+
+# Compiled binaries and build artifacts
+rust/target/
+c/[0-9]*
+!c/[0-9]*.c
+!c/[0-9]*.h
+python/*.so
+python/*_helper
+python/*_core
+python/*_fast
+python/*_tmp
+python/*_bin
+python/solution
+cpp/[0-9]*
+!cpp/[0-9]*.cpp
+!cpp/[0-9]*.h
