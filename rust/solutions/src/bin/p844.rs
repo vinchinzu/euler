@@ -1,10 +1,15 @@
 // Project Euler 844 - k-Markov Numbers
-// Compressed BFS for small k, polynomial summation for large k
+// k-Markov: x_1^2 + ... + x_k^2 = k * x_1 * ... * x_k
+// S(K,N) = sum_{k=3}^{K} M_k(N), find S(10^18, 10^18) mod 1405695061
+//
+// Strategy:
+// 1. BFS for k=3..CUTOFF using compressed states
+// 2. Polynomial branch summation for k=CUTOFF+1..N
 
-const MOD: i64 = 1405695061;
+const MOD: i64 = 1_405_695_061;
 const CUTOFF: i64 = 40000;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct State {
@@ -16,6 +21,7 @@ fn pow_mod(mut base: i128, mut exp: i64, m: i64) -> i64 {
     let mut r = 1i128;
     let mm = m as i128;
     base %= mm;
+    if base < 0 { base += mm; }
     while exp > 0 {
         if exp & 1 == 1 { r = r * base % mm; }
         base = base * base % mm;
@@ -76,38 +82,62 @@ fn solve_compressed(k: i64, n: i64) -> i64 {
     found_sum % MOD
 }
 
-fn sum_pow(p: i32, n: i64) -> i64 {
+/// Sum of k^p for k=1..n, mod MOD, using Lagrange interpolation.
+fn sum_pow_lagrange(p: usize, n: i64) -> i64 {
     if n < 1 { return 0; }
-    let nm = n % MOD;
-    let inv2 = (MOD + 1) / 2;
-    let inv6 = pow_mod(6, MOD - 2, MOD);
-    let m = MOD as i128;
-
-    match p {
-        0 => nm,
-        1 => (nm as i128 * ((nm + 1) % MOD) as i128 % m * inv2 as i128 % m) as i64,
-        2 => (nm as i128 * ((nm + 1) % MOD) as i128 % m
-              * ((2 * nm + 1) % MOD) as i128 % m * inv6 as i128 % m) as i64,
-        3 => {
-            let v = (nm as i128 * ((nm + 1) % MOD) as i128 % m * inv2 as i128 % m) as i64;
-            (v as i128 * v as i128 % m) as i64
-        }
-        4 => {
-            let t1 = nm as i128 * ((nm + 1) % MOD) as i128 % m;
-            let t2 = (2 * nm + 1) % MOD;
-            let t3 = ((3i128 * nm as i128 % m * nm as i128 % m + 3 * nm as i128 % m - 1 + m) % m) as i64;
-            let inv30 = pow_mod(30, MOD - 2, MOD);
-            (t1 * t2 as i128 % m * t3 as i128 % m * inv30 as i128 % m) as i64
-        }
-        _ => 0,
+    let pts = p + 2; // degree of prefix sum is p+1, need p+2 sample points
+    // y[i] = sum_{k=1}^{i} k^p for i = 0, 1, ..., pts-1
+    let mut y = vec![0i64; pts];
+    for i in 1..pts {
+        y[i] = (y[i - 1] + pow_mod(i as i128, p as i64, MOD)) % MOD;
     }
+    if (n as usize) < pts {
+        return y[n as usize];
+    }
+
+    let nm = (n % MOD as i64 + MOD) % MOD;
+
+    // Lagrange interpolation at nm for points (0, y[0]), (1, y[1]), ..., (pts-1, y[pts-1])
+    // Precompute factorials and inverse factorials
+    let mut fact = vec![1i64; pts];
+    for i in 1..pts {
+        fact[i] = fact[i - 1] * i as i64 % MOD;
+    }
+    let mut inv_fact = vec![1i64; pts];
+    inv_fact[pts - 1] = pow_mod(fact[pts - 1] as i128, MOD - 2, MOD);
+    for i in (0..pts - 1).rev() {
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) as i64 % MOD;
+    }
+
+    let m = MOD as i128;
+    // prefix[i] = product of (nm - j) for j=0..i-1
+    let mut prefix = vec![1i64; pts + 1];
+    for i in 0..pts {
+        prefix[i + 1] = (prefix[i] as i128 * ((nm - i as i64 + MOD) % MOD) as i128 % m) as i64;
+    }
+    // suffix[i] = product of (nm - j) for j=i+1..pts-1
+    let mut suffix = vec![1i64; pts + 1];
+    for i in (0..pts).rev() {
+        suffix[i] = (suffix[i + 1] as i128 * ((nm - i as i64 + MOD) % MOD) as i128 % m) as i64;
+    }
+
+    let mut result = 0i64;
+    for i in 0..pts {
+        let num = prefix[i] as i128 * suffix[i + 1] as i128 % m;
+        let mut denom = inv_fact[i] as i128 * inv_fact[pts - 1 - i] as i128 % m;
+        if (pts - 1 - i) % 2 == 1 {
+            denom = m - denom;
+        }
+        result = ((result as i128 + y[i] as i128 * num % m * denom % m) % m) as i64;
+    }
+    result
 }
 
 fn poly_eval_sum(coeffs: &[i64], limit: i64) -> i64 {
     let mut total = 0i64;
     let m = MOD as i128;
     for (p, &c) in coeffs.iter().enumerate() {
-        let sp = sum_pow(p as i32, limit);
+        let sp = sum_pow_lagrange(p, limit);
         let cm = ((c as i128 % m) + m) % m;
         total = ((total as i128 + cm * sp as i128) % m) as i64;
     }
@@ -126,15 +156,22 @@ fn poly_eval_exact(coeffs: &[i64], k: i64) -> i128 {
     let mut kp = 1i128;
     for &c in coeffs {
         res += c as i128 * kp;
-        kp *= k as i128;
+        kp = kp.saturating_mul(k as i128);
     }
     res
 }
 
 fn find_limit(poly: &[i64], n: i64, start_k: i64, max_k: i64) -> i64 {
     if poly_eval_exact(poly, start_k) > n as i128 { return start_k - 1; }
+    // Cap the search range to avoid i128 overflow
+    let deg = poly.len() - 1;
+    let approx_max = if deg == 0 {
+        max_k
+    } else {
+        ((n as f64).powf(1.0 / deg as f64) as i64 + 100).min(max_k)
+    };
     let mut low = start_k;
-    let mut high = max_k;
+    let mut high = approx_max;
     let mut ans = start_k - 1;
     while low <= high {
         let mid = low + (high - low) / 2;

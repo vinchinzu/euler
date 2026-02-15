@@ -9,8 +9,8 @@ const NN: usize = 50_000;
 const B: usize = 10;
 
 fn d_func(k: usize) -> f64 {
-    let mut pows_mod = [0i64; 20];
-    let mut pows_f = [0.0f64; 20];
+    let mut pows_mod = [0i64; 30];
+    let mut pows_f = [0.0f64; 30];
 
     for num_digits in 1.. {
         pows_f[0] = 1.0;

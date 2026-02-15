@@ -10,6 +10,17 @@ fn isqrt(n: i64) -> i64 {
     x
 }
 
+/// Compute v*(v+1)/2 mod MOD without needing modular inverse of 2.
+/// Since v*(v+1) is always even, exactly one of v or v+1 is even.
+fn tri_mod(v: i64) -> i64 {
+    let (a, b) = if v % 2 == 0 {
+        ((v / 2) % MOD, (v + 1) % MOD)
+    } else {
+        (v % MOD, ((v + 1) / 2) % MOD)
+    };
+    (a % MOD * (b % MOD)) % MOD
+}
+
 fn main() {
     let n_global: i64 = 201_820_182_018;
     let r = isqrt(n_global) as usize;
@@ -18,16 +29,12 @@ fn main() {
     let mut small = vec![0i64; r + 1];
     let mut big = vec![0i64; r + 1];
 
-    let inv2 = 500_000_000i64; // inv(2) mod 10^9
-
     for k in 2..=r {
         small[k] = ((k as i64) * (k as i64 + 1) / 2 - 1) % MOD;
     }
     for i in 1..=r {
         let v = n_global / i as i64;
-        let vm = v % MOD;
-        let vp1m = (v + 1) % MOD;
-        big[i] = ((vm * vp1m % MOD) * inv2 % MOD - 1 + MOD) % MOD;
+        big[i] = (tri_mod(v) - 1 + MOD) % MOD;
     }
 
     for p in 2..=r {

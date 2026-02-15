@@ -48,7 +48,7 @@ fn berlekamp_massey(s: &[i64]) -> (usize, Vec<i64>) {
         for j in 1..=l { d = mod_p(d + (c[j] as i128 * s[i - j] as i128 % MOD as i128) as i64); }
         if d == 0 { m += 1; continue; }
         if 2 * l <= i {
-            let t = c[..l+2.min(len_c)].to_vec();
+            let t = c[..(l+2).min(len_c)].to_vec();
             let old_l = l;
             let coeff = (d as i128 * mod_inv(b) as i128 % MOD as i128) as i64;
             let new_len = len_b + m;

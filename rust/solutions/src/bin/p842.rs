@@ -1,12 +1,45 @@
-// Project Euler 842 - n-Star Polygons
+// Project Euler 842 - Irregular Star Polygons
+// T(n) = sum of I(S) over all n-star polygons S.
+// For odd n: all intersections have multiplicity 2.
+// For even n: compute multiplicities geometrically.
+// Sum T(n) for n=3..60 mod 10^9+7.
 
-const MOD: i64 = 1000000007;
+const MOD: u64 = 1_000_000_007;
+
+fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut r = 1u64;
+    base %= m;
+    while exp > 0 {
+        if exp & 1 == 1 { r = (r as u128 * base as u128 % m as u128) as u64; }
+        base = (base as u128 * base as u128 % m as u128) as u64;
+        exp >>= 1;
+    }
+    r
+}
+
+fn modinv(a: u64) -> u64 {
+    pow_mod(a, MOD - 2, MOD)
+}
 
 fn main() {
-    // Exact factorials for small n using i128
-    let mut fact = [0i128; 62];
-    fact[0] = 1;
-    for i in 1..=61 { fact[i] = fact[i - 1] * i as i128; }
+    // Precompute modular factorials up to 61
+    let mut fact_mod = [0u64; 62];
+    fact_mod[0] = 1;
+    for i in 1..=61usize {
+        fact_mod[i] = fact_mod[i - 1] * i as u64 % MOD;
+    }
+
+    // Precompute inverse factorials
+    let mut inv_fact = [0u64; 62];
+    inv_fact[61] = modinv(fact_mod[61]);
+    for i in (0..61).rev() {
+        inv_fact[i] = inv_fact[i + 1] * (i + 1) as u64 % MOD;
+    }
+
+    let mod_binom = |n: usize, k: usize| -> u64 {
+        if k > n { return 0; }
+        fact_mod[n] % MOD * inv_fact[k] % MOD * inv_fact[n - k] % MOD
+    };
 
     let get_xy = |k: usize, n: usize| -> (f64, f64) {
         let angle = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
@@ -21,13 +54,14 @@ fn main() {
         Some((x1 + t * (x2 - x1), y1 + t * (y2 - y1)))
     };
 
-    let compute_t = |n: usize| -> i64 {
+    let compute_t = |n: usize| -> u64 {
         if n < 4 { return 0; }
 
         if n % 2 == 1 {
-            let bn4 = fact[n] / (fact[4] * fact[n - 4]);
-            let result = bn4 * 2 * fact[n - 3];
-            return (result % MOD as i128) as i64;
+            // All intersections have multiplicity 2
+            // T(n) = C(n,4) * 2 * (n-3)!
+            let bn4 = mod_binom(n, 4);
+            return bn4 * 2 % MOD * fact_mod[n - 3] % MOD;
         }
 
         // Even n: find multiplicities via hash map
@@ -52,29 +86,34 @@ fn main() {
             }
         }
 
-        let mut total_val: i64 = 0;
+        let mut total_val: u64 = 0;
         for (_, &pairs) in &point_counts {
             let delta = 1 + 8 * pairs;
             let sq = (delta as f64).sqrt().round() as i32;
-            let m = (1 + sq) / 2;
+            let m = ((1 + sq) / 2) as usize;
 
-            let mut c: i128 = 0;
-            for k in 2..=m as usize {
-                let term_sign: i128 = if k % 2 == 0 { 1 } else { -1 };
-                let bin_mk = fact[m as usize] / (fact[k] * fact[m as usize - k]);
-                let pow2: i128 = 1i128 << (k - 1);
-                let fact_rem = fact[n - k - 1];
-                c += term_sign * (k as i128 - 1) * bin_mk * pow2 * fact_rem;
+            // Contribution for one point of multiplicity m:
+            // c = sum_{k=2}^m (-1)^k * (k-1) * C(m,k) * 2^(k-1) * (n-k-1)!
+            let mut c: u64 = 0;
+            for k in 2..=m {
+                let bin_mk = mod_binom(m, k);
+                let pow2 = pow_mod(2, (k - 1) as u64, MOD);
+                let fact_rem = fact_mod[n - k - 1];
+                let term = (k as u64 - 1) % MOD * bin_mk % MOD * pow2 % MOD * fact_rem % MOD;
+                if k % 2 == 0 {
+                    c = (c + term) % MOD;
+                } else {
+                    c = (c + MOD - term) % MOD;
+                }
             }
 
-            let term_total = ((c % MOD as i128) + MOD as i128) % MOD as i128;
-            total_val = (total_val + term_total as i64) % MOD;
+            total_val = (total_val + c) % MOD;
         }
 
         total_val
     };
 
-    let mut total_sum: i64 = 0;
+    let mut total_sum: u64 = 0;
     for n in 3..=60 {
         let tn = compute_t(n);
         total_sum = (total_sum + tn) % MOD;

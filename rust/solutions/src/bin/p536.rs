@@ -1,30 +1,17 @@
 // Project Euler 536 - Modulo Power Identity
 //
 // Find sum of all m <= N such that a^{m+4} = a (mod m) for all a.
-// m must be squarefree, and lambda(m) | m+3.
+// Condition: m squarefree, lambda(m) | m+3.
+//
+// Recursively build squarefree m by multiplying primes, tracking
+// carmichael = lcm(p_i - 1). CRT optimization when search space is small.
 
-use euler_utils::{gcd, lcm};
+use euler_utils::primes::sieve_smallest_factor;
 
-const SIEVE_LIMIT: usize = 100_000_000;
+const N: u64 = 1_000_000_000_000;
+const SPF_LIMIT: usize = 100_000_001;
 
-fn sieve_spf(limit: usize) -> Vec<u32> {
-    let mut spf = vec![0u32; limit + 1];
-    for i in 2..=limit { if spf[i] == 0 { spf[i] = i as u32; } }
-    let mut i = 2;
-    while i * i <= limit {
-        if spf[i] == i as u32 {
-            let mut j = i * i;
-            while j <= limit {
-                if spf[j] == j as u32 { spf[j] = i as u32; }
-                j += i;
-            }
-        }
-        i += 1;
-    }
-    spf
-}
-
-fn sieve_primes(limit: usize) -> Vec<i32> {
+fn sieve_primes(limit: usize) -> Vec<u64> {
     let mut is_p = vec![true; limit + 1];
     is_p[0] = false;
     if limit >= 1 { is_p[1] = false; }
@@ -32,22 +19,38 @@ fn sieve_primes(limit: usize) -> Vec<i32> {
     while i * i <= limit {
         if is_p[i] {
             let mut j = i * i;
-            while j <= limit { is_p[j] = false; j += i; }
+            while j <= limit {
+                is_p[j] = false;
+                j += i;
+            }
         }
         i += 1;
     }
-    (2..=limit).filter(|&i| is_p[i]).map(|i| i as i32).collect()
+    (2..=limit).filter(|&i| is_p[i]).map(|i| i as u64).collect()
 }
 
-fn mod_inv_fn(a: i64, m: i64) -> i64 {
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 { let t = b; b = a % b; a = t; }
+    a
+}
+
+fn lcm(a: u64, b: u64) -> u64 {
+    a / gcd(a, b) * b
+}
+
+fn mod_inv(a: i64, m: i64) -> i64 {
     if m == 1 { return 0; }
-    let (mut t, mut new_t, mut r, mut new_r) = (0i64, 1i64, m, a);
+    let (mut t, mut new_t) = (0i64, 1i64);
+    let (mut r, mut new_r) = (m, a);
     while new_r != 0 {
         let q = r / new_r;
-        let tmp = new_t; new_t = t - q * new_t; t = tmp;
-        let tmp = new_r; new_r = r - q * new_r; r = tmp;
+        let tmp_t = new_t;
+        new_t = t - q * new_t;
+        t = tmp_t;
+        let tmp_r = new_r;
+        new_r = r - q * new_r;
+        r = tmp_r;
     }
-    if r != 1 { return -1; }
     if t < 0 { t += m; }
     t
 }
@@ -56,89 +59,70 @@ fn imod(a: i64, m: i64) -> i64 {
     ((a % m) + m) % m
 }
 
-struct Solver {
-    spf: Vec<u32>,
-    primes: Vec<i32>,
-    n_val: i64,
-    ans: i64,
+/// Check if m*r satisfies conditions where r > 1 is the remaining factor
+fn good(m: u64, mut r: u64, max_p: u64, spf: &[u32]) -> bool {
+    let m3 = m + 3;
+    while r > 1 {
+        let p = if (r as usize) < spf.len() {
+            spf[r as usize] as u64
+        } else {
+            r // r itself must be prime
+        };
+        if m3 % (p - 1) != 0 { return false; }
+        if p >= max_p { return false; }
+        r /= p;
+        if r % p == 0 { return false; } // not squarefree
+    }
+    true
 }
 
-impl Solver {
-    fn good(&self, m: i64, mut r: i64, max_p: i32) -> bool {
-        while r > 1 {
-            let p = if (r as usize) < SIEVE_LIMIT {
-                self.spf[r as usize] as i32
-            } else {
-                r as i32
-            };
-            if p <= 1 { return false; }
-            if (m + 3) % (p as i64 - 1) != 0 { return false; }
-            if p >= max_p { return false; }
-            r /= p as i64;
-            if r % p as i64 == 0 { return false; }
-        }
-        true
+fn helper(max_index: usize, m: u64, carmichael: u64, primes: &[u64], spf: &[u32], ans: &mut u64) {
+    let g = gcd(m, carmichael);
+    if 3 % g != 0 { return; }
+    if (m + 3) % carmichael == 0 {
+        *ans += m;
     }
 
-    fn helper(&mut self, max_index: usize, m: i64, carmichael: i64) {
-        let g = gcd(m as u64, carmichael as u64) as i64;
-        if 3 % g != 0 { return; }
-        if (m + 3) % carmichael == 0 {
-            self.ans += m;
-        }
-
-        if self.n_val / m < SIEVE_LIMIT as i64
-            && self.n_val / m / carmichael < (1i64 << max_index)
-        {
-            let mod_val = carmichael / g;
-            if mod_val > 0 {
-                let inv = mod_inv_fn(m / g, mod_val);
-                if inv >= 0 {
-                    let r_start = imod((-3 / g) * inv, mod_val);
-                    let mut r = r_start;
-                    while m * r <= self.n_val {
-                        if r > 1 {
-                            let mp = if max_index < self.primes.len() {
-                                self.primes[max_index]
-                            } else {
-                                (self.n_val + 1) as i32
-                            };
-                            if self.good(m * r, r, mp) {
-                                self.ans += m * r;
-                            }
-                        }
-                        r += mod_val;
+    // CRT optimization: enumerate multiples when search space is small
+    let nm = N / m;
+    if nm < SPF_LIMIT as u64 && nm / carmichael < (1u64 << max_index.min(63)) {
+        let modv = carmichael / g;
+        if modv > 0 {
+            let mg = (m / g) as i64;
+            let modv_i = modv as i64;
+            let inv = mod_inv(mg, modv_i);
+            let neg3g = -3i64 / g as i64;
+            let r_start = imod(neg3g * inv, modv_i) as u64;
+            let mut r = r_start;
+            while m.checked_mul(r).map_or(false, |v| v <= N) {
+                if r > 1 {
+                    let max_p = if max_index < primes.len() { primes[max_index] } else { N + 1 };
+                    if good(m * r, r, max_p, spf) {
+                        *ans += m * r;
                     }
                 }
+                r += modv;
             }
-            return;
         }
+        return;
+    }
 
-        for index in (0..max_index).rev() {
-            let p = self.primes[index] as i64;
-            if m * p > self.n_val { continue; }
-            let new_lcm = lcm(carmichael as u64, (p - 1) as u64) as i64;
-            self.helper(index, m * p, new_lcm);
-        }
+    // Recursive case: try adding primes (from index 0..max_index)
+    for index in 0..max_index {
+        let p = primes[index];
+        if m > N / p { break; } // m*p > N
+        helper(index, m * p, lcm(carmichael, p - 1), primes, spf, ans);
     }
 }
 
 fn main() {
-    let n_val: i64 = 1_000_000_000_000;
-    let sqrt_n = (n_val as f64).sqrt() as usize + 1;
-
-    let spf = sieve_spf(SIEVE_LIMIT);
+    let sqrt_n = (N as f64).sqrt() as usize + 1;
     let primes = sieve_primes(sqrt_n);
-    let nprimes = primes.len();
 
-    let mut solver = Solver {
-        spf,
-        primes,
-        n_val,
-        ans: 0,
-    };
+    // Build SPF table
+    let spf = sieve_smallest_factor(SPF_LIMIT);
 
-    solver.helper(nprimes, 1, 1);
-
-    println!("{}", solver.ans);
+    let mut ans = 0u64;
+    helper(primes.len(), 1, 1, &primes, &spf, &mut ans);
+    println!("{}", ans);
 }

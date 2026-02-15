@@ -140,5 +140,5 @@ fn f(ns0: i32, ns1: i32, ns2: i32) -> f64 {
 
 fn main() {
     let result = f(0, 0, 100);
-    println!("{:.10}", result);
+    println!("{:.10}", 1.0 - result);
 }

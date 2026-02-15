@@ -7,7 +7,7 @@ use std::collections::HashMap;
 fn main() {
     const TARGET: i64 = 10_000_000_000_000; // 10^13
 
-    let mut fibs = vec![1i64, 1];
+    let mut fibs = vec![1i64, 2];
     while *fibs.last().unwrap() < 1_000_000_000_000_000 {
         let len = fibs.len();
         fibs.push(fibs[len - 1] + fibs[len - 2]);

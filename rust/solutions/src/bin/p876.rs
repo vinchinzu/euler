@@ -1,7 +1,9 @@
-// Project Euler 876
+// Project Euler 876 - Triplet Tricks
 // For k=1..18, a=6^k, b=10^k.
-// Generate coprime divisor pairs (y,z), compute c = (y+z)*(a/y + b/z),
-// numSteps via Euclidean algo. Track min numSteps per c.
+// Generate coprime divisor pairs (y,z) with y|a, z|b, gcd(y,z)=1.
+// Compute c = (y+z)*(a/y + b/z), numSteps via Euclidean algo.
+// Track min numSteps per c. Sum contributions.
+// Uses i128 for c values which can exceed i64 range for large k.
 
 use std::collections::HashMap;
 
@@ -42,26 +44,29 @@ fn main() {
             pw2 *= 2;
         }
 
-        let mut min_steps: HashMap<i64, i32> = HashMap::new();
+        // Use i128 for c to avoid overflow (c can be up to ~107 bits for k=18)
+        let mut min_steps: HashMap<i128, i64> = HashMap::new();
+        let threshold = 2i128 * (a as i128 + b as i128);
 
         for &y in &a_divs {
             for &z in &b_divs {
                 if gcd(y, z) != 1 { continue; }
-                let c = (y + z) * (a / y + b / z);
+                let c = (y as i128 + z as i128) * (a as i128 / y as i128 + b as i128 / z as i128);
 
-                // Compute numSteps
+                // Compute numSteps via Euclidean-like algorithm
+                // numSteps can be very large (up to ~10^18) so use i64
                 let (mut ly, mut lz) = (y, z);
-                let mut num_steps = 0i32;
+                let mut num_steps = 0i64;
                 let mut side = 0;
                 loop {
                     if side == 0 {
                         if ly == 0 { break; }
-                        num_steps += (lz / ly) as i32;
+                        num_steps += lz / ly;
                         lz %= ly;
                         side = 1;
                     } else {
                         if lz == 0 { break; }
-                        num_steps += (ly / lz) as i32;
+                        num_steps += ly / lz;
                         ly %= lz;
                         side = 0;
                     }
@@ -73,9 +78,9 @@ fn main() {
         }
 
         for (&c, &num_steps) in &min_steps {
-            ans += num_steps as i64;
-            if c < 2 * (a + b) {
-                ans += num_steps as i64 - 1;
+            ans += num_steps;
+            if c < threshold {
+                ans += num_steps - 1;
             }
         }
     }

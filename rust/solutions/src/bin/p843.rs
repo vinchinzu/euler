@@ -251,12 +251,12 @@ fn get_component_periods(elem: &GF2Poly, mod_poly: &GF2Poly, f: &GF2Poly) -> Vec
     periods
 }
 
-fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
+fn gcd_u128(mut a: u128, mut b: u128) -> u128 {
     while b != 0 { let t = b; b = a % b; a = t; }
     a
 }
 
-fn lcm_u64(a: u64, b: u64) -> u64 { a / gcd_u64(a, b) * b }
+fn lcm_u128(a: u128, b: u128) -> u128 { a / gcd_u128(a, b) * b }
 
 fn main() {
     let mut cyclo_cache: Vec<Option<ZPoly>> = vec![None; MAX_DEG_Z + 1];
@@ -266,7 +266,7 @@ fn main() {
     phi1.c[0] = -1; phi1.c[1] = 1;
     cyclo_cache[1] = Some(phi1);
 
-    let mut master: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut master: std::collections::HashSet<u128> = std::collections::HashSet::new();
 
     for n in 3..=100usize {
         let mut n_odd = n;
@@ -309,12 +309,12 @@ fn main() {
         }
 
         // Compute all LCMs from Cartesian product
-        let mut current: Vec<u64> = vec![1];
+        let mut current: Vec<u128> = vec![1];
         for set in &all_sets {
-            let mut next_set: std::collections::HashSet<u64> = std::collections::HashSet::new();
+            let mut next_set: std::collections::HashSet<u128> = std::collections::HashSet::new();
             for &c in &current {
                 for &s_val in set {
-                    next_set.insert(lcm_u64(c, s_val));
+                    next_set.insert(lcm_u128(c, s_val as u128));
                 }
             }
             current = next_set.into_iter().collect();
@@ -323,6 +323,6 @@ fn main() {
         for &v in &current { master.insert(v); }
     }
 
-    let total: u64 = master.iter().sum();
+    let total: u128 = master.iter().sum();
     println!("{}", total);
 }

@@ -127,7 +127,7 @@ fn helper(
 }
 
 fn main() {
-    let mut ans: i64 = 0;
+    let mut ans: i64 = 1; // n=1: g(1)=1
     let mut g_cache: HashMap<i64, i64> = HashMap::new();
     let mut es: Vec<i32> = Vec::new();
 

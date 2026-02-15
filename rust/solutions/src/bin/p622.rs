@@ -2,7 +2,7 @@
 // Find sum of even n with order(2, n-1) = 60, i.e. n-1 | 2^60-1
 
 const PRIMES: [i64; 11] = [3, 5, 7, 11, 13, 31, 41, 61, 151, 331, 1321];
-const EXPONENTS: [i32; 11] = [1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+const EXPONENTS: [i32; 11] = [2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1];
 
 fn powmod(mut base: i64, mut exp: i64, m: i64) -> i64 {
     let mut result = 1i64;

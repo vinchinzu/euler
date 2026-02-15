@@ -1,9 +1,14 @@
 // Project Euler 756 - Approximating a Sum
-// Euler's totient sieve with long-double-like accumulation.
+// E(Delta | phi(k), n, m) = sum_{j=1}^{n-m} phi(j) * C(n-j, m) / C(n, m)
+//
+// where C(n-j,m)/C(n,m) = prod_{t=0}^{j-1} (n-t-m)/(n-t)
+//
+// Compute directly to avoid catastrophic cancellation from S - (large sum).
+// Use Kahan compensated summation for precision.
 
 fn main() {
     let n: usize = 12_345_678;
-    let k: usize = 12_345;
+    let m: usize = 12_345;
 
     // Sieve for Euler's totient
     let mut phi = vec![0u32; n + 1];
@@ -19,31 +24,34 @@ fn main() {
         }
     }
 
-    // Prefix sums
-    let mut sum_phis = vec![0i64; n + 1];
-    for i in 1..=n {
-        sum_phis[i] = sum_phis[i - 1] + phi[i] as i64;
-    }
-    drop(phi);
+    // Compute E[Delta] = sum_{j=1}^{n-m} phi(j) * w_j
+    // where w_j = prod_{t=0}^{j-1} (n-t-m)/(n-t)
+    // w_0 = 1, w_j = w_{j-1} * (n - j + 1 - m) / (n - j + 1)
+    //
+    // Use Kahan compensated summation for precision.
+    let mut ans: f64 = 0.0;
+    let mut comp: f64 = 0.0; // Kahan compensation
+    let mut w: f64 = 1.0;
 
-    // Accumulation using f64 (sufficient for 6 decimal digits)
-    let mut d: f64 = k as f64 / n as f64;
-    let mut ans: f64 = sum_phis[n] as f64;
+    let max_j = n - m; // beyond this, C(n-j, m) = 0
 
-    for i in 1..=n {
-        let tail = sum_phis[n] - sum_phis[i - 1];
-        let diff = d * tail as f64;
+    for j in 1..=max_j {
+        // Update weight: w_j = w_{j-1} * (n - j + 1 - m) / (n - j + 1)
+        let numerator = (n - j + 1 - m) as f64;
+        let denominator = (n - j + 1) as f64;
+        w *= numerator / denominator;
 
-        if diff == 0.0 { break; }
+        if w < 1e-18 {
+            break; // negligible contribution
+        }
 
-        ans -= diff;
+        let term = phi[j] as f64 * w;
 
-        let nr = n as i64 - k as i64 - i as i64 + 1;
-        if nr <= 0 { break; }
-        let dn = n as i64 - i as i64;
-        if dn <= 0 { break; }
-
-        d = d * nr as f64 / dn as f64;
+        // Kahan summation
+        let y = term - comp;
+        let t = ans + y;
+        comp = (t - ans) - y;
+        ans = t;
     }
 
     println!("{:.6}", ans);

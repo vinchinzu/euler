@@ -68,8 +68,8 @@ fn main() {
 
     let mut ans = 0i64;
     for nc in 0..=K { ans = (ans + g[nc][0][N]) % MOD; }
-    for nc in 0..K-1 { ans = (ans + g[nc][0][N]) % MOD; }
-    for nc in 0..K-1 { ans = (ans + g[nc][1][N]) % MOD; }
+    for nc in 0..K { ans = (ans + g[nc][0][N]) % MOD; }
+    for nc in 0..K { ans = (ans + g[nc][1][N]) % MOD; }
     if N % 2 == 0 {
         ans = ans * 2 % MOD;
         let h_arr = [h_r[N/2], h_b[N/2], h_y[N/2]];

@@ -4,27 +4,31 @@
 // S(n) = sum_{k=1}^n P(k) mod M. Recursive with memoization.
 
 use std::collections::HashMap;
-use euler_utils::mod_pow;
 
 const M: i64 = 987_654_321;
 
-fn tr(n: i64, inv2: u64) -> i64 {
-    (n % M) * ((n + 1) % M) % M * inv2 as i64 % M
+// M = 3^2 * 17^2 * 379721, NOT prime. So Fermat's little theorem doesn't apply.
+// Since M is odd, inv2 = (M + 1) / 2.
+const INV2: i64 = (M + 1) / 2;
+
+fn tr(n: i64) -> i64 {
+    // n*(n+1)/2 mod M
+    let a = n % M;
+    let b = (n + 1) % M;
+    // a * b fits in i64 since both < 10^9
+    (a * b % M * INV2) % M
 }
 
 struct Solver {
     ht_p: HashMap<i64, i64>,
     ht_s: HashMap<i64, i64>,
-    inv2: u64,
 }
 
 impl Solver {
     fn new() -> Self {
-        let inv2 = mod_pow(2, M as u64 - 2, M as u64);
         Solver {
             ht_p: HashMap::new(),
             ht_s: HashMap::new(),
-            inv2,
         }
     }
 
@@ -47,9 +51,8 @@ impl Solver {
             (self.p(n) % M + self.s(n - 1)) % M
         } else {
             let half = n / 2;
-            let inv2 = self.inv2;
             let s_half = self.s(half);
-            (1 + 2 * (2 * tr(half, inv2) + 2 * (half % M) - 2 * s_half)) % M
+            (1 + 2 * (2 * tr(half) + 2 * (half % M) - 2 * s_half)) % M
         };
         let result = ((result % M) + M) % M;
         self.ht_s.insert(n, result);

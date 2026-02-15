@@ -1,6 +1,9 @@
 // Project Euler 699 - Triffle Numbers
 // Find sum of n <= N where denom of sigma(n)/n in lowest terms is a power of 3.
-// DFS from 3-smooth starting numbers.
+// DFS from 3-smooth starting numbers, with HashSet deduplication to avoid
+// counting the same number multiple times via different DFS paths.
+
+use std::collections::HashSet;
 
 fn sigma_pe(p: i64, e: i32) -> i64 {
     let mut result = 1i64;
@@ -23,7 +26,7 @@ fn is_pow3(mut n: i64) -> bool {
     n == 1
 }
 
-struct Factor { p: i64, e: i32 }
+struct Factor { p: i64 }
 
 fn factorize(mut n: i64) -> Vec<Factor> {
     let mut factors = Vec::new();
@@ -31,13 +34,12 @@ fn factorize(mut n: i64) -> Vec<Factor> {
     let mut d = 2i64;
     while d * d <= n {
         if n % d == 0 {
-            let mut e = 0;
-            while n % d == 0 { e += 1; n /= d; }
-            factors.push(Factor { p: d, e });
+            while n % d == 0 { n /= d; }
+            factors.push(Factor { p: d });
         }
         d += 1;
     }
-    if n > 1 { factors.push(Factor { p: n, e: 1 }); }
+    if n > 1 { factors.push(Factor { p: n }); }
     factors
 }
 
@@ -45,11 +47,11 @@ const N_LIMIT: i64 = 100_000_000_000_000;
 
 fn dfs(
     n: i64, num: i64, den: i64,
-    primes: &[i64], exps: &[i32], np: usize,
-    answer: &mut i64,
+    primes: &[i64], np: usize,
+    found: &mut HashSet<i64>,
 ) {
     if den > 1 && is_pow3(den) {
-        *answer += n;
+        found.insert(n);
     }
 
     let nf = factorize(num);
@@ -74,18 +76,16 @@ fn dfs(
             let new_den = new_den_raw / g;
 
             let mut new_primes = primes[..np].to_vec();
-            let mut new_exps = exps[..np].to_vec();
             new_primes.push(p);
-            new_exps.push(e);
             let new_np = np + 1;
 
-            dfs(new_n, new_num, new_den, &new_primes, &new_exps, new_np, answer);
+            dfs(new_n, new_num, new_den, &new_primes, new_np, found);
         }
     }
 }
 
 fn main() {
-    let mut answer = 0i64;
+    let mut found: HashSet<i64> = HashSet::new();
 
     let mut pw2 = 1i64;
     let mut a = 0;
@@ -103,12 +103,11 @@ fn main() {
             let den = den_raw / g;
 
             let mut primes = Vec::new();
-            let mut exps = Vec::new();
-            if a > 0 { primes.push(2); exps.push(a); }
-            primes.push(3); exps.push(b);
+            if a > 0 { primes.push(2); }
+            primes.push(3);
             let np = primes.len();
 
-            dfs(n, num, den, &primes, &exps, np, &mut answer);
+            dfs(n, num, den, &primes, np, &mut found);
 
             if pw3 > N_LIMIT / 3 { break; }
             pw3 *= 3;
@@ -119,5 +118,6 @@ fn main() {
         a += 1;
     }
 
+    let answer: i64 = found.iter().sum();
     println!("{}", answer);
 }

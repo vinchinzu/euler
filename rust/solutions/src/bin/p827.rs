@@ -2,7 +2,7 @@
 
 const MOD: i64 = 409120391;
 
-fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
+fn pow_mod(base: i64, mut exp: i64, m: i64) -> i64 {
     let mut result = 1i128;
     let mut b = (base % m) as i128;
     let m128 = m as i128;
@@ -83,26 +83,26 @@ fn get_all_divisors(n: i64) -> Vec<i64> {
 
 #[derive(Clone)]
 struct Factorization {
-    factors: Vec<i32>,
+    factors: Vec<i64>,
 }
 
-fn ordered_factorizations(n: i64, min_val: i32) -> Vec<Factorization> {
+fn ordered_factorizations(n: i64, min_val: i64) -> Vec<Factorization> {
     let mut results = Vec::new();
     if n == 1 {
         results.push(Factorization { factors: Vec::new() });
         return results;
     }
-    if n < min_val as i64 { return results; }
+    if n < min_val { return results; }
 
     let all_divs = get_all_divisors(n);
     for &d in &all_divs {
-        if d < min_val as i64 { continue; }
+        if d < min_val { continue; }
         if d == n {
-            results.push(Factorization { factors: vec![n as i32] });
-        } else if n % d == 0 && d * d <= n {
-            let sub = ordered_factorizations(n / d, d as i32);
+            results.push(Factorization { factors: vec![n] });
+        } else if n % d == 0 && (d as i128) * (d as i128) <= n as i128 {
+            let sub = ordered_factorizations(n / d, d);
             for mut s in sub {
-                s.factors.insert(0, d as i32);
+                s.factors.insert(0, d);
                 results.push(s);
             }
         }
@@ -125,7 +125,7 @@ fn min_number_for_shape(n: i64, log_primes: &[f64], mod_primes: &[i32], budget: 
         let k = f.factors.len();
         if k > mod_primes.len() { continue; }
 
-        let mut exps: Vec<i32> = f.factors.iter().map(|&x| (x - 1) / 2).collect();
+        let mut exps: Vec<i64> = f.factors.iter().map(|&x| (x - 1) / 2).collect();
         exps.sort_by(|a, b| b.cmp(a));
 
         let log_val: f64 = exps.iter().enumerate().map(|(i, &e)| e as f64 * log_primes[i]).sum();
@@ -134,7 +134,7 @@ fn min_number_for_shape(n: i64, log_primes: &[f64], mod_primes: &[i32], budget: 
             best_log = log_val;
             let mut mod_val = 1i128;
             for (i, &e) in exps.iter().enumerate() {
-                mod_val = mod_val * pow_mod(mod_primes[i] as i64, e as i64, MOD) as i128 % MOD as i128;
+                mod_val = mod_val * pow_mod(mod_primes[i] as i64, e, MOD) as i128 % MOD as i128;
             }
             best_mod = mod_val as i64;
             found = true;
@@ -144,7 +144,7 @@ fn min_number_for_shape(n: i64, log_primes: &[f64], mod_primes: &[i32], budget: 
     if found { Some((best_log, best_mod)) } else { None }
 }
 
-fn main() {
+fn run() {
     let (_primes, p1mod4, p3mod4, log_p1, log_p3, log2) = init_primes();
 
     let mut total: i64 = 0;
@@ -226,4 +226,13 @@ fn main() {
     }
 
     println!("{}", total);
+}
+
+fn main() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(run)
+        .unwrap()
+        .join()
+        .unwrap();
 }

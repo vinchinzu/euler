@@ -29,8 +29,9 @@ fn main() {
     let m_max2 = ((9.0 * n as f64 / 95.0).sqrt() as i64) + 1;
     for m in 1..=m_max2 {
         if 95 * m * m > 9 * n { break; }
-        let mut n_start = m + if m % 3 == 0 { 3 } else { 3 - m % 3 };
-        while (m + n_start) % 3 != 0 { n_start += 1; }
+        // Smallest n > m with (m+n) % 3 == 0
+        let rem = (3 - (2 * m + 1) % 3) % 3;
+        let n_start = m + 1 + rem;
         let mut nv = n_start;
         loop {
             let z = (14 * m + 5 * nv) as i64 * (4 * m + nv) as i64;

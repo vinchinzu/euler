@@ -8,7 +8,7 @@ fn main() {
     fibs[0] = 1; fibs[1] = 1;
     let mut nfib = 2;
     while fibs[nfib - 1] < n {
-        fibs.push(fibs[nfib - 1] + fibs[nfib - 2]);
+        fibs[nfib] = fibs[nfib - 1] + fibs[nfib - 2];
         nfib += 1;
     }
     let a = if fibs[nfib - 1] >= n { fibs[nfib - 2] } else { fibs[nfib - 1] };

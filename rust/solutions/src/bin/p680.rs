@@ -6,7 +6,7 @@ const MAX_NODES: usize = 20_000_000;
 
 struct Node { len: i64, first: i64, diff: i32, left: i32, right: i32 }
 
-struct Tree { nodes: Vec<Node>, count: usize }
+struct Tree { nodes: Vec<Node>, count: usize, free_list: Vec<i32> }
 
 impl Tree {
     fn new() -> Self {
@@ -14,15 +14,27 @@ impl Tree {
         for _ in 0..MAX_NODES {
             nodes.push(Node { len: 0, first: 0, diff: 1, left: -1, right: -1 });
         }
-        Tree { nodes, count: 0 }
+        Tree { nodes, count: 0, free_list: Vec::new() }
+    }
+    fn alloc_node(&mut self) -> usize {
+        if let Some(id) = self.free_list.pop() {
+            id as usize
+        } else {
+            let id = self.count;
+            self.count += 1;
+            id
+        }
+    }
+    fn free_node(&mut self, id: i32) {
+        self.free_list.push(id);
     }
     fn new_leaf(&mut self, len: i64, first: i64, diff: i32) -> i32 {
-        let id = self.count; self.count += 1;
+        let id = self.alloc_node();
         self.nodes[id] = Node { len, first, diff, left: -1, right: -1 };
         id as i32
     }
     fn new_internal(&mut self, left: i32, right: i32) -> i32 {
-        let id = self.count; self.count += 1;
+        let id = self.alloc_node();
         let len = self.nodes[left as usize].len + self.nodes[right as usize].len;
         self.nodes[id] = Node { len, first: 0, diff: 1, left, right };
         id as i32
@@ -61,6 +73,7 @@ impl Tree {
                 let lr = self.nodes[left as usize].right;
                 let old_right = self.nodes[id as usize].right;
                 let nr = self.new_internal(lr, old_right);
+                self.free_node(left); // left node is now orphaned
                 self.nodes[id as usize].left = ll;
                 self.nodes[id as usize].right = nr;
             } else if index > left_len {
@@ -70,6 +83,7 @@ impl Tree {
                 let rr = self.nodes[right as usize].right;
                 let old_left = self.nodes[id as usize].left;
                 let nl = self.new_internal(old_left, rl);
+                self.free_node(right); // right node is now orphaned
                 self.nodes[id as usize].left = nl;
                 self.nodes[id as usize].right = rr;
             }
@@ -120,24 +134,33 @@ impl Tree {
     }
 
     fn sum_powers_1(n: i64) -> i64 {
-        let n = n % (2 * M_VAL);
-        (n * (n + 1) / 2) % M_VAL
+        let n = (n % (2 * M_VAL)) as i128;
+        let m = M_VAL as i128;
+        ((n * (n + 1) / 2) % m) as i64
     }
     fn sum_powers_2(n: i64) -> i64 {
-        let n = n % (6 * M_VAL);
-        (n * (n + 1) % (6 * M_VAL) * (2 * n + 1) / 6) % M_VAL
+        let n = (n % (6 * M_VAL)) as i128;
+        let m = M_VAL as i128;
+        ((n * (n + 1) % (6 * m) * (2 * n + 1) / 6) % m) as i64
     }
     fn compute_r(&mut self, id: i32, start: i64) -> i64 {
         self.canonicalize(id);
         let n = &self.nodes[id as usize];
         if n.len == 0 { return 0; }
         if n.left == -1 {
-            let len = n.len; let first = n.first; let diff = n.diff as i64;
-            let t1 = ((start % M_VAL) * (first % M_VAL) % M_VAL * (len % M_VAL) % M_VAL + M_VAL) % M_VAL;
-            let coef = ((start * diff + first) % M_VAL + M_VAL) % M_VAL;
-            let t2 = coef * Self::sum_powers_1(len - 1) % M_VAL;
-            let t3 = (diff * Self::sum_powers_2(len - 1) % M_VAL + M_VAL) % M_VAL;
-            return (t1 + t2 + t3) % M_VAL;
+            let m = M_VAL as i128;
+            let len = n.len as i128;
+            let first = n.first as i128;
+            let diff = n.diff as i128;
+            let st = start as i128;
+            // sum_{i=0}^{len-1} (st + i)*(first + diff*i)
+            // = st*first*len + (st*diff + first)*S1(len-1) + diff*S2(len-1)
+            let s1 = Self::sum_powers_1(n.len - 1) as i128;
+            let s2 = Self::sum_powers_2(n.len - 1) as i128;
+            let t1 = (st % m * (first % m) % m * (len % m) % m + m * m) % m;
+            let t2 = ((st * diff + first) % m + m) % m * s1 % m;
+            let t3 = (diff * s2 % m + m) % m;
+            return ((t1 + t2 + t3) % m) as i64;
         }
         let left = self.nodes[id as usize].left;
         let left_len = self.nodes[left as usize].len;

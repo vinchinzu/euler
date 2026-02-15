@@ -1,4 +1,6 @@
 // Project Euler 830 - Binomial Coefficients mod p^3
+// S(n) = sum_{k=0}^{n} C(n,k) * k^n, find S(10^18) mod 83^3 * 89^3 * 97^3.
+// Uses Stirling number expansion and CRT with p = 83, 89, 97.
 
 fn mod_pow(mut base: i128, mut exp: i128, m: i128) -> i128 {
     let mut result: i128 = 1;
@@ -19,7 +21,7 @@ fn ext_gcd(a: i64, b: i64) -> (i64, i64, i64) {
 
 fn mod_inv_ext(a: i64, m: i64) -> i64 {
     let (_, x, _) = ext_gcd(a, m);
-    ((x % m as i64) + m as i64) % m as i64
+    ((x % m) + m) % m
 }
 
 fn build_bin_table(max_m: usize, modulus: i64) -> Vec<Vec<i64>> {
@@ -33,25 +35,61 @@ fn build_bin_table(max_m: usize, modulus: i64) -> Vec<Vec<i64>> {
     table
 }
 
-fn compute_binom_mod(n: i64, m: usize, modulus: i64) -> i64 {
+/// Compute C(n, m) mod p^3 for large n and small m, properly handling
+/// the case where m! has factors of p by extracting p-adic valuations.
+fn compute_binom_mod(n: i64, m: usize, p: i64, modulus: i64) -> i64 {
     if m == 0 { return 1 % modulus; }
-    let mut res = 1i128;
     let md = modulus as i128;
+
+    // Compute numerator: n * (n-1) * ... * (n-m+1)
+    // Extract powers of p from each factor
+    let mut num_val = 1i128;
+    let mut num_vp: i32 = 0;
+    for i in 0..m {
+        let mut x = n - i as i64;
+        let mut v = 0i32;
+        while x % p == 0 {
+            v += 1;
+            x /= p;
+        }
+        num_vp += v;
+        num_val = num_val * (((x % modulus) + modulus) as i128) % md;
+    }
+
+    // Compute denominator: m!
+    // Extract powers of p from each factor
+    let mut den_val = 1i128;
+    let mut den_vp: i32 = 0;
     for i in 1..=m as i64 {
-        res = res * (((n - m as i64 + i) % modulus as i64 + modulus as i64) as i128) % md;
+        let mut x = i;
+        let mut v = 0i32;
+        while x % p == 0 {
+            v += 1;
+            x /= p;
+        }
+        den_vp += v;
+        den_val = den_val * (x as i128) % md;
     }
-    // Compute m! mod modulus and its inverse
-    let mut fact_m = 1i64;
-    for i in 2..=m as i64 {
-        fact_m = (fact_m as i128 * i as i128 % md) as i64;
+
+    let vp = num_vp - den_vp;
+    if vp >= 3 { return 0; }
+    if vp < 0 { return 0; } // shouldn't happen for binomials
+
+    let inv = mod_inv_ext(den_val as i64, modulus);
+    let mut result = num_val * inv as i128 % md;
+
+    // Multiply by p^vp
+    for _ in 0..vp {
+        result = result * p as i128 % md;
     }
-    let inv = mod_inv_ext(fact_m, modulus);
-    (res * inv as i128 % md) as i64
+
+    result as i64
 }
 
 fn compute_s_mod_p3(p: i32, n: i64) -> i64 {
-    let modulus = (p as i64) * (p as i64) * (p as i64);
-    let phi = (p as i64) * (p as i64) * (p as i64 - 1);
+    let p64 = p as i64;
+    let modulus = p64 * p64 * p64;
+    let phi = p64 * p64 * (p64 - 1);
     let e = mod_pow(10, 18, phi as i128) as i64;
 
     let max_m = 3 * p as usize - 1;
@@ -68,7 +106,7 @@ fn compute_s_mod_p3(p: i32, n: i64) -> i64 {
             let term = bin_table[m][j] as i128 * je % md * sign;
             sum_se = ((sum_se + term % md) + md) % md;
         }
-        let bnm = compute_binom_mod(n, m, modulus) as i128;
+        let bnm = compute_binom_mod(n, m, p64, modulus) as i128;
         let tw = mod_pow(2, (n - m as i64) as i128, md);
         let term = sum_se * bnm % md * tw % md;
         total = ((total as i128 + term) % md) as i64;

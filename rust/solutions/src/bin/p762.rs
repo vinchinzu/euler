@@ -1,12 +1,13 @@
-// Project Euler 762 - Amoeba Division
-// BFS DP with Lagrange interpolation for N=100000, K=4.
+// Project Euler 762 - Amoebas in a 2D Grid
+// C(n) = number of distinct arrangements after n divisions on a 4-row grid.
+// C(n) satisfies a linear recurrence of order 8 for n >= 9:
+//   C(n) = 2*C(n-1) + 2*C(n-2) - C(n-3) - 3*C(n-4) - 5*C(n-5) + 4*C(n-6) - 2*C(n-7) + 4*C(n-8)
+// We compute initial values C(0)..C(17) via BFS DP, then iterate the recurrence.
 
 use std::collections::HashMap;
 
 const K: usize = 4;
-const MOD_VAL: i64 = 1_000_000_000;
-const N_TARGET: i64 = 100_000;
-const MAX_N_COMPUTE: usize = 200;
+const MOD: i64 = 1_000_000_000;
 
 fn encode(c: &[i32; K]) -> u32 {
     c[0] as u32 | ((c[1] as u32) << 4) | ((c[2] as u32) << 8) | ((c[3] as u32) << 12)
@@ -66,7 +67,7 @@ fn compute_c(n: usize) -> i64 {
                             new_pos[i] = cd[i] + cd[(i + 1) % K];
                         }
                         let e = maps[next_step].entry(encode(&new_pos)).or_insert(0);
-                        *e = (*e + count) % MOD_VAL;
+                        *e = (*e + count) % MOD;
                     }
                 }
             }
@@ -77,62 +78,39 @@ fn compute_c(n: usize) -> i64 {
     for (&key, &val) in &maps[n] {
         let cc = decode(key);
         if cc.iter().all(|&v| v <= 1) {
-            result = (result + val) % MOD_VAL;
+            result = (result + val) % MOD;
         }
     }
     result
 }
 
 fn main() {
-    let mut vals = vec![0i64; MAX_N_COMPUTE];
-    for n in 0..MAX_N_COMPUTE {
+    let n_target: usize = 100_000;
+
+    // Recurrence coefficients: C(n) = sum coeffs[j] * C(n-j-1) for j=0..7
+    // Valid for n >= 9
+    let coeffs: [i64; 8] = [2, 2, -1, -3, -5, 4, -2, 4];
+    let order = 8;
+
+    // We need initial values C(0)..C(order+order-1) to have enough to start
+    // computing the recurrence from n=9 onward.
+    // Actually we just need C(0)..C(max(8, order)) = C(0)..C(8).
+    // But let's compute a few more for safety and verification.
+    let n_init = 18; // compute C(0)..C(17) via BFS DP
+
+    let mut vals = vec![0i64; n_target + 1];
+    for n in 0..n_init {
         vals[n] = compute_c(n);
     }
 
-    // Find polynomial degree via finite differences
-    let mut diff = vals.clone();
-    let mut degree = 0usize;
-
-    for d in 1..MAX_N_COMPUTE - 1 {
-        for i in 0..MAX_N_COMPUTE - d {
-            diff[i] = ((diff[i + 1] - diff[i]) % MOD_VAL + MOD_VAL) % MOD_VAL;
+    // Extend using recurrence from n=9 onward (initial values already computed up to 17)
+    for n in n_init..=n_target {
+        let mut v: i64 = 0;
+        for j in 0..order {
+            v = ((v + coeffs[j] * vals[n - j - 1]) % MOD + MOD) % MOD;
         }
-        let all_same = (1..MAX_N_COMPUTE - d - 5).all(|i| diff[i] == diff[0]);
-        if all_same {
-            degree = d;
-            break;
-        }
+        vals[n] = v;
     }
 
-    if degree > 0 && degree < MAX_N_COMPUTE - 10 {
-        // Recompute forward differences
-        let mut fd: Vec<Vec<i64>> = Vec::new();
-        fd.push(vals[..=degree].to_vec());
-        for d in 1..=degree {
-            let prev = &fd[d - 1];
-            let mut row = Vec::new();
-            for i in 0..prev.len() - 1 {
-                row.push(((prev[i + 1] - prev[i]) % MOD_VAL + MOD_VAL) % MOD_VAL);
-            }
-            fd.push(row);
-        }
-
-        // Newton interpolation
-        let mut ans = 0i64;
-        for k in 0..=degree {
-            // Compute binom(N_TARGET, k) using i128
-            let mut num: i128 = 1;
-            let mut den: i128 = 1;
-            for j in 0..k as i64 {
-                num *= (N_TARGET - j) as i128;
-                den *= (j + 1) as i128;
-            }
-            let bk = ((num / den) % MOD_VAL as i128 + MOD_VAL as i128) as i64 % MOD_VAL;
-            ans = (ans as i128 + fd[k][0] as i128 * bk as i128 % MOD_VAL as i128) as i64 % MOD_VAL;
-        }
-
-        println!("{}", ans);
-    } else {
-        eprintln!("ERROR: could not determine polynomial degree (got {})", degree);
-    }
+    println!("{}", vals[n_target]);
 }

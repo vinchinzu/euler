@@ -1,8 +1,13 @@
-// Project Euler 833 - Triangular Square
+// Project Euler 833 - Square Triangle Products
+// Find S(10^35) mod 136101521 where S(n) = sum of c for all (a,b,c)
+// with 0 < c <= n, c^2 = T_a * T_b, 0 < a < b.
+// Uses Pell equation solutions as polynomials in 'a' and Lagrange
+// interpolation for sum of powers.
 
 const MVAL: i64 = 136101521;
 const MAX_POLY: usize = 200;
-const MAX_YS: usize = 30;
+const MAX_YS: usize = 50;
+const N_LIMIT: f64 = 1e35;
 
 fn mod_inv(a: i64, m: i64) -> i64 {
     let mut g = m;
@@ -157,7 +162,16 @@ fn main() {
 
     let mut ys: Vec<Poly> = Vec::new();
 
-    while y.eval_dbl(1.0) < 1e35 && ys.len() < MAX_YS {
+    // Generate y polynomials until the smallest possible product
+    // D(1)*ys[0](1)*y(1)/8 exceeds N_LIMIT.
+    // D(1) = 2, ys[0](1) = 2, so we need y(1) <= 2 * N_LIMIT.
+    // This ensures all pairs (0, k) that could contribute are included.
+    while ys.len() < MAX_YS {
+        // Check if smallest possible c at a=1 using ys[0] and this y exceeds limit
+        let min_c = d_poly.eval_dbl(1.0) * ys.first().map_or(1.0, |y0: &Poly| y0.eval_dbl(1.0)) * y.eval_dbl(1.0) / 8.0;
+        if !ys.is_empty() && min_c > N_LIMIT {
+            break;
+        }
         ys.push(y.clone());
         let new_x = x.mul(&base_x).add(&d_poly.mul(&y.mul(&base_y)));
         let new_y = x.mul(&base_y).add(&y.mul(&base_x));
@@ -177,11 +191,11 @@ fn main() {
             let mut hi = 1e20f64;
             while hi - lo > 0.5 {
                 let mid = (lo + hi) / 2.0;
-                if prod.eval_dbl(mid) / 8.0 <= 1e35 { lo = mid; } else { hi = mid; }
+                if prod.eval_dbl(mid) / 8.0 <= N_LIMIT { lo = mid; } else { hi = mid; }
             }
             let mut max_a = lo as i64;
-            while max_a > 0 && prod.eval_dbl((max_a + 1) as f64) / 8.0 <= 1e35 { max_a += 1; }
-            while max_a > 0 && prod.eval_dbl(max_a as f64) / 8.0 > 1e35 { max_a -= 1; }
+            while max_a > 0 && prod.eval_dbl((max_a + 1) as f64) / 8.0 <= N_LIMIT { max_a += 1; }
+            while max_a > 0 && prod.eval_dbl(max_a as f64) / 8.0 > N_LIMIT { max_a -= 1; }
 
             if max_a < 1 { continue; }
 

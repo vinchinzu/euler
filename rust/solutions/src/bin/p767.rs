@@ -1,23 +1,29 @@
 // Project Euler 767 - Matrix Counting
-// FFT-based modular convolution for counting 16xN matrices.
+// NTT-based modular convolution for counting 16xN matrices.
+// B(K, N) where K=10^5, N=10^16, T=16 rows, answer mod 10^9+7.
+// Uses 3 NTT primes + CRT since max convolution output ~ 10^23.
 
-const MOD: i64 = 1_000_000_007;
-const BASE: i64 = 32768; // 2^15
+const MOD: u64 = 1_000_000_007;
 
-fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut result = 1i64;
-    base = ((base % m) + m) % m;
+fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut result = 1u64;
+    base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % m as i128) as i64;
+            result = (result as u128 * base as u128 % m as u128) as u64;
         }
-        base = (base as i128 * base as i128 % m as i128) as i64;
+        base = (base as u128 * base as u128 % m as u128) as u64;
         exp >>= 1;
     }
     result
 }
 
-fn fft(a: &mut [(f64, f64)], invert: bool) {
+// Three NTT primes, each with large power-of-2 factor and primitive root 3
+const NTT_P1: u64 = 998244353;  // 2^23 * 119 + 1, prim root 3
+const NTT_P2: u64 = 985661441;  // 2^22 * 5 * 47 + 1, prim root 3
+const NTT_P3: u64 = 754974721;  // 2^24 * 45 + 1, prim root 11
+
+fn ntt(a: &mut [u64], invert: bool, p: u64, g: u64) {
     let n = a.len();
     let mut j = 0usize;
     for i in 1..n {
@@ -27,137 +33,143 @@ fn fft(a: &mut [(f64, f64)], invert: bool) {
             bit >>= 1;
         }
         j ^= bit;
-        if i < j { a.swap(i, j); }
+        if i < j {
+            a.swap(i, j);
+        }
     }
 
     let mut len = 2;
     while len <= n {
-        let ang = 2.0 * std::f64::consts::PI / len as f64 * if invert { -1.0 } else { 1.0 };
-        let wlen = (ang.cos(), ang.sin());
+        let w = if invert {
+            pow_mod(pow_mod(g, (p - 1) / len as u64, p), p - 2, p)
+        } else {
+            pow_mod(g, (p - 1) / len as u64, p)
+        };
         for i in (0..n).step_by(len) {
-            let mut w = (1.0, 0.0);
+            let mut wn = 1u64;
             for jj in 0..len / 2 {
                 let u = a[i + jj];
-                let v = (
-                    a[i + jj + len / 2].0 * w.0 - a[i + jj + len / 2].1 * w.1,
-                    a[i + jj + len / 2].0 * w.1 + a[i + jj + len / 2].1 * w.0,
-                );
-                a[i + jj] = (u.0 + v.0, u.1 + v.1);
-                a[i + jj + len / 2] = (u.0 - v.0, u.1 - v.1);
-                w = (w.0 * wlen.0 - w.1 * wlen.1, w.0 * wlen.1 + w.1 * wlen.0);
+                let v = (a[i + jj + len / 2] as u128 * wn as u128 % p as u128) as u64;
+                a[i + jj] = (u + v) % p;
+                a[i + jj + len / 2] = (u + p - v) % p;
+                wn = (wn as u128 * w as u128 % p as u128) as u64;
             }
         }
         len <<= 1;
     }
 
     if invert {
+        let inv_n = pow_mod(n as u64, p - 2, p);
         for x in a.iter_mut() {
-            x.0 /= n as f64;
-            x.1 /= n as f64;
+            *x = (*x as u128 * inv_n as u128 % p as u128) as u64;
         }
     }
 }
 
-fn convolve_mod(a: &[i64], b: &[i64], result: &mut [i64], n: usize) {
+fn convolve_ntt(a: &[u64], b: &[u64], n: usize, p: u64, g: u64) -> Vec<u64> {
     let mut m = 1;
-    while m < 2 * n { m *= 2; }
+    while m < 2 * n {
+        m *= 2;
+    }
 
-    let mut fa_lo = vec![(0.0, 0.0); m];
-    let mut fa_hi = vec![(0.0, 0.0); m];
-    let mut fb_lo = vec![(0.0, 0.0); m];
-    let mut fb_hi = vec![(0.0, 0.0); m];
-
+    let mut fa = vec![0u64; m];
+    let mut fb = vec![0u64; m];
     for i in 0..n {
-        fa_lo[i].0 = (a[i] % BASE) as f64;
-        fa_hi[i].0 = (a[i] / BASE) as f64;
-        fb_lo[i].0 = (b[i] % BASE) as f64;
-        fb_hi[i].0 = (b[i] / BASE) as f64;
+        fa[i] = a[i] % p;
+        fb[i] = b[i] % p;
     }
 
-    fft(&mut fa_lo, false);
-    fft(&mut fa_hi, false);
-    fft(&mut fb_lo, false);
-    fft(&mut fb_hi, false);
+    ntt(&mut fa, false, p, g);
+    ntt(&mut fb, false, p, g);
 
-    let mut r_ll = vec![(0.0, 0.0); m];
-    let mut r_lh = vec![(0.0, 0.0); m];
-    let mut r_hh = vec![(0.0, 0.0); m];
-
+    let mut fc = vec![0u64; m];
     for i in 0..m {
-        r_ll[i] = (
-            fa_lo[i].0 * fb_lo[i].0 - fa_lo[i].1 * fb_lo[i].1,
-            fa_lo[i].0 * fb_lo[i].1 + fa_lo[i].1 * fb_lo[i].0,
-        );
-        let lh1 = (
-            fa_lo[i].0 * fb_hi[i].0 - fa_lo[i].1 * fb_hi[i].1,
-            fa_lo[i].0 * fb_hi[i].1 + fa_lo[i].1 * fb_hi[i].0,
-        );
-        let lh2 = (
-            fa_hi[i].0 * fb_lo[i].0 - fa_hi[i].1 * fb_lo[i].1,
-            fa_hi[i].0 * fb_lo[i].1 + fa_hi[i].1 * fb_lo[i].0,
-        );
-        r_lh[i] = (lh1.0 + lh2.0, lh1.1 + lh2.1);
-        r_hh[i] = (
-            fa_hi[i].0 * fb_hi[i].0 - fa_hi[i].1 * fb_hi[i].1,
-            fa_hi[i].0 * fb_hi[i].1 + fa_hi[i].1 * fb_hi[i].0,
-        );
+        fc[i] = (fa[i] as u128 * fb[i] as u128 % p as u128) as u64;
     }
 
-    fft(&mut r_ll, true);
-    fft(&mut r_lh, true);
-    fft(&mut r_hh, true);
+    ntt(&mut fc, true, p, g);
+    fc.truncate(2 * n - 1);
+    fc
+}
 
-    for i in 0..2 * n - 1 {
-        let ll = ((r_ll[i].0.round() as i64) % MOD + MOD) % MOD;
-        let lh = ((r_lh[i].0.round() as i64) % MOD + MOD) % MOD;
-        let hh = ((r_hh[i].0.round() as i64) % MOD + MOD) % MOD;
-        result[i] = (ll + (lh as i128 * BASE as i128 % MOD as i128) as i64
-            + ((hh as i128 * BASE as i128 % MOD as i128 * BASE as i128 % MOD as i128) as i64))
-            % MOD;
+fn convolve_mod(a: &[u64], b: &[u64], n: usize) -> Vec<u64> {
+    // Convolve mod MOD using three NTT primes and CRT
+    let r1 = convolve_ntt(a, b, n, NTT_P1, 3);
+    let r2 = convolve_ntt(a, b, n, NTT_P2, 3);
+    let r3 = convolve_ntt(a, b, n, NTT_P3, 11);
+
+    // 3-way CRT: recover x mod (P1*P2*P3), then reduce mod MOD
+    // Step 1: combine r1, r2 to get x mod (P1*P2)
+    let inv_p1_mod_p2 = pow_mod(NTT_P1 % NTT_P2, NTT_P2 - 2, NTT_P2);
+    // Step 2: combine that with r3 to get x mod (P1*P2*P3)
+    let p1p2 = NTT_P1 as u128 * NTT_P2 as u128;
+    let p1p2_mod_p3 = (p1p2 % NTT_P3 as u128) as u64;
+    let inv_p1p2_mod_p3 = pow_mod(p1p2_mod_p3, NTT_P3 - 2, NTT_P3);
+    let p1p2_mod_mod = (p1p2 % MOD as u128) as u64;
+
+    let len = r1.len();
+    let mut result = vec![0u64; len];
+    for i in 0..len {
+        // Step 1: x12 = r1 + P1 * ((r2 - r1) * inv_p1 mod P2), x12 in [0, P1*P2)
+        let diff12 = ((r2[i] as i128 - (r1[i] % NTT_P2) as i128 + NTT_P2 as i128) % NTT_P2 as i128) as u64;
+        let t12 = (diff12 as u128 * inv_p1_mod_p2 as u128 % NTT_P2 as u128) as u64;
+        let x12: u128 = r1[i] as u128 + NTT_P1 as u128 * t12 as u128; // x mod P1*P2
+
+        // Step 2: x = x12 + P1*P2 * ((r3 - x12) * inv_p1p2 mod P3)
+        let x12_mod_p3 = (x12 % NTT_P3 as u128) as u64;
+        let diff3 = ((r3[i] as i128 - x12_mod_p3 as i128 + NTT_P3 as i128) % NTT_P3 as i128) as u64;
+        let t3 = (diff3 as u128 * inv_p1p2_mod_p3 as u128 % NTT_P3 as u128) as u64;
+
+        // x mod MOD = (x12 mod MOD + (P1*P2 mod MOD) * t3) mod MOD
+        let x12_mod = (x12 % MOD as u128) as u64;
+        let contribution = (p1p2_mod_mod as u128 * t3 as u128 % MOD as u128) as u64;
+        result[i] = (x12_mod as u128 + contribution as u128) as u64 % MOD;
     }
+    result
 }
 
 fn main() {
-    let n: i64 = 10_000_000_000_000_000; // 10^16
+    let n: u64 = 10_000_000_000_000_000; // 10^16
     let k: usize = 100_000;
-    let t: i64 = 16;
+    let t: u64 = 16;
 
-    // Precompute factorials
-    let mut fact = vec![1i64; k + 1];
+    // Precompute factorials mod MOD
+    let mut fact = vec![1u64; k + 1];
     for i in 1..=k {
-        fact[i] = (fact[i - 1] as i128 * i as i128 % MOD as i128) as i64;
+        fact[i] = (fact[i - 1] as u128 * i as u128 % MOD as u128) as u64;
     }
-    let mut inv_fact = vec![1i64; k + 1];
+    let mut inv_fact = vec![1u64; k + 1];
     inv_fact[k] = pow_mod(fact[k], MOD - 2, MOD);
     for i in (0..k).rev() {
-        inv_fact[i] = (inv_fact[i + 1] as i128 * (i + 1) as i128 % MOD as i128) as i64;
+        inv_fact[i] = (inv_fact[i + 1] as u128 * (i + 1) as u128 % MOD as u128) as u64;
     }
 
-    // coeffs[i] = (1/i!)^T
-    let mut coeffs = vec![0i64; k + 1];
+    // coeffs[i] = (1/i!)^T mod MOD
+    let mut coeffs = vec![0u64; k + 1];
     for i in 0..=k {
         coeffs[i] = pow_mod(inv_fact[i], t, MOD);
     }
 
     // Convolve coeffs with itself
-    let mut p2 = vec![0i64; 2 * k + 1];
-    convolve_mod(&coeffs, &coeffs, &mut p2, k + 1);
+    let p2 = convolve_mod(&coeffs, &coeffs, k + 1);
 
-    // f[i] = i!^T * p2[i]
-    let mut f = vec![0i64; k + 1];
+    // f[i] = i!^T * p2[i] mod MOD
+    let mut f = vec![0u64; k + 1];
     for i in 0..=k {
-        f[i] = (pow_mod(fact[i], t, MOD) as i128 * p2[i] as i128 % MOD as i128) as i64;
+        f[i] = (pow_mod(fact[i], t, MOD) as u128 * p2[i] as u128 % MOD as u128) as u64;
     }
 
-    let base_val = pow_mod(2, n / k as i64, MOD);
-    let term = (base_val - 2 + MOD) % MOD;
+    let base_val = pow_mod(2, n / k as u64, MOD);
+    let term = (base_val + MOD - 2) % MOD;
 
-    let mut ans: i64 = 0;
-    let mut term_pow: i64 = 1;
+    let mut ans: u64 = 0;
+    let mut term_pow: u64 = 1;
     for i in 0..=k {
-        let ncr = (fact[k] as i128 * inv_fact[i] as i128 % MOD as i128 * inv_fact[k - i] as i128 % MOD as i128) as i64;
-        ans = (ans as i128 + ncr as i128 * term_pow as i128 % MOD as i128 * f[k - i] as i128 % MOD as i128) as i64 % MOD;
-        term_pow = (term_pow as i128 * term as i128 % MOD as i128) as i64;
+        let ncr = (fact[k] as u128 * inv_fact[i] as u128 % MOD as u128
+            * inv_fact[k - i] as u128 % MOD as u128) as u64;
+        ans = (ans as u128 + ncr as u128 * term_pow as u128 % MOD as u128
+            * f[k - i] as u128 % MOD as u128) as u64 % MOD;
+        term_pow = (term_pow as u128 * term as u128 % MOD as u128) as u64;
     }
 
     println!("{}", ans);

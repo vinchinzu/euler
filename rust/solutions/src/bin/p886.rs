@@ -53,19 +53,19 @@ fn main() {
 
     // Cache
     let cache_size = NN / 2 * prod_val as usize;
-    let mut cache_arr = vec![-1i64; cache_size];
+    let mut cache_arr = vec![-1i32; cache_size];
 
     let mut ans = 0i64;
 
     fn num_perms(
         counts: &mut [i32; NN + 1], encoded_counts: i64, num_remaining: i32, prev: i32,
-        cache_arr: &mut [i64], prod_val: i64, prods_arr: &[i64; NN + 1],
+        cache_arr: &mut [i32], prod_val: i64, prods_arr: &[i64; NN + 1],
         gcds_table: &[[i32; NN + 1]; NN + 1],
     ) -> i64 {
         if num_remaining == 0 { return 1; }
         let key_prev = if prev % 2 == 0 { prev / 2 } else { prev };
         let key = ((key_prev - 1) / 2) as usize * prod_val as usize + encoded_counts as usize;
-        if cache_arr[key] != -1 { return cache_arr[key]; }
+        if cache_arr[key] != -1 { return cache_arr[key] as i64; }
         let mut result = 0i64;
         for num in 1..=NN {
             if counts[num] > 0 && gcds_table[num][prev as usize] == 1 && num % 2 != prev as usize % 2 {
@@ -76,7 +76,7 @@ fn main() {
             }
         }
         result = ((result % MOD) + MOD) % MOD;
-        cache_arr[key] = result;
+        cache_arr[key] = result as i32;
         result
     }
 
@@ -84,7 +84,7 @@ fn main() {
         num: usize, counts: &mut [i32; NN + 1], other_counts: &mut [i32; NN + 1],
         encoded_counts: i64, num_used: usize, num_odds: usize,
         l: usize, max_counts: &[i32; NN + 1], prods_arr: &[i64; NN + 1], prod_val: i64,
-        cache_arr: &mut [i64], gcds_table: &[[i32; NN + 1]; NN + 1],
+        cache_arr: &mut [i32], gcds_table: &[[i32; NN + 1]; NN + 1],
         ans: &mut i64,
     ) {
         if num > NN {
@@ -94,11 +94,8 @@ fn main() {
                         other_counts[middle_num] -= 1;
                         let other_encoded = prod_val - 1 - prods_arr[middle_num] - encoded_counts;
 
-                        // Reset cache for each side computation
-                        cache_arr.fill(-1);
                         let val1 = num_perms(counts, encoded_counts, l as i32, middle_num as i32,
                                             cache_arr, prod_val, prods_arr, gcds_table);
-                        cache_arr.fill(-1);
                         let val2 = num_perms(other_counts, other_encoded, l as i32, middle_num as i32,
                                             cache_arr, prod_val, prods_arr, gcds_table);
                         *ans = (*ans + val1 * val2) % MOD;
