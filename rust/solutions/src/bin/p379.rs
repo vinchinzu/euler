@@ -1,6 +1,8 @@
 // Project Euler 379 - Least common multiple count
 // Uses Mobius sieve + hyperbola method for D(n) and T(m).
 
+use rayon::prelude::*;
+
 fn isqrt(n: i64) -> i64 {
     if n <= 0 {
         return 0;
@@ -43,27 +45,34 @@ fn d_func(n: i64) -> i64 {
 }
 
 /// T(m) = number of ordered triples (a,b,c) with a*b*c <= m
+/// Uses inner parallelism when cbrt(m) is large enough to justify the overhead.
 fn t_func(m: i64) -> i64 {
     if m <= 0 {
         return 0;
     }
 
     let cbrt_m = icbrt(m);
-    let mut total: i64 = 0;
 
-    for a in 1..=cbrt_m {
-        total += d_func(m / a);
-    }
+    // Only use inner parallelism when cbrt(m) is large enough to justify overhead
+    let total_first: i64 = if cbrt_m >= 500 {
+        (1..=cbrt_m).into_par_iter()
+            .map(|a| d_func(m / a))
+            .sum()
+    } else {
+        (1..=cbrt_m).map(|a| d_func(m / a)).sum()
+    };
 
+    // Second part is O(sqrt(m)) hyperbola steps -- fast, keep sequential
+    let mut total_second: i64 = 0;
     let mut a = cbrt_m + 1;
     while a <= m {
         let v = m / a;
         let a_max = m / v;
-        total += d_func(v) * (a_max - a + 1);
+        total_second += d_func(v) * (a_max - a + 1);
         a = a_max + 1;
     }
 
-    total
+    total_first + total_second
 }
 
 fn main() {
@@ -95,12 +104,16 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
-    for d in 1..=l {
-        if mobius[d] != 0 {
-            ans += mobius[d] as i64 * t_func(n_big / ((d as i64) * (d as i64)));
-        }
-    }
+    // Parallel summation over all squarefree d values.
+    // The cost of t_func(n/d²) decreases sharply with d, so we use
+    // fine-grained work stealing. Rayon's par_iter with reversed order
+    // places expensive items first where work-stealing is most effective.
+    let mut nonzero_d: Vec<usize> = (1..=l).filter(|&d| mobius[d] != 0).collect();
+    nonzero_d.reverse(); // Expensive items (small d) first for better work-stealing
+    let ans_parallel: i64 = nonzero_d.par_iter()
+        .map(|&d| mobius[d] as i64 * t_func(n_big / ((d as i64) * (d as i64))))
+        .sum();
+    let mut ans = ans_parallel;
     ans += n_big;
     ans /= 2;
 

@@ -45,6 +45,15 @@ pub fn mod_inv(a: u64, m: u64) -> Option<u64> {
     Some(((old_s % m as i64 + m as i64) % m as i64) as u64)
 }
 
+/// Extended GCD: returns (g, x, y) such that a*x + b*y = g = gcd(a, b).
+pub fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
+    if b == 0 {
+        return (a, 1, 0);
+    }
+    let (g, x1, y1) = extended_gcd(b, a % b);
+    (g, y1, x1 - (a / b) * y1)
+}
+
 /// A modular integer with compile-time modulus via const generic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModInt<const M: u64> {
@@ -141,5 +150,16 @@ mod tests {
         type M = ModInt<1000000007>;
         let a = M::new(2);
         assert_eq!(a.pow(10).val, 1024);
+    }
+
+    #[test]
+    fn test_extended_gcd() {
+        let (g, x, y) = extended_gcd(35, 15);
+        assert_eq!(g, 5);
+        assert_eq!(35 * x + 15 * y, 5);
+
+        let (g, x, y) = extended_gcd(3, 7);
+        assert_eq!(g, 1);
+        assert_eq!(3 * x + 7 * y, 1);
     }
 }

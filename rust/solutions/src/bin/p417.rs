@@ -4,7 +4,6 @@
 // repeating cycle in the decimal expansion of 1/n.
 
 use euler_utils::mod_pow;
-
 const NMAX: usize = 100_000_001;
 
 fn main() {

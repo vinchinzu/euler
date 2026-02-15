@@ -21,15 +21,19 @@ fn main() {
             let end = max_j + 1;
             if end <= sq { continue; }
             for j in (sq..end).rev() {
-                let val = dp[idx(i, j)] as u16 + dp[idx(i - 1, j - sq)] as u16;
-                dp[idx(i, j)] = val.min(2) as u8;
+                unsafe {
+                    let idx_ij = i * (half + 1) + j;
+                    let idx_prev = (i - 1) * (half + 1) + (j - sq);
+                    let val = *dp.get_unchecked(idx_ij) as u16 + *dp.get_unchecked(idx_prev) as u16;
+                    *dp.get_unchecked_mut(idx_ij) = val.min(2) as u8;
+                }
             }
         }
     }
 
     let mut ans: i64 = 0;
     for j in 0..=half {
-        if dp[idx(k, j)] == 1 {
+        if unsafe { *dp.get_unchecked(k * (half + 1) + j) } == 1 {
             ans += l;
         }
     }

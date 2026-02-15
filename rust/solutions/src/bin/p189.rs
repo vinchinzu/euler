@@ -1,5 +1,4 @@
 // Project Euler 189: Tri-colouring a triangular grid
-use std::collections::HashMap;
 
 const N_ROWS: usize = 8;
 
@@ -15,6 +14,15 @@ fn main() {
     dp[0] = 1;
     dp[1] = 1;
     dp[2] = 1;
+
+    // Flat arrays for DP states: key = last_colour * max_states + up_encoding
+    let rs_size = 3 * max_states;
+
+    // Preallocate working buffers
+    let mut rs_vals = vec![0i64; rs_size];
+    let mut rs_active: Vec<usize> = Vec::with_capacity(rs_size);
+    let mut rs2_vals = vec![0i64; rs_size];
+    let mut rs2_active: Vec<usize> = Vec::with_capacity(rs_size);
 
     for row in 1..N_ROWS {
         let prev_ups = row;
@@ -33,58 +41,84 @@ fn main() {
                 tmp /= 3;
             }
 
-            // Process current row left to right using HashMap for active states
-            // State key = last_colour * max_states + up_encoding
-            let rs_size = 3 * max_states;
-            let mut rs: HashMap<usize, i64> = HashMap::new();
+            // Clear rs
+            for &idx in &rs_active {
+                rs_vals[idx] = 0;
+            }
+            rs_active.clear();
 
             // Position 0: upward triangle, no left neighbour
             for c in 0..3usize {
                 let key = c * max_states + c;
-                *rs.entry(key).or_insert(0) += 1;
+                rs_vals[key] = 1;
+                rs_active.push(key);
             }
 
             let mut up_count = 1usize;
 
             for pos in 1..n_positions {
-                let mut rs2: HashMap<usize, i64> = HashMap::new();
+                // Clear rs2
+                for &idx in &rs2_active {
+                    rs2_vals[idx] = 0;
+                }
+                rs2_active.clear();
 
                 if pos % 2 == 1 {
                     // Downward triangle
                     let k = pos / 2;
                     let above_c = prev_up_colours[k];
-                    for (&key, &cnt) in rs.iter() {
+                    for &key in &rs_active {
+                        let cnt = rs_vals[key];
+                        if cnt == 0 { continue; }
                         let last_c = key / max_states;
                         let up_enc = key % max_states;
                         for c in 0..3usize {
                             if c == last_c || c == above_c { continue; }
                             let nk = c * max_states + up_enc;
-                            *rs2.entry(nk).or_insert(0) += cnt;
+                            if rs2_vals[nk] == 0 {
+                                rs2_active.push(nk);
+                            }
+                            rs2_vals[nk] += cnt;
                         }
                     }
                 } else {
                     // Upward triangle
                     let p3 = pow3[up_count];
-                    for (&key, &cnt) in rs.iter() {
+                    for &key in &rs_active {
+                        let cnt = rs_vals[key];
+                        if cnt == 0 { continue; }
                         let last_c = key / max_states;
                         let up_enc = key % max_states;
                         for c in 0..3usize {
                             if c == last_c { continue; }
                             let nk = c * max_states + up_enc + c * p3;
-                            *rs2.entry(nk).or_insert(0) += cnt;
+                            if rs2_vals[nk] == 0 {
+                                rs2_active.push(nk);
+                            }
+                            rs2_vals[nk] += cnt;
                         }
                     }
                     up_count += 1;
                 }
 
-                rs = rs2;
+                // Swap rs and rs2
+                std::mem::swap(&mut rs_vals, &mut rs2_vals);
+                std::mem::swap(&mut rs_active, &mut rs2_active);
             }
 
             // Collect: sum over last_colour, group by up_encoding
-            for (&key, &cnt) in rs.iter() {
+            for &key in &rs_active {
+                let cnt = rs_vals[key];
+                if cnt == 0 { continue; }
                 let up_enc = key % max_states;
                 new_dp[up_enc] += cnt * prev_count;
             }
+
+            // Clear rs for next iteration
+            for &idx in &rs_active {
+                rs_vals[idx] = 0;
+            }
+            rs_active.clear();
         }
 
         dp = new_dp;

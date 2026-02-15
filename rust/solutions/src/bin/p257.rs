@@ -24,7 +24,6 @@ fn main() {
     for m in 1..=l {
         if perim2(m, m) > big_n { break; }
         let mut n = m + 1;
-        if n % 2 == 0 { n += 1; }
         while n < 3 * m {
             if perim2(m, n) > big_n { break; }
             if n % 3 != 0 && gcd(m as u64, (n % m) as u64) == 1 {

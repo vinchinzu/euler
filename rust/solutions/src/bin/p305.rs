@@ -1,4 +1,5 @@
 // Project Euler 305: Reflexive Position
+#![allow(unsafe_op_in_unsafe_fn)]
 use std::fmt::Write as FmtWrite;
 
 static mut POWER10: [i64; 20] = [0; 20];
@@ -40,10 +41,7 @@ unsafe fn build_kmp_table() {
 }
 
 #[derive(Clone, Copy)]
-struct DpPair {
-    cnt: i64,
-    matches: i64,
-}
+struct DpPair { cnt: i64, matches: i64 }
 
 static mut DP2_MEMO: [[[DpPair; 20]; 2]; 20] = [[[DpPair { cnt: 0, matches: 0 }; 20]; 2]; 20];
 static mut DP2_VALID: [[[i32; 20]; 2]; 20] = [[[0; 20]; 2]; 20];
@@ -52,9 +50,7 @@ static mut UPPER_DIGITS: [i32; 20] = [0; 20];
 static mut NUM_DIGITS: usize = 0;
 
 unsafe fn digit_dp2(pos: usize, tight: usize, kmp_state: usize) -> DpPair {
-    if pos == NUM_DIGITS {
-        return DpPair { cnt: 1, matches: 0 };
-    }
+    if pos == NUM_DIGITS { return DpPair { cnt: 1, matches: 0 }; }
     if DP2_VALID[pos][tight][kmp_state] == DP2_EPOCH {
         return DP2_MEMO[pos][tight][kmp_state];
     }
@@ -115,6 +111,7 @@ unsafe fn count_spanning_for_split(a: usize, b: usize, m_val: i64) -> i64 {
         if x_lo > x_hi { continue; }
 
         if d2 < a + b {
+            if d2 < a { continue; }
             let overlap_start = d2 - a;
             let qbuf = format!("{:0>width$}", q_val, width = b);
             let rbuf = format!("{:0>width$}", r_val, width = a);

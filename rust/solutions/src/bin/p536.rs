@@ -71,6 +71,7 @@ impl Solver {
             } else {
                 r as i32
             };
+            if p <= 1 { return false; }
             if (m + 3) % (p as i64 - 1) != 0 { return false; }
             if p >= max_p { return false; }
             r /= p as i64;

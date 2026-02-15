@@ -20,9 +20,12 @@ fn main() {
     let tn_val = t[N_VAL];
     let mut ans: i64 = 0;
 
+    let fp = f.as_ptr();
+    let tp = t.as_ptr();
+
     for a in 0..=N_VAL / 3 {
-        let temp_f = f[a] + K - fn_val;
-        let temp_t = t[a] + K - tn_val;
+        let temp_f = unsafe { *fp.add(a) } + K - fn_val;
+        let temp_t = unsafe { *tp.add(a) } + K - tn_val;
 
         let b_lo = a + 1;
         let b_hi = if a < N_VAL { (N_VAL - a - 1) / 2 } else { 0 };
@@ -30,10 +33,12 @@ fn main() {
 
         for b in b_lo..=b_hi {
             let c = N_VAL - a - b;
-            let d5 = f[b] + f[c] + temp_f;
-            let d2 = t[b] + t[c] + temp_t;
-            if d5 <= 0 && d2 <= 0 {
-                ans += 6;
+            unsafe {
+                let d5 = *fp.add(b) + *fp.add(c) + temp_f;
+                let d2 = *tp.add(b) + *tp.add(c) + temp_t;
+                if d5 <= 0 && d2 <= 0 {
+                    ans += 6;
+                }
             }
         }
 
@@ -41,8 +46,8 @@ fn main() {
         {
             let c = N_VAL - 2 * a;
             if c > a {
-                let d5 = f[a] + f[c] + temp_f;
-                let d2 = t[a] + t[c] + temp_t;
+                let d5 = unsafe { *fp.add(a) + *fp.add(c) } + temp_f;
+                let d2 = unsafe { *tp.add(a) + *tp.add(c) } + temp_t;
                 if d5 <= 0 && d2 <= 0 {
                     ans += 3;
                 }
@@ -53,8 +58,8 @@ fn main() {
         if (N_VAL - a) % 2 == 0 {
             let half = (N_VAL - a) / 2;
             if half > a {
-                let d5 = 2 * f[half] + temp_f;
-                let d2 = 2 * t[half] + temp_t;
+                let d5 = 2 * unsafe { *fp.add(half) } + temp_f;
+                let d2 = 2 * unsafe { *tp.add(half) } + temp_t;
                 if d5 <= 0 && d2 <= 0 {
                     ans += 3;
                 }

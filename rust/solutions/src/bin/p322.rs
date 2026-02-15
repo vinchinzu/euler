@@ -12,11 +12,11 @@ fn num_no_carries(limit: i64, k: i64, p: i64) -> i64 {
     }
 
     let mut result: i64 = 0;
-    let top_digit_limit = (limit / largest_pow) as i32;
-    let top_digit_k = (k / largest_pow % p) as i32;
+    let top_digit_limit = limit / largest_pow;
+    let top_digit_k = k / largest_pow % p;
 
-    for i in 0..p as i32 {
-        if i + top_digit_k >= p as i32 { break; }
+    for i in 0..p {
+        if i + top_digit_k >= p { break; }
         if i == top_digit_limit {
             result += num_no_carries(limit % largest_pow, k, p);
         } else if i < top_digit_limit {
@@ -26,9 +26,9 @@ fn num_no_carries(limit: i64, k: i64, p: i64) -> i64 {
     result
 }
 
-fn to_base5(mut k: i64) -> Vec<i32> {
+fn to_base5(mut k: i64) -> Vec<i64> {
     let mut tmp = Vec::new();
-    while k > 0 { tmp.push((k % 5) as i32); k /= 5; }
+    while k > 0 { tmp.push(k % 5); k /= 5; }
     tmp.reverse();
     tmp
 }
@@ -44,31 +44,41 @@ fn main() {
     let k5_digits = to_base5(big_k);
     let ndigits = k5_digits.len();
 
-    // Generate all values that have no carry with K in base 5
-    let mut vals: Vec<i64> = vec![0];
+    // Pre-compute total capacity: product of (5 - k5_digits[i]) for all digits
+    let total_capacity: usize = k5_digits.iter().map(|&d| (5 - d) as usize).product();
+
+    // Double-buffering approach to avoid repeated allocation
+    let mut vals = Vec::with_capacity(total_capacity);
+    let mut new_vals = Vec::with_capacity(total_capacity);
+    vals.push(0i64);
+
     for di in 0..ndigits {
         let d = k5_digits[di];
         let allowed = 5 - d;
-        let mut new_vals = Vec::with_capacity(vals.len() * allowed as usize);
+        new_vals.clear();
         for &v in &vals {
             for a in 0..allowed {
-                new_vals.push(v * 5 + a as i64);
+                new_vals.push(v * 5 + a);
             }
         }
-        vals = new_vals;
+        std::mem::swap(&mut vals, &mut new_vals);
     }
 
     let mut big_pow5: i64 = 1;
     for _ in 0..ndigits { big_pow5 *= 5; }
 
-    let big_k_u = big_k as u64;
+    // Use u64 throughout for the inner loop
+    let big_k_u: u64 = big_k as u64;
+    let limit_u: u64 = limit as u64;
+    let big_pow5_u: u64 = big_pow5 as u64;
     let mut no_carry_both: i64 = 0;
 
     for &val in &vals {
-        if val >= limit { continue; }
-        let max_j = (limit - 1 - val) / big_pow5;
+        let val_u = val as u64;
+        if val_u >= limit_u { continue; }
+        let max_j = (limit_u - 1 - val_u) / big_pow5_u;
         for j in 0..=max_j {
-            let d = val as u64 + j as u64 * big_pow5 as u64;
+            let d = val_u + j * big_pow5_u;
             if d & big_k_u == 0 {
                 no_carry_both += 1;
             }

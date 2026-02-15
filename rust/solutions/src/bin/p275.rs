@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use rayon::prelude::*;
 
 const N: usize = 18;
 const DXS: [i32; 4] = [1, -1, 0, 0];
@@ -84,52 +85,56 @@ fn main() {
         groups.entry(key).or_default().push(i);
     }
 
-    let mut ans: i64 = 0;
-    let mut sculpt = Sculpture::new();
+    let group_list: Vec<_> = groups.values().collect();
 
-    for ((_c0, _), group) in &groups {
-        let num_middle = all_cc[group[0]][0];
+    let ans: i64 = group_list.par_iter()
+        .map(|group| {
+            let num_middle = all_cc[group[0]][0];
+            let mut local_ans: i64 = 0;
+            let mut sculpt = Sculpture::new();
 
-        for (ii, &i1) in group.iter().enumerate() {
-            let size1 = cc_sum(&all_cc[i1]);
-            let size2 = N - size1 + num_middle;
+            for (ii, &i1) in group.iter().enumerate() {
+                let size1 = cc_sum(&all_cc[i1]);
+                let size2 = N - size1 + num_middle;
 
-            for &i2 in &group[ii..] {
-                if cc_sum(&all_cc[i2]) != size2 { continue; }
+                for &i2 in &group[ii..] {
+                    if cc_sum(&all_cc[i2]) != size2 { continue; }
 
-                sculpt.cand_x[0] = 0;
-                sculpt.cand_y[0] = 1;
-                for row in sculpt.invalid.iter_mut() {
-                    for v in row.iter_mut() { *v = false; }
-                }
-                sculpt.invalid[N][1] = true;
-                for v in sculpt.column_counts.iter_mut() { *v = 0; }
+                    sculpt.cand_x[0] = 0;
+                    sculpt.cand_y[0] = 1;
+                    for row in sculpt.invalid.iter_mut() {
+                        for v in row.iter_mut() { *v = false; }
+                    }
+                    sculpt.invalid[N][1] = true;
+                    for v in sculpt.column_counts.iter_mut() { *v = 0; }
 
-                for (i, &v) in all_cc[i1].iter().enumerate() {
-                    sculpt.column_counts[i + N] = v as i64;
-                }
+                    for (i, &v) in all_cc[i1].iter().enumerate() {
+                        sculpt.column_counts[i + N] = v as i64;
+                    }
 
-                let reversible = i1 == i2;
+                    let reversible = i1 == i2;
 
-                if reversible {
-                    ans += sculpt.num_sculptures(0, 1, size1 as i64);
-                }
+                    if reversible {
+                        local_ans += sculpt.num_sculptures(0, 1, size1 as i64);
+                    }
 
-                for (i, &v) in all_cc[i2].iter().enumerate().skip(1) {
-                    sculpt.column_counts[N - i] = v as i64;
-                }
+                    for (i, &v) in all_cc[i2].iter().enumerate().skip(1) {
+                        sculpt.column_counts[N - i] = v as i64;
+                    }
 
-                let count = sculpt.num_sculptures(0, 1, N as i64);
+                    let count = sculpt.num_sculptures(0, 1, N as i64);
 
-                if reversible {
-                    ans += count;
-                } else {
-                    ans += 2 * count;
+                    if reversible {
+                        local_ans += count;
+                    } else {
+                        local_ans += 2 * count;
+                    }
                 }
             }
-        }
-    }
+            local_ans
+        })
+        .sum();
 
-    ans /= 2;
+    let ans = ans / 2;
     println!("{}", ans);
 }

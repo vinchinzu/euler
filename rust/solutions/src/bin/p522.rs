@@ -3,33 +3,46 @@
 // Combinatorial counting with modular arithmetic.
 // Compute factorials and inverse factorials mod MOD, then sum terms.
 
-use euler_utils::mod_pow;
-
-const NN: usize = 12_344_321;
+const NN: u64 = 12_344_321;
 const MOD: u64 = 135_707_531;
 
+#[inline(always)]
+fn mod_pow_local(mut base: u64, mut exp: u64) -> u64 {
+    let mut result = 1u64;
+    base %= MOD;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * base % MOD;
+        }
+        base = base * base % MOD;
+        exp >>= 1;
+    }
+    result
+}
+
 fn main() {
-    let mut fact = vec![0u64; NN + 1];
-    let mut inv_fact = vec![0u64; NN + 1];
+    let nn = NN as usize;
+    let mut fact = vec![0u64; nn + 1];
+    let mut inv_fact = vec![0u64; nn + 1];
 
     fact[0] = 1;
-    for i in 1..=NN {
+    for i in 1..=nn {
         fact[i] = fact[i - 1] * (i as u64) % MOD;
     }
 
-    inv_fact[NN] = mod_pow(fact[NN], MOD - 2, MOD);
-    for i in (1..=NN).rev() {
+    inv_fact[nn] = mod_pow_local(fact[nn], MOD - 2);
+    for i in (1..=nn).rev() {
         inv_fact[i - 1] = inv_fact[i] * (i as u64) % MOD;
     }
 
-    let n = NN as u64;
-    let mut ans = n * (n - 1) % MOD;
-    ans = ans * mod_pow(n - 2, n - 1, MOD) % MOD;
+    let mut ans = NN * (NN - 1) % MOD;
+    ans = ans * mod_pow_local(NN - 2, NN - 1) % MOD;
 
-    for l in 2..NN as u64 {
-        let ncr = fact[NN] * inv_fact[l as usize] % MOD * inv_fact[(NN - l as usize)] % MOD;
-        let term = ncr * fact[(l - 1) as usize] % MOD
-            * mod_pow(n - l - 1, n - l, MOD) % MOD;
+    for l in 2..NN {
+        let lu = l as usize;
+        let ncr = fact[nn] * inv_fact[lu] % MOD * inv_fact[nn - lu] % MOD;
+        let term = ncr * fact[lu - 1] % MOD
+            * mod_pow_local(NN - l - 1, NN - l) % MOD;
         ans += term;
         if ans >= MOD { ans -= MOD; }
     }
