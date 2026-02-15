@@ -79,7 +79,7 @@ fn main() {
         let sp = small_s[p - 1];
         let p2 = (p as i64) * (p as i64);
         for i in 1..=r {
-            if big_n / i as i64 < p2 {
+            if big_n / (i as i64) < p2 {
                 break;
             }
             let v_over_p = big_n / (i as i64) / (p as i64);

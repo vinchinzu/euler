@@ -3,120 +3,181 @@
 // V(p) = smallest A in triplet (A,B,q) such that A>=B>0, gcd(A,B)=1,
 // AB divisible by every prime < q, p < q^2, and p=A+B or p=A-B.
 // Sum V(p) for all primes p < 3800.
+//
+// Key optimizations:
+// 1. Use u128 for product to avoid overflow (product of 18 primes > i64)
+// 2. Handle edge case: p=2,3 have no q_primes
+// 3. Replace ext_gcd with precomputed modular inverses using CRT
+// 4. Collect all residues, sort, find best
 
-use euler_utils::primes_up_to;
-
-fn gcd_ll(mut a: i64, mut b: i64) -> i64 {
-    if a < 0 { a = -a; }
-    if b < 0 { b = -b; }
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+fn sieve_primes(limit: usize) -> Vec<usize> {
+    let mut is_prime = vec![true; limit + 1];
+    is_prime[0] = false;
+    if limit >= 1 { is_prime[1] = false; }
+    let mut i = 2;
+    while i * i <= limit {
+        if is_prime[i] {
+            let mut j = i * i;
+            while j <= limit { is_prime[j] = false; j += i; }
+        }
+        i += 1;
     }
-    a
+    (2..=limit).filter(|&i| is_prime[i]).collect()
 }
 
-fn ext_gcd_ll(a: i64, b: i64) -> (i64, i64, i64) {
-    if b == 0 {
-        return (a, 1, 0);
+/// Modular inverse of a mod m using extended GCD (small values, u64 sufficient)
+fn mod_inv_small(a: u64, m: u64) -> u64 {
+    let (mut old_r, mut r) = (a as i64, m as i64);
+    let (mut old_s, mut s) = (1i64, 0i64);
+    while r != 0 {
+        let q = old_r / r;
+        let tmp = r; r = old_r - q * r; old_r = tmp;
+        let tmp = s; s = old_s - q * s; old_s = tmp;
     }
-    let (g, x1, y1) = ext_gcd_ll(b, a % b);
-    (g, y1, x1 - (a / b) * y1)
+    ((old_s % m as i64 + m as i64) % m as i64) as u64
 }
 
-fn v(p: i32, all_primes: &[usize]) -> i64 {
-    let sq = (p as f64).sqrt() as i32;
-    let q_primes: Vec<i32> = all_primes.iter()
-        .filter(|&&x| x as i32 <= sq)
-        .map(|&x| x as i32)
+fn v(p: usize, all_primes: &[usize]) -> u128 {
+    let sq = (p as f64).sqrt() as usize;
+    let q_primes: Vec<usize> = all_primes.iter()
+        .copied()
+        .take_while(|&x| x <= sq)
         .collect();
     let nq = q_primes.len();
     if nq == 0 {
-        return 0;
+        return ((p + 1) / 2) as u128;
     }
 
-    // Product of all primes up to sqrt(p)
-    let mut product: i64 = 1;
-    for &q in &q_primes {
-        product *= q as i64;
-    }
+    let product: u128 = q_primes.iter().map(|&x| x as u128).product();
+    let p128 = p as u128;
 
-    // Try A < p case: p = A + B, A >= B > 0, so A >= (p+1)/2
-    for a in ((p as i64 + 1) / 2)..(p as i64) {
-        let b = p as i64 - a;
-        if gcd_ll(a, b) != 1 {
-            continue;
-        }
-        if (a * b) % product == 0 {
-            return a;
-        }
-    }
-
-    // Try A > p case: p = A - B
-    let num_subsets = 1usize << nq;
-    let mut best: i64 = -1;
-
-    for subset in 0..num_subsets {
-        let mut c0: i64 = 1;
-        let mut c1: i64 = 1;
-        for i in 0..nq {
-            if (subset >> i) & 1 != 0 {
-                c0 *= q_primes[i] as i64;
-            } else {
-                c1 *= q_primes[i] as i64;
+    // Case 1: A + B = p
+    if product <= p128 * p128 / 4 {
+        for a in ((p + 1) / 2)..(p as usize) {
+            let a128 = a as u128;
+            let b128 = p128 - a128;
+            if (a128 * b128) % product == 0 {
+                return a128;
             }
         }
+    }
 
-        let (g, x0, _) = ext_gcd_ll(c0, c1);
-        if p as i64 % g != 0 {
-            continue;
-        }
-        let mut x_sol = ((x0 % c1) * ((p as i64 / g) % c1)) % c1;
-        if x_sol < 0 {
-            x_sol += c1;
-        }
+    // Case 2: A - B = p
+    // For each subset: c0 = product of primes in subset (divides A),
+    //                  c1 = product of remaining (divides B).
+    // We need A ≡ 0 (mod c0) and A ≡ p (mod c1).
+    // CRT gives unique residue mod product.
+    //
+    // Compute residue using CRT over small primes:
+    // For each prime q_j in c1: A ≡ p (mod q_j)
+    // For each prime q_j in c0: A ≡ 0 (mod q_j)
+    //
+    // Using Garner's algorithm / direct CRT:
+    // residue = sum over j in c1_primes: p * (product/q_j) * inv(product/q_j, q_j) (mod product)
+    // But this is constant for A ≡ p (mod c1) and A ≡ 0 (mod c0).
 
-        let base_a = c0 * x_sol;
-        let step = c0 * c1; // = product
-        if step == 0 {
-            continue;
-        }
+    // Precompute for CRT: for each prime q_i, compute
+    //   M_i = product / q_i
+    //   M_i_inv = M_i^{-1} mod q_i
+    // Then CRT: x = sum_i (r_i * M_i * M_i_inv) mod product
+    // where r_i = p mod q_i for primes in c1, r_i = 0 for primes in c0.
 
-        let k_start = if base_a <= p as i64 {
-            (p as i64 - base_a) / step + 1
+    let mut m_vals: Vec<u128> = Vec::with_capacity(nq);
+    let mut m_inv_vals: Vec<u64> = Vec::with_capacity(nq);
+    let mut p_mod_qi: Vec<u64> = Vec::with_capacity(nq);
+
+    for i in 0..nq {
+        let qi = q_primes[i] as u128;
+        let mi = product / qi;
+        let mi_mod_qi = (mi % qi) as u64;
+        let inv = mod_inv_small(mi_mod_qi, q_primes[i] as u64);
+        m_vals.push(mi);
+        m_inv_vals.push(inv);
+        p_mod_qi.push((p as u64) % (q_primes[i] as u64));
+    }
+
+    // For each subset, compute residue:
+    // residue = sum over i where bit i is 0 (i.e., q_i in c1):
+    //           (p mod q_i) * M_i * (M_i^{-1} mod q_i) mod product
+    // Bits set to 1 contribute 0 (since A ≡ 0 mod those primes).
+
+    // Precompute the CRT contribution of each prime (when it's in c1):
+    //   contrib_i = (p mod q_i) * M_i * (M_i_inv mod q_i) mod product
+    let mut contribs: Vec<u128> = Vec::with_capacity(nq);
+    for i in 0..nq {
+        let c = (p_mod_qi[i] as u128) * (m_inv_vals[i] as u128) % (q_primes[i] as u128);
+        let contrib = c * m_vals[i] % product;
+        contribs.push(contrib);
+    }
+
+    let num_subsets = 1u32 << nq;
+    let mut residues: Vec<u128> = Vec::with_capacity(num_subsets as usize);
+
+    // Use Gray code iteration: each step flips one bit, so we add or subtract
+    // one contribution instead of recomputing from scratch.
+    // Start with subset=0 (all bits 0, all primes in c1): sum of all contribs
+    let total_contrib: u128 = contribs.iter().copied().sum::<u128>() % product;
+    let mut residue = total_contrib;
+    residues.push(residue);
+
+    for gray in 1..num_subsets {
+        // Find the bit that changed (trailing zero of gray)
+        let bit = gray.trailing_zeros() as usize;
+        // In Gray code, gray ^ (gray >> 1) gives the subset
+        // But easier: check if this bit is now set or cleared in the Gray code subset
+        let gray_subset = gray ^ (gray >> 1);
+        if (gray_subset >> bit) & 1 == 1 {
+            // Bit became 1: prime moved from c1 to c0, subtract its contribution
+            if residue >= contribs[bit] {
+                residue -= contribs[bit];
+            } else {
+                residue = residue + product - contribs[bit];
+            }
         } else {
-            0i64
+            // Bit became 0: prime moved from c0 to c1, add its contribution
+            residue += contribs[bit];
+            if residue >= product { residue -= product; }
+        }
+        residues.push(residue);
+    }
+
+    // Sort and deduplicate
+    residues.sort_unstable();
+    residues.dedup();
+
+    // Find smallest A > p with A ≡ r (mod product) and A not divisible by p
+    let p_mod = p128 % product;
+    let mut best: u128 = u128::MAX;
+
+    for &r in &residues {
+        let a = if r > p_mod {
+            p128 - p_mod + r
+        } else {
+            p128 - p_mod + r + product
         };
 
-        for k in k_start..(k_start + 2000) {
-            let a = base_a + k * step;
-            if a <= p as i64 {
-                continue;
-            }
-            let b = a - p as i64;
-            if gcd_ll(a, b) != 1 {
-                continue;
-            }
-            if (a * b) % product == 0 {
-                if best == -1 || a < best {
-                    best = a;
-                }
-                break;
+        if a >= best { continue; }
+
+        if a % p128 != 0 {
+            best = a;
+        } else {
+            let a2 = a + product;
+            if a2 < best && a2 % p128 != 0 {
+                best = a2;
             }
         }
     }
 
-    if best > 0 { best } else { 0 }
+    if best < u128::MAX { best } else { 0 }
 }
 
 fn main() {
-    let all_primes = primes_up_to(3800);
+    let all_primes = sieve_primes(3800);
 
-    let mut ans: i64 = 0;
+    let mut ans: u128 = 0;
     for &p in &all_primes {
         if p < 3800 {
-            ans += v(p as i32, &all_primes);
+            ans += v(p, &all_primes);
         }
     }
 

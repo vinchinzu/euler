@@ -19,7 +19,7 @@ fn mat_mult(a: &Vec<Vec<i64>>, b: &Vec<Vec<i64>>) -> Vec<Vec<i64>> {
         for k in 0..n {
             if a[i][k] == 0 { continue; }
             for j in 0..n {
-                r[i][j] = (r[i][j] + a[i][k] as i128 * b[k][j] as i128 % M_VAL as i128) as i64;
+                r[i][j] = (r[i][j] as i128 + a[i][k] as i128 * b[k][j] as i128 % M_VAL as i128) as i64;
             }
         }
     }
@@ -39,7 +39,7 @@ fn mat_pow(mat: &Vec<Vec<i64>>, mut exp: i64) -> Vec<Vec<i64>> {
     result
 }
 
-fn mod_inv_val(mut a: i64, m: i64) -> i64 {
+fn mod_inv_val(a: i64, m: i64) -> i64 {
     let (mut t, mut new_t) = (0i64, 1i64);
     let (mut r, mut new_r) = (m, a % m);
     if new_r < 0 { new_r += m; }

@@ -27,7 +27,7 @@ fn sum_powers(n: i64, k: usize) -> i64 {
     for j in 1..npts {
         let mut jk = 1i64;
         for _ in 0..k {
-            jk = jk as i128 * j as i128 % MVAL as i128  as i64;
+            jk = (jk as i128 * j as i128 % MVAL as i128) as i64;
         }
         pw = (pw + jk) % MVAL;
         y[j] = pw;
@@ -37,12 +37,12 @@ fn sum_powers(n: i64, k: usize) -> i64 {
 
     let mut num_prod = 1i64;
     for i in 0..npts {
-        num_prod = num_prod as i128 * ((n_mod - i as i64 + MVAL) % MVAL) as i128 % MVAL as i128 as i64;
+        num_prod = (num_prod as i128 * ((n_mod - i as i64 + MVAL) % MVAL) as i128 % MVAL as i128) as i64;
     }
 
     let mut fact = vec![1i64; npts];
     for i in 1..npts {
-        fact[i] = fact[i - 1] as i128 * i as i128 % MVAL as i128 as i64;
+        fact[i] = (fact[i - 1] as i128 * i as i128 % MVAL as i128) as i64;
     }
 
     let mut result = 0i64;
@@ -52,9 +52,9 @@ fn sum_powers(n: i64, k: usize) -> i64 {
             let mut term = y[j];
             for i in 0..npts {
                 if i != j {
-                    term = term as i128 * ((n_mod - i as i64 + MVAL) % MVAL) as i128 % MVAL as i128 as i64;
+                    term = (term as i128 * ((n_mod - i as i64 + MVAL) % MVAL) as i128 % MVAL as i128) as i64;
                     let d = ((j as i64 - i as i64) % MVAL + MVAL) % MVAL;
-                    term = term as i128 * mod_inv(d, MVAL) as i128 % MVAL as i128 as i64;
+                    term = (term as i128 * mod_inv(d, MVAL) as i128 % MVAL as i128) as i64;
                 }
             }
             result = (result + term) % MVAL;

@@ -30,7 +30,7 @@ fn berlekamp_massey(s: &[i64]) -> Vec<i64> {
     for i in 0..n {
         let mut d = s[i];
         for j in 1..=big_l {
-            d = (d + c[j] as i128 * s[i - j] as i128 % MOD as i128) as i64;
+            d = (d as i128 + c[j] as i128 * s[i - j] as i128 % MOD as i128) as i64;
         }
         d = ((d % MOD) + MOD) % MOD;
 
@@ -42,7 +42,7 @@ fn berlekamp_massey(s: &[i64]) -> Vec<i64> {
             let coeff = (d as i128 * inv_mod(bv) as i128 % MOD as i128) as i64;
             if len_b + m > len_c { len_c = len_b + m; }
             for j in 0..len_b {
-                c[j + m] = ((c[j + m] - coeff as i128 * b[j] as i128 % MOD as i128 + MOD as i128) % MOD as i128) as i64;
+                c[j + m] = ((c[j + m] as i128 - coeff as i128 * b[j] as i128 % MOD as i128 + MOD as i128) % MOD as i128) as i64;
             }
             big_l = i + 1 - big_l;
             b[..old_len_c].copy_from_slice(&t[..old_len_c]);
@@ -53,7 +53,7 @@ fn berlekamp_massey(s: &[i64]) -> Vec<i64> {
             let coeff = (d as i128 * inv_mod(bv) as i128 % MOD as i128) as i64;
             if len_b + m > len_c { len_c = len_b + m; }
             for j in 0..len_b {
-                c[j + m] = ((c[j + m] - coeff as i128 * b[j] as i128 % MOD as i128 + MOD as i128) % MOD as i128) as i64;
+                c[j + m] = ((c[j + m] as i128 - coeff as i128 * b[j] as i128 % MOD as i128 + MOD as i128) % MOD as i128) as i64;
             }
             m += 1;
         }
@@ -71,7 +71,7 @@ fn poly_mult(a: &[i64], b: &[i64], rec: &[i64], l: usize) -> Vec<i64> {
     for i in 0..l {
         if a[i] == 0 { continue; }
         for j in 0..l {
-            tmp[i + j] = (tmp[i + j] + a[i] as i128 * b[j] as i128 % MOD as i128) as i64 % MOD;
+            tmp[i + j] = (tmp[i + j] as i128 + a[i] as i128 * b[j] as i128 % MOD as i128) as i64 % MOD;
         }
     }
     for i in (l..2 * l).rev() {
@@ -79,7 +79,7 @@ fn poly_mult(a: &[i64], b: &[i64], rec: &[i64], l: usize) -> Vec<i64> {
         let c = tmp[i];
         tmp[i] = 0;
         for j in 0..l {
-            tmp[i - l + j] = (tmp[i - l + j] + c as i128 * rec[l - 1 - j] as i128 % MOD as i128) as i64 % MOD;
+            tmp[i - l + j] = (tmp[i - l + j] as i128 + c as i128 * rec[l - 1 - j] as i128 % MOD as i128) as i64 % MOD;
         }
     }
     tmp.truncate(l);
@@ -106,7 +106,7 @@ fn linear_recurrence_nth(init: &[i64], rec: &[i64], n: i64) -> i64 {
 
     let mut ans = 0i64;
     for i in 0..l {
-        ans = (ans + result[i] as i128 * init[i] as i128 % MOD as i128) as i64 % MOD;
+        ans = (ans as i128 + result[i] as i128 * init[i] as i128 % MOD as i128) as i64 % MOD;
     }
     ans
 }

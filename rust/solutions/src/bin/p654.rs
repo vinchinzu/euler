@@ -71,9 +71,9 @@ fn poly_mul(a: &[i64], b: &[i64]) -> Vec<i64> {
     for i in 0..nc {
         let (r1, r2, r3) = (a1[i], a2[i], a3[i]);
         let x1 = r1;
-        let x2 = ((r2 - x1 % P2 + P2) % P2 as i128 * inv12 as i128 % P2 as i128) as i64;
-        let val = ((x1 + (x2 as i128 % P3 as i128 * (P1 % P3) as i128 % P3 as i128) as i64) % P3 + P3) % P3;
-        let x3 = ((r3 - val + P3) % P3 as i128 * inv13 as i128 % P3 as i128) as i64;
+        let x2 = ((r2 - x1 % P2 + P2) as i128 % P2 as i128 * inv12 as i128 % P2 as i128) as i64;
+        let val = ((x1 as i128 + (x2 as i128 % P3 as i128 * (P1 % P3) as i128 % P3 as i128)) % P3 as i128 + P3 as i128) as i64 % P3;
+        let x3 = ((r3 - val + P3) as i128 % P3 as i128 * inv13 as i128 % P3 as i128) as i64;
         let result = x1 as i128 + x2 as i128 * P1 as i128 + x3 as i128 * P1 as i128 * P2 as i128;
         res[i] = (result % MOD as i128) as i64;
     }

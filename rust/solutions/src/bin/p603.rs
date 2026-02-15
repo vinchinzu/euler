@@ -76,8 +76,8 @@ fn main() {
 
     for (n, &d) in digits.iter().enumerate() {
         let n_mod = (n as i64) % m;
-        layered_num = ((layered_num + n_mod as i128 * d as i128 % m as i128) as i64) % m;
-        layered_sum = ((layered_sum + n_mod as i128 * d as i128 % m as i128) as i64) % m;
+        layered_num = ((layered_num as i128 + n_mod as i128 * d as i128 % m as i128) as i64) % m;
+        layered_sum = ((layered_sum as i128 + n_mod as i128 * d as i128 % m as i128) as i64) % m;
         num = (num + d) % m;
         sum_val = (sum_val + d) % m;
         layered_num = (layered_num as i128 * b as i128 % m as i128) as i64;

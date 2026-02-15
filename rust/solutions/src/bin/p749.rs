@@ -8,13 +8,7 @@ use std::collections::BTreeSet;
 const MAXN: usize = 16;
 const BASE: u64 = 10;
 
-static mut POW_LIMIT: u64 = 0;
-static mut POWS: [u64; 10] = [0; 10];
-
-fn helper(d: u64, num_digits: usize, sum_powers: u64, k: usize, results: &mut BTreeSet<u64>) {
-    let pow_limit = unsafe { POW_LIMIT };
-    let pows = unsafe { &POWS };
-
+fn helper(d: u64, num_digits: usize, sum_powers: u64, k: usize, pow_limit: u64, pows: &[u64; 10], results: &mut BTreeSet<u64>) {
     // Check sum_powers - 1 and sum_powers + 1
     for delta in [-1i64, 1i64] {
         let candidate = (sum_powers as i64 + delta) as u64;
@@ -36,22 +30,20 @@ fn helper(d: u64, num_digits: usize, sum_powers: u64, k: usize, results: &mut BT
         for new_d in d..BASE {
             let new_sum = sum_powers + pows[new_d as usize];
             if new_sum < pow_limit {
-                helper(new_d, num_digits + 1, new_sum, k, results);
+                helper(new_d, num_digits + 1, new_sum, k, pow_limit, pows, results);
             }
         }
     }
 }
 
 fn main() {
-    unsafe {
-        POW_LIMIT = 1;
-        for _ in 0..MAXN {
-            POW_LIMIT *= BASE;
-        }
+    let mut pow_limit: u64 = 1;
+    for _ in 0..MAXN {
+        pow_limit *= BASE;
     }
-    let pow_limit = unsafe { POW_LIMIT };
 
     let mut results = BTreeSet::new();
+    let mut pows = [0u64; 10];
 
     let mut k = 2;
     while k <= MAXN + 2 {
@@ -65,11 +57,9 @@ fn main() {
                     break;
                 }
             }
-            unsafe {
-                POWS[d] = p;
-            }
+            pows[d] = p;
         }
-        helper(1, 0, 0, k, &mut results);
+        helper(1, 0, 0, k, pow_limit, &pows, &mut results);
         k += 2;
     }
 

@@ -124,11 +124,11 @@ fn main() {
             let mut num: i128 = 1;
             let mut den: i128 = 1;
             for j in 0..k as i64 {
-                num *= N_TARGET - j;
-                den *= j + 1;
+                num *= (N_TARGET - j) as i128;
+                den *= (j + 1) as i128;
             }
             let bk = ((num / den) % MOD_VAL as i128 + MOD_VAL as i128) as i64 % MOD_VAL;
-            ans = (ans + fd[k][0] as i128 * bk as i128 % MOD_VAL as i128) as i64 % MOD_VAL;
+            ans = (ans as i128 + fd[k][0] as i128 * bk as i128 % MOD_VAL as i128) as i64 % MOD_VAL;
         }
 
         println!("{}", ans);

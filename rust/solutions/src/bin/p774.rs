@@ -171,7 +171,7 @@ impl TT {
                                 if bv == 0 { continue; }
                                 let r = ra * b.r_r + rb;
                                 let old = c.get(l, bit, r);
-                                c.set(l, bit, r, (old + av as i128 * bv as i128 % MOD as i128) as i64 % MOD);
+                                c.set(l, bit, r, (old as i128 + av as i128 * bv as i128 % MOD as i128) as i64 % MOD);
                             }
                         }
                     }
@@ -211,7 +211,7 @@ impl TT {
                 if vec[l] == 0 { continue; }
                 for bit in 0..2 {
                     for r in 0..c.r_r {
-                        newvec[r] = (newvec[r] + vec[l] as i128 * c.get(l, bit, r) as i128 % MOD as i128) as i64 % MOD;
+                        newvec[r] = (newvec[r] as i128 + vec[l] as i128 * c.get(l, bit, r) as i128 % MOD as i128) as i64 % MOD;
                     }
                 }
             }

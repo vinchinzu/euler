@@ -44,7 +44,7 @@ fn berlekamp_massey(seq: &[i64]) -> Vec<i64> {
     for i in 0..n {
         let mut d = seq[i];
         for j in 1..=big_l {
-            d = (d + c[j] as i128 * seq[i - j] as i128 % MOD as i128) as i64 % MOD;
+            d = (d as i128 + c[j] as i128 * seq[i - j] as i128 % MOD as i128) as i64 % MOD;
         }
         d = modd(d);
 

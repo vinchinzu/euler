@@ -53,17 +53,17 @@ fn process_lyndon(w: &[i32]) {
     }
 }
 
-fn gen(w_buf: &mut [i32], t: usize, p: usize, n: usize) {
+fn generate(w_buf: &mut [i32], t: usize, p: usize, n: usize) {
     if t > n {
         if p == n {
             process_lyndon(&w_buf[1..=n]);
         }
     } else {
         w_buf[t] = w_buf[t - p];
-        gen(w_buf, t + 1, p, n);
+        generate(w_buf, t + 1, p, n);
         for j in (w_buf[t - p] + 1)..=1 {
             w_buf[t] = j;
-            gen(w_buf, t + 1, t, n);
+            generate(w_buf, t + 1, t, n);
         }
     }
 }
@@ -73,7 +73,7 @@ fn main() {
 
     for n in 2..=MAXN {
         w_buf.fill(0);
-        gen(&mut w_buf, 1, 1, n);
+        generate(&mut w_buf, 1, 1, n);
     }
 
     println!("{:.4}", unsafe { ANS });

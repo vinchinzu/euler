@@ -90,7 +90,7 @@ fn interpolate(y: &[i64], npts: usize, x_start: i64, target: i64) -> i64 {
         let num = (prefix[i] as i128 * suffix[i + 1] as i128 % MOD as i128) as i64;
         let mut den = (fact_inv[i] as i128 * fact_inv[n - 1 - i] as i128 % MOD as i128) as i64;
         if (n - 1 - i) % 2 == 1 { den = (MOD - den) % MOD; }
-        result = (result + (y[i] % MOD) as i128 * num as i128 % MOD as i128 * den as i128 % MOD as i128) as i64 % MOD;
+        result = (result as i128 + (y[i] % MOD) as i128 * num as i128 % MOD as i128 * den as i128 % MOD as i128) as i64 % MOD;
     }
     result
 }
@@ -172,7 +172,7 @@ fn main() {
             for i in 0..=T_VAL {
                 if poly[i] == 0 { continue; }
                 for j in 0..=T_VAL - i {
-                    temp[i + j] = (temp[i + j] + poly[i] as i128 * base[j] as i128 % MOD as i128) as i64 % MOD;
+                    temp[i + j] = (temp[i + j] as i128 + poly[i] as i128 * base[j] as i128 % MOD as i128) as i64 % MOD;
                 }
             }
             poly = temp;
@@ -181,7 +181,7 @@ fn main() {
         for i in 0..=T_VAL {
             if base[i] == 0 { continue; }
             for j in 0..=T_VAL - i {
-                temp[i + j] = (temp[i + j] + base[i] as i128 * base[j] as i128 % MOD as i128) as i64 % MOD;
+                temp[i + j] = (temp[i + j] as i128 + base[i] as i128 * base[j] as i128 % MOD as i128) as i64 % MOD;
             }
         }
         base = temp;
@@ -192,7 +192,7 @@ fn main() {
     for i in 0..=T_VAL {
         let j = T_VAL - i;
         if j <= T_VAL {
-            ans = (ans + poly[i] as i128 * g1[j] as i128 % MOD as i128) as i64 % MOD;
+            ans = (ans as i128 + poly[i] as i128 * g1[j] as i128 % MOD as i128) as i64 % MOD;
         }
     }
     ans = (ans as i128 * (BIG_S % MOD) as i128 % MOD as i128) as i64;

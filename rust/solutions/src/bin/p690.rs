@@ -23,7 +23,7 @@ fn gf_mul(a: &[i64; MAXN], b: &[i64; MAXN]) -> [i64; MAXN] {
     for i in 0..MAXN {
         if a[i] == 0 { continue; }
         for j in 0..MAXN - i {
-            out[i + j] = (out[i + j] + a[i] as i128 * b[j] as i128 % MOD as i128) as i64 % MOD;
+            out[i + j] = (out[i + j] as i128 + a[i] as i128 * b[j] as i128 % MOD as i128) as i64 % MOD;
         }
     }
     out
@@ -127,7 +127,7 @@ fn main() {
     let inv2 = inv_mod(2);
     let mut inner = [0i64; MAXN];
     for i in 2..MAXN {
-        inner[i] = ((part_a[i - 2] + part_b[i - 2]) % MOD as i128 * inv2 as i128 % MOD as i128) as i64;
+        inner[i] = ((part_a[i - 2] + part_b[i - 2]) as i128 % MOD as i128 * inv2 as i128 % MOD as i128) as i64;
     }
 
     // correction = x^3 / ((1-x)^2 * (1+x))
@@ -164,7 +164,7 @@ fn main() {
             while k * j <= i {
                 ncr = (ncr as i128 * ((num_lobsters[j] + k as i64 - 1 + MOD) % MOD) as i128 % MOD as i128) as i64;
                 ncr = (ncr as i128 * mod_invs[k] as i128 % MOD as i128) as i64;
-                dp_cur[i] = (dp_cur[i] + ncr as i128 * dp_prev[i - j * k] as i128 % MOD as i128) as i64 % MOD;
+                dp_cur[i] = (dp_cur[i] as i128 + ncr as i128 * dp_prev[i - j * k] as i128 % MOD as i128) as i64 % MOD;
                 k += 1;
             }
         }

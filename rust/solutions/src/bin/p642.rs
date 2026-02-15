@@ -37,8 +37,8 @@ fn main() {
         let pi = p as i64;
 
         for i in 1..=r {
-            if n_global / i as i64 < p2 { break; }
-            let d = n_global / i as i64 / pi;
+            if n_global / (i as i64) < p2 { break; }
+            let d = n_global / (i as i64) / pi;
             if d <= r as i64 {
                 big[i] = (big[i] - pi % MOD * ((small[d as usize] - sp + MOD) % MOD) % MOD + MOD) % MOD;
             } else {

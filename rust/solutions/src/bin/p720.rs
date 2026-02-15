@@ -44,7 +44,7 @@ fn main() {
     let mut ans: i64 = 1;
     for i in 0..L {
         let diff = elements[i] - ranks[i];
-        ans = (ans + factorials[L - 1 - i] as i128 * diff as i128 % BIG_M as i128) as i64 % BIG_M;
+        ans = (ans as i128 + factorials[L - 1 - i] as i128 * diff as i128 % BIG_M as i128) as i64 % BIG_M;
         if ans < 0 {
             ans += BIG_M;
         }

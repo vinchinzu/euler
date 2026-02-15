@@ -73,9 +73,9 @@ fn main() {
     while k * k <= n {
         let k_sq = k * k % MOD;
         if k <= l {
-            ans = (ans + k_sq as i128 * (big[k as usize] % MOD) as i128 % MOD as i128) as i64 % MOD;
+            ans = (ans as i128 + k_sq as i128 * (big[k as usize] % MOD) as i128 % MOD as i128) as i64 % MOD;
         } else {
-            ans = (ans + k_sq as i128 * (small[(n / (k * k)) as usize] % MOD) as i128 % MOD as i128) as i64 % MOD;
+            ans = (ans as i128 + k_sq as i128 * (small[(n / (k * k)) as usize] % MOD) as i128 % MOD as i128) as i64 % MOD;
         }
         k += 1;
     }

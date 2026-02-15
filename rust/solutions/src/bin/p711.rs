@@ -29,12 +29,12 @@ fn main() {
     let mut pow2_half: i64 = 2; // 2^1
     let mut i = 2i64;
     while i < n {
-        ans = (2 * ans % m
+        ans = ((2 * ans % m) as i128
             + ((pow2_half - 2 + m) % m) as i128 * pow2_i as i128 % m as i128) as i64
             % m;
         ans = (ans + pow2_i - 1 + pow2_i + m) % m;
 
-        pow2_i = pow2_i as i128 * 4 % m as i128 as i64;
+        pow2_i = (pow2_i as i128 * 4 % m as i128) as i64;
         pow2_half = pow2_half * 2 % m;
         i += 2;
     }
@@ -44,7 +44,7 @@ fn main() {
     let mut i = 1i64;
     while i < n {
         ans = (ans + pow2_odd - 1 + m) % m;
-        pow2_odd = pow2_odd as i128 * 4 % m as i128 as i64;
+        pow2_odd = (pow2_odd as i128 * 4 % m as i128) as i64;
         i += 2;
     }
 

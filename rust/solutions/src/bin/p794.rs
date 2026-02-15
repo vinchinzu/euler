@@ -125,6 +125,6 @@ fn main() {
     solve(2, &s0, n_target);
 
     unsafe {
-        println!("{:.12}", BEST_SUM);
+        println!("{:.12}", *std::ptr::addr_of!(BEST_SUM));
     }
 }

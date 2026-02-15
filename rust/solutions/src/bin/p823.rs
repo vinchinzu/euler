@@ -137,7 +137,7 @@ fn main() {
                     if products[ni] == 0 {
                         products[ni] = prime;
                     } else {
-                        products[ni] = products[ni] as i128 * prime as i128 % MOD as i128
+                        products[ni] = (products[ni] as i128 * prime as i128 % MOD as i128)
                             as i64;
                     }
                 }

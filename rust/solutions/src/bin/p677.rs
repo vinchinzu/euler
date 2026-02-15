@@ -41,7 +41,7 @@ fn main() {
                     let mut count = 0i64;
                     for cs in 1..size {
                         if 2 * cs <= N {
-                            count = (count + h_all[yr][cs] as i128 * f[nc-1][yr][size - cs] as i128 % MOD as i128) as i64;
+                            count = (count as i128 + h_all[yr][cs] as i128 * f[nc-1][yr][size - cs] as i128 % MOD as i128) as i64;
                         }
                     }
                     f[nc][yr][size] = count;
@@ -52,7 +52,7 @@ fn main() {
                     let multiplier = (fact[kk-1] as i128 * ncr_table[nc][kk] as i128 % MOD as i128) as i64;
                     for cs in 1..size {
                         if (kk * cs) < size && 2 * cs <= N {
-                            count = (count + (multiplier as i128 * h_all[yr][cs] as i128 % MOD as i128 * f[nc - kk][yr][size - kk * cs] as i128 % MOD as i128)) as i64 % MOD;
+                            count = (count as i128 + (multiplier as i128 * h_all[yr][cs] as i128 % MOD as i128 * f[nc - kk][yr][size - kk * cs] as i128 % MOD as i128)) as i64 % MOD;
                         }
                     }
                 }
@@ -74,7 +74,7 @@ fn main() {
         ans = ans * 2 % MOD;
         let h_arr = [h_r[N/2], h_b[N/2], h_y[N/2]];
         for i in 0..3 { for j in 0..3 {
-            if i != 2 || j != 2 { ans = (ans - h_arr[i] as i128 * h_arr[j] as i128 % MOD as i128 + MOD as i128) as i64 % MOD; }
+            if i != 2 || j != 2 { ans = (ans as i128 - h_arr[i] as i128 * h_arr[j] as i128 % MOD as i128 + MOD as i128) as i64 % MOD; }
         } }
         ans = (ans + h_all[1][N/2]) % MOD;
         ans = (ans as i128 * mod_inv(2) as i128 % MOD as i128) as i64;

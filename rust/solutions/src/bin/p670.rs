@@ -14,7 +14,7 @@ fn mat_mult(a: &Mat, b: &Mat) -> Mat {
         for k in 0..SZ {
             if a[i][k] == 0 { continue; }
             for j in 0..SZ {
-                result[i][j] = (result[i][j] + a[i][k] as i128 * b[k][j] as i128 % MOD as i128) as i64;
+                result[i][j] = (result[i][j] as i128 + a[i][k] as i128 * b[k][j] as i128 % MOD as i128) as i64;
             }
         }
     }

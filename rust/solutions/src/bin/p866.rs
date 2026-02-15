@@ -11,7 +11,7 @@ fn main() {
     for k in 1..=n {
         let mut sum_val: i64 = 0;
         for i in 0..k {
-            sum_val = (sum_val + e[i] as i128 * e[k - 1 - i] as i128 % MOD as i128) as i64 % MOD;
+            sum_val = (sum_val as i128 + e[i] as i128 * e[k - 1 - i] as i128 % MOD as i128) as i64 % MOD;
         }
         let factor = (2 * k as i64 - 1) % MOD;
         e[k] = (factor as i128 * sum_val as i128 % MOD as i128) as i64;

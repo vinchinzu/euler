@@ -102,15 +102,15 @@ fn main() {
 
     // Sum over i <= l2
     for i in 1..=l2 {
-        let sc = sum_cubes(big_n / i as i64, M);
-        ans = (ans + sc as i128 * mu_prime[i] as i128 % M as i128) as i64 % M;
+        let sc = sum_cubes(big_n / (i as i64), M);
+        ans = (ans as i128 + sc as i128 * mu_prime[i] as i128 % M as i128) as i64 % M;
     }
 
     // Sum over t < l1
     for t in 1..l1 {
         let sc = sum_cubes(t as i64, M);
         let diff = (big[t] - big[t + 1]) % M;
-        ans = (ans + sc as i128 * diff as i128 % M as i128) as i64 % M;
+        ans = (ans as i128 + sc as i128 * diff as i128 % M as i128) as i64 % M;
     }
 
     ans = imod(ans, M);

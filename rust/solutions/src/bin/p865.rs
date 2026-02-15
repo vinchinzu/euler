@@ -38,16 +38,16 @@ fn main() {
             let mut conv_v_v: i64 = 0;
             for a in 0..=rem {
                 let b = rem - a;
-                conv_v_v = (conv_v_v + v[a] as i128 * v[b] as i128 % MOD as i128) as i64 % MOD;
+                conv_v_v = (conv_v_v as i128 + v[a] as i128 * v[b] as i128 % MOD as i128) as i64 % MOD;
             }
-            sum_dp = (sum_dp + dp[c] as i128 * conv_v_v as i128 % MOD as i128) as i64 % MOD;
+            sum_dp = (sum_dp as i128 + dp[c] as i128 * conv_v_v as i128 % MOD as i128) as i64 % MOD;
         }
         dp[m] = 10 * sum_dp % MOD;
 
         // 2. Compute prim[m]
         let mut sum_prim_dp: i64 = 0;
         for k in 1..m {
-            sum_prim_dp = (sum_prim_dp + prim[k] as i128 * dp[m - k] as i128 % MOD as i128) as i64 % MOD;
+            sum_prim_dp = (sum_prim_dp as i128 + prim[k] as i128 * dp[m - k] as i128 % MOD as i128) as i64 % MOD;
         }
         prim[m] = (dp[m] - sum_prim_dp + MOD) % MOD;
 

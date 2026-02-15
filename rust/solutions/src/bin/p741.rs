@@ -32,7 +32,7 @@ fn f(n: i32) -> i64 {
         fp[k] = (k as i64 * ((k - 1) as i64) % M
             * (((k - 1) as i128 * f_arr[k - 2] as i128 % M as i128 + fp[k - 1] as i128) % M as i128) as i64
             % M) % M;
-        f_arr[k] = ((M + 1) / 2 as i128 * fp[k] as i128 % M as i128) as i64;
+        f_arr[k] = (((M + 1) / 2) as i128 * fp[k] as i128 % M as i128) as i64;
     }
     f_arr[n]
 }
@@ -65,7 +65,7 @@ fn rotate180(n: i32) -> i64 {
     for k in 3..=n {
         if k % 2 == 0 {
             fp[k] = (k as i128 * (((k - 2) as i128 * f_arr[k - 4] as i128 % M as i128 + fp[k - 2] as i128) % M as i128 * (k - 2) as i128 % M as i128 + f_arr[k - 2] as i128) % M as i128 % M as i128) as i64 % M;
-            f_arr[k] = ((M + 1) / 2 as i128 * fp[k] as i128 % M as i128) as i64;
+            f_arr[k] = (((M + 1) / 2) as i128 * fp[k] as i128 % M as i128) as i64;
         } else {
             fp[k] = ((k - 1) as i128 * ((f_arr[k - 3] as i128 + (k - 3) as i128 * fp[k - 2] as i128 % M as i128) % M as i128) % M as i128) as i64 % M;
             f_arr[k] = ((k / 2) as i128 * fp[k] as i128 % M as i128) as i64;

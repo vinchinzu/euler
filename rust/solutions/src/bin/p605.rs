@@ -21,13 +21,14 @@ fn main() {
     let n: u64 = 100_000_007;
     let k: u64 = 10_007;
 
-    let two_n = pow_mod(2, n, M);
-    let two_n_m1 = (two_n + M - 1) % M;
-    let mut num = ((k - 1) % M as u64) as u128 * two_n_m1 as u128 % M as u128;
-    num = (num + n % M as u64 as u128) % M as u128;
-    num = num * pow_mod(2, n - k, M) as u128 % M as u128;
-    let den = two_n_m1 as u128 * two_n_m1 as u128 % M as u128;
-    let ans = num * den % M as u128;
+    let m = M as u128;
+    let two_n = pow_mod(2, n, M) as u128;
+    let two_n_m1 = (two_n + M as u128 - 1) % m;
+    let mut num = ((k - 1) as u128 % m) * two_n_m1 % m;
+    num = (num + n as u128 % m) % m;
+    num = num * pow_mod(2, n - k, M) as u128 % m;
+    let den = two_n_m1 * two_n_m1 % m;
+    let ans = num * den % m;
 
     println!("{}", ans);
 }
