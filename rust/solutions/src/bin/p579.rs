@@ -111,10 +111,15 @@ fn main() {
                     }
 
                     let d_sum = (gcds[0] + gcds[1] + gcds[2]) as i64;
-                    let l = isqrt_i(l_sq) as i64;
+                    let l = l_sq as i64;
                     for t in 1..=n as i64 {
-                        let lt = l * t;
-                        let num_points = lt * lt * lt + l * d_sum * t * t + d_sum * t + 1;
+                        // num_points = (l*t)^3 + l*d_sum*t^2 + d_sum*t + 1
+                        // Can overflow i64, so compute mod m
+                        let lt_mod = (l % m) * (t % m) % m;
+                        let p1 = lt_mod * lt_mod % m * lt_mod % m;
+                        let p2 = l % m * (d_sum % m) % m * (t % m * (t % m) % m) % m;
+                        let p3 = d_sum % m * (t % m) % m;
+                        let num_points = (p1 + p2 + p3 + 1) % m;
                         let mut num_cubes: i64 = 1;
                         for i in 0..3 {
                             let size = (maxs[i] - mins[i]) as i64 * t;

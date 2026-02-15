@@ -1,28 +1,73 @@
 // Project Euler 330: Euler's Number
-// (A(n) + B(n)) mod 77777777 for n = 10^9.
-// Uses CRT decomposition over prime factors of 77777777 = 7 * 11 * 73 * 101 * 137.
-
-fn mod_pow_ll(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    let mut result = 1i64;
-    base = ((base % modulus) + modulus) % modulus;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % modulus as i128) as i64;
-        }
-        base = (base as i128 * base as i128 % modulus as i128) as i64;
-        exp >>= 1;
-    }
-    result
-}
-
-fn mod_inv_prime(a: i64, p: i64) -> i64 {
-    mod_pow_ll(a, p - 2, p)
-}
+//
+// a(n) is defined for all integers n as:
+//   a(n) = 1 for n < 0
+//   a(n) = sum_{i>=1} a(n-i)/i! for n >= 0
+//
+// Each a(n) = (A(n)*e + B(n)) / n! where A(n), B(n) are integers.
+// Find (A(10^9) + B(10^9)) mod 77777777.
+//
+// Approach: Let h(n) = A(n) + B(n). The EGF H(x) = (1-e^x)/((1-x)*(2-e^x)).
+// Define d(n) = h(n) - n*h(n-1) with h(0)=0, d(0)=0.
+// d satisfies: d(n) = sum_{k=1}^n C(n,k)*d(n-k) - 1 for n >= 1.
+// Key observations (mod prime p):
+//   - d(n) mod p has period p-1
+//   - h(n) mod p has period p*(p-1)
+// Use CRT over prime factors of 77777777 = 7*11*73*101*137.
 
 fn ext_gcd(a: i64, b: i64) -> (i64, i64, i64) {
-    if b == 0 { return (a, 1, 0); }
+    if b == 0 {
+        return (a, 1, 0);
+    }
     let (g, x1, y1) = ext_gcd(b, a % b);
     (g, y1, x1 - (a / b) * y1)
+}
+
+fn compute_h_mod_p(p: i64, target_n: i64) -> i64 {
+    let period_d = (p - 1) as usize; // d has period p-1
+
+    // Precompute binomial coefficients mod p up to size period_d
+    // We only need C(n, k) for n < period_d and k <= n
+    let max_n = period_d;
+    let mut binom = vec![vec![0i64; max_n + 1]; max_n + 1];
+    for i in 0..=max_n {
+        binom[i][0] = 1;
+        for j in 1..=i {
+            binom[i][j] = (binom[i - 1][j - 1] + binom[i - 1][j]) % p;
+        }
+    }
+
+    // Compute d(n) mod p for n = 0..period_d-1
+    let mut d_vals = vec![0i64; period_d];
+    // d(0) = 0 (already set)
+    for n in 1..period_d {
+        let mut s = 0i64;
+        for k in 1..=n {
+            s = (s + binom[n][k] * d_vals[n - k]) % p;
+        }
+        d_vals[n] = ((s - 1) % p + p) % p;
+    }
+
+    // h(n) = d(n) + n * h(n-1), h(0) = 0
+    // h has period p*(p-1)
+    let period_h = (p * (p - 1)) as usize;
+
+    let mut h_prev = 0i64; // h(0)
+    // We need h(target_n % period_h), but since target_n is huge,
+    // compute h for one full period
+    let target_idx = (target_n % period_h as i64) as usize;
+
+    if target_idx == 0 {
+        return 0;
+    }
+
+    for n in 1..=target_idx {
+        let d_n = d_vals[n % period_d];
+        let h_n = (d_n + (n as i64 % p) * h_prev % p) % p;
+        h_prev = h_n;
+    }
+
+    h_prev
 }
 
 fn main() {
@@ -33,58 +78,7 @@ fn main() {
     let mut residues = [0i64; 5];
 
     for (pi, &p) in primes.iter().enumerate() {
-        // Compute inverse factorials mod p
-        let mut inv_fact = vec![0i64; p as usize];
-        inv_fact[0] = 1;
-        let mut fact = 1i64;
-        for j in 1..p as usize {
-            fact = fact * j as i64 % p;
-            inv_fact[j] = mod_inv_prime(fact, p);
-        }
-
-        // e_p = sum_{j=0}^{p-1} 1/j! mod p
-        let mut e_p = 0i64;
-        for j in 0..p as usize {
-            e_p = (e_p + inv_fact[j]) % p;
-        }
-
-        // a(k) mod p for k = 0..p-2
-        let mut a_vals = vec![0i64; p as usize];
-        a_vals[0] = 1;
-        for k in 1..p as usize - 1 {
-            a_vals[k] = (a_vals[k - 1] + inv_fact[k]) % p;
-        }
-
-        // A(n) mod p
-        let a_n = if n >= p {
-            let mut prefix_sum = 0i64;
-            for k in 0..p as usize - 1 {
-                prefix_sum = (prefix_sum + a_vals[k]) % p;
-            }
-            (prefix_sum + ((n - p + 1) % p) * e_p % p) % p
-        } else {
-            let mut a_n = 0i64;
-            for k in 0..n {
-                if k < p - 1 {
-                    a_n = (a_n + a_vals[k as usize]) % p;
-                } else {
-                    a_n = (a_n + e_p) % p;
-                }
-            }
-            a_n
-        };
-
-        // B(n) = sum_{j=0}^{min(n-1,p-1)} n^j / j! mod p
-        let mut b_n = 0i64;
-        let mut n_pow = 1i64;
-        let n_mod = n % p;
-        let jmax = std::cmp::min(n - 1, p - 1) as usize;
-        for j in 0..=jmax {
-            b_n = (b_n + n_pow * inv_fact[j]) % p;
-            n_pow = n_pow * n_mod % p;
-        }
-
-        residues[pi] = (a_n + b_n) % p;
+        residues[pi] = compute_h_mod_p(p, n);
     }
 
     // CRT: combine residues
@@ -93,7 +87,10 @@ fn main() {
         let mi = m / primes[i];
         let (_, x, _) = ext_gcd(mi, primes[i]);
         let x = ((x % primes[i]) + primes[i]) % primes[i];
-        result = (result + (residues[i] as i128 * mi as i128 % m as i128 * x as i128 % m as i128) as i64) % m;
+        result = (result
+            + (residues[i] as i128 * mi as i128 % m as i128 * x as i128 % m as i128)
+                as i64)
+            % m;
     }
 
     println!("{}", result);
