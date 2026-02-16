@@ -1,5 +1,6 @@
 // Project Euler 608 - Divisor Sums
 // Multiplicative function with Lucy DP + DFS over square-free divisors
+// Optimized: SPF sieve for O(L) divisor count computation
 
 const N: i64 = 1_000_000_000_000;
 const K: usize = 200;
@@ -44,21 +45,76 @@ fn main() {
     is_prime[0] = false;
     is_prime[1] = false;
     let mut i = 2;
-    while i * i <= K { if is_prime[i] { let mut j = i*i; while j <= K { is_prime[j] = false; j += i; } } i += 1; }
+    while i * i <= K {
+        if is_prime[i] {
+            let mut j = i * i;
+            while j <= K { is_prime[j] = false; j += i; }
+        }
+        i += 1;
+    }
     let primes: Vec<usize> = (2..=K).filter(|&i| is_prime[i]).collect();
 
     let lim = (N as f64).powf(2.0 / 3.0) as usize;
 
-    // Sieve divisor counts
-    let mut num_divs = vec![0i32; lim + 1];
-    for i in 1..=lim {
-        let mut j = i;
-        while j <= lim { num_divs[j] += 1; j += i; }
+    // Compute divisor count prefix sums using SPF sieve - O(L log log L) sieve + O(L) scan
+    // Step 1: Sieve smallest prime factor (u16 suffices: SPF <= sqrt(lim) ~ 10^4 for composites)
+    let mut spf = vec![0u16; lim + 1];
+    {
+        let sq = (lim as f64).sqrt() as usize + 1;
+        for p in 2..=sq {
+            if spf[p] == 0 {
+                let mut j = p * p;
+                while j <= lim {
+                    if spf[j] == 0 {
+                        spf[j] = p as u16;
+                    }
+                    j += p;
+                }
+            }
+        }
     }
 
+    // Step 2: Compute divisor counts using SPF factorization in O(L)
+    // For n composite with SPF p: n = p * (n/p)
+    //   If n/p also has SPF p: exponent a = spf_exp[n/p] + 1, d(n) = d(n/p) * (a+1) / a
+    //   If n/p has different SPF (or is 1): p appears once, d(n) = d(n/p) * 2
+    let mut num_divs = vec![0u16; lim + 1];
+    let mut spf_exp = vec![0u8; lim + 1];
+    num_divs[1] = 1;
+    for n in 2..=lim {
+        if spf[n] == 0 {
+            // n is prime
+            num_divs[n] = 2;
+            spf_exp[n] = 1;
+        } else {
+            let p = spf[n] as usize;
+            let prev = n / p;
+            // Check if prev's SPF is also p
+            let prev_spf = if prev < 2 { 0u16 } else { spf[prev] };
+            let prev_has_same_spf = prev_spf == p as u16 || (prev_spf == 0 && prev == p);
+            if prev_has_same_spf {
+                let a = spf_exp[prev] + 1;
+                spf_exp[n] = a;
+                // d(n) = d(prev) * (a+1) / a  (exact integer division)
+                num_divs[n] = (num_divs[prev] as u32 / a as u32 * (a as u32 + 1)) as u16;
+            } else {
+                spf_exp[n] = 1;
+                num_divs[n] = num_divs[prev] * 2;
+            }
+        }
+    }
+    drop(spf);
+    drop(spf_exp);
+
+    // Step 3: Prefix sum of divisor counts mod M
     let mut sum_floor_small = vec![0i64; lim + 1];
     for i in 1..=lim {
-        sum_floor_small[i] = (sum_floor_small[i - 1] + num_divs[i] as i64) % M;
+        // SAFETY: i-1 and i are in bounds since i ranges 1..=lim and vec has size lim+1
+        unsafe {
+            let prev = *sum_floor_small.get_unchecked(i - 1);
+            let d = *num_divs.get_unchecked(i) as i64;
+            *sum_floor_small.get_unchecked_mut(i) = (prev + d) % M;
+        }
     }
     drop(num_divs);
 
@@ -75,7 +131,7 @@ fn main() {
         product_updates[p] = ((-(tr_e as i128 * mod_inv(tr_e1, M) as i128 % M as i128) % M as i128) + M as i128) as i64 % M;
     }
 
-    // DFS
+    // DFS - use iterative stack
     let mut ans = 0i64;
     let lim_i64 = lim as i64;
 
@@ -93,14 +149,17 @@ fn main() {
         let sum_val = if q >= lim_i64 {
             sum_floor_quotients(q) % M
         } else {
-            sum_floor_small[q as usize]
+            // SAFETY: q < lim_i64 and q >= 0 guaranteed
+            unsafe { *sum_floor_small.get_unchecked(q as usize) }
         };
         ans = ((ans as i128 + sum_val as i128 * mult as i128 % M as i128 + M as i128) % M as i128) as i64;
 
         for idx in min_idx..primes.len() {
             let p = primes[idx] as i64;
-            if d as f64 * p as f64 > N as f64 { break; }
-            let new_mult = (mult as i128 * product_updates[p as usize] as i128 % M as i128) as i64;
+            if d > N / p { break; }
+            // SAFETY: p <= K=200, product_updates has size K+1
+            let pu = unsafe { *product_updates.get_unchecked(p as usize) };
+            let new_mult = (mult as i128 * pu as i128 % M as i128) as i64;
             let new_mult = (new_mult + M) % M;
             stack.push(State { min_idx: idx + 1, d: d * p, mult: new_mult });
         }

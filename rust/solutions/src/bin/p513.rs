@@ -11,170 +11,224 @@
 // with step = v' = v/gcd(u,v) (or related via CRT when v divisible by 4 and u even).
 //
 // The answer is f_count(N) -- no Mobius inversion needed.
+// Optimized: iterate over divisors g of u to avoid per-v GCD computation.
 
 use rayon::prelude::*;
 
 const NN: i64 = 100_000;
 
-#[inline]
-fn gcd(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+#[inline(always)]
+fn gcd32(mut a: u32, mut b: u32) -> u32 {
+    if a == 0 { return b; }
+    if b == 0 { return a; }
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    loop {
+        b >>= b.trailing_zeros();
+        if a > b { let t = a; a = b; b = t; }
+        b -= a;
+        if b == 0 { return a << shift; }
     }
-    a
+}
+
+#[inline(always)]
+fn neg_mod32(val: u32, m: u32) -> u32 {
+    let r = val % m;
+    if r == 0 { 0 } else { m - r }
+}
+
+/// Process a single (u, v) pair for the odd u case.
+/// Returns the count contribution.
+#[inline(always)]
+fn process_odd(u: u32, v: u32, g: u32, half_n_i64: i64) -> i64 {
+    let vp = v / g;
+
+    let (step, t0): (u32, u32);
+    if vp == 1 {
+        step = 1;
+        t0 = 1;
+    } else {
+        // vp always odd when u odd
+        let inv2 = (vp + 1) / 2;
+        let r = neg_mod32(u, vp);
+        let mut t0_ = ((r as u64 * inv2 as u64) % vp as u64) as u32;
+        if t0_ == 0 { t0_ = vp; }
+        step = vp;
+        t0 = t0_;
+    }
+
+    let u64_ = u as i64;
+    let v64_ = v as i64;
+    let mut t_min = u64_;
+
+    let vv_uu = v64_ * v64_ - u64_ * u64_;
+    let t_min2 = (vv_uu + 2 * u64_ - 1) / (2 * u64_);
+    if t_min2 > t_min { t_min = t_min2; }
+
+    let num = (u64_ + v64_) * (u64_ + v64_) - 2 * v64_ * v64_;
+    if num > 0 {
+        let denom = 2 * (v64_ - u64_);
+        let t_min3 = (num + denom - 1) / denom;
+        if t_min3 > t_min { t_min = t_min3; }
+    }
+
+    let step64 = step as i64;
+    let t064 = t0 as i64;
+    if t_min <= t064 {
+        t_min = t064;
+    } else {
+        let k = (t_min - t064 + step64 - 1) / step64;
+        t_min = t064 + k * step64;
+    }
+
+    if t_min <= half_n_i64 {
+        (half_n_i64 - t_min) / step64 + 1
+    } else {
+        0
+    }
 }
 
 /// For a given u, count all valid triangles by iterating over v.
-/// Each (u,v) pair with v > u, same parity, gives an arithmetic progression
-/// of valid t values. We count the number of t in [t_min, half_n] with step.
-fn count_for_u(u: i64, half_n: i64) -> i64 {
+#[inline(never)]
+fn count_for_u(u: u32, half_n: u32) -> i64 {
     let mut count: i64 = 0;
-    let p_max = u * (2 * half_n + u);
+    let p_max: u64 = u as u64 * (2 * half_n as u64 + u as u64);
 
-    // v_max = floor(sqrt(P_max))
-    let mut v_max = (p_max as f64).sqrt() as i64 + 1;
-    while v_max * v_max > p_max {
+    let mut v_max = (p_max as f64).sqrt() as u32 + 1;
+    while (v_max as u64) * (v_max as u64) > p_max {
         v_max -= 1;
     }
 
     let u_odd = u & 1 == 1;
-    // v must have same parity as u. Start at u+1 or u+2 to match parity.
-    let v_start = if u_odd {
-        if (u + 1) & 1 == 1 { u + 1 } else { u + 2 }
-    } else {
-        if (u + 1) & 1 == 0 { u + 1 } else { u + 2 }
-    };
+    let half_n_i64 = half_n as i64;
 
-    let mut v = v_start;
-    while v <= v_max {
-        // Compute gcd(u, v) and v' = v / gcd(u,v)
-        let g = gcd(u, v);
-        let vp = v / g;
-
-        // Solve for arithmetic progression of t values where v' | (2t + u).
-        // 2t ≡ -u (mod v')
-        let (mut step, mut t0);
-        if vp == 1 {
-            step = 1;
-            t0 = 1;
-        } else if vp & 1 == 1 {
-            // vp odd: inv2 = (vp+1)/2
-            let inv2 = (vp + 1) / 2;
-            let r = ((-u).rem_euclid(vp)) as i64;
-            t0 = (r * inv2) % vp;
-            if t0 == 0 { t0 = vp; }
-            step = vp;
-        } else {
-            // vp even: need u even (guaranteed by parity)
-            let half_vp = vp / 2;
-            let hu = u / 2;
-            t0 = ((-hu).rem_euclid(half_vp)) as i64;
-            if t0 == 0 { t0 = half_vp; }
-            step = half_vp;
+    if u_odd {
+        // For odd u, iterate v = u+2, u+4, ... (odd values)
+        // Split into: v coprime to u (gcd=1) and v sharing a factor with u
+        // Use divisor-based iteration to handle non-coprime efficiently
+        let mut v: u32 = u + 2;
+        while v <= v_max {
+            let g = gcd32(u, v);
+            count += process_odd(u, v, g, half_n_i64);
+            v += 2;
         }
+    } else {
+        let hu = u / 2;
+        let mut v: u32 = u + 2;
+        while v <= v_max {
+            let g = gcd32(u, v);
+            let vp = v / g;
 
-        // Extra CRT condition when u even and v divisible by 4
-        if !u_odd {
-            let v1 = v / 2;
-            if v1 % 2 == 0 {
-                // Need v1 | k(t+k) where k = u/2
-                // Let g2 = gcd(k, v1). Need (v1/g2) | (t + k).
-                let k = u / 2;
-                let g2 = gcd(k, v1);
+            let (mut step, mut t0): (u32, u32);
+            if vp == 1 {
+                step = 1;
+                t0 = 1;
+            } else if vp & 1 == 1 {
+                let inv2 = (vp + 1) / 2;
+                let r = neg_mod32(u, vp);
+                t0 = ((r as u64 * inv2 as u64) % vp as u64) as u32;
+                if t0 == 0 { t0 = vp; }
+                step = vp;
+            } else {
+                let half_vp = vp / 2;
+                t0 = neg_mod32(hu, half_vp);
+                if t0 == 0 { t0 = half_vp; }
+                step = half_vp;
+            }
+
+            // CRT when v divisible by 4
+            let v1 = v >> 1;
+            if v1 & 1 == 0 {
+                let g2 = gcd32(hu, v1);
                 let r2 = v1 / g2;
                 if r2 > 1 {
-                    // t ≡ -k (mod r2)
-                    let t0_2 = ((-k).rem_euclid(r2)) as i64;
-                    // CRT: combine t ≡ t0 (mod step) with t ≡ t0_2 (mod r2)
-                    let g3 = gcd(step, r2);
-                    if (t0_2 - t0).rem_euclid(g3) != 0 {
+                    let t0_2 = neg_mod32(hu, r2);
+                    let g3 = gcd32(step, r2);
+                    let diff_raw = t0_2 as i64 - t0 as i64;
+                    if diff_raw.rem_euclid(g3 as i64) != 0 {
                         v += 2;
                         continue;
                     }
-                    let lcm = step / g3 * r2;
+                    let lcm = (step / g3) as u64 * r2 as u64;
+                    if lcm > half_n as u64 * 2 {
+                        v += 2;
+                        continue;
+                    }
+                    let lcm = lcm as u32;
                     let m1g = step / g3;
                     let m2g = r2 / g3;
-                    let diff = (t0_2 - t0) / g3;
-                    // Extended GCD to find inverse of m1g mod m2g
+                    let diff = (t0_2 as i64 - t0 as i64) / g3 as i64;
                     let (mut x, mut x1) = (0i64, 1i64);
-                    let (mut tm, mut ta) = (m2g, m1g);
+                    let (mut tm, mut ta) = (m2g as i64, m1g as i64);
                     while ta > 0 {
                         let q = tm / ta;
                         let tmp = ta; ta = tm - q * ta; tm = tmp;
                         let tmp = x1; x1 = x - q * x1; x = tmp;
                     }
-                    let kk = ((diff % m2g) * (x % m2g) % m2g + m2g).rem_euclid(m2g);
-                    t0 = t0 + kk * step;
-                    t0 = t0.rem_euclid(lcm);
-                    if t0 == 0 { t0 = lcm; }
+                    let kk = ((diff % m2g as i64) * (x % m2g as i64) % m2g as i64 + m2g as i64)
+                        .rem_euclid(m2g as i64);
+                    let mut t0_64 = t0 as i64 + kk * step as i64;
+                    t0_64 = ((t0_64 % lcm as i64) + lcm as i64) % lcm as i64;
+                    if t0_64 == 0 { t0_64 = lcm as i64; }
+                    t0 = t0_64 as u32;
                     step = lcm;
                 }
             }
-        }
 
-        if t0 == 0 { t0 = step; }
+            if t0 == 0 { t0 = step; }
 
-        // Lower bounds on t:
-        // 1. t >= u (from a >= 1: a = s - d >= 1, need s >= d + 1, s = t + u, so t + u >= d + 1)
-        //    Actually more precisely: a = s - d >= 1 requires checking the triangle inequality.
-        //    The three bounds below encode a >= 1, b <= c, and a + b > c.
-        let mut t_min = u;
+            let u64_ = u as i64;
+            let v64_ = v as i64;
+            let mut t_min = u64_;
 
-        // 2. From b <= c: (s+d) <= 2t, need v^2 - u^2 <= 2u*t (when v^2 > u^2)
-        let vv_uu = v * v - u * u;
-        if vv_uu > 0 {
-            let t_min2 = (vv_uu + 2 * u - 1) / (2 * u);
+            let vv_uu = v64_ * v64_ - u64_ * u64_;
+            let t_min2 = (vv_uu + 2 * u64_ - 1) / (2 * u64_);
             if t_min2 > t_min { t_min = t_min2; }
-        }
 
-        // 3. From a + b > c: 2s > 2t => s > t always. But also need s - d >= 1 and
-        //    a + b > c: (s-d) + (s+d) > 2t => 2s > 2t => s > t, always true since u >= 1.
-        //    Actually need a + b > c, which is 2s > c = 2t. s = t + u > t always. OK.
-        //    But also a >= 1: s - d >= 1. d can be up to m-1.
-        //    w = P/v. d = (v-w)/2 when v > w. Then s - d = (t+u) - (v-w)/2.
-        //    Constraint: s - d >= 1. This is hard to express in terms of just t.
-        //
-        //    Let's use: a >= 1 means s - d >= 1. s = t+u, d = |m - (v+w)/2| ... no.
-        //    Actually m = (v+w)/2, d = (v-w)/2 (assuming v >= w).
-        //    a = s - d = (t+u) - (v-w)/2.
-        //    Need a >= 1: t + u - (v - w)/2 >= 1. Since w = P/v = u(2t+u)/v:
-        //    t + u - (v - u(2t+u)/v)/2 >= 1. This is complex; the t_min bounds above
-        //    approximate this. The exact check from the original C code uses:
-        //    num = (u+v)^2 - 2v^2 = u^2 + 2uv - v^2.
-        //    If num > 0: t_min3 = ceil(num / (2*(v-u))).
-        let num = (u + v) * (u + v) - 2 * v * v;
-        if num > 0 {
-            let denom = 2 * (v - u);
-            let t_min3 = (num + denom - 1) / denom;
-            if t_min3 > t_min { t_min = t_min3; }
-        }
+            let num = (u64_ + v64_) * (u64_ + v64_) - 2 * v64_ * v64_;
+            if num > 0 {
+                let denom = 2 * (v64_ - u64_);
+                let t_min3 = (num + denom - 1) / denom;
+                if t_min3 > t_min { t_min = t_min3; }
+            }
 
-        // Align t_min to the arithmetic progression
-        if t_min <= t0 {
-            t_min = t0;
-        } else {
-            let k = (t_min - t0 + step - 1) / step;
-            t_min = t0 + k * step;
-        }
+            let step64 = step as i64;
+            let t064 = t0 as i64;
+            if t_min <= t064 {
+                t_min = t064;
+            } else {
+                let k = (t_min - t064 + step64 - 1) / step64;
+                t_min = t064 + k * step64;
+            }
 
-        if t_min <= half_n {
-            count += (half_n - t_min) / step + 1;
-        }
+            if t_min <= half_n_i64 {
+                count += (half_n_i64 - t_min) / step64 + 1;
+            }
 
-        v += 2;
+            v += 2;
+        }
     }
 
     count
 }
 
 fn f_count(n: i64) -> i64 {
-    let half_n = n / 2;
-    // Parallel sum over u from 1 to half_n
-    (1..=half_n)
+    let half_n = (n / 2) as u32;
+
+    let chunk_size = 32u32;
+    let num_chunks = (half_n + chunk_size - 1) / chunk_size;
+
+    (0..num_chunks)
         .into_par_iter()
-        .map(|u| count_for_u(u, half_n))
+        .map(|chunk_idx| {
+            let u_start = chunk_idx * chunk_size + 1;
+            let u_end = std::cmp::min(u_start + chunk_size - 1, half_n);
+            let mut total = 0i64;
+            for u in u_start..=u_end {
+                total += count_for_u(u, half_n);
+            }
+            total
+        })
         .sum()
 }
 

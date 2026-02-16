@@ -1,7 +1,9 @@
 // Project Euler 641 - A Long Row of Dice
 // Count numbers <= 10^18 with exactly 6k divisors using Lucy prime counting
+// Optimized: direct recursion instead of stack-based DFS
 
 const K: i64 = 6;
+const N_GLOBAL: i64 = 1_000_000_000_000_000_000;
 
 fn isqrt(n: i64) -> i64 {
     let mut x = (n as f64).sqrt() as i64;
@@ -39,21 +41,85 @@ fn nthrt(n: i64, r: i32) -> i64 {
     x
 }
 
+#[inline(always)]
 fn safe_pow(p: i64, e: i32) -> i64 {
     let mut result = 1i64;
     for _ in 0..e {
-        if result > 1_000_000_000_000_000_000 / p { return -1; }
+        if result > N_GLOBAL / p { return -1; }
         result *= p;
     }
     result
 }
 
-fn main() {
-    let n_global: i64 = 1_000_000_000_000_000_000;
+struct Context {
+    primes: Vec<i64>,
+    pc_arr: Vec<i64>,
+    l_val: usize,
+    s_arr: Vec<i64>,
+    v_arr: Vec<i64>,
+    v_len: usize,
+}
 
+impl Context {
+    #[inline(always)]
+    fn val_to_idx(&self, v: i64) -> usize {
+        if v <= self.v_arr[self.v_len - 1] { self.v_len - v as usize }
+        else { (N_GLOBAL / v) as usize - 1 }
+    }
+
+    #[inline(always)]
+    fn get_pc(&self, v: i64) -> i64 {
+        if v < 2 { 0 }
+        else { self.s_arr[self.val_to_idx(v)] }
+    }
+}
+
+fn helper(min_index: usize, n: i64, num_divisors: i64, ctx: &Context) -> i64 {
+    let mut ans = 0i64;
+
+    // Leaf: count primes p where p^(e/2) <= N/n
+    let mut e = if num_divisors % K == 1 { K } else { K - 2 };
+    let rem = N_GLOBAL / n;
+    loop {
+        let half_e = e / 2;
+        let bound = nthrt(rem, half_e as i32);
+        if min_index >= ctx.primes.len() || bound < ctx.primes[min_index] { break; }
+        let cnt = if bound > ctx.l_val as i64 { ctx.get_pc(bound) } else { ctx.pc_arr[bound as usize] }
+            - min_index as i64;
+        ans += cnt;
+        e += K;
+    }
+
+    // Recurse with higher prime powers
+    for index in min_index..ctx.primes.len() {
+        let p = ctx.primes[index];
+        let pk2 = safe_pow(p, (K - 2) as i32);
+        if pk2 < 0 || n > N_GLOBAL / pk2 { break; }
+
+        for start_e_idx in 0..2 {
+            let se = if start_e_idx == 0 { K - 2 } else { K };
+            let mut ee = se;
+            let half_se = ee / 2;
+            let ppow = safe_pow(p, half_se as i32);
+            if ppow < 0 || n > N_GLOBAL / ppow { continue; }
+            let mut new_n = n * ppow;
+            while new_n < N_GLOBAL {
+                ans += helper(index + 1, new_n, num_divisors * (ee + 1), ctx);
+                ee += K;
+                let pmul = safe_pow(p, (K / 2) as i32);
+                if pmul < 0 || new_n > N_GLOBAL / pmul { break; }
+                new_n *= pmul;
+            }
+        }
+    }
+
+    ans
+}
+
+fn main() {
     let l_val = {
-        let mut lv = (n_global as f64).powf(0.4) as i64;
-        while safe_pow(lv + 1, 5) > 0 && safe_pow(lv + 1, 5) <= n_global { lv += 1; }
+        let mut lv = (N_GLOBAL as f64).powf(0.4) as i64;
+        while safe_pow(lv + 1, 5) > 0 && safe_pow(lv + 1, 5) <= N_GLOBAL { lv += 1; }
         lv as usize
     };
 
@@ -68,9 +134,9 @@ fn main() {
     for i in 0..=l_val { if i >= 2 && is_p[i] { cnt += 1; } pc_arr[i] = cnt; }
 
     // Lucy prime counting
-    let r = isqrt(n_global) as usize;
+    let r = isqrt(N_GLOBAL) as usize;
     let mut v_arr = Vec::with_capacity(2 * r + 2);
-    for i in 1..=r { v_arr.push(n_global / i as i64); }
+    for i in 1..=r { v_arr.push(N_GLOBAL / i as i64); }
     let last = *v_arr.last().unwrap();
     for v in (1..last).rev() { v_arr.push(v); }
     let v_len = v_arr.len();
@@ -79,7 +145,7 @@ fn main() {
 
     let val_to_idx = |v: i64| -> usize {
         if v <= v_arr[v_len - 1] { v_len - v as usize }
-        else { (n_global / v) as usize - 1 }
+        else { (N_GLOBAL / v) as usize - 1 }
     };
 
     for p in 2..=r {
@@ -95,50 +161,8 @@ fn main() {
         }
     }
 
-    let get_pc = |v: i64| -> i64 { if v < 2 { 0 } else { s_arr[val_to_idx(v)] } };
+    let ctx = Context { primes, pc_arr, l_val, s_arr, v_arr, v_len };
 
-    // DFS
-    let mut ans = 1i64; // count 1 which has 1 divisor (6*0 divisors case for k=0, but problem says 6k for k>=1... let's keep C logic)
-
-    struct Frame { min_index: usize, n: i64, num_divisors: i64 }
-    let mut stack = vec![Frame { min_index: 0, n: 1, num_divisors: 1 }];
-
-    while let Some(f) = stack.pop() {
-        // Leaf: count primes p where p^(e/2) <= N/n
-        let mut e = if f.num_divisors % K == 1 { K } else { K - 2 };
-        loop {
-            let half_e = e / 2;
-            let bound = nthrt(n_global / f.n, half_e as i32);
-            if f.min_index >= primes.len() || bound < primes[f.min_index] { break; }
-            let cnt = if bound > l_val as i64 { get_pc(bound) } else { pc_arr[bound as usize] }
-                - f.min_index as i64;
-            ans += cnt;
-            e += K;
-        }
-
-        // Recurse with higher prime powers
-        for index in f.min_index..primes.len() {
-            let p = primes[index];
-            let pk2 = safe_pow(p, (K - 2) as i32);
-            if pk2 < 0 || f.n > n_global / pk2 { break; }
-
-            for start_e_idx in 0..2 {
-                let se = if start_e_idx == 0 { K - 2 } else { K };
-                let mut ee = se;
-                let half_se = ee / 2;
-                let ppow = safe_pow(p, half_se as i32);
-                if ppow < 0 || f.n > n_global / ppow { continue; }
-                let mut new_n = f.n * ppow;
-                while new_n < n_global {
-                    stack.push(Frame { min_index: index as usize + 1, n: new_n, num_divisors: f.num_divisors * (ee + 1) });
-                    ee += K;
-                    let pmul = safe_pow(p, (K / 2) as i32);
-                    if pmul < 0 || new_n > n_global / pmul { break; }
-                    new_n *= pmul;
-                }
-            }
-        }
-    }
-
+    let ans = 1i64 + helper(0, 1, 1, &ctx);
     println!("{}", ans);
 }

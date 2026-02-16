@@ -1,8 +1,10 @@
 use euler_utils::{gcd, lcm};
+use rayon::prelude::*;
 
 const N: i64 = 10_000_000;
 
-fn gcd128(mut a: i128, mut b: i128) -> i128 {
+#[inline(always)]
+fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
     if a < 0 { a = -a; }
     if b < 0 { b = -b; }
     while b != 0 { let t = b; b = a % b; a = t; }
@@ -17,61 +19,18 @@ fn isqrt_func(n: i64) -> i64 {
     x
 }
 
+#[inline(always)]
 fn tr(n: i64) -> i64 {
     n * (n + 1) / 2
 }
 
-fn get_divisors(n: i64) -> Vec<i64> {
-    let mut divs = Vec::new();
-    let mut i = 1i64;
-    while i * i <= n {
-        if n % i == 0 {
-            divs.push(i);
-            if i != n / i { divs.push(n / i); }
-        }
-        i += 1;
-    }
-    divs
-}
-
-// Hash set using open addressing
-const SOL_HASH_SIZE: usize = 2_000_003;
-
-struct SolSet {
-    keys: Vec<(i64, i64, i64)>,
-    used: Vec<bool>,
-    solutions: Vec<(i64, i64, i64)>,
-}
-
-impl SolSet {
-    fn new() -> Self {
-        SolSet {
-            keys: vec![(0, 0, 0); SOL_HASH_SIZE],
-            used: vec![false; SOL_HASH_SIZE],
-            solutions: Vec::new(),
-        }
-    }
-
-    fn add(&mut self, mut x: i64, mut y: i64, mut z: i64) -> bool {
-        if x > y { std::mem::swap(&mut x, &mut y); }
-        if y > z { std::mem::swap(&mut y, &mut z); }
-        if x > y { std::mem::swap(&mut x, &mut y); }
-
-        let h = ((x as u64).wrapping_mul(1_000_000_007).wrapping_add(y as u64)).wrapping_mul(1_000_000_007).wrapping_add(z as u64);
-        let mut idx = (h % SOL_HASH_SIZE as u64) as usize;
-        loop {
-            if !self.used[idx] {
-                self.keys[idx] = (x, y, z);
-                self.used[idx] = true;
-                self.solutions.push((x, y, z));
-                return true;
-            }
-            if self.keys[idx] == (x, y, z) {
-                return false;
-            }
-            idx = (idx + 1) % SOL_HASH_SIZE;
-        }
-    }
+// Compute gcd(r2 * (x+y), den) where r2 and den fit in i64 but r2*(x+y) may not
+// First reduce: gcd(a, b) = gcd(a % b, b) and compute (r2*(x+y)) % den using i128 for one mul
+#[inline(always)]
+fn gcd_special(r2: i64, xy_sum: i64, den: i64) -> i64 {
+    // num = r2 * xy_sum, compute num % den
+    let num_mod = ((r2 as i128 * xy_sum as i128) % den as i128) as i64;
+    gcd_i64(num_mod, den)
 }
 
 fn main() {
@@ -100,48 +59,105 @@ fn main() {
         if !tri_map[i].is_empty() { keys.push(i); }
     }
 
-    let mut sol_set = SolSet::new();
+    // Pre-compute divisors for each key
+    let key_divisors: Vec<Vec<i64>> = keys.iter().map(|&a1| {
+        let mut divs = Vec::new();
+        let mut i = 1i64;
+        let a = a1 as i64;
+        while i * i <= a {
+            if a % i == 0 {
+                divs.push(i);
+                if i != a / i { divs.push(a / i); }
+            }
+            i += 1;
+        }
+        divs
+    }).collect();
 
-    for &a1 in &keys {
-        let divs = get_divisors(a1 as i64);
+    // Parallel: each key produces a list of candidate (x, y, z) triples
+    let all_candidates: Vec<Vec<(i64, i64, i64)>> = keys.par_iter().zip(key_divisors.par_iter())
+        .map(|(&a1, divs)| {
+            let mut local_candidates = Vec::new();
+            let a1_i64 = a1 as i64;
 
-        for &d in &divs {
-            let mut mult = 1i64;
-            while mult * (a1 as i64) < map_size as i64 && mult * d <= a1 as i64 {
-                let a2 = (mult * d) as usize;
-                if a2 >= map_size || tri_map[a2].is_empty() { mult += 1; continue; }
+            for &d in divs {
+                let mut mult = 1i64;
+                while mult * a1_i64 < map_size as i64 && mult * d <= a1_i64 {
+                    let a2 = (mult * d) as usize;
+                    if a2 >= map_size || tri_map[a2].is_empty() { mult += 1; continue; }
 
-                let r = lcm(a1 as u64, a2 as u64) as i64;
-                if r > N { mult += 1; continue; }
+                    let r = lcm(a1 as u64, a2 as u64) as i64;
+                    if r > N { mult += 1; continue; }
 
-                for bi in 0..tri_map[a1].len() {
-                    let b1 = tri_map[a1][bi];
-                    for bj in 0..tri_map[a2].len() {
-                        let b2 = tri_map[a2][bj];
+                    let r2 = r * r; // fits in i64: r <= 10^7, r^2 <= 10^14
 
-                        let x = b1 * r / a1 as i64;
-                        let y = b2 * r / a2 as i64;
-                        let r2: i128 = r as i128 * r as i128;
-                        let num: i128 = r2 * (x as i128 + y as i128);
-                        let den: i128 = x as i128 * y as i128 - r2;
+                    for bi in 0..tri_map[a1].len() {
+                        let b1 = tri_map[a1][bi];
+                        for bj in 0..tri_map[a2].len() {
+                            let b2 = tri_map[a2][bj];
 
-                        if den > 0 && 2 * (x as i128 + y as i128 + num / den) <= N as i128 {
-                            let g = gcd128(num, den);
-                            let num_r = num / g;
+                            let x = b1 * r / a1_i64;
+                            let y = b2 * r / a2 as i64;
+                            let den = x * y - r2; // fits in i64
+
+                            if den <= 0 { continue; }
+
+                            // Quick check: num/den = r2*(x+y)/den, need 2*(x+y+num/den) <= N
+                            // num/den computed via i128 for one division
+                            let xy_sum = x + y;
+                            let z_approx = (r2 as i128 * xy_sum as i128 / den as i128) as i64;
+                            if 2 * (xy_sum + z_approx) > N { continue; }
+
+                            // Compute gcd using optimized approach (one i128 mul then i64 gcd)
+                            let g = gcd_special(r2, xy_sum, den);
+                            let num_r = (r2 as i128 * xy_sum as i128 / g as i128) as i64;
                             let den_r = den / g;
-                            if 2 * (x as i128 * den_r + y as i128 * den_r + num_r) <= N as i128 {
-                                sol_set.add((x as i128 * den_r) as i64, (y as i128 * den_r) as i64, num_r as i64);
+                            if 2 * (x as i128 * den_r as i128 + y as i128 * den_r as i128 + num_r as i128) <= N as i128 {
+                                let mut sx = (x as i128 * den_r as i128) as i64;
+                                let mut sy = (y as i128 * den_r as i128) as i64;
+                                let mut sz = num_r;
+                                // Sort
+                                if sx > sy { std::mem::swap(&mut sx, &mut sy); }
+                                if sy > sz { std::mem::swap(&mut sy, &mut sz); }
+                                if sx > sy { std::mem::swap(&mut sx, &mut sy); }
+                                local_candidates.push((sx, sy, sz));
                             }
                         }
                     }
+                    mult += 1;
                 }
-                mult += 1;
+            }
+            local_candidates
+        })
+        .collect();
+
+    // Merge and deduplicate using hash set
+    let mut sol_keys: Vec<(i64, i64, i64)> = vec![(0, 0, 0); 2_000_003];
+    let mut sol_used: Vec<bool> = vec![false; 2_000_003];
+    let mut solutions: Vec<(i64, i64, i64)> = Vec::new();
+    const HASH_SIZE: usize = 2_000_003;
+
+    for candidates in &all_candidates {
+        for &(x, y, z) in candidates {
+            let h = ((x as u64).wrapping_mul(1_000_000_007).wrapping_add(y as u64)).wrapping_mul(1_000_000_007).wrapping_add(z as u64);
+            let mut idx = (h % HASH_SIZE as u64) as usize;
+            loop {
+                if !sol_used[idx] {
+                    sol_keys[idx] = (x, y, z);
+                    sol_used[idx] = true;
+                    solutions.push((x, y, z));
+                    break;
+                }
+                if sol_keys[idx] == (x, y, z) {
+                    break;
+                }
+                idx = (idx + 1) % HASH_SIZE;
             }
         }
     }
 
     let mut ans: i64 = 0;
-    for &(x, y, z) in &sol_set.solutions {
+    for &(x, y, z) in &solutions {
         let r2 = (x * y * z) / (x + y + z);
         let perim = 2 * (x + y + z);
         let ia = isqrt_func(r2 + x * x);

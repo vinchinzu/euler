@@ -1,9 +1,16 @@
 // Project Euler 972 - Hyperbolic geodesics T(12) = 3575508
 // Count ordered triples of V(12) points on a common geodesic
 // (diameter or circle orthogonal to unit disc)
+//
+// For each pair of points, compute the unique geodesic.
+// Count pairs per geodesic, then recover s from C(s,2) = pairs.
+// Sum s*(s-1)*(s-2) over all geodesics with s >= 3.
 
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+use rayon::prelude::*;
 
+#[inline(always)]
 fn gcd(mut a: i64, mut b: i64) -> i64 {
     a = a.abs();
     b = b.abs();
@@ -16,126 +23,184 @@ fn gcd(mut a: i64, mut b: i64) -> i64 {
 }
 
 #[derive(Clone, Copy)]
-struct Point {
-    xn: i64, xd: i64,
-    yn: i64, yd: i64,
+struct PrePoint {
+    xn: i32, xd: i32,
+    yn: i32, yd: i32,
+    a: i32,
+    b: i32,
+    s_num: i64,
+    ad: i64,
+    bd: i64,
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
-enum Geodesic {
-    Diameter(i64, i64),                   // (da, db) normalized direction
-    Circle(i64, i64, i64, i64),           // (h_num, h_den, k_num, k_den) reduced
+// FxHash-like hasher
+struct FxHasher {
+    hash: u64,
+}
+
+const SEED: u64 = 0x517cc1b727220a95;
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn finish(&self) -> u64 { self.hash }
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut buf = [0u8; 8];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            self.hash = (self.hash.rotate_left(5) ^ u64::from_le_bytes(buf)).wrapping_mul(SEED);
+        }
+    }
+    #[inline]
+    fn write_i64(&mut self, i: i64) {
+        self.hash = (self.hash.rotate_left(5) ^ i as u64).wrapping_mul(SEED);
+    }
+    #[inline]
+    fn write_i8(&mut self, i: i8) {
+        self.hash = (self.hash.rotate_left(5) ^ i as u64).wrapping_mul(SEED);
+    }
+}
+
+impl Default for FxHasher {
+    #[inline]
+    fn default() -> Self { FxHasher { hash: 0 } }
+}
+
+type FxBuildHasher = BuildHasherDefault<FxHasher>;
+type FxHashMap<K, V> = HashMap<K, V, FxBuildHasher>;
+
+type GeoKey = (i8, i64, i64, i64);
+
+#[inline(always)]
+fn compute_geodesic(p1: &PrePoint, p2: &PrePoint) -> Option<GeoKey> {
+    let lhs = p1.xn as i64 * p2.yn as i64 * p2.xd as i64 * p1.yd as i64;
+    let rhs = p2.xn as i64 * p1.yn as i64 * p1.xd as i64 * p2.yd as i64;
+
+    if lhs == rhs {
+        let (mut da, mut db) = if p1.xn != 0 || p1.yn != 0 {
+            (p1.a as i64, p1.b as i64)
+        } else {
+            (p2.a as i64, p2.b as i64)
+        };
+        if da == 0 && db == 0 { return None; }
+        let g = gcd(da.abs(), db.abs());
+        da /= g;
+        db /= g;
+        if da < 0 || (da == 0 && db < 0) { da = -da; db = -db; }
+        Some((0, da, db, 0))
+    } else {
+        let det = p1.ad * p2.bd - p1.bd * p2.ad;
+        if det == 0 { return None; }
+
+        let mut h_num = p1.s_num * p2.bd - p2.s_num * p1.bd;
+        let mut k_num = p1.ad * p2.s_num - p2.ad * p1.s_num;
+        let mut den = 2 * det;
+
+        let g1 = gcd(h_num.abs(), k_num.abs());
+        let g2 = gcd(g1, den.abs());
+        if g2 > 1 {
+            h_num /= g2;
+            k_num /= g2;
+            den /= g2;
+        }
+        if den < 0 { h_num = -h_num; k_num = -k_num; den = -den; }
+
+        Some((1, h_num, k_num, den))
+    }
 }
 
 fn main() {
-    let n = 12i64;
+    let n = 12i32;
 
-    // Generate all distinct rationals with denominator <= N in (-1,1)
-    let mut rats: Vec<(i64, i64)> = vec![(0, 1)];
+    let mut rats: Vec<(i32, i32)> = vec![(0, 1)];
     for q in 1..=n {
         for p in (-(q - 1))..=q - 1 {
             if p == 0 { continue; }
-            if gcd(p.abs(), q) == 1 {
+            if gcd(p.abs() as i64, q as i64) == 1 {
                 rats.push((p, q));
             }
         }
     }
 
-    // Generate all points in V(N)
-    let mut pts: Vec<Point> = Vec::new();
+    let mut pts: Vec<PrePoint> = Vec::new();
     for &(xn, xd) in &rats {
         for &(yn, yd) in &rats {
-            let x2 = xn * xn * yd * yd;
-            let y2 = yn * yn * xd * xd;
-            let r2 = xd * xd * yd * yd;
+            let x2 = xn as i64 * xn as i64 * yd as i64 * yd as i64;
+            let y2 = yn as i64 * yn as i64 * xd as i64 * xd as i64;
+            let r2 = xd as i64 * xd as i64 * yd as i64 * yd as i64;
             if x2 + y2 < r2 {
-                pts.push(Point { xn, xd, yn, yd });
+                let a = xn * yd;
+                let b = yn * xd;
+                let d = xd as i64 * yd as i64;
+                pts.push(PrePoint {
+                    xn, xd, yn, yd,
+                    a, b,
+                    s_num: (a as i64) * (a as i64) + (b as i64) * (b as i64) + d * d,
+                    ad: a as i64 * d,
+                    bd: b as i64 * d,
+                });
             }
         }
     }
 
     let npts = pts.len();
 
-    // For each pair of distinct points, determine their geodesic
-    let mut geodesic_points: HashMap<Geodesic, Vec<usize>> = HashMap::new();
+    // Create load-balanced work chunks.
+    // Point i has (npts - i - 1) pairs. Lower i has more work.
+    let total_pairs: usize = npts * (npts - 1) / 2;
+    let num_threads = rayon::current_num_threads().max(1);
+    let target_per_chunk = total_pairs / (num_threads * 4) + 1;
 
+    let mut chunks: Vec<(usize, usize)> = Vec::new();
+    let mut chunk_start = 0;
+    let mut chunk_pairs = 0usize;
     for i in 0..npts {
-        let xn1 = pts[i].xn;
-        let xd1 = pts[i].xd;
-        let yn1 = pts[i].yn;
-        let yd1 = pts[i].yd;
-
-        for j in (i + 1)..npts {
-            let xn2 = pts[j].xn;
-            let xd2 = pts[j].xd;
-            let yn2 = pts[j].yn;
-            let yd2 = pts[j].yd;
-
-            // Check collinearity through origin
-            let lhs = xn1 * yn2 * xd2 * yd1;
-            let rhs = xn2 * yn1 * xd1 * yd2;
-
-            let geo = if lhs == rhs {
-                // On a diameter
-                let (mut da, mut db) = if xn1 != 0 || yn1 != 0 {
-                    (xn1 * yd1, yn1 * xd1)
-                } else {
-                    (xn2 * yd2, yn2 * xd2)
-                };
-                if da == 0 && db == 0 { continue; }
-                let g = gcd(da.abs(), db.abs());
-                da /= g;
-                db /= g;
-                if da < 0 || (da == 0 && db < 0) { da = -da; db = -db; }
-                Geodesic::Diameter(da, db)
-            } else {
-                // Orthogonal circle
-                let d1 = xd1 * yd1;
-                let d2 = xd2 * yd2;
-                let a1 = xn1 * yd1;
-                let b1 = yn1 * xd1;
-                let a2 = xn2 * yd2;
-                let b2 = yn2 * xd2;
-                let s1_num = a1 * a1 + b1 * b1 + d1 * d1;
-                let s2_num = a2 * a2 + b2 * b2 + d2 * d2;
-
-                let a11 = a1 * d1;
-                let a12 = b1 * d1;
-                let a21 = a2 * d2;
-                let a22 = b2 * d2;
-                let det = a11 * a22 - a12 * a21;
-                if det == 0 { continue; }
-
-                let mut h_num = s1_num * a22 - s2_num * a12;
-                let mut h_den = 2 * det;
-                let mut k_num = a11 * s2_num - a21 * s1_num;
-                let mut k_den = 2 * det;
-
-                let g1 = gcd(h_num.abs(), h_den.abs()).max(1);
-                h_num /= g1;
-                h_den /= g1;
-                if h_den < 0 { h_num = -h_num; h_den = -h_den; }
-
-                let g2 = gcd(k_num.abs(), k_den.abs()).max(1);
-                k_num /= g2;
-                k_den /= g2;
-                if k_den < 0 { k_num = -k_num; k_den = -k_den; }
-
-                Geodesic::Circle(h_num, h_den, k_num, k_den)
-            };
-
-            let entry = geodesic_points.entry(geo).or_insert_with(Vec::new);
-            if !entry.contains(&i) { entry.push(i); }
-            if !entry.contains(&j) { entry.push(j); }
+        chunk_pairs += npts - i - 1;
+        if chunk_pairs >= target_per_chunk || i == npts - 1 {
+            chunks.push((chunk_start, i + 1));
+            chunk_start = i + 1;
+            chunk_pairs = 0;
         }
     }
 
-    // Sum s*(s-1)*(s-2) over all geodesics
+    // Each chunk builds its own HashMap
+    let chunk_results: Vec<FxHashMap<GeoKey, i64>> = chunks.par_iter()
+        .map(|&(start, end)| {
+            let mut map = FxHashMap::<GeoKey, i64>::with_capacity_and_hasher(100_000, Default::default());
+            for i in start..end {
+                // SAFETY: i < npts guaranteed by chunk bounds
+                let pi = unsafe { pts.get_unchecked(i) };
+                for j in (i + 1)..npts {
+                    // SAFETY: j < npts guaranteed by loop bound
+                    let pj = unsafe { pts.get_unchecked(j) };
+                    if let Some(key) = compute_geodesic(pi, pj) {
+                        *map.entry(key).or_insert(0) += 1;
+                    }
+                }
+            }
+            map
+        })
+        .collect();
+
+    // Merge all chunk maps
+    let mut geodesic_pairs = FxHashMap::<GeoKey, i64>::with_capacity_and_hasher(200_000, Default::default());
+    for map in chunk_results {
+        for (key, count) in map {
+            *geodesic_pairs.entry(key).or_insert(0) += count;
+        }
+    }
+
+    // For each geodesic, pair_count = C(s,2) = s*(s-1)/2.
     let mut total: i64 = 0;
-    for (_geo, points) in &geodesic_points {
-        let s = points.len() as i64;
-        if s >= 3 {
-            total += s * (s - 1) * (s - 2);
+    for &pairs in geodesic_pairs.values() {
+        if pairs >= 3 {
+            let sp = 2 * pairs;
+            let disc = 1 + 4 * sp;
+            let sqrt_disc = (disc as f64).sqrt() as i64;
+            let s = (1 + sqrt_disc) / 2;
+            if s * (s - 1) == sp && s >= 3 {
+                total += sp * (s - 2);
+            }
         }
     }
 

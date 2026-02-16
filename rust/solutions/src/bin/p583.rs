@@ -20,6 +20,8 @@
 // Perimeter = A_hyp + w + 2*C_leg.
 
 use euler_utils::gcd_i64;
+use rayon::prelude::*;
+use std::collections::HashSet;
 
 const LIMIT: i64 = 10_000_000;
 
@@ -120,61 +122,62 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
+    // Collect even w values that have triples
+    let even_ws: Vec<usize> = (2..=n)
+        .step_by(2)
+        .filter(|&w| offsets[w] < offsets[w + 1])
+        .collect();
 
-    // For membership testing, use a reusable bitset.
-    // Max other_leg value can be up to N. Use a Vec<bool> cleared between iterations.
-    // But that's too large to clear each time. Instead, use a version counter.
-    let mut mark: Vec<u32> = vec![0; n + 1];
-    let mut version: u32 = 0;
+    // Process each even w in parallel using HashSet for membership testing.
+    // HashSet is better than a 40MB mark array because:
+    // - Most w values have few triples (<10), so the HashSet fits in L1 cache
+    // - The mark array has random access patterns causing cache misses
+    let ans: i64 = even_ws
+        .par_iter()
+        .map(|&w| {
+            let start = offsets[w] as usize;
+            let end = offsets[w + 1] as usize;
 
-    // For each even w, process G[w]
-    for w in (2..=n).step_by(2) {
-        let start = offsets[w] as usize;
-        let end = offsets[w + 1] as usize;
-        if start == end {
-            continue;
-        }
-
-        // Mark all other_legs in the set
-        version += 1;
-        for i in start..end {
-            let leg = legs[i] as usize;
-            if leg <= n {
-                mark[leg] = version;
+            // Build a HashSet of legs for O(1) membership testing
+            let mut leg_set = HashSet::with_capacity(end - start);
+            for i in start..end {
+                leg_set.insert(legs[i]);
             }
-        }
 
-        // For each A with even hypotenuse:
-        for i in start..end {
-            let a_leg = legs[i];
-            let a_hyp = hyps[i];
-            if a_hyp % 2 != 0 {
-                continue;
-            }
-            // a_leg must be even (since w even and a_hyp even → a_leg even)
-            let f = a_leg / 2;
+            let mut local_ans: i64 = 0;
 
-            // For each C = (h, d) where h > f
-            for j in start..end {
-                let h = legs[j];
-                if h <= f {
+            // For each A with even hypotenuse:
+            for i in start..end {
+                let a_leg = legs[i];
+                let a_hyp = hyps[i];
+                if a_hyp % 2 != 0 {
                     continue;
                 }
+                // a_leg must be even (since w even and a_hyp even -> a_leg even)
+                let f = a_leg / 2;
 
-                let peri = a_hyp as i64 + w as i64 + 2 * h as i64;
-                if peri > LIMIT {
-                    continue;
-                }
+                // For each C = (h, d) where h > f
+                for j in start..end {
+                    let h = legs[j];
+                    if h <= f {
+                        continue;
+                    }
 
-                // Check if a_leg + 2*h is also an other_leg
-                let target = a_leg + 2 * h;
-                if target > 0 && (target as usize) <= n && mark[target as usize] == version {
-                    ans += peri;
+                    let peri = a_hyp as i64 + w as i64 + 2 * h as i64;
+                    if peri > LIMIT {
+                        continue;
+                    }
+
+                    // Check if a_leg + 2*h is also an other_leg
+                    let target = a_leg + 2 * h;
+                    if target > 0 && leg_set.contains(&target) {
+                        local_ans += peri;
+                    }
                 }
             }
-        }
-    }
+            local_ans
+        })
+        .sum();
 
     println!("{}", ans);
 }

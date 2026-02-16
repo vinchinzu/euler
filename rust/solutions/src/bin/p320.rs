@@ -1,76 +1,114 @@
 // Project Euler 320: Factorials divisible by large power
 // Sieve smallest prime factors, track exponents, compute N(i) via Legendre's formula.
+//
+// Key optimization: use the identity legendre(n,p) = (n - s_p(n))/(p-1) where s_p(n)
+// is the digit sum of n in base p. Use fixed-point iteration to find the target n,
+// then verify with legendre. Combined digit_sum_and_legendre avoids redundant computation.
 
 const MAX_I: usize = 1_000_000;
 const MIN_I: usize = 10;
 const K: i64 = 1_234_567_890;
 const MOD_VAL: u64 = 1_000_000_000_000_000_000;
 
-fn legendre(n: i64, p: i64) -> i64 {
-    let mut cur = 0i64;
-    let mut pk = p;
-    while pk <= n {
-        cur += n / pk;
-        if pk > n / p { break; }
-        pk *= p;
+/// Compute digit sum of n in base p, and legendre = (n - s) / (p-1).
+#[inline(always)]
+fn digit_sum_and_legendre(n: i64, p: i64) -> (i64, i64) {
+    if p == 2 {
+        // For p=2, digit sum = popcount, legendre = n - popcount(n)
+        let s = (n as u64).count_ones() as i64;
+        (s, n - s)
+    } else {
+        let orig = n;
+        let mut nn = n;
+        let mut s = 0i64;
+        while nn > 0 {
+            s += nn % p;
+            nn /= p;
+        }
+        (s, (orig - s) / (p - 1))
     }
-    cur
 }
 
+/// Find the smallest multiple of p such that legendre(n, p) >= needed.
+/// Uses fixed-point iteration: n = needed*(p-1) + s_p(n), converges in 2-3 steps.
+/// Then fine-tune with linear scan (at most 2-3 steps).
+#[inline]
 fn advance(p: i64, needed: i64, pn_val: &mut i64, pleg_sum: &mut i64) {
-    let mut n_val = *pn_val;
-    let mut cur = *pleg_sum;
+    let cur = *pleg_sum;
 
     if cur >= needed {
         return;
     }
 
     let gap = needed - cur;
-    if gap > 1000 {
-        let est = n_val + gap * (p - 1);
-        let est = est - est % p;
-        let est = if est < n_val { n_val } else { est };
 
-        let mut lo = n_val;
-        let mut hi = est + gap * (p - 1);
-        hi -= hi % p;
-        if hi < lo { hi = lo; }
-
-        let mut leg_hi = legendre(hi, p);
-        while leg_hi < needed {
-            hi *= 2;
-            hi -= hi % p;
-            leg_hi = legendre(hi, p);
-        }
-
-        while lo < hi {
-            let mut mid = lo + (hi - lo) / 2;
-            mid -= mid % p;
-            if mid < lo { break; }
-            if mid == lo { break; }
-            let leg_mid = legendre(mid, p);
-            if leg_mid >= needed {
-                hi = mid;
-            } else {
-                lo = mid + p;
-                lo -= lo % p;
+    // For small gaps, use incremental approach from old position.
+    // Each step of p advances legendre by ~1, so gap steps of p needed.
+    // The cost of gap steps of digit_sum_and_legendre vs fixed-point (5 iterations):
+    // For p=2 with popcount, each call is ~5ns, so threshold ~ 5 steps is break-even.
+    // For other primes, each call is ~60ns (38 divisions for p=3), so threshold ~ 5 too.
+    if gap <= 5 {
+        let mut nv = *pn_val;
+        let mut c = cur;
+        while c < needed {
+            nv += p;
+            let mut kk = nv;
+            while kk % p == 0 {
+                c += 1;
+                kk /= p;
             }
         }
-        n_val = lo;
-        cur = legendre(n_val, p);
+        *pn_val = nv;
+        *pleg_sum = c;
+        return;
     }
 
-    while cur < needed {
-        n_val += p;
-        let mut kk = n_val;
-        while kk % p == 0 {
-            cur += 1;
-            kk /= p;
+    // Fixed-point iteration: n = needed*(p-1) + s_p(n)
+    let target = needed * (p - 1);
+    let mut n = target;
+
+    // Iterate until convergence (typically 2-3 iterations)
+    for _ in 0..5 {
+        let (s, _) = digit_sum_and_legendre(n, p);
+        let n_new = target + s;
+        if n_new == n { break; }
+        n = n_new;
+    }
+
+    // Round up to multiple of p
+    if n % p != 0 {
+        n += p - n % p;
+    }
+
+    // Check and fine-tune
+    let (_, leg) = digit_sum_and_legendre(n, p);
+    if leg >= needed {
+        // Try going back (usually 0-2 steps)
+        loop {
+            let prev = n - p;
+            if prev <= 0 { break; }
+            let (_, legp) = digit_sum_and_legendre(prev, p);
+            if legp >= needed {
+                n = prev;
+            } else {
+                break;
+            }
+        }
+        let (_, legf) = digit_sum_and_legendre(n, p);
+        *pn_val = n;
+        *pleg_sum = legf;
+    } else {
+        // Go forward (usually 1-3 steps)
+        loop {
+            n += p;
+            let (_, leg) = digit_sum_and_legendre(n, p);
+            if leg >= needed {
+                *pn_val = n;
+                *pleg_sum = leg;
+                return;
+            }
         }
     }
-
-    *pn_val = n_val;
-    *pleg_sum = cur;
 }
 
 fn main() {
@@ -120,12 +158,7 @@ fn main() {
         if exp_f[j] == 0 { continue; }
         let needed = K * exp_f[j];
         let p = primes_list[j];
-        let mut np_val = (p - 1) * needed;
-        np_val -= np_val % p;
-        let mut cur = legendre(np_val, p);
-        advance(p, needed, &mut np_val, &mut cur);
-        n_for_prime[j] = np_val;
-        leg_cache[j] = cur;
+        advance(p, needed, &mut n_for_prime[j], &mut leg_cache[j]);
     }
 
     let mut max_n: i64 = 0;
@@ -134,7 +167,7 @@ fn main() {
     }
 
     let mut ans: u64 = 0;
-    let mut changed_buf = Vec::with_capacity(20);
+    let mut changed_buf: Vec<usize> = Vec::with_capacity(20);
 
     for i in MIN_I..=MAX_I {
         let mut n = i;
@@ -142,8 +175,13 @@ fn main() {
         while n > 1 {
             let p = spf[n] as usize;
             let pi = pidx[p];
-            if !changed_buf.contains(&pi) {
-                changed_buf.push(pi);
+            if changed_buf.is_empty() || *changed_buf.last().unwrap() != pi {
+                // Since SPF factorization processes factors in order,
+                // and a prime can only appear once in the changed_buf,
+                // we just need to check the last element
+                if !changed_buf.contains(&pi) {
+                    changed_buf.push(pi);
+                }
             }
             while n % p == 0 {
                 n /= p;
@@ -154,19 +192,9 @@ fn main() {
         for &pi in &changed_buf {
             let p = primes_list[pi];
             let needed = K * exp_f[pi];
-            let mut np_val = n_for_prime[pi];
-            let mut cur = leg_cache[pi];
+            advance(p, needed, &mut n_for_prime[pi], &mut leg_cache[pi]);
 
-            if np_val == 0 {
-                np_val = (p - 1) * needed;
-                np_val -= np_val % p;
-                cur = legendre(np_val, p);
-            }
-            advance(p, needed, &mut np_val, &mut cur);
-            n_for_prime[pi] = np_val;
-            leg_cache[pi] = cur;
-
-            if np_val > max_n { max_n = np_val; }
+            if n_for_prime[pi] > max_n { max_n = n_for_prime[pi]; }
         }
 
         ans = (ans + max_n as u64) % MOD_VAL;

@@ -1,6 +1,0 @@
-Re-running 94 timeout problems with 300s timeout...
-  [1/94] 460: PASS | 103.055s | ok
-  [2/94] 526: PASS | 105.310s | ok
-  [3/94] 492: PASS | 107.525s | ok
-  [4/94] 438: PASS | 127.458s | ok
-  [5/94] 446: PASS | 130.900s | ok
