@@ -1,6 +1,6 @@
 # Cloud Agent Prompts — Remaining Broken Euler Solutions
 
-14 problems remain: 4 WRONG + 10 TIMEOUT. Work on them sequentially.
+13 problems remain: 3 WRONG + 10 TIMEOUT. Work on them sequentially.
 The repo is at the current directory. Read `CLAUDE.md` and `rust/CLAUDE.md` for conventions.
 
 **Rules:**
@@ -18,22 +18,8 @@ The repo is at the current directory. Read `CLAUDE.md` and `rust/CLAUDE.md` for 
 **IMPORTANT:** For the WRONG problems, ALL existing references give wrong answers. You need to read the actual problem statement, understand the mathematics, and write a correct solution from scratch.
 
 **Agent notes from first pass:**
-- P891: Agent found the Rust code is missing times from permutations where determinant D<0 (sign/range check issue). Was investigating D<0 case when stopped.
 - P846/P861/P864: C solutions also slow (C P846: 2.5min, C P864: 1.5min, C P861: >2min). Rust is 1.5-2x slower than C. Need algorithmic improvement, not just optimization.
 - P566/P574/P641: Agent was profiling individual slow cases.
-
----
-
-## Problem 891 — WRONG (closest to being fixed)
-
-**Expected:** 1541414
-**Current output:** 1025304 (~470ms)
-**Rust:** `rust/solutions/src/bin/p891.rs` (135 lines)
-**C ref:** `c/891.c` — TIMEOUT (>60s)
-**Python:** `python/891.py` (295 lines) — likely correct algorithm
-
-Clock hands / ambiguous moments on a 3-hand 12-hour clock. Modular equation solving.
-**Agent found:** The code is missing 516110 times. Likely the D<0 permutation cases have a range-check bug (checking `0 <= x < 43200*D` fails when D<0 since 43200*D is negative). Compare carefully with the Python range checking logic.
 
 ---
 
@@ -161,12 +147,4 @@ Graph potency. C is also slow, needs algorithmic improvement.
 
 Bi-unitary divisors, Lucy DP + backtracking DFS.
 
----
 
-## Problem 864 — TIMEOUT (C also slow: 1.5min)
-
-**Expected:** look up in `data/answers.txt`
-**Rust:** `rust/solutions/src/bin/p864.rs` (225 lines)
-**C ref:** `c/864.c` (280 lines) — C takes 1.5min
-
-Squarefree x^2+1, DFS + Pell equations.

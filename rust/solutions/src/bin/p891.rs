@@ -106,27 +106,23 @@ fn main() {
                 let u_num = T_CYCLE * (k_val * m22 - l_val * m12);
                 let up_num = T_CYCLE * (-k_val * m21 + l_val * m11);
 
-                // Range check: u = u_num / D must be in [0, 43200)
-                // So u_num must be in [0, 43200*D) when D>0, or (43200*D, 0] when D<0
-                let in_range = if d > 0 {
-                    u_num >= 0 && u_num < T_CYCLE * d && up_num >= 0 && up_num < T_CYCLE * d
-                } else {
-                    u_num <= 0 && u_num > T_CYCLE * d && up_num <= 0 && up_num > T_CYCLE * d
-                };
+                // Normalize to positive denominator, reduce mod T_CYCLE
+                let den = d_abs;
+                let u_n = if d > 0 { u_num } else { -u_num };
+                let up_n = if d > 0 { up_num } else { -up_num };
+                let cycle = T_CYCLE * den;
+                let u_r = u_n.rem_euclid(cycle);
+                let up_r = up_n.rem_euclid(cycle);
 
-                if !in_range {
-                    continue;
-                }
-                if u_num == up_num {
+                if u_r == up_r {
                     continue;
                 }
 
-                // Store canonical form
-                let u_canon = if d < 0 { (-u_num, -d) } else { (u_num, d) };
-                let up_canon = if d < 0 { (-up_num, -d) } else { (up_num, d) };
-
-                times.insert(u_canon);
-                times.insert(up_canon);
+                // Store as reduced fraction for canonical dedup across perms
+                let g1 = gcd_ll(u_r, den);
+                times.insert((u_r / g1, den / g1));
+                let g2 = gcd_ll(up_r, den);
+                times.insert((up_r / g2, den / g2));
             }
         }
     }

@@ -1,6 +1,24 @@
-// Project Euler 900
-// Compute ((4^N + 2) * 3^(-1) - 2^N) mod P
-// where P = 900497239 and N = 10000
+// Project Euler 900 — DistribuNim II — WRONG ANSWER
+// Expected: 646900900, currently outputs: 296202364
+//
+// Problem: Game with n+1 piles (n piles of n stones, one pile of n+k).
+// Each turn: remove exactly min(piles) stones total, can't empty any pile.
+// t(n) = smallest k >= 0 such that position is losing for first player.
+// S(N) = sum_{n=1}^{2^N} t(n). Given S(10) = 361522. Find S(10^4) mod 900497239.
+//
+// Current formula ((4^N+2)/3 - 2^N) is WRONG — all refs (C, Python, Rust) use it.
+//
+// Investigation notes:
+// - Computed t(n) by game-tree search for n=1..9:
+//   t(1)=0, t(2)=0, t(3)=2, t(4)=0, t(5)=6, t(6)=4, t(7)=6, t(8)=0, t(9)=14
+//   (t(1),t(2),t(3) confirmed by problem statement)
+// - Hypothesis t(n) = 2^{v+1}*(2^a-1) where n=2^v*m (m odd), a=floor(log2(m))
+//   matches n=1..9 but gives S(10)=688810 != 361522. Formula breaks for n>=10.
+// - Game solver too slow for n>=10 (state space = partitions of ~n^2 into n+1 parts).
+// - S(N) is NOT of form a*4^N + b*N*2^N + c*2^N + d (overdetermined by S(0..4) vs S(10)).
+// - Need either: (a) faster game solver to get t(n) for n=10..32 and find true pattern,
+//   or (b) mathematical analysis of the DistribuNim II game (PE #899 is related 2-pile version).
+// - DistribuNim I (PE #899) is the 2-pile variant; understanding it may help.
 
 fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
     let mut result = 1i64;
