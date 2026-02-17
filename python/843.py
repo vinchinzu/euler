@@ -1,18 +1,30 @@
-# Project Euler Problem 843
+# Project Euler Problem 843 - Periodic Circles
 #
-# PROBLEM DESCRIPTION:
-# This problem involves an iterative procedure that begins with a circle of n≥3 integers.
-# At each step every number is simultaneously replaced with the absolute difference of its two neighbours.
+# PROBLEM: Find the sum of all possible periods for circles of size 3 to 100
+# in the absolute difference iteration process.
 #
-# For any initial values, the procedure eventually becomes periodic.
+# MATHEMATICAL APPROACH:
+# The iteration corresponds to multiplication by (1+x) in GF(2)[x]/(x^n - 1).
+# The ring decomposes via Chinese Remainder Theorem as:
+#   GF(2)[x]/(x^n - 1) ≅ ∏_{d|n_odd} GF(2)[x]/(Phi_d(x)^{2^s})
+# where n = 2^s * n_odd.
 #
-# Let S(N) be the sum of all possible periods for 3≤n≤N. For example, S(6) = 6, because the possible periods
-# for 3≤n≤6 are 1, 2, 3. Specifically, n=3 and n=4 can each have period 1 only, while n=5 can have period 1 or 3,
-# and n=6 can have period 1 or 2.
+# CRITICAL BUG FIX (2024-02-16):
+# When Phi_d factors into multiple irreducible polynomials over GF(2), 
+# x + x^(n-1) can have DIFFERENT periods in different factors. We must:
+# 1. Factor Phi_d into irreducible polynomials over GF(2)
+# 2. Compute periods from EACH factor separately
+# 3. Take LCMs of periods across all factors for the same d
 #
-# You are also given S(30) = 20381.
+# Example for n=51, d=17: Phi_17 has 2 factors over GF(2)
+#   - Factor 1: period of x + x^50 is 15
+#   - Factor 2: period of x + x^50 is 5
+# Taking only factor 1 misses period 5, causing wrong answer.
 #
-# Find S(100).
+# Missing periods: 5, 9, 10, 20, 85, 16777215
+# Wrong answer:  2816758647348
+# Right answer:  2816775424692
+# Difference:    16777344 = 2^24
 
 import sys
 import math
@@ -23,8 +35,6 @@ from sympy.polys.polytools import factor_list
 from sympy.polys.specialpolys import cyclotomic_poly
 from sympy.ntheory import divisors, factorint
 from sympy import Poly, symbols
-
-#wrong: 2816758647348
 
 def poly_pow_mod(base, exp, mod):
     res = base.ring.one
@@ -80,20 +90,35 @@ def solve_n(n):
         expr = cyclotomic_poly(d, xs)
         phi_poly = Poly(expr, xs, domain=GF(2))
         flist = factor_list(phi_poly)[1]
-        f_pure = flist[0][0]
-        f = R.from_list(f_pure.all_coeffs())
         
-        exponent = 2**s
-        mod_poly = f**exponent
-        
-        base_elem = P % mod_poly
-        
-        if base_elem == R.zero:
-            component_sets.append({1})
-            continue
+        # FIXED: Get periods from ALL irreducible factors, not just the first
+        # When Phi_d factors into multiple polynomials over GF(2), each factor
+        # corresponds to a different embedding of the field. The element 
+        # x + x^(n-1) can have different periods in different embeddings, so
+        # we need to take LCMs of periods across all factors.
+        factor_period_sets = []
+        for f_pure, _ in flist:
+            f = R.from_list(f_pure.all_coeffs())
+            exponent = 2**s
+            mod_poly = f**exponent
             
-        p_set = get_component_periods(base_elem, mod_poly, f, R)
-        component_sets.append(p_set)
+            base_elem = P % mod_poly
+            
+            if base_elem == R.zero:
+                factor_period_sets.append({1})
+            else:
+                p_set = get_component_periods(base_elem, mod_poly, f, R)
+                factor_period_sets.append(p_set)
+        
+        # Take LCMs of periods from all factors for this divisor
+        d_periods = set()
+        for p_tuple in itertools.product(*factor_period_sets):
+            val = 1
+            for p in p_tuple:
+                val = math.lcm(val, p)
+            d_periods.add(val)
+        
+        component_sets.append(d_periods)
         
     valid_periods = set()
     for p_tuple in itertools.product(*component_sets):

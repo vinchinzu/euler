@@ -1,5 +1,8 @@
 // Project Euler 681 - Maximal Area
 // Enumerate (w,x,y,z) with wxyz = K^2, w<=x<=y<=z, z < w+x+y, even perimeter.
+// Parallelized Case 2 with rayon.
+
+use rayon::prelude::*;
 
 fn main() {
     let n: i64 = 1_000_000;
@@ -36,61 +39,63 @@ fn main() {
             let y_max = n / sq;
             if y_max < x { x += 1; continue; }
             let count = y_max - x + 1;
-            // sum of (w + x + y + y) for y in [x..y_max]
-            // = count*(w+x) + 2*sum(y from x to y_max)
-            // = count*(w+x) + 2*(count*(x+y_max)/2)
-            // = count*(w+x+x+y_max)
             ans += count * (w + x + x + y_max);
             x += 1;
         }
         w += 1;
     }
 
-    // Case 2: z > y
-    let mut ans_dpos: i64 = 0;
-    for k in 4..=n as usize {
-        if spf[k] == k as u32 { continue; } // skip primes
+    // Case 2: z > y, parallelized with rayon
+    let ans_dpos: i64 = (4..=n as usize).into_par_iter().map(|k| {
+        if spf[k] == k as u32 { return 0i64; } // skip primes
 
-        // Factor K
-        let mut prms = Vec::new();
-        let mut exps_v = Vec::new();
+        // Factor K using stack arrays
+        let mut prms = [0i64; 20];
+        let mut exps = [0usize; 20];
+        let mut np = 0;
         let mut tmp = k;
         while tmp > 1 {
             let p = spf[tmp] as usize;
             let mut e = 0;
             while tmp % p == 0 { tmp /= p; e += 1; }
-            prms.push(p as i64);
-            exps_v.push(e * 2); // exponents of K^2
+            prms[np] = p as i64;
+            exps[np] = e * 2; // exponents of K^2
+            np += 1;
         }
 
         let k2 = (k as i64) * (k as i64);
 
-        // Build divisors
-        let mut divs: Vec<i64> = vec![1];
-        for (idx, &p) in prms.iter().enumerate() {
-            let old = divs.len();
+        // Build divisors in stack array
+        let mut divs = [0i64; 4096];
+        divs[0] = 1;
+        let mut nd = 1usize;
+        for i in 0..np {
+            let old = nd;
             let mut pp = 1i64;
-            for _ in 0..exps_v[idx] {
-                pp *= p;
+            for _ in 0..exps[i] {
+                pp *= prms[i];
                 for j in 0..old {
-                    divs.push(divs[j] * pp);
+                    divs[nd] = divs[j] * pp;
+                    nd += 1;
                 }
             }
         }
-        divs.sort_unstable();
+        // Sort divisors
+        let ds = &mut divs[..nd];
+        ds.sort_unstable();
 
-        let nd = divs.len();
+        let mut local_sum = 0i64;
         for i in 0..nd {
-            let w = divs[i];
+            let w = ds[i];
             if w * w * w * w > k2 { break; }
             let r1 = k2 / w;
             for j in i..nd {
-                let x = divs[j];
+                let x = ds[j];
                 if x * x * x > r1 { break; }
                 if r1 % x != 0 { continue; }
                 let r2 = r1 / x;
                 for l in j..nd {
-                    let y = divs[l];
+                    let y = ds[l];
                     if y * y > r2 { break; }
                     if r2 % y != 0 { continue; }
                     let z = r2 / y;
@@ -98,11 +103,12 @@ fn main() {
                     if z >= w + x + y { continue; }
                     let total = w + x + y + z;
                     if total & 1 != 0 { continue; }
-                    ans_dpos += total;
+                    local_sum += total;
                 }
             }
         }
-    }
+        local_sum
+    }).sum();
 
     println!("{}", ans + ans_dpos);
 }

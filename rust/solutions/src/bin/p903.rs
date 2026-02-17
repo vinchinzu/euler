@@ -45,7 +45,8 @@ fn main() {
     c1 = c1 * n as u64 % p;
     c1 = c1 * ((h + p - 1) % p) % p;
 
-    let inner2 = (n as u64 + 1) % p * inv2 % p * ((n as u64 + p - h) % p) % p;
+    let mut inner2 = (n as u64 + 1) % p * inv2 % p;
+    inner2 = inner2 * ((n as u64 + p - h) % p) % p;
     let mut c2 = fact * f_n2 % p;
     c2 = c2 * n as u64 % p;
     c2 = c2 * inner2 % p;
@@ -58,8 +59,8 @@ fn main() {
     let sum_kf = (f[n] + p - 1) % p;
 
     let sum1 = sum_f;
-    let sum2 = (n as u64 % p * sum_f % p + p - sum_kf) % p;
-    let sum3 = ((n as u64 + p - 1) % p * sum_f % p + p - sum_kf) % p;
+    let sum2 = ((n as u64 % p) * sum_f % p + p - sum_kf) % p;
+    let sum3 = (((n - 1) as u64 % p) * sum_f % p + p - sum_kf) % p;
 
     // Final computation
     let mut q = total;

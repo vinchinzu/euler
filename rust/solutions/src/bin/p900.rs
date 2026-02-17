@@ -1,46 +1,30 @@
-// Project Euler 900 - Modular exponentiation with power tower
-// Compute (2^^inf + 90) mod 10^9 using iterated Euler totient
+// Project Euler 900
+// Compute ((4^N + 2) * 3^(-1) - 2^N) mod P
+// where P = 900497239 and N = 10000
 
-fn mod_pow(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    if m == 1 { return 0; }
-    let mut result = 1u64;
-    base %= m;
+fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
+    let mut result = 1i64;
+    base = ((base % m) + m) % m;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as u128 * base as u128 % m as u128) as u64;
+            result = result * base % m;
         }
-        base = (base as u128 * base as u128 % m as u128) as u64;
+        base = base * base % m;
         exp >>= 1;
     }
     result
 }
 
-fn euler_totient(mut n: u64) -> u64 {
-    let mut res = n;
-    let mut i = 2u64;
-    while i * i <= n {
-        if n % i == 0 {
-            while n % i == 0 { n /= i; }
-            res -= res / i;
-        }
-        i += 1;
-    }
-    if n > 1 { res -= res / n; }
-    res
-}
-
-fn power_tower_stable(base: u64, m: u64) -> u64 {
-    if m == 1 { return 0; }
-    let phi = euler_totient(m);
-    let exp = power_tower_stable(base, phi);
-    mod_pow(base, exp + 100 * phi, m)
-}
-
 fn main() {
-    let modulus = 1_000_000_000u64; // 10^9
-    let e_val = 90u64;
+    let p: i64 = 900497239;
+    let n: i64 = 10000;
 
-    let stable_val = power_tower_stable(2, modulus);
-    let result = (stable_val + e_val) % modulus;
-    println!("{}", result);
+    let four_n = mod_pow(4, n, p);
+    let two_n = mod_pow(2, n, p);
+    let three_inv = mod_pow(3, p - 2, p); // Fermat's little theorem
+
+    let s = ((four_n + 2) % p * three_inv % p - two_n) % p;
+    let s = ((s % p) + p) % p; // Ensure positive
+
+    println!("{}", s);
 }
