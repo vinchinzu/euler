@@ -9,3 +9,11 @@ num-traits = "0.2"
 primal = "0.3"
 itertools = "0.14"
 rayon = "1.10"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+overflow-checks = false

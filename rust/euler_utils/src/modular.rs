@@ -1,6 +1,7 @@
 use std::ops::{Add, Sub, Mul};
 
 /// Modular exponentiation: base^exp mod modulus.
+#[inline]
 pub fn mod_pow(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
     if modulus == 1 {
         return 0;
@@ -24,6 +25,7 @@ pub fn mod_mul(a: u64, b: u64, m: u64) -> u64 {
 }
 
 /// Modular inverse using extended Euclidean algorithm.
+#[inline]
 pub fn mod_inv(a: u64, m: u64) -> Option<u64> {
     let (mut old_r, mut r) = (a as i64, m as i64);
     let (mut old_s, mut s) = (1i64, 0i64);

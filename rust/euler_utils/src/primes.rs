@@ -46,6 +46,7 @@ pub fn primes_up_to(limit: usize) -> Vec<usize> {
 }
 
 /// Deterministic primality test for small numbers (< sieve limit).
+#[inline]
 pub fn is_prime(n: u64) -> bool {
     if n < 2 {
         return false;
@@ -67,6 +68,7 @@ pub fn is_prime(n: u64) -> bool {
 }
 
 /// Miller-Rabin primality test, deterministic for n < 3,317,044,064,679,887,385,961,981.
+#[inline]
 pub fn miller_rabin(n: u64) -> bool {
     if n < 2 {
         return false;
@@ -109,20 +111,22 @@ pub fn miller_rabin(n: u64) -> bool {
 }
 
 /// Modular exponentiation using u128 to avoid overflow.
+#[inline(always)]
 fn mod_pow_u64(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
     let mut result = 1u64;
     base %= modulus;
     while exp > 0 {
-        if exp % 2 == 1 {
+        if exp & 1 == 1 {
             result = ((result as u128 * base as u128) % modulus as u128) as u64;
         }
-        exp /= 2;
+        exp >>= 1;
         base = ((base as u128 * base as u128) % modulus as u128) as u64;
     }
     result
 }
 
 /// Modular multiplication using u128.
+#[inline(always)]
 fn mod_mul_u64(a: u64, b: u64, m: u64) -> u64 {
     ((a as u128 * b as u128) % m as u128) as u64
 }

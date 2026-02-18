@@ -1,3 +1,5 @@
+use super::modular::mod_mul;
+
 /// Precomputed binomial coefficients modulo a prime.
 pub struct BinomialMod {
     fact: Vec<u64>,
@@ -24,7 +26,7 @@ impl BinomialMod {
     #[inline]
     pub fn choose(&self, n: usize, r: usize) -> u64 {
         if r > n { return 0; }
-        self.fact[n] % self.modulus * self.inv_fact[r] % self.modulus * self.inv_fact[n - r] % self.modulus
+        mod_mul(mod_mul(self.fact[n], self.inv_fact[r], self.modulus), self.inv_fact[n - r], self.modulus)
     }
 
     /// Get n! mod p.
