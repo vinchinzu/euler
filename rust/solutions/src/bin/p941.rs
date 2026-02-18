@@ -1,409 +1,321 @@
-// Problem 941
-// TODO: Port the Python solution below to Rust
-//
-// === Python reference ===
-// #!/usr/bin/env python3
-// """Project Euler 941: de Bruijn's Combination Lock
-//
-// This program computes F(N) as defined in the problem statement, and prints
-// F(10^7) mod 1234567891 by default.
-//
-// Rules satisfied:
-// - No external libraries (only Python standard library).
-// - Asserts are included for the example values given in the statement.
-//
-// Implementation overview (high-level):
-// - Rank each 12-digit string by its first occurrence position in the
-//   lexicographically smallest de Bruijn sequence C(10,12).
-// - Sort the N strings by that rank using a radix sort (since N can be 10^7).
-// - Compute the required weighted sum modulo 1234567891.
-//
-// The ranking routine is a careful Python port of the practical RankDB algorithm
-// from Sawada & Williams ("Practical Algorithms to Rank Necklaces, Lyndon Words,
-// and de Bruijn Sequences"), specialized to small n=12.
-// """
-//
-// from __future__ import annotations
-//
-// import sys
-// from array import array
-//
-//
-// # -------------------------
-// # Small de Bruijn generator
-// # -------------------------
-//
-//
-// def de_bruijn_sequence(k: int, n: int) -> str:
-//     """Return the *linearized* lexicographically smallest de Bruijn sequence C(k,n).
-//
-//     Output length is k**n + n - 1 and begins with '0'*n.
-//
-//     This is used only for small self-tests (e.g. C(3,2) from the statement).
-//     """
-//
-//     # Standard recursive construction that outputs a cyclic de Bruijn sequence
-//     # in lexicographically smallest order.
-//     a = [0] * (k * n)
-//     seq: list[int] = []
-//
-//     def db(t: int, p: int) -> None:
-//         if t > n:
-//             if n % p == 0:
-//                 seq.extend(a[1 : p + 1])
-//         else:
-//             a[t] = a[t - p]
-//             db(t + 1, p)
-//             start = a[t - p] + 1
-//             for j in range(start, k):
-//                 a[t] = j
-//                 db(t + 1, t)
-//
-//     db(1, 1)
-//     s = "".join(str(x) for x in seq)
-//     return s + s[: n - 1]
-//
-//
-// # -------------------------------------
-// # Rank substrings in lexicographic DB(n)
-// # -------------------------------------
-//
-//
-// def make_rank_db(k: int, n: int):
-//     """Create a fast RankDB(w) function for fixed (k,n).
-//
-//     The returned function expects w as a list of length n+1 using indices 1..n,
-//     with symbols in {1,2,...,k}. It returns a 1-based index r such that the
-//     length-n substring starting at position r in the linearized lexicographically
-//     smallest de Bruijn sequence DB(n) is exactly w.
-//     """
-//
-//     # power[i] = k**i
-//     power = [1] * (n + 1)
-//     for i in range(1, n + 1):
-//         power[i] = power[i - 1] * k
-//
-//     # Scratch buffers reused across calls to avoid per-call allocations.
-//     neck_rep = [0] * (n + 1)  # necklace representative of w
-//     prev = [0] * (n + 1)  # helper for LargestNecklace
-//
-//     # Scratch used inside T (kept separate so RankDB's neck_rep isn't clobbered).
-//     t_neck = [0] * (n + 1)
-//     B = [[0] * (n + 1) for _ in range(n + 1)]
-//     suf = [[0] * (n + 1) for _ in range(n + 1)]
-//
-//     def lyn(w: list[int]) -> int:
-//         p = 1
-//         # Find length of the longest prefix of w[1..n] that is a Lyndon word.
-//         for i in range(2, n + 1):
-//             wi = w[i]
-//             wip = w[i - p]
-//             if wi < wip:
-//                 return p
-//             if wi > wip:
-//                 p = i
-//         return p
-//
-//     def is_necklace(w: list[int]) -> bool:
-//         p = 1
-//         for i in range(2, n + 1):
-//             wi = w[i]
-//             wip = w[i - p]
-//             if wi < wip:
-//                 return False
-//             if wi > wip:
-//                 p = i
-//         return (n % p) == 0
-//
-//     def largest_necklace(w: list[int], out: list[int]) -> None:
-//         # out[1..n] = largest necklace <= w[1..n]
-//         for i in range(1, n + 1):
-//             out[i] = w[i]
-//         while not is_necklace(out):
-//             p = lyn(out)
-//             out[p] -= 1
-//             for i in range(p + 1, n + 1):
-//                 out[i] = k
-//
-//     def T(w: list[int]) -> int:
-//         """Return the number of strings whose necklace is <= w[1..n]."""
-//
-//         largest_necklace(w, t_neck)
-//
-//         # Compute B[t][j]. Only indices 0..t are meaningful.
-//         B[0][0] = 1
-//         for t in range(1, n + 1):
-//             Bt = B[t]
-//             Bt[t] = 0
-//             # Note: B[t-j-1][0] is always defined because 0 <= j < t.
-//             for j in range(t - 1, -1, -1):
-//                 Bt[j] = Bt[j + 1] + (k - t_neck[j + 1]) * B[t - j - 1][0]
-//
-//         # Compute suf[i][j] for i>=2.
-//         for i in range(2, n + 1):
-//             s = i
-//             for j in range(i, n + 1):
-//                 # If t_neck[j] > t_neck[j-s+1], update s.
-//                 if t_neck[j] > t_neck[j - s + 1]:
-//                     s = j + 1
-//                 suf[i][j] = j - s + 1
-//
-//         tot = lyn(t_neck)
-//         for t in range(1, n + 1):
-//             b0 = B[t - 1][0]
-//             for j in range(0, n):
-//                 if j + t <= n:
-//                     tot += b0 * (t_neck[j + 1] - 1) * power[n - t - j]
-//                 else:
-//                     # s is the length of the longest suffix of t_neck[n-t+2..j]
-//                     # that is a prefix of t_neck[1..n].
-//                     if j < n - t + 2:
-//                         sfx = 0
-//                     else:
-//                         sfx = suf[n - t + 2][j]
-//                     if t_neck[j + 1] > t_neck[sfx + 1]:
-//                         tot += (
-//                             B[n - j + sfx][sfx + 1]
-//                             + (t_neck[j + 1] - t_neck[sfx + 1] - 1) * B[n - j - 1][0]
-//                         )
-//
-//         return tot
-//
-//     def rank_db(w: list[int]) -> int:
-//         """Return the 1-based rank (start position) of w in DB(n)."""
-//
-//         # Special case: w = k^t 1^(n-t) for t>=1 (wraparound substrings).
-//         t = 0
-//         while t < n and w[t + 1] == k:
-//             t += 1
-//         j = t
-//         while j < n and w[j + 1] == 1:
-//             j += 1
-//         if t >= 1 and j == n:
-//             return power[n] - t + 1
-//
-//         # If w is already a necklace, we're done.
-//         if is_necklace(w):
-//             return 1 - lyn(w) + T(w)
-//
-//         # Find the necklace representative of w and its rotation offset s.
-//         for i in range(1, n + 1):
-//             neck_rep[i] = w[i]
-//         s = 0
-//         while not is_necklace(neck_rep):
-//             s += 1
-//             # Rotate w left by s positions.
-//             for i in range(1, n + 1):
-//                 j2 = i + s
-//                 neck_rep[i] = w[j2] if j2 <= n else w[j2 - n]
-//
-//         # Recurrence cases (note: neck_rep is a necklace).
-//         if s != t:
-//             return rank_db(neck_rep) + lyn(neck_rep) - s
-//         if lyn(neck_rep) < n:
-//             return rank_db(neck_rep) - s
-//
-//         # Otherwise, adjust suffix to 1s, move to previous necklace.
-//         for i in range(n - s + 1, n + 1):
-//             neck_rep[i] = 1
-//         largest_necklace(neck_rep, prev)
-//         return rank_db(prev) + lyn(prev) - s
-//
-//     return rank_db
-//
-//
-// # ---------------------------
-// # LCG + digit conversion (12)
-// # ---------------------------
-//
-// MOD_1E12 = 10**12
-// LCG_MUL = 920461
-// LCG_ADD = 800217387569
-//
-//
-// def make_digits4_table() -> list[tuple[int, int, int, int]]:
-//     """digits4[x] gives the 4 base-10 digits of x (0..9999), each shifted by +1.
-//
-//     We shift by +1 because RankDB expects alphabet symbols in {1..k}.
-//     """
-//
-//     out: list[tuple[int, int, int, int]] = [None] * 10000  # type: ignore
-//     for x in range(10000):
-//         a = x // 1000
-//         b = (x // 100) % 10
-//         c = (x // 10) % 10
-//         d = x % 10
-//         out[x] = (a + 1, b + 1, c + 1, d + 1)
-//     return out
-//
-//
-// _DIG4 = make_digits4_table()
-//
-//
-// def int_to_word12_symbols_1_to_10(x: int, w: list[int]) -> None:
-//     """Fill w[1..12] with the 12 digits of x in base 10 (with leading zeros),
-//     mapped to symbols 1..10.
-//
-//     w must be length >= 13.
-//     """
-//
-//     # Split into 3 chunks of 4 digits to avoid expensive string formatting.
-//     hi = x // 100_000_000  # 10^8
-//     mid = (x // 10_000) % 10_000
-//     lo = x % 10_000
-//
-//     d0 = _DIG4[hi]
-//     d1 = _DIG4[mid]
-//     d2 = _DIG4[lo]
-//
-//     w[1], w[2], w[3], w[4] = d0
-//     w[5], w[6], w[7], w[8] = d1
-//     w[9], w[10], w[11], w[12] = d2
-//
-//
-// def generate_a_values(N: int):
-//     """Yield a_1..a_N from the LCG (a_0 = 0)."""
-//
-//     a = 0
-//     for _ in range(N):
-//         a = (LCG_MUL * a + LCG_ADD) % MOD_1E12
-//         yield a
-//
-//
-// # ----------------
-// # Sorting utilities
-// # ----------------
-//
-//
-// def radix_sort_pairs_u64(keys: array, vals: array, bits_per_pass: int = 16) -> None:
-//     """In-place stable radix sort of (keys, vals) by keys.
-//
-//     keys and vals are array('Q') of equal length. On return, both are permuted
-//     so that keys is sorted non-decreasingly, and vals is permuted alongside.
-//
-//     This uses LSD radix sort with radix 2**bits_per_pass.
-//     """
-//
-//     n = len(keys)
-//     if n <= 1:
-//         return
-//
-//     mask = (1 << bits_per_pass) - 1
-//     radix = 1 << bits_per_pass
-//
-//     tmp_keys = array("Q", [0]) * n
-//     tmp_vals = array("Q", [0]) * n
-//
-//     # Our ranks fit comfortably within 48 bits for k=10,n=12, so 3 passes of 16 bits suffice.
-//     # Using a fixed number of passes avoids scanning for max().
-//     for shift in (0, bits_per_pass, 2 * bits_per_pass):
-//         counts = [0] * radix
-//
-//         for i in range(n):
-//             counts[(keys[i] >> shift) & mask] += 1
-//
-//         total = 0
-//         for b in range(radix):
-//             c = counts[b]
-//             counts[b] = total
-//             total += c
-//
-//         for i in range(n):
-//             x = keys[i]
-//             b = (x >> shift) & mask
-//             p = counts[b]
-//             tmp_keys[p] = x
-//             tmp_vals[p] = vals[i]
-//             counts[b] = p + 1
-//
-//         keys, tmp_keys = tmp_keys, keys
-//         vals, tmp_vals = tmp_vals, vals
-//
-//     # If we did an odd number of passes, data is now in the swapped arrays.
-//     # With 3 passes, keys/vals currently refer to the swapped local variables,
-//     # so we need to copy back to the original arrays.
-//     # After 3 swaps, the sorted data is in local variables keys/vals, not
-//     # necessarily in the original objects.
-//     # Detect this via identity check.
-//     #
-//     # Note: array('Q') doesn't support buffer swapping, so we copy.
-//     if keys is not tmp_keys:  # keys holds the sorted data
-//         # keys/vals are the sorted locals, tmp_keys/tmp_vals are the originals.
-//         tmp_keys[:] = keys
-//         tmp_vals[:] = vals
-//
-//
-// # ------------------------
-// # F(N) computation wrappers
-// # ------------------------
-//
-//
-// def compute_F_mod_large(N: int, rank_db, mod: int) -> int:
-//     """Compute F(N) mod mod for large N using radix sort."""
-//
-//     w = [0] * 13
-//     keys = array("Q")
-//     vals = array("Q")
-//     keys_append = keys.append
-//     vals_append = vals.append
-//
-//     for a in generate_a_values(N):
-//         int_to_word12_symbols_1_to_10(a, w)
-//         keys_append(rank_db(w))
-//         vals_append(a)
-//
-//     radix_sort_pairs_u64(keys, vals)
-//
-//     acc = 0
-//     for i in range(N):
-//         acc = (acc + (i + 1) * (vals[i] % mod)) % mod
-//     return acc
-//
-//
-// # ---------
-// # Self tests
-// # ---------
-//
-//
-// def _self_tests() -> None:
-//     # Statement's C(3,2)
-//     assert de_bruijn_sequence(3, 2) == "0010211220"
-//
-//     # Sanity: RankDB must match direct positions for a tiny case.
-//     # k=2,n=4 has only 16 words.
-//     k2, n2 = 2, 4
-//     db2 = de_bruijn_sequence(k2, n2)
-//     r2 = make_rank_db(k2, n2)
-//     for x in range(k2**n2):
-//         s = format(x, f"0{n2}b")  # binary string
-//         w = [0] * (n2 + 1)
-//         for i, ch in enumerate(s, 1):
-//             w[i] = (ord(ch) - 48) + 1
-//         # find first occurrence in linearized DB
-//         idx = db2.find(s)
-//         assert idx >= 0
-//         assert r2(w) == idx + 1
-//
-//     # Statement's numeric test values for this problem.
-//     rank_db_10_12 = make_rank_db(10, 12)
-//     assert compute_F_mod_large(2, rank_db_10_12, 2**64 - 1) == 2194210461325
-//     assert compute_F_mod_large(10, rank_db_10_12, 2**64 - 1) == 32698850376317
-//
-//
-// def main(argv: list[str]) -> None:
-//     _self_tests()
-//     N = 10_000_000
-//     if len(argv) >= 2:
-//         N = int(argv[1])
-//     mod = 1234567891
-//     rank_db = make_rank_db(10, 12)
-//     print(compute_F_mod_large(N, rank_db, mod))
-//
-//
-// if __name__ == "__main__":
-//     main(sys.argv)
-// === End Python reference ===
+// Problem 941 - de Bruijn's Combination Lock
+//
+// Compute F(10^7) mod 1234567891 where F(N) = sum of p_n * a_n,
+// with a_n generated by an LCG and p_n being the rank when sorted
+// by position in the lexicographically smallest de Bruijn sequence C(10,12).
+
+const K: usize = 10; // alphabet size (digits 0-9, mapped to symbols 1..10)
+const N: usize = 12; // word length
+const MOD_LCG: u64 = 1_000_000_000_000; // 10^12
+const LCG_MUL: u64 = 920461;
+const LCG_ADD: u64 = 800217387569;
+const MOD_ANS: u64 = 1234567891;
+
+/// Precomputed powers: POWER[i] = K^i (as i64 for the ranking math).
+fn make_powers() -> [i64; N + 1] {
+    let mut p = [1i64; N + 1];
+    for i in 1..=N {
+        p[i] = p[i - 1] * K as i64;
+    }
+    p
+}
+
+/// Compute the Lyndon prefix length of w[1..N].
+/// w uses 1-based indexing; symbols are in 1..=K.
+#[inline]
+fn lyn(w: &[i32; N + 1]) -> usize {
+    let mut p = 1usize;
+    for i in 2..=N {
+        let wi = w[i];
+        let wip = w[i - p];
+        if wi < wip {
+            return p;
+        }
+        if wi > wip {
+            p = i;
+        }
+    }
+    p
+}
+
+/// Check if w[1..N] is a necklace (lexicographically smallest rotation).
+#[inline]
+fn is_necklace(w: &[i32; N + 1]) -> bool {
+    let mut p = 1usize;
+    for i in 2..=N {
+        let wi = w[i];
+        let wip = w[i - p];
+        if wi < wip {
+            return false;
+        }
+        if wi > wip {
+            p = i;
+        }
+    }
+    (N % p) == 0
+}
+
+/// Compute the largest necklace <= w, storing in out.
+fn largest_necklace(w: &[i32; N + 1], out: &mut [i32; N + 1]) {
+    for i in 1..=N {
+        out[i] = w[i];
+    }
+    while !is_necklace(out) {
+        let p = lyn(out);
+        out[p] -= 1;
+        for i in (p + 1)..=N {
+            out[i] = K as i32;
+        }
+    }
+}
+
+/// Scratch buffers for the T function and rank_db.
+struct RankScratch {
+    power: [i64; N + 1],
+    neck_rep: [i32; N + 1],
+    prev: [i32; N + 1],
+    t_neck: [i32; N + 1],
+    b: [[i64; N + 1]; N + 1],
+    suf: [[usize; N + 1]; N + 1],
+}
+
+impl RankScratch {
+    fn new() -> Self {
+        Self {
+            power: make_powers(),
+            neck_rep: [0i32; N + 1],
+            prev: [0i32; N + 1],
+            t_neck: [0i32; N + 1],
+            b: [[0i64; N + 1]; N + 1],
+            suf: [[0usize; N + 1]; N + 1],
+        }
+    }
+
+    /// T(w): number of necklaces with content <= w.
+    fn t_func(&mut self, w: &[i32; N + 1]) -> i64 {
+        largest_necklace(w, &mut self.t_neck);
+
+        // Compute B[t][j]
+        self.b[0][0] = 1;
+        for t in 1..=N {
+            self.b[t][t] = 0;
+            for j in (0..t).rev() {
+                self.b[t][j] = self.b[t][j + 1]
+                    + (K as i64 - self.t_neck[j + 1] as i64) * self.b[t - j - 1][0];
+            }
+        }
+
+        // Compute suf[i][j] for i >= 2
+        for i in 2..=N {
+            let mut s = i;
+            for j in i..=N {
+                if self.t_neck[j] > self.t_neck[j - s + 1] {
+                    s = j + 1;
+                }
+                self.suf[i][j] = j - s + 1;
+            }
+        }
+
+        let mut tot = lyn(&self.t_neck) as i64;
+        for t in 1..=N {
+            let b0 = self.b[t - 1][0];
+            for j in 0..N {
+                if j + t <= N {
+                    tot += b0 * (self.t_neck[j + 1] as i64 - 1) * self.power[N - t - j];
+                } else {
+                    let sfx = if j < N - t + 2 {
+                        0
+                    } else {
+                        self.suf[N - t + 2][j]
+                    };
+                    if self.t_neck[j + 1] as i64 > self.t_neck[sfx + 1] as i64 {
+                        tot += self.b[N - j + sfx][sfx + 1]
+                            + (self.t_neck[j + 1] as i64 - self.t_neck[sfx + 1] as i64 - 1)
+                                * self.b[N - j - 1][0];
+                    }
+                }
+            }
+        }
+
+        tot
+    }
+
+    /// Rank a word w[1..N] in the de Bruijn sequence. Returns 1-based position.
+    fn rank_db(&mut self, w: &[i32; N + 1]) -> i64 {
+        // Special case: w = K^t 1^(N-t) for t >= 1 (wraparound substrings)
+        let mut t = 0usize;
+        while t < N && w[t + 1] == K as i32 {
+            t += 1;
+        }
+        let mut j = t;
+        while j < N && w[j + 1] == 1 {
+            j += 1;
+        }
+        if t >= 1 && j == N {
+            return self.power[N] - t as i64 + 1;
+        }
+
+        // If w is already a necklace
+        if is_necklace(w) {
+            let l = lyn(w) as i64;
+            // Need a copy for t_func since it uses self.t_neck
+            let mut w_copy = [0i32; N + 1];
+            w_copy.copy_from_slice(w);
+            return 1 - l + self.t_func(&w_copy);
+        }
+
+        // Find the necklace representative and rotation offset s
+        for i in 1..=N {
+            self.neck_rep[i] = w[i];
+        }
+        let mut s = 0usize;
+        while !is_necklace(&self.neck_rep) {
+            s += 1;
+            for i in 1..=N {
+                let j2 = i + s;
+                self.neck_rep[i] = if j2 <= N { w[j2] } else { w[j2 - N] };
+            }
+        }
+
+        // Copy neck_rep for recursive call
+        let mut nr = [0i32; N + 1];
+        nr.copy_from_slice(&self.neck_rep);
+
+        if s != t {
+            let l = lyn(&nr) as i64;
+            return self.rank_db(&nr) + l - s as i64;
+        }
+        if lyn(&nr) < N {
+            return self.rank_db(&nr) - s as i64;
+        }
+
+        // Adjust suffix to 1s, move to previous necklace
+        for i in (N - s + 1)..=N {
+            nr[i] = 1;
+        }
+        largest_necklace(&nr, &mut self.prev);
+        let mut prev_copy = [0i32; N + 1];
+        prev_copy.copy_from_slice(&self.prev);
+        let l = lyn(&prev_copy) as i64;
+        self.rank_db(&prev_copy) + l - s as i64
+    }
+}
+
+/// Convert a 12-digit number to 1-based symbols in w[1..12].
+#[inline]
+fn int_to_word12(x: u64, w: &mut [i32; N + 1]) {
+    let hi = (x / 100_000_000) as u32;
+    let mid = ((x / 10_000) % 10_000) as u32;
+    let lo = (x % 10_000) as u32;
+
+    // hi: 4 digits
+    w[1] = (hi / 1000) as i32 + 1;
+    w[2] = ((hi / 100) % 10) as i32 + 1;
+    w[3] = ((hi / 10) % 10) as i32 + 1;
+    w[4] = (hi % 10) as i32 + 1;
+
+    // mid: 4 digits
+    w[5] = (mid / 1000) as i32 + 1;
+    w[6] = ((mid / 100) % 10) as i32 + 1;
+    w[7] = ((mid / 10) % 10) as i32 + 1;
+    w[8] = (mid % 10) as i32 + 1;
+
+    // lo: 4 digits
+    w[9] = (lo / 1000) as i32 + 1;
+    w[10] = ((lo / 100) % 10) as i32 + 1;
+    w[11] = ((lo / 10) % 10) as i32 + 1;
+    w[12] = (lo % 10) as i32 + 1;
+}
+
+/// LSD radix sort of (keys, vals) by keys. 3 passes with 16-bit radix.
+fn radix_sort(keys: &mut Vec<u64>, vals: &mut Vec<u64>) {
+    let n = keys.len();
+    if n <= 1 {
+        return;
+    }
+    let bits_per_pass: u32 = 16;
+    let radix = 1usize << bits_per_pass;
+    let mask = (radix - 1) as u64;
+
+    let mut tmp_keys = vec![0u64; n];
+    let mut tmp_vals = vec![0u64; n];
+
+    for pass in 0..3u32 {
+        let shift = pass * bits_per_pass;
+        let mut counts = vec![0usize; radix];
+
+        let (src_k, src_v, dst_k, dst_v) = if pass % 2 == 0 {
+            (
+                keys as &Vec<u64>,
+                vals as &Vec<u64>,
+                &mut tmp_keys,
+                &mut tmp_vals,
+            )
+        } else {
+            (
+                &tmp_keys as &Vec<u64>,
+                &tmp_vals as &Vec<u64>,
+                keys as &mut Vec<u64>,
+                vals as &mut Vec<u64>,
+            )
+        };
+
+        for i in 0..n {
+            counts[((src_k[i] >> shift) & mask) as usize] += 1;
+        }
+
+        let mut total = 0usize;
+        for b in 0..radix {
+            let c = counts[b];
+            counts[b] = total;
+            total += c;
+        }
+
+        for i in 0..n {
+            let x = src_k[i];
+            let b = ((x >> shift) & mask) as usize;
+            let p = counts[b];
+            dst_k[p] = x;
+            dst_v[p] = src_v[i];
+            counts[b] = p + 1;
+        }
+    }
+
+    // After 3 passes (odd), sorted data is in tmp_keys/tmp_vals
+    // Copy back
+    keys.copy_from_slice(&tmp_keys);
+    vals.copy_from_slice(&tmp_vals);
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    let big_n: usize = 10_000_000;
+
+    let mut scratch = RankScratch::new();
+    let mut w = [0i32; N + 1];
+
+    let mut a_vals = Vec::with_capacity(big_n);
+    let mut ranks = Vec::with_capacity(big_n);
+
+    // Generate LCG values and compute ranks
+    let mut a: u64 = 0;
+    for _ in 0..big_n {
+        a = (LCG_MUL.wrapping_mul(a).wrapping_add(LCG_ADD)) % MOD_LCG;
+        int_to_word12(a, &mut w);
+        let rank = scratch.rank_db(&w);
+        a_vals.push(a);
+        ranks.push(rank as u64);
+    }
+
+    // Sort by rank
+    radix_sort(&mut ranks, &mut a_vals);
+
+    // Compute F(N) mod MOD_ANS
+    let mut acc: u64 = 0;
+    for i in 0..big_n {
+        let p = (i as u64 + 1) % MOD_ANS;
+        let val = a_vals[i] % MOD_ANS;
+        acc = (acc + p * val % MOD_ANS) % MOD_ANS;
+    }
+
+    println!("{}", acc);
 }

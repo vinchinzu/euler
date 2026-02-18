@@ -1,220 +1,246 @@
-// Problem 904
-// TODO: Port the Python solution below to Rust
+// Problem 904 - Pythagorean Angle
 //
-// === Python reference ===
-// #!/usr/bin/env python3
-// """
-// Project Euler 904: Pythagorean Angle
+// For each angle alpha, find the integer right triangle (hypotenuse <= L)
+// whose "median angle" theta is closest to alpha (degrees). Ties resolved
+// by choosing the triangle with the largest area.
 //
-// Compute F(N, L) where for each alpha we select the integer right triangle (hypotenuse <= L)
-// whose "median angle" theta is closest to alpha (degrees). Ties (same minimum difference)
-// are resolved by choosing the triangle with the largest area.
+// The median angle theta satisfies tan(theta) = 3ab / (2(a^2+b^2)) where
+// a,b are the legs. Using Euclid parametrization (m,n) with t = n/m, we get
+// g(t) = tan(theta) = 3t(1-t^2)/(1+t^2)^2 for t in (0,1).
 //
-// No external libraries are used. Single core, no multithreading.
-// """
-//
-// import math
-// from math import gcd
-//
-//
-// _DEG2RAD = math.pi / 180.0
-// # g(t) is maximized at t = sqrt(2) - 1.
-// _T0 = math.sqrt(2.0) - 1.0
-//
-//
-// def _g_of_t(t: float) -> float:
-//     """g(t) = tan(theta) when t = n/m for Euclid parameters (m>n>0)."""
-//     tt = t * t
-//     denom = 1.0 + tt
-//     return 3.0 * t * (1.0 - tt) / (denom * denom)
-//
-//
-// def _root_left(y: float) -> float:
-//     """Solve g(t)=y on [0, t0] (increasing), by binary search."""
-//     lo, hi = 0.0, _T0
-//     for _ in range(80):
-//         mid = (lo + hi) * 0.5
-//         if _g_of_t(mid) < y:
-//             lo = mid
-//         else:
-//             hi = mid
-//     return (lo + hi) * 0.5
-//
-//
-// def _root_right(y: float) -> float:
-//     """Solve g(t)=y on [t0, 1] (decreasing), by binary search."""
-//     lo, hi = _T0, 1.0
-//     for _ in range(80):
-//         mid = (lo + hi) * 0.5
-//         if _g_of_t(mid) > y:
-//             lo = mid
-//         else:
-//             hi = mid
-//     return (lo + hi) * 0.5
-//
-//
-// def _cf_candidates_circle(x: float, L: int):
-//     """
-//     Continued-fraction candidates for a real x in (0,1), under the constraint p^2 + q^2 <= L.
-//
-//     We generate convergents until the next convergent would violate the circle constraint.
-//     At that final step, the best admissible semiconvergents have the form:
-//
-//         (p, q) = (k*p1 + p0,  k*q1 + q0)   for 1 <= k <= a-1,
-//
-//     where p1/q1 and p0/q0 are the last two convergents and 'a' is the next CF coefficient.
-//     We choose k near the largest one satisfying (k*p1+p0)^2 + (k*q1+q0)^2 <= L.
-//     """
-//     cands = set()
-//
-//     p0, q0 = 0, 1
-//     p1, q1 = 1, 0
-//     frac = x
-//
-//     for _ in range(80):
-//         a = int(frac)
-//         p2 = a * p1 + p0
-//         q2 = a * q1 + q0
-//
-//         if p2 * p2 + q2 * q2 > L:
-//             # Find the largest k (<= a-1) such that:
-//             # (p0+k*p1)^2 + (q0+k*q1)^2 <= L.
-//             A = p1 * p1 + q1 * q1
-//             B = 2 * (p0 * p1 + q0 * q1)
-//             C = p0 * p0 + q0 * q0 - L
-//
-//             kmax = 0
-//             if A > 0:
-//                 disc = B * B - 4 * A * C
-//                 if disc > 0:
-//                     s = math.isqrt(disc)
-//                     # positive root of A*k^2 + B*k + C = 0
-//                     kmax = (-B + s) // (2 * A)
-//
-//             kmax = min(kmax, a - 1)
-//
-//             # Check a tiny neighborhood around kmax.
-//             lo = max(1, kmax - 3)
-//             hi = min(a - 1, kmax + 3)
-//             for k in range(lo, hi + 1):
-//                 ps = k * p1 + p0
-//                 qs = k * q1 + q0
-//                 if ps > 0 and qs > 0 and ps * ps + qs * qs <= L:
-//                     cands.add((ps, qs))
-//             break
-//
-//         if p2 > 0 and q2 > 0:
-//             cands.add((p2, q2))
-//
-//         if frac == a:
-//             break
-//         frac = 1.0 / (frac - a)
-//         p0, q0, p1, q1 = p1, q1, p2, q2
-//
-//     # Also include the last convergent if admissible.
-//     if p1 > 0 and q1 > 0 and p1 * p1 + q1 * q1 <= L:
-//         cands.add((p1, q1))
-//
-//     return cands
-//
-//
-// def _triangle_from_mn(m: int, n: int):
-//     """
-//     Construct Euclid triple from (m,n), then reduce by gcd(a,b,c) so we work with the
-//     underlying primitive shape even if (m,n) is not a primitive generator.
-//     Returns (a,b,c) with a,b legs and c hypotenuse.
-//     """
-//     a = m * m - n * n
-//     b = 2 * m * n
-//     c = m * m + n * n
-//     g = gcd(a, gcd(b, c))
-//     return a // g, b // g, c // g
-//
-//
-// def _tan_theta_from_legs(a: int, b: int) -> float:
-//     """tan(theta) = 3ab / (2(a^2 + b^2)) for the median angle in a right triangle."""
-//     aa = a * a
-//     bb = b * b
-//     return (3.0 * a * b) / (2.0 * (aa + bb))
-//
-//
-// def f(alpha_deg: float, L: int) -> int:
-//     """
-//     Return f(alpha, L): the perimeter of the chosen triangle for angle alpha (degrees)
-//     and hypotenuse bound L, following the minimization + tie-break rules.
-//     """
-//     alpha_rad = alpha_deg * _DEG2RAD
-//     y = math.tan(alpha_rad)
-//
-//     # Two real solutions for t in (0,1) to g(t)=y (one on each side of the maximum).
-//     r1 = _root_left(y)
-//     r2 = _root_right(y)
-//
-//     best_diff = float("inf")
-//     best_area_key = -1  # compare k^2 * a * b
-//     best_perim = 0
-//
-//     for r in (r1, r2):
-//         for n, m in _cf_candidates_circle(r, L):
-//             if not (0 < n < m):
-//                 continue
-//
-//             a, b, c = _triangle_from_mn(m, n)
-//             if a <= 0 or b <= 0:
-//                 continue
-//             if c > L:
-//                 continue
-//
-//             # Always scale to the largest allowed triangle for this primitive shape
-//             # (theta is scale-invariant; area tie-break prefers larger scaling).
-//             k = L // c
-//             if k <= 0:
-//                 continue
-//
-//             theta = math.atan(_tan_theta_from_legs(a, b))
-//             diff = abs(theta - alpha_rad)
-//
-//             area_key = (k * k) * a * b
-//             perim = k * (a + b + c)
-//
-//             if diff + 1e-16 < best_diff:
-//                 best_diff = diff
-//                 best_area_key = area_key
-//                 best_perim = perim
-//             elif abs(diff - best_diff) <= 1e-16:
-//                 if area_key > best_area_key:
-//                     best_area_key = area_key
-//                     best_perim = perim
-//
-//     return best_perim
-//
-//
-// def F(N: int, L: int) -> int:
-//     """Compute F(N, L) = sum_{n=1..N} f(cuberoot(n), L)."""
-//     total = 0
-//     one_third = 1.0 / 3.0
-//     for n in range(1, N + 1):
-//         alpha = n**one_third
-//         total += f(alpha, L)
-//     return total
-//
-//
-// def _self_test():
-//     # Examples from the problem statement:
-//     assert f(30.0, 10**2) == 198
-//     assert f(10.0, 10**6) == 1600158
-//     assert F(10, 10**6) == 16684370
-//
-//
-// def main():
-//     _self_test()
-//     print(F(45000, 10**10))
-//
-//
-// if __name__ == "__main__":
-//     main()
-// === End Python reference ===
+// We use continued fractions to find rational approximations n/m to the roots
+// of g(t) = tan(alpha), subject to m^2+n^2 <= L (the hypotenuse constraint
+// on the primitive triple).
+
+use std::f64::consts::PI;
+
+const DEG2RAD: f64 = PI / 180.0;
+const T0: f64 = std::f64::consts::SQRT_2 - 1.0; // sqrt(2) - 1, maximizer of g
+
+fn g_of_t(t: f64) -> f64 {
+    let tt = t * t;
+    let denom = 1.0 + tt;
+    3.0 * t * (1.0 - tt) / (denom * denom)
+}
+
+fn root_left(y: f64) -> f64 {
+    let mut lo = 0.0_f64;
+    let mut hi = T0;
+    for _ in 0..80 {
+        let mid = (lo + hi) * 0.5;
+        if g_of_t(mid) < y {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo + hi) * 0.5
+}
+
+fn root_right(y: f64) -> f64 {
+    let mut lo = T0;
+    let mut hi = 1.0_f64;
+    for _ in 0..80 {
+        let mid = (lo + hi) * 0.5;
+        if g_of_t(mid) > y {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo + hi) * 0.5
+}
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+fn isqrt_i128(n: i128) -> i128 {
+    if n <= 0 {
+        return 0;
+    }
+    let mut x = (n as f64).sqrt() as i128;
+    // Correct for floating-point inaccuracy
+    if x < 0 {
+        x = 0;
+    }
+    while x * x > n {
+        x -= 1;
+    }
+    while (x + 1) * (x + 1) <= n {
+        x += 1;
+    }
+    x
+}
+
+/// Continued-fraction candidates for a real x in (0,1), under the constraint
+/// p^2 + q^2 <= L. Returns a vec of (p, q) pairs (Euclid parameters n, m).
+fn cf_candidates_circle(x: f64, l: i64) -> Vec<(i64, i64)> {
+    let mut cands: Vec<(i64, i64)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut p0: i64 = 0;
+    let mut q0: i64 = 1;
+    let mut p1: i64 = 1;
+    let mut q1: i64 = 0;
+    let mut frac = x;
+
+    for _ in 0..80 {
+        let a = frac as i64;
+        let p2 = a * p1 + p0;
+        let q2 = a * q1 + q0;
+
+        if p2 * p2 + q2 * q2 > l {
+            // Find the largest k (<= a-1) such that:
+            // (p0+k*p1)^2 + (q0+k*q1)^2 <= L
+            // Use i128 to avoid overflow in discriminant computation
+            let big_a = (p1 as i128) * (p1 as i128) + (q1 as i128) * (q1 as i128);
+            let big_b = 2 * ((p0 as i128) * (p1 as i128) + (q0 as i128) * (q1 as i128));
+            let big_c = (p0 as i128) * (p0 as i128) + (q0 as i128) * (q0 as i128) - (l as i128);
+
+            let mut kmax: i64 = 0;
+            if big_a > 0 {
+                let disc = big_b * big_b - 4 * big_a * big_c;
+                if disc > 0 {
+                    let s = isqrt_i128(disc);
+                    // positive root of A*k^2 + B*k + C = 0
+                    kmax = ((-big_b + s) / (2 * big_a)) as i64;
+                }
+            }
+
+            kmax = kmax.min(a - 1);
+
+            let lo = 1_i64.max(kmax - 3);
+            let hi = (a - 1).min(kmax + 3);
+            for k in lo..=hi {
+                let ps = k * p1 + p0;
+                let qs = k * q1 + q0;
+                if ps > 0 && qs > 0 && ps * ps + qs * qs <= l {
+                    if seen.insert((ps, qs)) {
+                        cands.push((ps, qs));
+                    }
+                }
+            }
+            break;
+        }
+
+        if p2 > 0 && q2 > 0 {
+            if seen.insert((p2, q2)) {
+                cands.push((p2, q2));
+            }
+        }
+
+        let a_f64 = a as f64;
+        if (frac - a_f64).abs() < 1e-18 {
+            break;
+        }
+        frac = 1.0 / (frac - a_f64);
+        p0 = p1;
+        q0 = q1;
+        p1 = p2;
+        q1 = q2;
+    }
+
+    // Also include the last convergent if admissible
+    if p1 > 0 && q1 > 0 && p1 * p1 + q1 * q1 <= l {
+        if seen.insert((p1, q1)) {
+            cands.push((p1, q1));
+        }
+    }
+
+    cands
+}
+
+fn triangle_from_mn(m: i64, n: i64) -> (i64, i64, i64) {
+    let a = m * m - n * n;
+    let b = 2 * m * n;
+    let c = m * m + n * n;
+    let g = gcd(a, gcd(b, c));
+    (a / g, b / g, c / g)
+}
+
+fn tan_theta_from_legs(a: i64, b: i64) -> f64 {
+    let aa = a as f64 * a as f64;
+    let bb = b as f64 * b as f64;
+    (3.0 * a as f64 * b as f64) / (2.0 * (aa + bb))
+}
+
+fn f_single(alpha_deg: f64, l: i64) -> i64 {
+    let alpha_rad = alpha_deg * DEG2RAD;
+    let y = alpha_rad.tan();
+
+    let r1 = root_left(y);
+    let r2 = root_right(y);
+
+    let mut best_diff = f64::INFINITY;
+    let mut best_area_key: i128 = -1; // use i128 to avoid overflow: k^2*a*b can be huge
+    let mut best_perim: i64 = 0;
+
+    for r in &[r1, r2] {
+        let cands = cf_candidates_circle(*r, l);
+        for &(n, m) in &cands {
+            if !(0 < n && n < m) {
+                continue;
+            }
+
+            let (a, b, c) = triangle_from_mn(m, n);
+            if a <= 0 || b <= 0 {
+                continue;
+            }
+            if c > l {
+                continue;
+            }
+
+            // Scale to the largest allowed triangle (theta is scale-invariant)
+            let k = l / c;
+            if k <= 0 {
+                continue;
+            }
+
+            let theta = tan_theta_from_legs(a, b).atan();
+            let diff = (theta - alpha_rad).abs();
+
+            // Use i128 for area_key since k can be up to 10^10 and a*b can be large
+            let area_key = (k as i128) * (k as i128) * (a as i128) * (b as i128);
+            let perim = k * (a + b + c);
+
+            if diff + 1e-16 < best_diff {
+                best_diff = diff;
+                best_area_key = area_key;
+                best_perim = perim;
+            } else if (diff - best_diff).abs() <= 1e-16 {
+                if area_key > best_area_key {
+                    best_area_key = area_key;
+                    best_perim = perim;
+                }
+            }
+        }
+    }
+
+    best_perim
+}
+
+fn f_big(n: i64, l: i64) -> i64 {
+    let one_third = 1.0 / 3.0;
+    let mut total: i64 = 0;
+    for i in 1..=n {
+        let alpha = (i as f64).powf(one_third);
+        total += f_single(alpha, l);
+    }
+    total
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    // Self-test with the examples from the problem statement
+    debug_assert_eq!(f_single(30.0, 100), 198);
+    debug_assert_eq!(f_single(10.0, 1_000_000), 1_600_158);
+    debug_assert_eq!(f_big(10, 1_000_000), 16_684_370);
+
+    println!("{}", f_big(45_000, 10_000_000_000));
 }

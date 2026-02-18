@@ -1,192 +1,272 @@
-// Problem 950
-// TODO: Port the Python solution below to Rust
+// Problem 950 - Pirate Treasure
 //
-// === Python reference ===
-// #!/usr/bin/env python3
-// """
-// Project Euler 950: Pirate Treasure
+// Compute sum_{k=1..6} T(10^16, 10^k+1, 1/sqrt(10^k+1))
+// and print the last 9 digits.
 //
-// This program computes
-//     sum_{k=1..6} T(10^16, 10^k+1, 1/sqrt(10^k+1))
-// and prints the last 9 digits.
-//
-// We work only with p of the form p = 1/sqrt(D), where D is a positive non-square integer.
-// All required instances in the statement (and the final query) have this form.
-// No floating point arithmetic is used.
-// """
-//
-// from __future__ import annotations
-//
-// from math import isqrt
-//
-//
-// MOD_9 = 10**9
-//
-//
-// def floor_div_sqrt(d: int, D: int) -> int:
-//     """
-//     Return floor(d / sqrt(D)) for integers d >= 0, D >= 1, using integer arithmetic.
-//
-//     We compute an initial guess via isqrt(floor(d^2 / D)) and then fix it by checking
-//     t^2 * D <= d^2.
-//     """
-//     if d <= 0:
-//         return 0
-//     dd = d * d
-//     t = isqrt(dd // D)
-//     # Correct potential off-by-one errors due to the intermediate floor.
-//     while (t + 1) * (t + 1) * D <= dd:
-//         t += 1
-//     while t * t * D > dd:
-//         t -= 1
-//     return t
-//
-//
-// def ceil_div_sqrt(d: int, D: int) -> int:
-//     """
-//     Return ceil(d / sqrt(D)) for integers d >= 0 and non-square D.
-//
-//     For d>0 and irrational sqrt(D), d/sqrt(D) is never an integer, so:
-//         ceil(d/sqrt(D)) = floor(d/sqrt(D)) + 1
-//     """
-//     if d <= 0:
-//         return 0
-//     return floor_div_sqrt(d, D) + 1
-//
-//
-// def initial_prefix_sum(N: int, C: int) -> int:
-//     """
-//     For p < 1 (true for p=1/sqrt(D) with D>=2), the most senior pirate survives
-//     for n = 1..(2C+2) with w(n)=0 and
-//         c(n) = max(C - floor((n-1)/2), 0).
-//
-//     This function returns sum_{n=1..min(N,2C+2)} c(n).
-//     """
-//     if N <= 0:
-//         return 0
-//     limit = 2 * C + 2
-//     M = min(N, limit)
-//     # Last two terms in the range are zeros, so clamp to 2C.
-//     M = min(M, 2 * C)
-//     if M <= 0:
-//         return 0
-//
-//     m = M // 2  # number of full pairs (2 terms per pair)
-//     # For j=0..m-1, values are (C-j) twice.
-//     s = 2 * (m * C - (m * (m - 1)) // 2)
-//     if M % 2 == 1:
-//         # Extra term at n=2m+1 is C-m.
-//         s += C - m
-//     return s
-//
-//
-// def next_reset(L: int, C: int, D: int) -> int:
-//     """
-//     Let L be a position where the most senior pirate survives (w(L)=0).
-//     The next position x>L where the most senior pirate survives again can be found
-//     from the feasibility inequality:
-//         2(x-L) + 2*floor(C / ceil((x-L)/sqrt(D))) >= x
-//
-//     We iterate over the distinct values of y = floor(C / k) (there are O(sqrt(C)) of them).
-//     For a fixed y, the smallest x satisfying the inequality is x = 2L - 2y.
-//     We check whether this x is consistent with y.
-//     """
-//     if C == 0:
-//         # With zero coins, after L the next time the senior survives is at x=2L.
-//         return 2 * L
-//
-//     t = 1
-//     while t <= C:
-//         y = C // t  # candidate value of floor(C / k)
-//         x = 2 * L - 2 * y
-//         d = x - L
-//         if d > 0:
-//             s = ceil_div_sqrt(d, D)
-//             if C // s == y:
-//                 return x
-//         # Jump to the next t that changes C//t.
-//         t = (C // y) + 1
-//
-//     # y = 0 case (k > C)
-//     x = 2 * L
-//     return x
-//
-//
-// def T(N: int, C: int, D: int) -> int:
-//     """
-//     Compute T(N, C, 1/sqrt(D)) = sum_{n=1..N} (c(n) + w(n)) exactly.
-//
-//     After n = 2C+2, the process has long "death cascades":
-//     between two positions where the most senior pirate survives, the most senior
-//     pirate dies every time, so c(n) stays constant and w(n) grows by 1 each step.
-//     """
-//     if N <= 0:
-//         return 0
-//
-//     # Initial region where the most senior pirate always survives and w(n)=0.
-//     start_reset = 2 * C + 2
-//     if N <= start_reset:
-//         return initial_prefix_sum(N, C)
-//
-//     total = initial_prefix_sum(
-//         start_reset, C
-//     )  # includes n=start_reset (which contributes 0)
-//     L = start_reset
-//     cL = 0  # at n=2C+2, c=0
-//
-//     while L < N:
-//         x = next_reset(L, C, D)
-//         if x > N:
-//             # Truncated final cascade: n = L+1..N
-//             d = N - L + 1  # number of terms from L to N inclusive
-//             # Sum_{k=1..d-1} (cL + k)
-//             total += (d - 1) * cL + (d - 1) * d // 2
-//             break
-//
-//         d = x - L  # distance to next reset
-//         if d > 1:
-//             # n = L+1..x-1 contributes (cL + 1) .. (cL + d-1)
-//             total += (d - 1) * cL + (d - 1) * d // 2
-//
-//         # At n=x the most senior pirate survives again. Compute c(x).
-//         required_votes = (x + 1) // 2  # ceil(x/2)
-//         free_votes = d  # the senior + (d-1) pirates who would die if he dies
-//         need_bribes = required_votes - free_votes
-//         if need_bribes < 0:
-//             need_bribes = 0
-//
-//         s = ceil_div_sqrt(d, D)
-//         cost = need_bribes * s
-//         # By construction x is feasible, so cost <= C.
-//         cL = C - cost
-//
-//         total += cL  # w(x)=0
-//         L = x
-//
-//     return total
-//
-//
-// def solve() -> int:
-//     # Statement checks
-//     assert T(30, 3, 3) == 190
-//     assert T(50, 3, 31) == 385
-//     assert T(10**3, 101, 101) == 142427
-//
-//     N = 10**16
-//     acc = 0
-//     for k in range(1, 7):
-//         C = 10**k + 1
-//         acc += T(N, C, C)
-//
-//     return acc % MOD_9
-//
-//
-// if __name__ == "__main__":
-//     ans = solve()
-//     # Print the last 9 digits, padding with leading zeros if needed.
-//     print(f"{ans:09d}")
-// === End Python reference ===
+// All arithmetic on p = 1/sqrt(D) is done with exact integer operations.
+// The running total is kept mod 10^9 to avoid overflow.
+
+const MOD: u64 = 1_000_000_000;
+
+/// Integer square root of a u128 value using Newton's method.
+fn isqrt_u128(n: u128) -> u128 {
+    if n <= 1 {
+        return n;
+    }
+    let bits = 128 - n.leading_zeros();
+    let mut x = 1u128 << ((bits + 1) / 2);
+    loop {
+        let x1 = (x + n / x) / 2;
+        if x1 >= x {
+            break;
+        }
+        x = x1;
+    }
+    // Correct off-by-one.
+    while x * x > n {
+        x -= 1;
+    }
+    x
+}
+
+/// Return floor(d / sqrt(big_d)) for integers d >= 0, big_d >= 1.
+/// Uses isqrt(d^2 / big_d) as initial guess, then corrects.
+fn floor_div_sqrt(d: u64, big_d: u64) -> u64 {
+    if d == 0 {
+        return 0;
+    }
+    let dd = d as u128 * d as u128;
+    let big_d128 = big_d as u128;
+    let mut t = isqrt_u128(dd / big_d128);
+    // Correct potential off-by-one errors.
+    while (t + 1) * (t + 1) * big_d128 <= dd {
+        t += 1;
+    }
+    while t * t * big_d128 > dd {
+        t -= 1;
+    }
+    t as u64
+}
+
+/// Return ceil(d / sqrt(big_d)) for d >= 0, non-square big_d.
+/// Since sqrt(big_d) is irrational, d/sqrt(big_d) is never integer for d > 0.
+fn ceil_div_sqrt(d: u64, big_d: u64) -> u64 {
+    if d == 0 {
+        return 0;
+    }
+    floor_div_sqrt(d, big_d) + 1
+}
+
+/// Compute n*(n+1)/2 mod MOD without overflow.
+/// Since n can be up to ~10^16, we use the identity:
+///   If n is even: (n/2) * (n+1) mod MOD
+///   If n is odd:  n * ((n+1)/2) mod MOD
+/// Each factor mod MOD fits in u64, and their product fits in u64 too (< 10^18).
+fn tri_mod(n: u64) -> u64 {
+    if n % 2 == 0 {
+        ((n / 2) % MOD) * ((n + 1) % MOD) % MOD
+    } else {
+        (n % MOD) * (((n + 1) / 2) % MOD) % MOD
+    }
+}
+
+/// For p < 1, sum_{n=1..min(N,2C+2)} c(n) mod MOD.
+/// c(n) = max(C - floor((n-1)/2), 0) for n = 1..2C+2.
+fn initial_prefix_sum_mod(n: u64, c: u64) -> u64 {
+    if n == 0 || c == 0 {
+        return 0;
+    }
+    let limit = 2 * c + 2;
+    let mut m = n.min(limit);
+    m = m.min(2 * c);
+    if m == 0 {
+        return 0;
+    }
+
+    let half = m / 2; // number of full pairs
+    // s = 2 * (half * c - half*(half-1)/2)
+    // Use u128 to compute this mod MOD safely.
+    let hc = (half as u128) * (c as u128); // up to ~10^6 * 10^6 = 10^12, fits u64 too
+    let tri = (half as u128) * ((half - 1) as u128) / 2; // half*(half-1)/2
+    let inner = (hc - tri) % MOD as u128;
+    let mut s = (2 * inner) % MOD as u128;
+    if m % 2 == 1 {
+        s = (s + (c - half) as u128) % MOD as u128;
+    }
+    s as u64
+}
+
+/// Exact version for small test cases (no mod reduction).
+fn initial_prefix_sum_exact(n: u64, c: u64) -> u64 {
+    if n == 0 || c == 0 {
+        return 0;
+    }
+    let limit = 2 * c + 2;
+    let mut m = n.min(limit);
+    m = m.min(2 * c);
+    if m == 0 {
+        return 0;
+    }
+    let half = m / 2;
+    let mut s = 2 * (half * c - half * (half - 1) / 2);
+    if m % 2 == 1 {
+        s += c - half;
+    }
+    s
+}
+
+/// Find next position x > l where the most senior pirate survives.
+fn next_reset(l: u64, c: u64, big_d: u64) -> u64 {
+    if c == 0 {
+        return 2 * l;
+    }
+
+    let mut t: u64 = 1;
+    while t <= c {
+        let y = c / t;
+        // x = 2*l - 2*y
+        // Since l >= 2*c+2 and y <= c, x = 2*l - 2*y >= 2*(2c+2) - 2c = 2c+4 > 0.
+        // But we also need d = x - l = l - 2*y > 0, i.e., l > 2*y.
+        if l > 2 * y {
+            let x = 2 * l - 2 * y;
+            let d = x - l; // = l - 2*y
+            let s = ceil_div_sqrt(d, big_d);
+            if c / s == y {
+                return x;
+            }
+        }
+        // Jump to next t that changes c//t.
+        t = (c / y) + 1;
+    }
+
+    // y = 0 case (k > C)
+    2 * l
+}
+
+/// Compute T(N, C, 1/sqrt(D)) mod MOD.
+fn t_func(n: u64, c: u64, big_d: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+
+    let start_reset = 2 * c + 2;
+    if n <= start_reset {
+        return initial_prefix_sum_mod(n, c);
+    }
+
+    let mut total = initial_prefix_sum_mod(start_reset, c);
+    let mut l = start_reset;
+    let mut c_l: u64 = 0; // at n=2C+2, c=0
+
+    while l < n {
+        let x = next_reset(l, c, big_d);
+        if x > n {
+            // Truncated final cascade: n = L+1..N
+            // cnt = N - L terms, each contributing (cL + k) for k=1..cnt
+            // sum = cnt * cL + cnt*(cnt+1)/2
+            let cnt = n - l;
+            let contrib = add_cascade_mod(cnt, c_l);
+            total = (total + contrib) % MOD;
+            break;
+        }
+
+        let d = x - l;
+        if d > 1 {
+            // n = L+1..x-1: cnt = d-1 terms contributing (cL+1)..(cL+d-1)
+            // sum = (d-1)*cL + (d-1)*d/2
+            let cnt = d - 1;
+            let contrib = add_cascade_mod(cnt, c_l);
+            total = (total + contrib) % MOD;
+        }
+
+        // At n=x, compute c(x).
+        let required_votes = (x + 1) / 2; // ceil(x/2)
+        let free_votes = d;
+        let need_bribes = if required_votes > free_votes {
+            required_votes - free_votes
+        } else {
+            0
+        };
+
+        let s = ceil_div_sqrt(d, big_d);
+        let cost = need_bribes * s;
+        c_l = c - cost;
+
+        total = (total + c_l % MOD) % MOD;
+        l = x;
+    }
+
+    total
+}
+
+/// Compute (cnt * c_l + cnt*(cnt+1)/2) mod MOD.
+/// cnt can be up to ~10^16, c_l up to ~10^6.
+fn add_cascade_mod(cnt: u64, c_l: u64) -> u64 {
+    // cnt * c_l mod MOD: use u128
+    let part1 = ((cnt as u128) * (c_l as u128)) % MOD as u128;
+    // cnt*(cnt+1)/2 mod MOD
+    let part2 = tri_mod(cnt) as u128;
+    ((part1 + part2) % MOD as u128) as u64
+}
+
+/// Exact T for small test cases.
+fn t_func_exact(n: u64, c: u64, big_d: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+
+    let start_reset = 2 * c + 2;
+    if n <= start_reset {
+        return initial_prefix_sum_exact(n, c);
+    }
+
+    let mut total = initial_prefix_sum_exact(start_reset, c);
+    let mut l = start_reset;
+    let mut c_l: u64 = 0;
+
+    while l < n {
+        let x = next_reset(l, c, big_d);
+        if x > n {
+            let cnt = n - l;
+            total += cnt * c_l + cnt * (cnt + 1) / 2;
+            break;
+        }
+
+        let d = x - l;
+        if d > 1 {
+            let cnt = d - 1;
+            total += cnt * c_l + cnt * (cnt + 1) / 2;
+        }
+
+        let required_votes = (x + 1) / 2;
+        let free_votes = d;
+        let need_bribes = if required_votes > free_votes {
+            required_votes - free_votes
+        } else {
+            0
+        };
+
+        let s = ceil_div_sqrt(d, big_d);
+        let cost = need_bribes * s;
+        c_l = c - cost;
+        total += c_l;
+        l = x;
+    }
+
+    total
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    // Verify against known test cases.
+    debug_assert_eq!(t_func_exact(30, 3, 3), 190);
+    debug_assert_eq!(t_func_exact(50, 3, 31), 385);
+    debug_assert_eq!(t_func_exact(1000, 101, 101), 142427);
+
+    let n: u64 = 10_u64.pow(16);
+    let mut acc: u64 = 0;
+    for k in 1..=6_u32 {
+        let c = 10_u64.pow(k) + 1;
+        acc = (acc + t_func(n, c, c)) % MOD;
+    }
+    println!("{:09}", acc);
 }

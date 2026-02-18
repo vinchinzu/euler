@@ -1,308 +1,294 @@
-// Problem 924
-// TODO: Port the Python solution below to Rust
-//
-// === Python reference ===
-// #!/usr/bin/env python3
-// """
-// Project Euler 924: Larger Digit Permutation II
-//
-// Let B(n) be the smallest number larger than n that can be formed by rearranging
-// digits of n, or 0 if no such number exists.
-//
-// Define a_0 = 0 and a_n = a_{n-1}^2 + 2 for n > 0.
-// Let U(N) = sum_{n=1..N} B(a_n).
-//
-// Print U(10^16) modulo 1_000_000_007.
-//
-// No external libraries are used.
-// """
-//
-// MOD = 1_000_000_007
-//
-//
-// # -------------------- Next permutation (no leading zeros) --------------------
-//
-//
-// def _next_permutation_inplace(digs):
-//     """In-place next lexicographic permutation of list of digits; return True if advanced."""
-//     i = len(digs) - 2
-//     while i >= 0 and digs[i] >= digs[i + 1]:
-//         i -= 1
-//     if i < 0:
-//         return False
-//     j = len(digs) - 1
-//     while digs[j] <= digs[i]:
-//         j -= 1
-//     digs[i], digs[j] = digs[j], digs[i]
-//     l, r = i + 1, len(digs) - 1
-//     while l < r:
-//         digs[l], digs[r] = digs[r], digs[l]
-//         l += 1
-//         r -= 1
-//     return True
-//
-//
-// def B(n):
-//     """Problem-defined B(n)."""
-//     digs = [ord(c) - 48 for c in str(n)]
-//     if not _next_permutation_inplace(digs):
-//         return 0
-//     y = 0
-//     for d in digs:
-//         y = y * 10 + d
-//     return y
-//
-//
-// # -------------------- Fixed-width next permutation (leading zeros allowed) --------------------
-//
-//
-// def next_perm_fixed_int(x, k, buf):
-//     """
-//     Treat x as exactly k decimal digits (leading zeros allowed),
-//     write digits into buf (length k), apply next permutation,
-//     and return the permuted integer. Return None if no next permutation exists.
-//     """
-//     t = x
-//     for i in range(k - 1, -1, -1):
-//         buf[i] = t % 10
-//         t //= 10
-//
-//     i = k - 2
-//     while i >= 0 and buf[i] >= buf[i + 1]:
-//         i -= 1
-//     if i < 0:
-//         return None
-//
-//     j = k - 1
-//     while buf[j] <= buf[i]:
-//         j -= 1
-//
-//     buf[i], buf[j] = buf[j], buf[i]
-//     l, r = i + 1, k - 1
-//     while l < r:
-//         buf[l], buf[r] = buf[r], buf[l]
-//         l += 1
-//         r -= 1
-//
-//     y = 0
-//     for d in buf:
-//         y = y * 10 + d
-//     return y
-//
-//
-// # -------------------- Direct small-N (for the provided test) --------------------
-//
-//
-// def U_direct_mod(N):
-//     """Compute U(N) mod MOD directly using big integers (only for small N)."""
-//     a = 0
-//     s = 0
-//     for _ in range(N):
-//         a = a * a + 2
-//         s = (s + B(a)) % MOD
-//     return s
-//
-//
-// # -------------------- Sum of a_n mod MOD via cycle detection --------------------
-//
-//
-// def sum_a_mod(N):
-//     """
-//     Compute sum_{n=1..N} (a_n mod MOD) mod MOD for:
-//       a_0 = 0
-//       a_n = a_{n-1}^2 + 2 (mod MOD)
-//
-//     Uses first-repeat detection with a dictionary (cycle is small).
-//     """
-//     x = 0
-//     seen = {0: 0}
-//     states = [0]  # states[i] = a_i mod MOD
-//
-//     while True:
-//         nxt = (x * x + 2) % MOD
-//         idx = len(states)
-//         if nxt in seen:
-//             mu = seen[nxt]
-//             lam = idx - seen[nxt]
-//             break
-//         seen[nxt] = idx
-//         states.append(nxt)
-//         x = nxt
-//
-//     # pref[i] = sum_{t=1..i} a_t (mod MOD), with pref[0] = 0
-//     pref = [0] * len(states)
-//     for i in range(1, len(states)):
-//         pref[i] = (pref[i - 1] + states[i]) % MOD
-//
-//     if N < len(states):
-//         return pref[N]
-//
-//     # Sum of a_1..a_{mu-1}
-//     base_before = pref[mu - 1] if mu > 0 else 0
-//     # Sum of one full cycle a_mu..a_{mu+lam-1}
-//     cycle_sum = (pref[mu + lam - 1] - base_before) % MOD
-//
-//     cycle_terms = N - mu + 1
-//     full = cycle_terms // lam
-//     rem = cycle_terms % lam
-//
-//     total = (base_before + (full % MOD) * cycle_sum) % MOD
-//     if rem:
-//         total = (total + (pref[mu + rem - 1] - base_before)) % MOD
-//     return total
-//
-//
-// # -------------------- Delta decomposition for B(a_n) --------------------
-//
-//
-// def delta_small(N):
-//     """
-//     Exact contribution of delta_n = B(a_n) - a_n (mod MOD) for small n,
-//     where fixed-width (10-digit) handling would introduce leading-zero artifacts.
-//     """
-//     a = 0
-//     s = 0
-//     for n in range(1, min(N, 5) + 1):
-//         a = a * a + 2
-//         s = (s + (B(a) - a)) % MOD
-//     return s
-//
-//
-// def delta10_and_bad(N):
-//     """
-//     For n >= 6, a_n has >= 10 digits. If the last 10 digits are not fully
-//     non-increasing, the pivot for next-permutation lies within those 10 digits,
-//     so:
-//         B(a_n) - a_n = next_perm(last10) - last10.
-//
-//     There is exactly one residue in the 10-digit cycle where last10 has no next
-//     permutation; those indices form an arithmetic progression. This function
-//     returns:
-//       (sum_delta10_over_n>=6, first_bad_index, step)
-//     where step is the cycle length modulo 10^10.
-//     """
-//     if N <= 5:
-//         return 0, None, None
-//
-//     k = 10
-//     m = 10**k
-//     step = 8 * (5 ** (k - 2))  # cycle length (lambda) modulo 10^k
-//
-//     # start at n=6: compute a_6 mod 10^10
-//     x = 0
-//     for _ in range(6):
-//         x = (x * x + 2) % m
-//     start = x
-//
-//     total_terms = N - 5  # n=6..N inclusive
-//     q, r = divmod(total_terms, step)
-//
-//     buf = [0] * k
-//     cycle_sum = 0
-//     rem_sum = 0
-//     bad_step = None  # 1-based within the step-length cycle, relative to n=6
-//
-//     # Scan exactly one full cycle (step states), starting at a_6
-//     for i in range(1, step + 1):
-//         y = next_perm_fixed_int(x, k, buf)
-//         if y is None:
-//             if bad_step is not None:
-//                 raise AssertionError("More than one bad position in the 10-digit cycle")
-//             bad_step = i
-//             # contributes 0 to delta10 (handled separately with 11 digits)
-//         else:
-//             d = y - x
-//             cycle_sum = (cycle_sum + d) % MOD
-//             if i <= r:
-//                 rem_sum = (rem_sum + d) % MOD
-//
-//         x = (x * x + 2) % m
-//
-//     # Must return to the starting residue after one cycle
-//     assert x == start
-//     assert bad_step is not None
-//
-//     first_bad_n = bad_step + 5  # since i=1 corresponds to n=6
-//     total = ((q % MOD) * cycle_sum + rem_sum) % MOD
-//     return total, first_bad_n, step
-//
-//
-// def delta_bad_11(N, first_bad_n, step):
-//     """
-//     Handle exactly those indices where last10 digits are non-increasing (no 10-digit next perm).
-//     At those indices, the next permutation pivot is the 11th digit from the end, so
-//         delta = next_perm(last11) - last11.
-//
-//     The bad indices are:
-//         n = first_bad_n + t*step,  t>=0
-//
-//     Modulo 10^11, the main cycle length is 5*step, so the subsequence sampled every
-//     'step' has period 5. We compute the 5 deltas once and then count them up to N.
-//     """
-//     if first_bad_n is None or N < first_bad_n:
-//         return 0
-//
-//     m11 = 10**11
-//     targets = [first_bad_n + t * step for t in range(5)]
-//     max_n = targets[-1]
-//
-//     # Simulate a_n mod 10^11 up to max_n and record the 5 needed values
-//     x = 0
-//     vals = [0] * 5
-//     idx = 0
-//     for n in range(1, max_n + 1):
-//         x = (x * x + 2) % m11
-//         if n == targets[idx]:
-//             vals[idx] = x
-//             idx += 1
-//             if idx == 5:
-//                 break
-//     assert idx == 5
-//
-//     buf = [0] * 11
-//     deltas = [0] * 5
-//     for i, v in enumerate(vals):
-//         y = next_perm_fixed_int(v, 11, buf)
-//         # If this were None, pivot would be deeper than 11; we never see that.
-//         assert y is not None
-//         deltas[i] = (y - v) % MOD
-//
-//     # Count how many bad indices <= N
-//     T = 1 + (N - first_bad_n) // step
-//     base = T // 5
-//     rem = T % 5
-//
-//     total = 0
-//     for i, d in enumerate(deltas):
-//         c = base + (1 if i < rem else 0)
-//         total = (total + (c % MOD) * d) % MOD
-//     return total
-//
-//
-// def solve(N):
-//     # U(N) = sum a_n + sum (B(a_n)-a_n)  (mod MOD)
-//     s_a = sum_a_mod(N)
-//
-//     d_small = delta_small(N)
-//     d10, first_bad_n, step = delta10_and_bad(N)
-//     d_bad = delta_bad_11(N, first_bad_n, step)
-//
-//     return (s_a + d_small + d10 + d_bad) % MOD
-//
-//
-// def main():
-//     # Asserts for the statement's explicit test values
-//     assert B(245) == 254
-//     assert B(542) == 0
-//     assert U_direct_mod(10) == 543870437
-//
-//     print(solve(10**16))
-//
-//
-// if __name__ == "__main__":
-//     main()
-// === End Python reference ===
+// Problem 924 - Larger Digit Permutation II
+//
+// B(n) = smallest number larger than n formed by rearranging digits of n, or 0.
+// a_0 = 0, a_n = a_{n-1}^2 + 2.
+// U(N) = sum_{n=1..N} B(a_n).
+// Compute U(10^16) mod 10^9+7.
+//
+// Strategy: U(N) = sum(a_n mod MOD) + sum(B(a_n) - a_n mod MOD).
+// The delta (B(a_n) - a_n) for n >= 6 depends only on the last 10 digits of a_n,
+// which cycle with period 8 * 5^8 = 3_125_000 modulo 10^10.
+// For the single "bad" position per cycle (last 10 digits non-increasing),
+// we look at 11 digits where the sub-cycle has period 5.
+
+const MOD: u64 = 1_000_000_007;
+
+/// Next lexicographic permutation of `digs` in-place. Returns true if advanced.
+fn next_perm_inplace(digs: &mut [u8]) -> bool {
+    let n = digs.len();
+    if n < 2 {
+        return false;
+    }
+    let mut i = n - 2;
+    loop {
+        if digs[i] < digs[i + 1] {
+            break;
+        }
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+    }
+    let mut j = n - 1;
+    while digs[j] <= digs[i] {
+        j -= 1;
+    }
+    digs.swap(i, j);
+    digs[i + 1..].reverse();
+    true
+}
+
+/// B(n): next digit permutation as a number, or 0.
+fn big_b(n: u128) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    // Extract digits
+    let mut digs = Vec::new();
+    let mut tmp = n;
+    while tmp > 0 {
+        digs.push((tmp % 10) as u8);
+        tmp /= 10;
+    }
+    digs.reverse();
+    if !next_perm_inplace(&mut digs) {
+        return 0;
+    }
+    let mut y: u128 = 0;
+    for &d in &digs {
+        y = y * 10 + d as u128;
+    }
+    y
+}
+
+/// Fixed-width next permutation: treat x as exactly k decimal digits (leading zeros allowed).
+/// Returns Some(permuted_int) or None.
+fn next_perm_fixed(x: u64, k: usize, buf: &mut [u8]) -> Option<u64> {
+    let mut t = x;
+    for i in (0..k).rev() {
+        buf[i] = (t % 10) as u8;
+        t /= 10;
+    }
+
+    // Find pivot
+    if k < 2 {
+        return None;
+    }
+    let mut i = k - 2;
+    loop {
+        if buf[i] < buf[i + 1] {
+            break;
+        }
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+    }
+
+    let mut j = k - 1;
+    while buf[j] <= buf[i] {
+        j -= 1;
+    }
+    buf.swap(i, j);
+    buf[i + 1..k].reverse();
+
+    let mut y: u64 = 0;
+    for idx in 0..k {
+        y = y * 10 + buf[idx] as u64;
+    }
+    Some(y)
+}
+
+/// Compute sum_{n=1..N} (a_n mod MOD) mod MOD using cycle detection.
+fn sum_a_mod(big_n: u64) -> u64 {
+    let mut x: u64 = 0;
+    let mut states: Vec<u64> = vec![0]; // states[i] = a_i mod MOD
+    let mut seen = std::collections::HashMap::new();
+    seen.insert(0u64, 0usize);
+
+    let (mu, lam);
+    loop {
+        let nxt = ((x as u128 * x as u128 + 2) % MOD as u128) as u64;
+        let idx = states.len();
+        if let Some(&prev) = seen.get(&nxt) {
+            mu = prev;
+            lam = idx - prev;
+            break;
+        }
+        seen.insert(nxt, idx);
+        states.push(nxt);
+        x = nxt;
+    }
+
+    // Build prefix sums
+    let mut pref: Vec<u64> = vec![0; states.len()];
+    for i in 1..states.len() {
+        pref[i] = (pref[i - 1] + states[i]) % MOD;
+    }
+
+    if big_n < states.len() as u64 {
+        return pref[big_n as usize];
+    }
+
+    let base_before = if mu > 0 { pref[mu - 1] } else { 0 };
+    let cycle_sum = (pref[mu + lam - 1] + MOD - base_before) % MOD;
+
+    let cycle_terms = big_n - mu as u64 + 1;
+    let full = cycle_terms / lam as u64;
+    let rem = (cycle_terms % lam as u64) as usize;
+
+    let mut total = (base_before + (full % MOD) * cycle_sum % MOD) % MOD;
+    if rem > 0 {
+        total = (total + (pref[mu + rem - 1] + MOD - base_before)) % MOD;
+    }
+    total
+}
+
+/// Exact contribution of delta_n = B(a_n) - a_n (mod MOD) for small n (1..=min(N,5)).
+fn delta_small(big_n: u64) -> u64 {
+    let mut a: u128 = 0;
+    let mut s: u64 = 0;
+    let limit = std::cmp::min(big_n, 5);
+    for _ in 0..limit {
+        a = a * a + 2;
+        let b = big_b(a);
+        // b - a could be negative if b==0, handle with MOD
+        let delta = if b >= a {
+            ((b - a) % MOD as u128) as u64
+        } else {
+            // b == 0, so delta = -a mod MOD
+            (MOD - (a % MOD as u128) as u64) % MOD
+        };
+        s = (s + delta) % MOD;
+    }
+    s
+}
+
+/// For n >= 6, compute sum of deltas from the 10-digit cycle, plus identify the "bad" position.
+/// Returns (sum_delta10, first_bad_n, step).
+fn delta10_and_bad(big_n: u64) -> (u64, Option<u64>, u64) {
+    if big_n <= 5 {
+        return (0, None, 0);
+    }
+
+    let k: usize = 10;
+    let m: u64 = 10_000_000_000; // 10^10
+    // cycle length modulo 10^k = 8 * 5^(k-2) = 8 * 5^8 = 3_125_000
+    let step: u64 = 8 * 390_625; // 8 * 5^8 = 3_125_000
+
+    // Compute a_6 mod 10^10
+    let mut x: u64 = 0;
+    for _ in 0..6 {
+        x = ((x as u128 * x as u128 + 2) % m as u128) as u64;
+    }
+    let start = x;
+
+    let total_terms = big_n - 5; // n = 6..N
+    let q = total_terms / step;
+    let r = total_terms % step;
+
+    let mut buf = [0u8; 10];
+    let mut cycle_sum: u64 = 0;
+    let mut rem_sum: u64 = 0;
+    let mut bad_step: Option<u64> = None;
+
+    for i in 1..=step {
+        if let Some(y) = next_perm_fixed(x, k, &mut buf) {
+            // delta = y - x, but y > x always when next_perm succeeds for fixed-width
+            let d = if y >= x {
+                (y - x) % MOD
+            } else {
+                // This shouldn't happen for fixed-width next perm, but be safe
+                (MOD - (x - y) % MOD) % MOD
+            };
+            cycle_sum = (cycle_sum + d) % MOD;
+            if i <= r {
+                rem_sum = (rem_sum + d) % MOD;
+            }
+        } else {
+            assert!(bad_step.is_none(), "More than one bad position in 10-digit cycle");
+            bad_step = Some(i);
+            // Contributes 0 to delta10
+        }
+        x = ((x as u128 * x as u128 + 2) % m as u128) as u64;
+    }
+
+    assert_eq!(x, start, "Must return to start after one cycle");
+    assert!(bad_step.is_some(), "Expected one bad position");
+
+    let first_bad_n = bad_step.unwrap() + 5; // i=1 corresponds to n=6
+    let total = ((q % MOD) * cycle_sum % MOD + rem_sum) % MOD;
+    (total, Some(first_bad_n), step)
+}
+
+/// Handle the "bad" indices where last 10 digits are non-increasing.
+/// At these, the pivot is the 11th digit, so delta = next_perm(last11) - last11.
+/// The bad indices form n = first_bad_n + t*step, and mod 10^11 the sub-cycle has period 5.
+fn delta_bad_11(big_n: u64, first_bad_n: Option<u64>, step: u64) -> u64 {
+    let first_bad_n = match first_bad_n {
+        Some(f) if big_n >= f => f,
+        _ => return 0,
+    };
+
+    let m11: u128 = 100_000_000_000; // 10^11
+    let targets: Vec<u64> = (0..5).map(|t| first_bad_n + t * step).collect();
+    let max_n = targets[4];
+
+    // Simulate a_n mod 10^11 up to max_n
+    let mut x: u128 = 0;
+    let mut vals = [0u64; 5];
+    let mut idx = 0;
+    for n in 1..=max_n {
+        x = (x * x + 2) % m11;
+        if n == targets[idx] {
+            vals[idx] = x as u64;
+            idx += 1;
+            if idx == 5 {
+                break;
+            }
+        }
+    }
+    assert_eq!(idx, 5);
+
+    let mut buf = [0u8; 11];
+    let mut deltas = [0u64; 5];
+    for i in 0..5 {
+        let v = vals[i];
+        let y = next_perm_fixed(v, 11, &mut buf)
+            .expect("Expected 11-digit next perm to exist for bad positions");
+        deltas[i] = if y >= v {
+            (y - v) % MOD
+        } else {
+            (MOD - (v - y) % MOD) % MOD
+        };
+    }
+
+    // Count how many bad indices <= N
+    let t_count = 1 + (big_n - first_bad_n) / step;
+    let base = t_count / 5;
+    let rem = t_count % 5;
+
+    let mut total: u64 = 0;
+    for i in 0..5 {
+        let c = base + if (i as u64) < rem { 1 } else { 0 };
+        total = (total + (c % MOD) * deltas[i] % MOD) % MOD;
+    }
+    total
+}
+
+fn solve(big_n: u64) -> u64 {
+    let s_a = sum_a_mod(big_n);
+    let d_small = delta_small(big_n);
+    let (d10, first_bad_n, step) = delta10_and_bad(big_n);
+    let d_bad = delta_bad_11(big_n, first_bad_n, step);
+
+    (s_a + d_small + d10 + d_bad) % MOD
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    // Verification asserts
+    debug_assert_eq!(big_b(245), 254);
+    debug_assert_eq!(big_b(542), 0);
+
+    println!("{}", solve(10_000_000_000_000_000));
 }

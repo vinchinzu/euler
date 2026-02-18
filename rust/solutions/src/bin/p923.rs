@@ -1,240 +1,247 @@
-// Problem 923
-// TODO: Port the Python solution below to Rust
+// Problem 923 - Young's Game B
 //
-// === Python reference ===
-// #!/usr/bin/env python3
-// """
-// Project Euler 923: Young's Game B
-//
-// We count S(m, w): the number of ordered sequences of m staircases (a,b,k) with
-// a,b,k >= 1 and a+b+k <= w for which Right (the horizontal mover, who moves first)
-// wins under optimal play.
-//
-// No external libraries are used (only the Python standard library).
-// """
-//
-// from __future__ import annotations
-//
-// from collections import defaultdict
-//
-//
-// MOD = 1_000_000_007
-//
-//
-// def ceil_div(a: int, b: int) -> int:
-//     return (a + b - 1) // b
-//
-//
-// def reduced_hook(a: int, b: int, k: int) -> tuple[int, int]:
-//     """
-//     Return (M, N) for the reduced Young diagram of an (a,b,k)-staircase,
-//     where the reduced diagram is always a hook of shape (M, 1^(N-1)).
-//
-//     The (a,b,k)-staircase has k blocks; each block contributes 'a' rows, and
-//     the row lengths are:
-//         (k*b) repeated a times,
-//         ((k-1)*b) repeated a times,
-//         ...
-//         (b) repeated a times.
-//
-//     The reduction repeatedly removes the first row and first column until the
-//     Durfee size becomes 1. For a partition λ, the remaining hook is determined
-//     by the Durfee size d and the d-th row/column:
-//         M = λ_d - d + 1
-//         N = (#rows with λ_i >= d) - d + 1
-//     """
-//     # Compute Durfee size d = max r with λ_r >= r, exploiting the block structure.
-//     d = 0
-//     for j in range(k):  # block index
-//         row_len = (k - j) * b
-//         start = j * a + 1
-//         if row_len < start:
-//             continue
-//         end = (j + 1) * a
-//         cand = end if end < row_len else row_len
-//         if cand > d:
-//             d = cand
-//     # d >= 1 always for valid staircases
-//     block_of_row_d = (d - 1) // a
-//     lambda_d = (k - block_of_row_d) * b
-//     M = lambda_d - d + 1
-//
-//     # Column height at column d: number of rows with length >= d
-//     need_blocks = ceil_div(d, b)  # smallest t with t*b >= d
-//     last_block = k - need_blocks  # max j such that (k-j)*b >= d
-//     col_height = (last_block + 1) * a
-//     N = col_height - d + 1
-//
-//     # Sanity: reduced hook must be non-empty.
-//     if M <= 0 or N <= 0:
-//         raise ValueError(
-//             f"Invalid reduced hook for (a,b,k)=({a},{b},{k}): (M,N)=({M},{N}), d={d}"
-//         )
-//     return M, N
-//
-//
-// def classify_staircase(a: int, b: int, k: int) -> tuple[str, int | tuple[int, int]]:
-//     """
-//     Classify a staircase into either:
-//       - ("int", v) where v is an integer game value, or
-//       - ("hot", (t, R)) where the game is a (possibly zero-temperature) hot game
-//         with options {L | R}, L >= R integers, and:
-//             t = L - R   (temperature * 2 in some conventions)
-//             R = right option (chosen when Down plays on this component)
-//         Left option is L = R + t.
-//
-//     For a reduced hook (M, 1^(N-1)):
-//       - N == 1: value is M-1
-//       - M == 1: value is -(N-1)
-//       - otherwise: value is {M-2 | -(N-2)}
-//     """
-//     M, N = reduced_hook(a, b, k)
-//     if N == 1:  # single row
-//         return "int", M - 1
-//     if M == 1:  # single column
-//         return "int", -(N - 1)
-//
-//     L = M - 2
-//     R = -(N - 2)
-//     t = L - R  # = M + N - 4
-//     return "hot", (t, R)
-//
-//
-// def counts_for_w(w: int) -> tuple[dict[int, int], dict[tuple[int, int], int]]:
-//     """
-//     Enumerate all (a,b,k)-staircases with a+b+k <= w and count how many map to each:
-//       - integer value v  -> ints[v]
-//       - hot type (t, R)  -> hots[(t, R)]
-//     """
-//     ints: dict[int, int] = defaultdict(int)
-//     hots: dict[tuple[int, int], int] = defaultdict(int)
-//
-//     for a in range(1, w - 1):
-//         for b in range(1, w - a):
-//             max_k = w - a - b
-//             if max_k < 1:
-//                 continue
-//             for k in range(1, max_k + 1):
-//                 typ, val = classify_staircase(a, b, k)
-//                 if typ == "int":
-//                     ints[int(val)] += 1
-//                 else:
-//                     hots[val] += 1
-//     return ints, hots
-//
-//
-// def solve(m: int, w: int) -> int:
-//     """
-//     Compute S(m, w) modulo MOD.
-//     """
-//     # factorials for converting multiset counts -> ordered sequence counts
-//     fact = [1] * (m + 1)
-//     for i in range(1, m + 1):
-//         fact[i] = fact[i - 1] * i % MOD
-//     invfact = [1] * (m + 1)
-//     invfact[m] = pow(fact[m], MOD - 2, MOD)
-//     for i in range(m, 0, -1):
-//         invfact[i - 1] = invfact[i] * i % MOD
-//
-//     ints, hots = counts_for_w(w)
-//
-//     # DP over "hot" components in descending temperature.
-//     # State: used_count, parity, sum_value -> coefficient in EGF form (product c^k / k!)
-//     # parity = 0 means Right to move when the next hot component is played,
-//     # parity = 1 means Down to move.
-//     dp_hot = [[defaultdict(int) for _ in range(2)] for _ in range(m + 1)]
-//     dp_hot[0][0][0] = 1
-//
-//     hot_types = sorted(
-//         ((t, R, c) for (t, R), c in hots.items()),
-//         key=lambda x: (-x[0], x[1]),
-//     )
-//
-//     for t, R, c in hot_types:
-//         # poly[k] = c^k / k!
-//         poly = [0] * (m + 1)
-//         poly[0] = 1
-//         p = 1
-//         for k in range(1, m + 1):
-//             p = p * c % MOD
-//             poly[k] = p * invfact[k] % MOD
-//
-//         new = [[defaultdict(int) for _ in range(2)] for _ in range(m + 1)]
-//         for used in range(m + 1):
-//             for parity in (0, 1):
-//                 cur = dp_hot[used][parity]
-//                 if not cur:
-//                     continue
-//                 for s, coeff in cur.items():
-//                     for k in range(0, m - used + 1):
-//                         mult = poly[k]
-//                         if mult == 0:
-//                             continue
-//                         # In a run of k hot components at temperature t:
-//                         # Right gets t extra points on each of Right's turns.
-//                         right_turns = (k + 1 - parity) // 2
-//                         delta = k * R + right_turns * t
-//                         nu = used + k
-//                         np = parity ^ (k & 1)
-//                         ns = s + delta
-//                         new[nu][np][ns] = (new[nu][np][ns] + coeff * mult) % MOD
-//         dp_hot = new
-//
-//     # DP over integer-valued components (they simply add).
-//     dp_int = [defaultdict(int) for _ in range(m + 1)]
-//     dp_int[0][0] = 1
-//     for v, c in ints.items():
-//         poly = [0] * (m + 1)
-//         poly[0] = 1
-//         p = 1
-//         for k in range(1, m + 1):
-//             p = p * c % MOD
-//             poly[k] = p * invfact[k] % MOD
-//
-//         new = [defaultdict(int) for _ in range(m + 1)]
-//         for used in range(m + 1):
-//             cur = dp_int[used]
-//             if not cur:
-//                 continue
-//             for s, coeff in cur.items():
-//                 for k in range(0, m - used + 1):
-//                     mult = poly[k]
-//                     if mult == 0:
-//                         continue
-//                     nu = used + k
-//                     ns = s + k * v
-//                     new[nu][ns] = (new[nu][ns] + coeff * mult) % MOD
-//         dp_int = new
-//
-//     # Combine hot and integer parts, apply the win rule.
-//     # After all hot games are played, the position is a number (sum_value).
-//     # Right wins if sum_value > 0, or if sum_value == 0 and the number of hot games is odd
-//     # (equivalently parity == 1 at the transition to the purely numeric phase).
-//     multiset_count = 0
-//     for j in range(m + 1):
-//         for parity in (0, 1):
-//             for s_hot, ch in dp_hot[j][parity].items():
-//                 for s_int, ci in dp_int[m - j].items():
-//                     total = s_hot + s_int
-//                     if total > 0 or (total == 0 and parity == 1):
-//                         multiset_count = (multiset_count + ch * ci) % MOD
-//
-//     # Convert EGF-weighted multiset counts to ordered sequences.
-//     return multiset_count * fact[m] % MOD
-//
-//
-// def main() -> None:
-//     # Test values from the problem statement:
-//     assert solve(2, 4) == 7
-//     assert solve(3, 9) == 315319
-//
-//     print(solve(8, 64) % MOD)
-//
-//
-// if __name__ == "__main__":
-//     main()
-// === End Python reference ===
+// Port of the Python solution embedded in the original stub.
+// Computes S(8, 64) mod 10^9+7.
+
+use std::collections::HashMap;
+
+const MOD: u64 = 1_000_000_007;
+
+fn ceil_div(a: i64, b: i64) -> i64 {
+    (a + b - 1) / b
+}
+
+fn reduced_hook(a: i64, b: i64, k: i64) -> (i64, i64) {
+    // Compute Durfee size d
+    let mut d: i64 = 0;
+    for j in 0..k {
+        let row_len = (k - j) * b;
+        let start = j * a + 1;
+        if row_len < start {
+            continue;
+        }
+        let end = (j + 1) * a;
+        let cand = if end < row_len { end } else { row_len };
+        if cand > d {
+            d = cand;
+        }
+    }
+    let block_of_row_d = (d - 1) / a;
+    let lambda_d = (k - block_of_row_d) * b;
+    let m_val = lambda_d - d + 1;
+
+    // Column height at column d
+    let need_blocks = ceil_div(d, b);
+    let last_block = k - need_blocks;
+    let col_height = (last_block + 1) * a;
+    let n_val = col_height - d + 1;
+
+    (m_val, n_val)
+}
+
+#[derive(Debug)]
+enum Classification {
+    Int(i64),
+    Hot(i64, i64), // (t, R)
+}
+
+fn classify_staircase(a: i64, b: i64, k: i64) -> Classification {
+    let (m_val, n_val) = reduced_hook(a, b, k);
+    if n_val == 1 {
+        return Classification::Int(m_val - 1);
+    }
+    if m_val == 1 {
+        return Classification::Int(-(n_val - 1));
+    }
+    let l = m_val - 2;
+    let r = -(n_val - 2);
+    let t = l - r; // = m_val + n_val - 4
+    Classification::Hot(t, r)
+}
+
+fn counts_for_w(w: i64) -> (HashMap<i64, u64>, HashMap<(i64, i64), u64>) {
+    let mut ints: HashMap<i64, u64> = HashMap::new();
+    let mut hots: HashMap<(i64, i64), u64> = HashMap::new();
+
+    for a in 1..w - 1 {
+        for b in 1..w - a {
+            let max_k = w - a - b;
+            if max_k < 1 {
+                continue;
+            }
+            for k in 1..=max_k {
+                match classify_staircase(a, b, k) {
+                    Classification::Int(v) => {
+                        *ints.entry(v).or_insert(0) += 1;
+                    }
+                    Classification::Hot(t, r) => {
+                        *hots.entry((t, r)).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+    (ints, hots)
+}
+
+fn solve(m: usize, w: i64) -> u64 {
+    // Factorials and inverse factorials mod MOD
+    let mut fact = vec![1u64; m + 1];
+    for i in 1..=m {
+        fact[i] = fact[i - 1] * i as u64 % MOD;
+    }
+    let mut invfact = vec![1u64; m + 1];
+    invfact[m] = mod_pow(fact[m], MOD - 2);
+    for i in (1..=m).rev() {
+        invfact[i - 1] = invfact[i] * i as u64 % MOD;
+    }
+
+    let (ints, hots) = counts_for_w(w);
+
+    // DP over hot components in descending temperature.
+    // State: dp_hot[used][parity] -> HashMap<sum_value, coeff>
+    // parity 0 = Right to move, 1 = Down to move
+    let mut dp_hot: Vec<[HashMap<i64, u64>; 2]> = Vec::with_capacity(m + 1);
+    for _ in 0..=m {
+        dp_hot.push([HashMap::new(), HashMap::new()]);
+    }
+    dp_hot[0][0].insert(0, 1);
+
+    let mut hot_types: Vec<(i64, i64, u64)> = hots
+        .iter()
+        .map(|(&(t, r), &c)| (t, r, c))
+        .collect();
+    hot_types.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+
+    for &(t, r_val, c) in &hot_types {
+        // poly[k] = c^k / k! mod MOD
+        let mut poly = vec![0u64; m + 1];
+        poly[0] = 1;
+        let mut p = 1u64;
+        for k in 1..=m {
+            p = p * (c % MOD) % MOD;
+            poly[k] = p % MOD * invfact[k] % MOD;
+        }
+
+        let mut new_dp: Vec<[HashMap<i64, u64>; 2]> = Vec::with_capacity(m + 1);
+        for _ in 0..=m {
+            new_dp.push([HashMap::new(), HashMap::new()]);
+        }
+
+        for used in 0..=m {
+            for parity in 0..2usize {
+                let cur = &dp_hot[used][parity];
+                if cur.is_empty() {
+                    continue;
+                }
+                for (&s, &coeff) in cur.iter() {
+                    for k in 0..=(m - used) {
+                        let mult = poly[k];
+                        if mult == 0 {
+                            continue;
+                        }
+                        let right_turns = ((k as i64) + 1 - parity as i64) / 2;
+                        let delta = k as i64 * r_val + right_turns * t;
+                        let nu = used + k;
+                        let np = parity ^ (k & 1);
+                        let ns = s + delta;
+                        let entry = new_dp[nu][np].entry(ns).or_insert(0);
+                        *entry = (*entry + coeff % MOD * mult % MOD) % MOD;
+                    }
+                }
+            }
+        }
+        dp_hot = new_dp;
+    }
+
+    // DP over integer-valued components
+    // State: dp_int[used] -> HashMap<sum_value, coeff>
+    let mut dp_int: Vec<HashMap<i64, u64>> = Vec::with_capacity(m + 1);
+    for _ in 0..=m {
+        dp_int.push(HashMap::new());
+    }
+    dp_int[0].insert(0, 1);
+
+    for (&v, &c) in &ints {
+        let mut poly = vec![0u64; m + 1];
+        poly[0] = 1;
+        let mut p = 1u64;
+        for k in 1..=m {
+            p = p * (c % MOD) % MOD;
+            poly[k] = p % MOD * invfact[k] % MOD;
+        }
+
+        let mut new_dp: Vec<HashMap<i64, u64>> = Vec::with_capacity(m + 1);
+        for _ in 0..=m {
+            new_dp.push(HashMap::new());
+        }
+
+        for used in 0..=m {
+            let cur = &dp_int[used];
+            if cur.is_empty() {
+                continue;
+            }
+            for (&s, &coeff) in cur.iter() {
+                for k in 0..=(m - used) {
+                    let mult = poly[k];
+                    if mult == 0 {
+                        continue;
+                    }
+                    let nu = used + k;
+                    let ns = s + k as i64 * v;
+                    let entry = new_dp[nu].entry(ns).or_insert(0);
+                    *entry = (*entry + coeff % MOD * mult % MOD) % MOD;
+                }
+            }
+        }
+        dp_int = new_dp;
+    }
+
+    // Combine hot and integer parts
+    let mut multiset_count = 0u64;
+    for j in 0..=m {
+        let rem = m - j;
+        for parity in 0..2usize {
+            let hot_map = &dp_hot[j][parity];
+            if hot_map.is_empty() {
+                continue;
+            }
+            let int_map = &dp_int[rem];
+            if int_map.is_empty() {
+                continue;
+            }
+            for (&s_hot, &ch) in hot_map.iter() {
+                for (&s_int, &ci) in int_map.iter() {
+                    let total = s_hot + s_int;
+                    if total > 0 || (total == 0 && parity == 1) {
+                        multiset_count = (multiset_count + ch % MOD * (ci % MOD) % MOD) % MOD;
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert EGF to ordered sequences
+    multiset_count % MOD * fact[m] % MOD
+}
+
+fn mod_pow(mut base: u64, mut exp: u64) -> u64 {
+    let mut result = 1u64;
+    base %= MOD;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * base % MOD;
+        }
+        base = base * base % MOD;
+        exp >>= 1;
+    }
+    result
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    // Debug: verify test cases
+    debug_assert_eq!(solve(2, 4), 7);
+    debug_assert_eq!(solve(3, 9), 315319);
+
+    println!("{}", solve(8, 64));
 }

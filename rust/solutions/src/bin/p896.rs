@@ -1,229 +1,202 @@
-// Problem 896
-// TODO: Port the Python solution below to Rust
-//
-// === Python reference ===
-// #!/usr/bin/env python3
-// """
-// Project Euler 896 — Divisible Ranges
+// Problem 896 - Divisible Ranges
 //
 // A range [a..a+L-1] is "divisible" if its numbers can be permuted so that
 // the n-th term is a multiple of n, for n = 1..L.
 //
-// This program computes the 36th divisible range of length 36 and prints
-// the smallest number a.
-//
-// No external libraries are used.
-// """
-//
-// import math
-// from typing import Dict, List, Optional, Set, Tuple
-//
-//
-// def egcd(a: int, b: int) -> Tuple[int, int, int]:
-//     """Extended gcd: returns (g, x, y) with ax + by = g = gcd(a,b)."""
-//     x0, y0, x1, y1 = 1, 0, 0, 1
-//     while b:
-//         q = a // b
-//         a, b = b, a % b
-//         x0, x1 = x1, x0 - q * x1
-//         y0, y1 = y1, y0 - q * y1
-//     return a, x0, y0
-//
-//
-// def crt_merge(r1: int, m1: int, r2: int, m2: int) -> Optional[Tuple[int, int]]:
-//     """
-//     Merge:
-//         a ≡ r1 (mod m1)
-//         a ≡ r2 (mod m2)
-//     Returns (r, m) with a ≡ r (mod m), where m = lcm(m1, m2),
-//     or None if inconsistent.
-//     """
-//     g = math.gcd(m1, m2)
-//     if (r2 - r1) % g != 0:
-//         return None
-//     l = (m1 // g) * m2
-//     # Reduce to:
-//     #   r = r1 + m1 * t
-//     #   m1 * t ≡ (r2 - r1) (mod m2)
-//     m1g = m1 // g
-//     m2g = m2 // g
-//     diff = (r2 - r1) // g
-//     _, inv, _ = egcd(m1g, m2g)
-//     inv %= m2g
-//     t = (diff * inv) % m2g
-//     r = (r1 + m1 * t) % l
-//     return r, l
-//
-//
-// def lcm_upto(n: int) -> int:
-//     m = 1
-//     for i in range(1, n + 1):
-//         m = (m // math.gcd(m, i)) * i
-//     return m
-//
-//
-// def _candidates_offsets(L: int, unused_mask: int, target: int, step: int) -> List[int]:
-//     """
-//     Return offsets j in [0..L-1] such that:
-//       j ≡ target (mod step)
-//     and j is unused (bit set in unused_mask).
-//     """
-//     res: List[int] = []
-//     j = target
-//     while j < L:
-//         if (unused_mask >> j) & 1:
-//             res.append(j)
-//         j += step
-//     return res
-//
-//
-// def _pick_index_mrv(
-//     L: int, r: int, m: int, unused_mask: int, remaining_mask: int
-// ) -> Optional[Tuple[int, List[int]]]:
-//     """
-//     Choose the remaining index i with the fewest feasible offsets, i.e. MRV.
-//     Tie-break towards larger i (important to constrain the CRT early).
-//     """
-//     best_i = 0
-//     best_cands: Optional[List[int]] = None
-//     best_count = 10**9
-//
-//     # Iterate indices descending to get good tie-breaking for free.
-//     for i in range(L, 0, -1):
-//         if ((remaining_mask >> (i - 1)) & 1) == 0:
-//             continue
-//         g = math.gcd(m, i)
-//         target = (-r) % g
-//         cands = _candidates_offsets(L, unused_mask, target, g)
-//         c = len(cands)
-//         if c == 0:
-//             return None
-//         if c < best_count or (c == best_count and i > best_i):
-//             best_count = c
-//             best_i = i
-//             best_cands = cands
-//
-//     return best_i, (best_cands if best_cands is not None else [])
-//
-//
-// def enumerate_valid_residues(L: int) -> Tuple[Set[int], int]:
-//     """
-//     Enumerate all residues a (mod M) for which [a..a+L-1] is a divisible range,
-//     where M = lcm(1..L).
-//
-//     Returns (residue_set, M).
-//
-//     Key idea:
-//       Choosing which offset j hosts the multiple of i forces a ≡ -j (mod i).
-//       A full permutation corresponds to a consistent system of congruences.
-//       We enumerate those systems with backtracking + CRT, using bitmasks and
-//       memoization to keep the state space small.
-//     """
-//     M = lcm_upto(L)
-//
-//     all_offsets_mask = (1 << L) - 1
-//     all_indices_mask = (1 << L) - 1  # bit (i-1) => index i remaining
-//
-//     residues: Set[int] = set()
-//     visited: Set[Tuple[int, int, int, int]] = set()
-//
-//     def dfs(r: int, m: int, unused_mask: int, remaining_mask: int) -> None:
-//         r %= m
-//         key = (r, m, unused_mask, remaining_mask)
-//         if key in visited:
-//             return
-//         visited.add(key)
-//
-//         if remaining_mask == 0:
-//             # m should have reached M; store the representative residue in [0..m-1]
-//             residues.add(r)
-//             return
-//
-//         pick = _pick_index_mrv(L, r, m, unused_mask, remaining_mask)
-//         if pick is None:
-//             return
-//         i, cands = pick
-//         remaining2 = remaining_mask & ~(1 << (i - 1))
-//
-//         for j in cands:
-//             merged = crt_merge(r, m, (-j) % i, i)
-//             if merged is None:
-//                 continue
-//             r2, m2 = merged
-//             dfs(r2, m2, unused_mask & ~(1 << j), remaining2)
-//
-//     dfs(0, 1, all_offsets_mask, all_indices_mask)
-//     return residues, M
-//
-//
-// def nth_divisible_range_start(L: int, n: int) -> int:
-//     """
-//     Return the n-th divisible range start a for length L (1-indexed).
-//     """
-//     residues, M = enumerate_valid_residues(L)
-//     starts: List[int] = []
-//     for r in residues:
-//         starts.append(r if r > 0 else M)  # a must be positive
-//     starts.sort()
-//     return starts[n - 1]
-//
-//
-// def is_divisible_range(a: int, L: int) -> bool:
-//     """
-//     Verify divisibility of a specific range [a..a+L-1] via bipartite matching.
-//
-//     Left nodes: indices 1..L
-//     Right nodes: offsets 0..L-1 representing numbers a+offset
-//     Edge i->j if (a+j) is divisible by i.
-//     """
-//     # Build adjacency lists (small: L<=36 in this problem).
-//     adj: List[List[int]] = [[] for _ in range(L + 1)]
-//     for i in range(1, L + 1):
-//         row = []
-//         for j in range(L):
-//             if (a + j) % i == 0:
-//                 row.append(j)
-//         adj[i] = row
-//
-//     match_r = [-1] * L  # which i is matched to offset j
-//
-//     def dfs(i: int, seen: List[bool]) -> bool:
-//         for j in adj[i]:
-//             if seen[j]:
-//                 continue
-//             seen[j] = True
-//             if match_r[j] == -1 or dfs(match_r[j], seen):
-//                 match_r[j] = i
-//                 return True
-//         return False
-//
-//     for i in range(1, L + 1):
-//         seen = [False] * L
-//         if not dfs(i, seen):
-//             return False
-//     return True
-//
-//
-// def _self_test() -> None:
-//     # Tests from the problem statement (length 4):
-//     # The first three divisible ranges of length 4 are [1..4], [2..5], [3..6],
-//     # and [6..9] is the 4th such range.
-//     assert nth_divisible_range_start(4, 1) == 1
-//     assert nth_divisible_range_start(4, 2) == 2
-//     assert nth_divisible_range_start(4, 3) == 3
-//     assert nth_divisible_range_start(4, 4) == 6
-//     assert is_divisible_range(6, 4)
-//
-//
-// def main() -> None:
-//     _self_test()
-//     print(nth_divisible_range_start(36, 36))
-//
-//
-// if __name__ == "__main__":
-//     main()
-// === End Python reference ===
+// We compute the 36th divisible range of length 36 and print the smallest number a.
+
+use std::collections::HashSet;
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+/// CRT merge: a ≡ r1 (mod m1) and a ≡ r2 (mod m2).
+/// Returns Some((r, lcm(m1,m2))) or None if inconsistent.
+/// Uses i128 internally to avoid overflow since m1*m2 can be up to ~48+48 = 96 bits.
+fn crt_merge(r1: i64, m1: i64, r2: i64, m2: i64) -> Option<(i64, i64)> {
+    let g = gcd(m1, m2);
+    if (r2 - r1) % g != 0 {
+        return None;
+    }
+    let lcm = (m1 / g) * m2;
+    let m1g = m1 / g;
+    let m2g = m2 / g;
+    let diff = (r2 - r1) / g;
+
+    // Extended gcd to find inverse of m1g mod m2g
+    let (_, inv, _) = extended_gcd(m1g, m2g);
+    let inv = ((inv % m2g) + m2g) % m2g;
+
+    // t = (diff * inv) % m2g, but use i128 to avoid overflow
+    let t = ((diff as i128 * inv as i128) % m2g as i128) as i64;
+    let t = ((t % m2g) + m2g) % m2g;
+
+    // r = (r1 + m1 * t) % lcm
+    let r = ((r1 as i128 + m1 as i128 * t as i128) % lcm as i128) as i64;
+    let r = ((r % lcm) + lcm) % lcm;
+    Some((r, lcm))
+}
+
+fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
+    let (mut x0, mut y0, mut x1, mut y1) = (1i64, 0i64, 0i64, 1i64);
+    let (mut a, mut b) = (a, b);
+    while b != 0 {
+        let q = a / b;
+        let tmp = b;
+        b = a - q * b;
+        a = tmp;
+        let tmp = x1;
+        x1 = x0 - q * x1;
+        x0 = tmp;
+        let tmp = y1;
+        y1 = y0 - q * y1;
+        y0 = tmp;
+    }
+    (a, x0, y0)
+}
+
+fn lcm_upto(n: i64) -> i64 {
+    let mut m: i64 = 1;
+    for i in 1..=n {
+        m = (m / gcd(m, i)) * i;
+    }
+    m
+}
+
+/// Return offsets j in [0..L-1] such that j ≡ target (mod step) and bit j is set in unused_mask.
+fn candidates_offsets(l: usize, unused_mask: u64, target: usize, step: usize) -> Vec<usize> {
+    let mut res = Vec::new();
+    let mut j = target;
+    while j < l {
+        if (unused_mask >> j) & 1 != 0 {
+            res.push(j);
+        }
+        j += step;
+    }
+    res
+}
+
+/// Pick the remaining index i (1..=L) with fewest feasible offsets (MRV heuristic).
+/// Tie-break towards larger i.
+/// Returns None if any remaining index has 0 candidates (dead end).
+fn pick_index_mrv(
+    l: usize,
+    r: i64,
+    m: i64,
+    unused_mask: u64,
+    remaining_mask: u64,
+) -> Option<(usize, Vec<usize>)> {
+    let mut best_i: usize = 0;
+    let mut best_cands: Vec<usize> = Vec::new();
+    let mut best_count: usize = usize::MAX;
+
+    // Iterate indices descending for good tie-breaking
+    for i in (1..=l).rev() {
+        if (remaining_mask >> (i - 1)) & 1 == 0 {
+            continue;
+        }
+        let g = gcd(m, i as i64) as usize;
+        let target = if r == 0 { 0 } else { (g - (r as usize % g)) % g };
+        let cands = candidates_offsets(l, unused_mask, target, g);
+        let c = cands.len();
+        if c == 0 {
+            return None;
+        }
+        if c < best_count || (c == best_count && i > best_i) {
+            best_count = c;
+            best_i = i;
+            best_cands = cands;
+        }
+    }
+
+    if best_i == 0 {
+        return None;
+    }
+    Some((best_i, best_cands))
+}
+
+fn enumerate_valid_residues(l: usize) -> (Vec<i64>, i64) {
+    let big_m = lcm_upto(l as i64);
+    let all_offsets_mask: u64 = (1u64 << l) - 1;
+    let all_indices_mask: u64 = (1u64 << l) - 1;
+
+    let mut residues: HashSet<i64> = HashSet::new();
+    let mut visited: HashSet<(i64, i64, u64, u64)> = HashSet::new();
+
+    fn dfs(
+        l: usize,
+        r: i64,
+        m: i64,
+        unused_mask: u64,
+        remaining_mask: u64,
+        residues: &mut HashSet<i64>,
+        visited: &mut HashSet<(i64, i64, u64, u64)>,
+    ) {
+        let r = ((r % m) + m) % m;
+        let key = (r, m, unused_mask, remaining_mask);
+        if visited.contains(&key) {
+            return;
+        }
+        visited.insert(key);
+
+        if remaining_mask == 0 {
+            residues.insert(r);
+            return;
+        }
+
+        let pick = pick_index_mrv(l, r, m, unused_mask, remaining_mask);
+        if pick.is_none() {
+            return;
+        }
+        let (i, cands) = pick.unwrap();
+        let remaining2 = remaining_mask & !(1u64 << (i - 1));
+
+        for j in cands {
+            let rhs = (-(j as i64)).rem_euclid(i as i64);
+            let merged = crt_merge(r, m, rhs, i as i64);
+            if let Some((r2, m2)) = merged {
+                dfs(l, r2, m2, unused_mask & !(1u64 << j), remaining2, residues, visited);
+            }
+        }
+    }
+
+    dfs(
+        l,
+        0,
+        1,
+        all_offsets_mask,
+        all_indices_mask,
+        &mut residues,
+        &mut visited,
+    );
+
+    let res: Vec<i64> = residues.into_iter().collect();
+    (res, big_m)
+}
+
+fn nth_divisible_range_start(l: usize, n: usize) -> i64 {
+    let (residues, big_m) = enumerate_valid_residues(l);
+    let mut starts: Vec<i64> = residues
+        .into_iter()
+        .map(|r| if r > 0 { r } else { big_m })
+        .collect();
+    starts.sort();
+    starts[n - 1]
+}
 
 fn main() {
-    todo!("Port Python solution to Rust");
+    // Self-test with length 4
+    debug_assert_eq!(nth_divisible_range_start(4, 1), 1);
+    debug_assert_eq!(nth_divisible_range_start(4, 2), 2);
+    debug_assert_eq!(nth_divisible_range_start(4, 3), 3);
+    debug_assert_eq!(nth_divisible_range_start(4, 4), 6);
+
+    println!("{}", nth_divisible_range_start(36, 36));
 }
