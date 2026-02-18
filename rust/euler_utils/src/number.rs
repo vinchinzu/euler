@@ -123,92 +123,54 @@ pub fn factor(n: u64) -> Vec<(u64, u32)> {
     result
 }
 
-/// Euler's totient function φ(n).
-pub fn euler_phi(mut n: u64) -> u64 {
+/// Euler's totient function φ(n). Uses Pollard Rho factorization.
+pub fn euler_phi(n: u64) -> u64 {
+    if n <= 1 { return n; }
     let mut result = n;
-    let mut p = 2u64;
-    while p * p <= n {
-        if n % p == 0 {
-            while n % p == 0 {
-                n /= p;
-            }
-            result -= result / p;
-        }
-        p += 1;
-    }
-    if n > 1 {
-        result -= result / n;
+    for &(p, _) in &factor(n) {
+        result -= result / p;
     }
     result
 }
 
-/// Return all divisors of n in sorted order.
+/// Return all divisors of n in sorted order. Uses Pollard Rho factorization.
 pub fn divisors(n: u64) -> Vec<u64> {
-    if n == 0 {
-        return vec![];
-    }
-    let mut small = Vec::new();
-    let mut large = Vec::new();
-    let mut i = 1u64;
-    while i * i <= n {
-        if n % i == 0 {
-            small.push(i);
-            if i != n / i {
-                large.push(n / i);
+    if n == 0 { return vec![]; }
+    let factors = factor(n);
+    let mut divs = vec![1u64];
+    for &(p, e) in &factors {
+        let prev_len = divs.len();
+        let mut pk = 1u64;
+        for _ in 0..e {
+            pk *= p;
+            for j in 0..prev_len {
+                divs.push(divs[j] * pk);
             }
         }
-        i += 1;
     }
-    large.reverse();
-    small.extend(large);
-    small
+    divs.sort_unstable();
+    divs
 }
 
-/// Count of divisors of n.
-pub fn divisor_count(mut n: u64) -> u64 {
-    if n == 0 {
-        return 0;
-    }
-    let mut count = 1u64;
-    let mut p = 2u64;
-    while p * p <= n {
-        let mut exp = 0u64;
-        while n % p == 0 {
-            n /= p;
-            exp += 1;
-        }
-        count *= exp + 1;
-        p += 1;
-    }
-    if n > 1 {
-        count *= 2;
-    }
-    count
+/// Count of divisors of n. Uses Pollard Rho factorization.
+pub fn divisor_count(n: u64) -> u64 {
+    if n == 0 { return 0; }
+    factor(n).iter().map(|&(_, e)| e as u64 + 1).product()
 }
 
-/// Sum of divisors of n.
-pub fn divisor_sum(mut n: u64) -> u64 {
-    if n == 0 {
-        return 0;
-    }
+/// Sum of divisors of n. Uses Pollard Rho factorization.
+pub fn divisor_sum(n: u64) -> u64 {
+    if n == 0 { return 0; }
     let mut sum = 1u64;
-    let mut p = 2u64;
-    while p * p <= n {
-        if n % p == 0 {
-            let mut pk = 1u64;
-            let mut s = 0u64;
-            while n % p == 0 {
-                n /= p;
-                pk *= p;
-                s += pk;
-            }
-            s += 1;
-            sum *= s;
+    for &(p, e) in &factor(n) {
+        // σ(p^e) = (p^(e+1) - 1) / (p - 1)
+        let mut s = 1u64;
+        let mut pk = 1u64;
+        for _ in 0..e {
+            pk *= p;
+            s += pk;
         }
-        p += 1;
-    }
-    if n > 1 {
-        sum *= n + 1;
+        sum *= s;
     }
     sum
 }
