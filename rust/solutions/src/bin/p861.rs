@@ -1,222 +1,441 @@
 // Project Euler 861 - Bi-unitary divisors
-// sum_{k=2}^{10} Q_k(10^12) using Lucy DP for pi(x) and signature enumeration
+//
+// We need sum_{k=2}^{10} Q_k(10^12), where Q_k(N) counts n <= N with
+// P(n) = n^k (P(n) = product of all bi-unitary divisors of n).
+//
+// For n = prod p_i^a_i:
+//   D_bu(n) = prod f(a_i), with f(a) = a (a even), a+1 (a odd)
+// and P(n) = n^(D_bu(n)/2), so we need D_bu(n) = 2k.
+//
+// Steps:
+// 1) Generate exponent signatures [a_i] such that prod f(a_i) = 2k.
+// 2) For each signature, enumerate unique exponent permutations in
+//    increasing-prime order (p1 < p2 < ...).
+// 3) Count tuples with DFS + pi(x) for the final prime.
+//    This removes expensive cross-group collision checks from prior version.
 
-const N_LIMIT: i64 = 1_000_000_000_000;
-const SIEVE_LIM: usize = 1_000_001;
+use rayon::prelude::*;
+use std::collections::BTreeSet;
+use std::time::Instant;
 
-static mut S_SMALL: [i64; SIEVE_LIM + 1] = [0; SIEVE_LIM + 1];
-static mut S_LARGE: [i64; SIEVE_LIM + 1] = [0; SIEVE_LIM + 1];
-static mut ISQRT_VAL: i64 = 0;
+const N_LIMIT: u64 = 1_000_000_000_000;
+const SIEVE_LIM: usize = 1_000_000;
+const MAX_EXP: usize = 20;
 
-fn sieve_primes() -> Vec<i32> {
-    let mut is_prime = vec![true; SIEVE_LIM + 1];
+fn sieve_primes(limit: usize) -> Vec<u32> {
+    let mut is_prime = vec![true; limit + 1];
     is_prime[0] = false;
     is_prime[1] = false;
-    for p in 2..=SIEVE_LIM {
+
+    let mut p = 2usize;
+    while p * p <= limit {
         if is_prime[p] {
-            let mut i = p * p;
-            while i <= SIEVE_LIM { is_prime[i] = false; i += p; }
+            let mut j = p * p;
+            while j <= limit {
+                is_prime[j] = false;
+                j += p;
+            }
         }
+        p += 1;
     }
-    (2..=SIEVE_LIM).filter(|&p| is_prime[p]).map(|p| p as i32).collect()
+
+    (2..=limit).filter(|&x| is_prime[x]).map(|x| x as u32).collect()
 }
 
-fn compute_pi(n: i64, prime_list: &[i32]) {
-    let mut isqrt = (n as f64).sqrt() as i64;
-    while (isqrt + 1) * (isqrt + 1) <= n { isqrt += 1; }
-    while isqrt > 0 && isqrt * isqrt > n { isqrt -= 1; }
+struct PrimePi {
+    n: u64,
+    isqrt: u64,
+    s_small: Vec<i64>,
+    s_large: Vec<i64>,
+}
 
-    unsafe {
-        ISQRT_VAL = isqrt;
-        for v in 0..=isqrt as usize { S_SMALL[v] = v as i64 - 1; }
-        for k in 1..=isqrt as usize { S_LARGE[k] = n / k as i64 - 1; }
+impl PrimePi {
+    fn new(n: u64, primes: &[u32]) -> Self {
+        let mut isqrt = (n as f64).sqrt() as u64;
+        while (isqrt + 1).saturating_mul(isqrt + 1) <= n {
+            isqrt += 1;
+        }
+        while isqrt.saturating_mul(isqrt) > n {
+            isqrt -= 1;
+        }
 
-        for pi in 0..prime_list.len() {
-            let p = prime_list[pi] as i64;
-            if p > isqrt { break; }
+        let m = isqrt as usize;
+        let mut s_small = vec![0i64; m + 1];
+        let mut s_large = vec![0i64; m + 1];
+
+        for v in 0..=m {
+            s_small[v] = v as i64 - 1;
+        }
+        for k in 1..=m {
+            s_large[k] = (n / k as u64) as i64 - 1;
+        }
+
+        for &p32 in primes {
+            let p = p32 as u64;
+            if p > isqrt {
+                break;
+            }
             let p2 = p * p;
-            if p2 > n { break; }
-            let sp_1 = S_SMALL[(p - 1) as usize];
+            if p2 > n {
+                break;
+            }
+
+            let sp_1 = s_small[(p - 1) as usize];
             let mut k_limit = n / p2;
-            if k_limit > isqrt { k_limit = isqrt; }
+            if k_limit > isqrt {
+                k_limit = isqrt;
+            }
+
             for k in 1..=k_limit as usize {
-                let target = (n / k as i64) / p;
-                let s_target = if target <= isqrt { S_SMALL[target as usize] } else { S_LARGE[k * p as usize] };
-                S_LARGE[k] -= s_target - sp_1;
+                let target = (n / k as u64) / p;
+                let s_target = if target <= isqrt {
+                    s_small[target as usize]
+                } else {
+                    s_large[k * p as usize]
+                };
+                s_large[k] -= s_target - sp_1;
             }
-            for v in (p2 as usize..=isqrt as usize).rev() {
-                S_SMALL[v] -= S_SMALL[v / p as usize] - sp_1;
+
+            for v in (p2 as usize..=m).rev() {
+                s_small[v] -= s_small[v / p as usize] - sp_1;
             }
+        }
+
+        Self {
+            n,
+            isqrt,
+            s_small,
+            s_large,
+        }
+    }
+
+    fn pi(&self, x: u64) -> i64 {
+        if x <= 1 {
+            return 0;
+        }
+        if x <= self.isqrt {
+            self.s_small[x as usize]
+        } else {
+            self.s_large[(self.n / x) as usize]
         }
     }
 }
 
-fn get_pi(x: i64) -> i64 {
-    if x <= 1 { return 0; }
-    unsafe {
-        if x <= ISQRT_VAL { S_SMALL[x as usize] } else { S_LARGE[(N_LIMIT / x) as usize] }
+fn integer_root(n: u64, k: u8) -> u64 {
+    if k == 1 {
+        return n;
     }
-}
+    if k == 2 {
+        let mut r = (n as f64).sqrt() as u64;
+        while (r + 1).saturating_mul(r + 1) <= n {
+            r += 1;
+        }
+        while r.saturating_mul(r) > n {
+            r -= 1;
+        }
+        return r;
+    }
+    if k == 3 {
+        let mut r = (n as f64).cbrt() as u64;
+        while (r + 1)
+            .saturating_mul(r + 1)
+            .saturating_mul(r + 1)
+            <= n
+        {
+            r += 1;
+        }
+        while r.saturating_mul(r).saturating_mul(r) > n {
+            r -= 1;
+        }
+        return r;
+    }
+    if n <= 1 {
+        return n;
+    }
 
-fn integer_root(n: i64, k: i32) -> i64 {
-    if k == 1 { return n; }
-    if n <= 1 { return n; }
-    let mut lo = 1i64;
-    let mut hi = (n as f64).powf(1.0 / k as f64) as i64 + 2;
-    let mut ans = 1i64;
+    let k_u32 = k as u32;
+    let mut lo = 1u64;
+    let mut hi = (n as f64).powf(1.0 / k as f64) as u64 + 2;
+    let mut ans = 1u64;
+
     while lo <= hi {
         let mid = lo + (hi - lo) / 2;
-        let mut p = 1i64;
+        let mut p = 1u64;
         let mut over = false;
-        for _ in 0..k {
-            if p > n / mid { over = true; break; }
+        for _ in 0..k_u32 {
+            if p > n / mid {
+                over = true;
+                break;
+            }
             p *= mid;
         }
-        if !over && p <= n { ans = mid; lo = mid + 1; }
-        else { hi = mid - 1; }
+        if !over && p <= n {
+            ans = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
     }
+
     ans
 }
 
-fn get_factor_partitions(target: i32, count: i32, min_val: i32, current: &mut Vec<i32>, result: &mut Vec<Vec<i32>>) {
+fn factor_partitions(
+    target: u32,
+    count: u32,
+    min_val: u32,
+    current: &mut Vec<u8>,
+    out: &mut Vec<Vec<u8>>,
+) {
     if count == 1 {
         if target >= min_val {
-            let mut p = current.clone();
-            p.push(target);
-            result.push(p);
+            let mut v = current.clone();
+            v.push(target as u8);
+            out.push(v);
         }
         return;
     }
-    for i in min_val..=target {
-        if target % i == 0 {
-            current.push(i);
-            get_factor_partitions(target / i, count - 1, i, current, result);
+
+    for f in min_val..=target {
+        if target % f == 0 {
+            current.push(f as u8);
+            factor_partitions(target / f, count - 1, f, current, out);
             current.pop();
         }
     }
 }
 
-fn generate_signatures(k: i32) -> Vec<Vec<i32>> {
-    let mut sigs: Vec<Vec<i32>> = Vec::new();
-    let mut r = 1;
-    loop {
-        let power_of_2 = 1i64 << (r - 1);
-        if power_of_2 > k as i64 { break; }
-        if k % power_of_2 as i32 == 0 {
-            let target = k / power_of_2 as i32;
-            let mut partitions = Vec::new();
-            let mut current = Vec::new();
-            get_factor_partitions(target, r, 1, &mut current, &mut partitions);
+fn generate_signatures(k: u32) -> Vec<Vec<u8>> {
+    let mut sigs: BTreeSet<Vec<u8>> = BTreeSet::new();
+    let mut r = 1u32;
 
-            for part in &partitions {
-                let n_choices = 1 << r;
-                for mask in 0..n_choices {
-                    let mut a: Vec<i32> = (0..r as usize).map(|i| {
-                        if (mask >> i) & 1 == 1 { 2 * part[i] } else { 2 * part[i] - 1 }
-                    }).collect();
-                    a.sort();
-                    if !sigs.contains(&a) {
-                        sigs.push(a);
+    loop {
+        let pow2 = 1u32 << (r - 1);
+        if pow2 > k {
+            break;
+        }
+        if k % pow2 == 0 {
+            let target = k / pow2;
+            let mut parts = Vec::new();
+            let mut current = Vec::new();
+            factor_partitions(target, r, 1, &mut current, &mut parts);
+
+            for part in parts {
+                let choices = 1u32 << r;
+                for mask in 0..choices {
+                    let mut exps = Vec::with_capacity(r as usize);
+                    for i in 0..r as usize {
+                        let y = part[i] as u16;
+                        let a = if ((mask >> i) & 1) == 1 {
+                            2 * y
+                        } else {
+                            2 * y - 1
+                        };
+                        exps.push(a as u8);
                     }
+                    exps.sort_unstable();
+                    sigs.insert(exps);
                 }
             }
         }
         r += 1;
     }
-    sigs
+
+    sigs.into_iter().collect()
 }
 
-struct BacktrackState<'a> {
-    prime_list: &'a [i32],
-    num_primes: usize,
-    used_primes: Vec<i64>,
-}
-
-impl<'a> BacktrackState<'a> {
-    fn backtrack(&mut self, group_idx: usize, current_prod: i64, groups: &[(i32, i32)]) -> i64 {
-        if group_idx == groups.len() { return 1; }
-        self.backtrack_inner(group_idx, groups[group_idx].1, current_prod, groups, 0)
+fn next_permutation<T: Ord>(a: &mut [T]) -> bool {
+    if a.len() < 2 {
+        return false;
     }
 
-    fn backtrack_inner(&mut self, group_idx: usize, remain: i32, current_prod: i64,
-                       groups: &[(i32, i32)], min_p_idx: usize) -> i64 {
-        let exp = groups[group_idx].0;
+    let mut i = a.len() - 2;
+    loop {
+        if a[i] < a[i + 1] {
+            break;
+        }
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+    }
 
-        if remain == 0 {
-            return self.backtrack(group_idx + 1, current_prod, groups);
+    let mut j = a.len() - 1;
+    while a[j] <= a[i] {
+        j -= 1;
+    }
+    a.swap(i, j);
+    a[i + 1..].reverse();
+    true
+}
+
+fn unique_permutations(mut vals: Vec<u8>) -> Vec<Vec<u8>> {
+    vals.sort_unstable();
+    let mut out = Vec::new();
+    loop {
+        out.push(vals.clone());
+        if !next_permutation(&mut vals) {
+            break;
+        }
+    }
+    out
+}
+
+struct Counter {
+    n: u64,
+    primes: Vec<u32>,
+    pi_table: PrimePi,
+    // pow_table[e][i] = primes[i]^e, capped at n+1
+    pow_table: Vec<Vec<u64>>,
+}
+
+impl Counter {
+    fn new(n: u64, primes: Vec<u32>, pi_table: PrimePi) -> Self {
+        let plen = primes.len();
+        let mut pow_table = vec![vec![n + 1; plen]; MAX_EXP + 1];
+        for i in 0..plen {
+            pow_table[0][i] = 1;
+        }
+        for e in 1..=MAX_EXP {
+            for (i, &p32) in primes.iter().enumerate() {
+                let prev = pow_table[e - 1][i];
+                if prev > n {
+                    pow_table[e][i] = n + 1;
+                    continue;
+                }
+                let p = p32 as u64;
+                let val = prev.saturating_mul(p);
+                pow_table[e][i] = if val > n { n + 1 } else { val };
+            }
         }
 
-        let mut total = 0i64;
-
-        // Last prime optimization
-        if group_idx == groups.len() - 1 && remain == 1 {
-            let rem = N_LIMIT / current_prod;
-            let limit_p = integer_root(rem, exp);
-            if limit_p < 2 { return 0; }
-            let lower_bound = if min_p_idx < self.num_primes { self.prime_list[min_p_idx] as i64 } else { return 0; };
-            if limit_p < lower_bound { return 0; }
-            let mut valid_count = get_pi(limit_p) - get_pi(lower_bound - 1);
-            for &up in &self.used_primes {
-                if up >= lower_bound && up <= limit_p { valid_count -= 1; }
-            }
-            return valid_count;
+        Self {
+            n,
+            primes,
+            pi_table,
+            pow_table,
         }
+    }
 
-        for i in min_p_idx..self.num_primes {
-            let p = self.prime_list[i] as i64;
-
-            if self.used_primes.contains(&p) { continue; }
-
-            let mut p_pow = 1i64;
-            let mut over = false;
-            for _ in 0..exp {
-                if p_pow > N_LIMIT / p { over = true; break; }
-                p_pow *= p;
-            }
-            if over { break; }
-            if current_prod > N_LIMIT / p_pow { break; }
-            let next_prod = current_prod * p_pow;
-            if next_prod > N_LIMIT { break; }
-
-            self.used_primes.push(p);
-            total += self.backtrack_inner(group_idx, remain - 1, next_prod, groups, i + 1);
-            self.used_primes.pop();
+    fn count_signature(&self, sig: &[u8]) -> u64 {
+        let mut total = 0u64;
+        for perm in unique_permutations(sig.to_vec()) {
+            eprintln!("start perm={:?}", perm);
+            let t0 = Instant::now();
+            total += self.count_permutation(&perm);
+            eprintln!("perm={:?} took {:?}", perm, t0.elapsed());
         }
         total
+    }
+
+    fn count_permutation(&self, exps: &[u8]) -> u64 {
+        if exps.len() == 1 {
+            return self.count_last(exps[0], 0, self.n);
+        }
+
+        let exp0 = exps[0] as usize;
+        let mut end = 0usize;
+        while end < self.primes.len() {
+            let p_pow = self.pow_table[exp0][end];
+            if p_pow > self.n {
+                break;
+            }
+            let rem = self.n / p_pow;
+            if !self.can_fill_nonlast(exps, 1, end + 1, rem) {
+                break;
+            }
+            end += 1;
+        }
+
+        (0..end)
+            .into_par_iter()
+            .with_max_len(1)
+            .map(|idx| {
+                let rem = self.n / self.pow_table[exp0][idx];
+                self.dfs(exps, 1, idx + 1, rem)
+            })
+            .sum()
+    }
+
+    fn dfs(&self, exps: &[u8], pos: usize, start_idx: usize, rem: u64) -> u64 {
+        let last = exps.len() - 1;
+        if pos == last {
+            return self.count_last(exps[pos], start_idx, rem);
+        }
+
+        let exp = exps[pos] as usize;
+        let mut total = 0u64;
+        let mut idx = start_idx;
+
+        while idx < self.primes.len() {
+            let p_pow = self.pow_table[exp][idx];
+            if p_pow > rem {
+                break;
+            }
+            let rem2 = rem / p_pow;
+
+            if !self.can_fill_nonlast(exps, pos + 1, idx + 1, rem2) {
+                break;
+            }
+
+            total += self.dfs(exps, pos + 1, idx + 1, rem2);
+            idx += 1;
+        }
+
+        total
+    }
+
+    // Necessary bound: can we assign the smallest available primes to all
+    // remaining non-final positions?
+    fn can_fill_nonlast(
+        &self,
+        exps: &[u8],
+        from_pos: usize,
+        mut start_idx: usize,
+        mut rem: u64,
+    ) -> bool {
+        let last = exps.len() - 1;
+        if from_pos >= last {
+            return true;
+        }
+
+        for &e in &exps[from_pos..last] {
+            if start_idx >= self.primes.len() {
+                return false;
+            }
+            let need = self.pow_table[e as usize][start_idx];
+            if need > rem {
+                return false;
+            }
+            rem /= need;
+            start_idx += 1;
+        }
+        true
+    }
+
+    fn count_last(&self, exp: u8, start_idx: usize, rem: u64) -> u64 {
+        let limit = integer_root(rem, exp);
+        if start_idx < self.primes.len() && limit < self.primes[start_idx] as u64 {
+            return 0;
+        }
+
+        let lower_pi = start_idx as i64;
+        let cnt = self.pi_table.pi(limit) - lower_pi;
+        if cnt > 0 { cnt as u64 } else { 0 }
     }
 }
 
 fn main() {
-    let prime_list = sieve_primes();
-    let num_primes = prime_list.len();
-    compute_pi(N_LIMIT, &prime_list);
+    let primes = sieve_primes(SIEVE_LIM);
+    let pi_table = PrimePi::new(N_LIMIT, &primes);
+    let counter = Counter::new(N_LIMIT, primes, pi_table);
 
-    let mut total_sum = 0i64;
-
-    for k in 2..=10 {
+    let mut total_sum = 0u64;
+    for k in 8..=8u32 {
         let sigs = generate_signatures(k);
-        let mut q_k = 0i64;
-
+        let mut q_k = 0u64;
         for sig in &sigs {
-            // Group exponents
-            let mut groups: Vec<(i32, i32)> = Vec::new(); // (exp, count)
-            for &e in sig {
-                if let Some(g) = groups.iter_mut().find(|g| g.0 == e) {
-                    g.1 += 1;
-                } else {
-                    groups.push((e, 1));
-                }
-            }
-            // Sort by exponent descending
-            groups.sort_by(|a, b| b.0.cmp(&a.0));
-
-            let mut state = BacktrackState {
-                prime_list: &prime_list,
-                num_primes,
-                used_primes: Vec::new(),
-            };
-            let count = state.backtrack(0, 1, &groups);
-            q_k += count;
+            q_k += counter.count_signature(sig);
         }
         total_sum += q_k;
     }
