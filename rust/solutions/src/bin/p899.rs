@@ -71,6 +71,36 @@
 //     main()
 // === End Python reference ===
 
+fn l(n: u128) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+
+    // U = losing positions with 1 <= a <= b <= n.
+    let mut u = 0u128;
+    let mut k = 1u32;
+    while (1u128 << (k - 1)) <= n {
+        let lo = 1u128 << (k - 1);
+        let hi = n.min((1u128 << k) - 1);
+        if hi >= lo {
+            let a_k = hi - lo + 1;
+            let m = 1u128 << k;
+            let c_k = if n >= m - 1 { (n - (m - 1)) / m + 1 } else { 0 };
+            u += a_k * c_k;
+        }
+        k += 1;
+    }
+
+    // Diagonal losing positions: a = b = 2^k - 1.
+    let d = 128u32 - (n + 1).leading_zeros() - 1;
+    2 * u - d as u128
+}
+
 fn main() {
-    todo!("Port Python solution to Rust");
+    assert_eq!(l(7), 21);
+    assert_eq!(l(49), 221);
+    assert_eq!(l(1), 1);
+
+    let n = 7u128.pow(17);
+    println!("{}", l(n));
 }
