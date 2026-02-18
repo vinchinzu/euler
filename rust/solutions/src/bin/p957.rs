@@ -62,6 +62,23 @@
 //     main()
 // === End Python reference ===
 
+fn g(n: u32) -> i128 {
+    let sign = if n & 1 == 1 { -1i128 } else { 1i128 };
+    let mut numer = 0i128;
+    numer += 11 * (1i128 << (4 * n));
+    numer += 132 * (1i128 << (3 * n));
+    numer += 564 * (1i128 << (2 * n));
+    numer += 1008 * (1i128 << n);
+    numer += -384 * sign;
+    numer += -128 * sign * (1i128 << n);
+    numer += 768;
+
+    debug_assert_eq!(numer % 864, 0);
+    numer / 864
+}
+
 fn main() {
-    todo!("Port Python solution to Rust");
+    assert_eq!(g(1), 8);
+    assert_eq!(g(2), 28);
+    println!("{}", g(16));
 }
