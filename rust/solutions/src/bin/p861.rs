@@ -16,7 +16,6 @@
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use std::time::Instant;
 
 const N_LIMIT: u64 = 1_000_000_000_000;
 const SIEVE_LIM: usize = 1_000_000;
@@ -317,17 +316,6 @@ impl Counter {
         }
     }
 
-    fn count_signature(&self, sig: &[u8]) -> u64 {
-        let mut total = 0u64;
-        for perm in unique_permutations(sig.to_vec()) {
-            eprintln!("start perm={:?}", perm);
-            let t0 = Instant::now();
-            total += self.count_permutation(&perm);
-            eprintln!("perm={:?} took {:?}", perm, t0.elapsed());
-        }
-        total
-    }
-
     fn count_permutation(&self, exps: &[u8]) -> u64 {
         if exps.len() == 1 {
             return self.count_last(exps[0], 0, self.n);
@@ -347,14 +335,12 @@ impl Counter {
             end += 1;
         }
 
-        (0..end)
-            .into_par_iter()
-            .with_max_len(1)
-            .map(|idx| {
-                let rem = self.n / self.pow_table[exp0][idx];
-                self.dfs(exps, 1, idx + 1, rem)
-            })
-            .sum()
+        let mut total = 0u64;
+        for idx in 0..end {
+            let rem = self.n / self.pow_table[exp0][idx];
+            total += self.dfs(exps, 1, idx + 1, rem);
+        }
+        total
     }
 
     fn dfs(&self, exps: &[u8], pos: usize, start_idx: usize, rem: u64) -> u64 {
@@ -364,6 +350,7 @@ impl Counter {
         }
 
         let exp = exps[pos] as usize;
+        let last_exp = exps[last] as usize;
         let mut total = 0u64;
         let mut idx = start_idx;
 
@@ -376,6 +363,20 @@ impl Counter {
 
             if !self.can_fill_nonlast(exps, pos + 1, idx + 1, rem2) {
                 break;
+            }
+
+            // Prune: the last prime (at position `last`) must be > primes[idx]
+            // (since primes are increasing). Check that at least one such prime
+            // fits: integer_root(rem_after_non_last, last_exp) >= primes[next_idx].
+            // For pos == last-1, this is: integer_root(rem2, last_exp) >= primes[idx+1].
+            if pos == last - 1 {
+                if idx + 1 < self.primes.len() {
+                    // The last prime must be at index >= idx+1, so its power
+                    // must fit: primes[idx+1]^last_exp <= rem2
+                    if self.pow_table[last_exp][idx + 1] > rem2 {
+                        break;
+                    }
+                }
             }
 
             total += self.dfs(exps, pos + 1, idx + 1, rem2);
@@ -430,15 +431,21 @@ fn main() {
     let pi_table = PrimePi::new(N_LIMIT, &primes);
     let counter = Counter::new(N_LIMIT, primes, pi_table);
 
-    let mut total_sum = 0u64;
-    for k in 8..=8u32 {
+    // Collect all (sig, perm) work items across all k values
+    let mut work: Vec<Vec<u8>> = Vec::new();
+    for k in 2..=10u32 {
         let sigs = generate_signatures(k);
-        let mut q_k = 0u64;
-        for sig in &sigs {
-            q_k += counter.count_signature(sig);
+        for sig in sigs {
+            for perm in unique_permutations(sig) {
+                work.push(perm);
+            }
         }
-        total_sum += q_k;
     }
+
+    let total_sum: u64 = work
+        .par_iter()
+        .map(|perm| counter.count_permutation(perm))
+        .sum();
 
     println!("{}", total_sum);
 }

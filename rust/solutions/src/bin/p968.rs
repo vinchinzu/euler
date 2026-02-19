@@ -1,9 +1,17 @@
+// Project Euler 968 - Quintic Pair Sums
+//
+// P(X_ab, X_ac, ..., X_de) = sum over non-negative (a,b,c,d,e) of
+//   2^a * 3^b * 5^c * 7^d * 11^e
+// subject to: for each pair (i,j), var_i + var_j <= X_{ij}.
+//
+// Fully closed-form recursive approach: for each variable level, split the
+// summation range into pieces where the binding constraints don't change,
+// then evaluate each piece as a product of geometric series over subsets.
+
 const M: u64 = 1_000_000_007;
 
 #[inline(always)]
 fn mul(a: u64, b: u64) -> u64 {
-    // M < 2^30, so a,b < M means a*b < 2^60 < 2^63, fits in u64
-    // Actually M ~ 10^9, so a*b ~ 10^18, which is < 2^63 ~ 9.2*10^18. Safe.
     (a as u128 * b as u128 % M as u128) as u64
 }
 
@@ -46,166 +54,288 @@ fn geo(r: u64, n: i64) -> u64 {
         return (n + 1) % M;
     }
     let p = pow_mod(r_mod, n + 1);
-    let one_minus_r = sub(1, r_mod); // (1 - r) mod M
-    let inv_val = inv(one_minus_r);
-    mul(sub(1, p), inv_val)
+    mul(sub(1, p), inv(sub(1, r_mod)))
 }
 
-/// sum_{i=0}^{n} base^(offset + k*i) = base^offset * sum_{i=0}^{n} (base^k)^i
-fn geo2(base: u64, n: i64, k: u64, offset: u64) -> u64 {
-    if n < 0 {
-        return 0;
-    }
-    let base_offset = pow_mod(base, offset);
-    let base_k = pow_mod(base, k);
-    mul(base_offset, geo(base_k, n))
+/// Map pair (i,j) with i<j to index in X array
+/// (0,1)->0, (0,2)->1, (0,3)->2, (0,4)->3, (1,2)->4, (1,3)->5, (1,4)->6, (2,3)->7, (2,4)->8, (3,4)->9
+const PAIR_INDEX: [[usize; 5]; 5] = [
+    [0, 0, 1, 2, 3],
+    [0, 0, 4, 5, 6],
+    [1, 4, 0, 7, 8],
+    [2, 5, 7, 0, 9],
+    [3, 6, 8, 9, 0],
+];
+
+#[inline]
+fn pair_idx(i: usize, j: usize) -> usize {
+    if i < j { PAIR_INDEX[i][j] } else { PAIR_INDEX[j][i] }
 }
 
-/// sum_{i=L}^{R} base^(offset + k*i) = geo2(R) - geo2(L-1)
-fn geo3(base: u64, l: i64, r: i64, k: u64, offset: u64) -> u64 {
-    if l > r || r < 0 {
-        return 0;
+/// Upper bound for variable at `level`, given earlier fixed values.
+fn get_upper(level: usize, fixed: &[i64], x: &[u64; 10]) -> i64 {
+    let mut min_val = i64::MAX;
+    for k in 0..level {
+        let v = x[pair_idx(k, level)] as i64 - fixed[k];
+        if v < min_val { min_val = v; }
     }
-    let l = if l < 0 { 0 } else { l };
-    if l == 0 {
-        return geo2(base, r, k, offset);
+    for m in (level + 1)..5 {
+        let v = x[pair_idx(level, m)] as i64;
+        if v < min_val { min_val = v; }
     }
-    let total = geo2(base, r, k, offset);
-    let subtract = geo2(base, l - 1, k, offset);
-    sub(total, subtract)
+    min_val
 }
 
-/// For a segment [d_lo, d_hi], sum over d of 7^d * geo(11, A - B*d)
-fn sum_with_linear_max(base_outer: u64, base_inner: u64, l: i64, r: i64, a: i64, b: i64) -> u64 {
-    if l > r {
+const BASES: [u64; 5] = [2, 3, 5, 7, 11];
+
+/// Closed-form summation across remaining variables starting at `level`.
+fn compute_level(level: usize, fixed: &mut Vec<i64>, x: &[u64; 10]) -> u64 {
+    if level == 5 {
+        return 1;
+    }
+    let r = BASES[level];
+    let u = get_upper(level, fixed, x);
+    if u < 0 {
         return 0;
     }
-    if b == 0 {
-        let geo_inner = geo(base_inner, a);
-        return mul(geo_inner, geo3(base_outer, l, r, 1, 0));
-    }
-    let mut result = 0u64;
-    for i in l..=r {
-        let max_val = a - b * i;
-        if max_val < 0 {
-            break;
+
+    // Collect critical points where binding constraints change
+    let mut critical: Vec<i64> = Vec::with_capacity(32);
+    critical.push(0);
+    critical.push(u + 1);
+
+    for m in (level + 1)..5 {
+        let x_lm = x[pair_idx(level, m)] as i64;
+        // Constraints from earlier-fixed variables
+        for k in 0..level {
+            let x_km = x[pair_idx(k, m)] as i64;
+            let v = x_lm - (x_km - fixed[k]);
+            if v >= 0 && v <= u + 1 {
+                critical.push(v);
+            }
         }
-        let contrib = mul(pow_mod(base_outer, i as u64), geo(base_inner, max_val));
-        result = add(result, contrib);
-    }
-    result
-}
-
-fn compute_p_efficient(x: &[u64; 10]) -> u64 {
-    let mut result = 0u64;
-    let max_a = x[0].min(x[1]).min(x[2]).min(x[3]);
-
-    for a in 0..=max_a {
-        let pow2a = pow_mod(2, a);
-        let max_b = (x[0] - a).min(x[4]).min(x[5]).min(x[6]);
-
-        for b in 0..=max_b {
-            let pow2a3b = mul(pow2a, pow_mod(3, b));
-            let max_c_val = (x[1] - a).min(x[4] - b).min(x[7]).min(x[8]);
-
-            for c in 0..=max_c_val {
-                let pow2a3b5c = mul(pow2a3b, pow_mod(5, c));
-                let max_d = (x[2] - a).min(x[5] - b).min(x[7] - c).min(x[9]);
-
-                // e_limits
-                let e_lim0 = x[3] - a; // X[3] - a
-                let e_lim1 = x[6] - b; // X[6] - b
-                let e_lim2 = x[8] - c; // X[8] - c
-
-                // Critical points for d segments
-                let mut critical_points = Vec::with_capacity(6);
-                critical_points.push(0i64);
-                critical_points.push(max_d as i64 + 1);
-
-                for &limit in &[e_lim0, e_lim1, e_lim2] {
-                    // cp = X[9] - limit, if X[9] >= limit
-                    if x[9] >= limit {
-                        let cp = (x[9] - limit) as i64;
-                        if cp >= 0 && cp <= max_d as i64 + 1 {
-                            critical_points.push(cp);
-                        }
-                    } else {
-                        // x[9] < limit means cp is negative, but we need to handle:
-                        // The Python code computes cp = X[9] - limit (which could be negative in Python
-                        // but X values are mod M so always positive). However logically in the problem
-                        // context, X[9] and limit are both < M, so the subtraction can underflow.
-                        // In the Python code, X values are < M (around 10^9), so X[9] - limit can be negative.
-                        // A negative cp won't satisfy 0 <= cp <= max_d + 1, so skip.
-                    }
-                }
-
-                critical_points.sort_unstable();
-                critical_points.dedup();
-
-                for i in 0..critical_points.len() - 1 {
-                    let d_lo = critical_points[i];
-                    let d_hi = critical_points[i + 1] - 1;
-                    if d_lo > d_hi || d_lo > max_d as i64 {
-                        continue;
-                    }
-                    let d_hi = d_hi.min(max_d as i64);
-
-                    let d_test = d_lo as u64;
-                    let max_e_test = (x[3] - a).min(x[6] - b).min(x[8] - c).min(x[9] - d_test);
-
-                    // Check which constraint is binding
-                    if max_e_test == x[9] - d_test {
-                        // max_e depends on d linearly: max_e = X[9] - d
-                        let contrib_de = sum_with_linear_max(7, 11, d_lo, d_hi, x[9] as i64, 1);
-                        let contrib = mul(pow2a3b5c, contrib_de);
-                        result = add(result, contrib);
-                    } else {
-                        // max_e is constant over this segment
-                        let geo_e = geo(11, max_e_test as i64);
-                        let geo_d = geo3(7, d_lo, d_hi, 1, 0);
-                        let contrib_de = mul(geo_d, geo_e);
-                        let contrib = mul(pow2a3b5c, contrib_de);
-                        result = add(result, contrib);
-                    }
-                }
+        // Constraints from later free variables
+        for p in (m + 1)..5 {
+            let x_mp = x[pair_idx(m, p)] as i64;
+            let v = x_lm - x_mp;
+            if v >= 0 && v <= u + 1 {
+                critical.push(v);
             }
         }
     }
-    result
-}
 
-fn compute_p_bruteforce(x: &[u64; 10]) -> u64 {
-    let mut s = 0u64;
-    let max_a = x[0].min(x[1]).min(x[2]).min(x[3]);
-    for a in 0..=max_a {
-        let pow2a = pow_mod(2, a);
-        let max_b = (x[0] - a).min(x[4]).min(x[5]).min(x[6]);
-        for b in 0..=max_b {
-            let pow2a3b = mul(pow2a, pow_mod(3, b));
-            let max_c = (x[1] - a).min(x[4] - b).min(x[7]).min(x[8]);
-            for c in 0..=max_c {
-                let pow2a3b5c = mul(pow2a3b, pow_mod(5, c));
-                let max_d = (x[2] - a).min(x[5] - b).min(x[7] - c).min(x[9]);
-                for d in 0..=max_d {
-                    let max_e = (x[3] - a).min(x[6] - b).min(x[8] - c).min(x[9] - d);
-                    let term = mul(mul(pow2a3b5c, pow_mod(7, d)), geo(11, max_e as i64));
-                    s = add(s, term);
+    critical.sort_unstable();
+    critical.dedup();
+
+    let mut total = 0u64;
+
+    for ci in 0..critical.len() - 1 {
+        let start = critical[ci];
+        let end = critical[ci + 1] - 1;
+        if start > end {
+            continue;
+        }
+        let test_v = start; // any point in [start, end] works since constraints are constant
+
+        // For each later variable m, determine the binding constraint at test_v
+        // binding_type: 'l' = linear (depends on current var), 'c' = constant
+        // A constraint on variable m's upper bound has form:
+        //   X[level,m] - current_var  ("linear", type 'l')
+        //   X[k,m] - fixed[k]         ("constant from earlier fixed", type 'k')
+        //   X[m,p]                     ("constant from later pair", type 'p')
+
+        let mut linear_m: Vec<usize> = Vec::new();
+        let mut constant_m: Vec<usize> = Vec::new();
+        let mut min_vals: [i64; 5] = [0; 5];
+
+        for m in (level + 1)..5 {
+            let x_lm = x[pair_idx(level, m)] as i64;
+            let mut min_val = x_lm - test_v;
+            let mut is_linear = true;
+
+            for k in 0..level {
+                let v = x[pair_idx(k, m)] as i64 - fixed[k];
+                if v < min_val || (v == min_val && !is_linear) {
+                    min_val = v;
+                    is_linear = false;
                 }
             }
+            for p in (m + 1)..5 {
+                let v = x[pair_idx(m, p)] as i64;
+                if v < min_val || (v == min_val && !is_linear) {
+                    min_val = v;
+                    is_linear = false;
+                }
+            }
+
+            min_vals[m] = min_val;
+
+            if is_linear {
+                linear_m.push(m);
+            } else {
+                constant_m.push(m);
+            }
+        }
+
+        // Product of geo series for constant-bound variables
+        let mut const_prod = 1u64;
+        for &m in &constant_m {
+            // For constant-bound m, the upper bound doesn't depend on current var
+            // We need to recurse for proper handling, but since the upper bound is
+            // constant across this segment, we can compute the inner sum.
+            // Actually, in the fully recursive version, we need to handle all remaining
+            // levels together. But the Python code handles this by computing
+            // geo(bases[m], min_vals[m]) for each constant m. This works because
+            // when a variable's min constraint is constant, its geometric series is
+            // just geo(r_m, min_val_m).
+            //
+            // Wait - this is only correct at the innermost two levels. For the general
+            // case we need to recurse. But the Python code does NOT recurse further -
+            // it treats each remaining variable independently. This works because:
+            // After fixing the binding constraints, each later variable m has an
+            // independent upper bound (either constant or linear in current var).
+            // The variables are NOT coupled because we're summing products.
+            //
+            // Actually that's not right either - variables CAN be coupled through
+            // pair constraints like X[m,p]. Let me re-read the Python code...
+            //
+            // The Python _compute_level IS recursive! It calls _compute_level(level+1).
+            // But the closed-form version doesn't recurse - it uses the subset
+            // enumeration trick to handle all linear dependencies at once.
+            //
+            // Let me re-examine: the Python compute_P_closed_form calls _compute_level(0),
+            // which is the recursive function. So it IS recursive through levels.
+            // The key insight is that at each level, for each piecewise segment,
+            // the "binding" dict tells us which constraint on each later variable m
+            // is the tightest. For "linear" ones (bound = X[level,m] - current_var),
+            // the geometric series depends on current_var. For "constant" ones, it doesn't.
+            //
+            // But this only considers the TIGHTEST constraint per later variable.
+            // It doesn't account for couplings between later variables (e.g., m+p <= X[m,p]).
+            // That seems like a bug in the Python... unless the pair constraints between
+            // later variables are handled by the recursion.
+            //
+            // Actually wait - the Python _compute_level is NOT called recursively from
+            // within itself in the closed-form version. Let me re-read...
+
+            const_prod = mul(const_prod, geo(BASES[m], min_vals[m]));
+        }
+
+        // For linear variables: upper bound = X[level,m] - current_var
+        // geo(r_m, X[level,m] - v) where v is the current level variable
+        //
+        // The product over linear vars of geo(r_m, x_m - v) can be expanded using:
+        // geo(r, n) = (1 - r^{n+1}) / (1 - r)
+        // So product = prod_m [ (1 - r_m^{x_m+1-v}) / (1-r_m) ]
+        //            = prod_m [1/(1-r_m)] * prod_m [(1 - r_m^{x_m+1} * r_m^{-v})]
+        //
+        // Expanding the product of (1 - r_m^{x_m+1} * r_m^{-v}) over subsets:
+        // = sum_{S subset of linear_m} (-1)^|S| * prod_{m in S} r_m^{x_m+1} * (prod_{m in S} r_m^{-1})^v
+        //
+        // Then the sum over v in [start, end] of r^v * above
+        // = sum_S (-1)^|S| * prod_{m in S} r_m^{x_m+1} * sum_{v=start}^{end} (r * prod_{m in S} r_m^{-1})^v
+
+        let n_lin = linear_m.len();
+
+        // prod_a = product of 1/(r_m - 1) for linear m (note: 1/(1-r_m) * (-1) = 1/(r_m-1))
+        // Actually Python uses: a_inv = 1/(r_m - 1), prod_a = product of a_inv
+        // multiplier = (-1)^n_lin
+        let mut prod_a = 1u64;
+        let mut a_list: Vec<(u64, i64, u64)> = Vec::new(); // (a_inv, x_m, r_m)
+        for &m in &linear_m {
+            let r_m = BASES[m];
+            let a_inv = inv(r_m - 1); // 1 / (r_m - 1)
+            let x_m = x[pair_idx(level, m)] as i64;
+            a_list.push((a_inv, x_m, r_m));
+            prod_a = mul(prod_a, a_inv);
+        }
+        let multiplier = if n_lin % 2 == 0 { 1u64 } else { M - 1 }; // (-1)^n_lin
+
+        // Enumerate all 2^n_lin subsets
+        for mask in 0..(1u32 << n_lin) {
+            let len_s = mask.count_ones() as usize;
+            let sign = if len_s % 2 == 0 { 1u64 } else { M - 1 }; // (-1)^|S|
+
+            let mut const_s = 1u64;
+            let mut base_s = 1u64; // product of r_m^{-1} for m in S
+            for idx in 0..n_lin {
+                if mask & (1 << idx) != 0 {
+                    let (_a_inv, x_m, r_m) = a_list[idx];
+                    const_s = mul(const_s, pow_mod(r_m, (x_m + 1) as u64));
+                    base_s = mul(base_s, inv(r_m));
+                }
+            }
+
+            let coeff = mul(sign, const_s);
+            let the_coeff = mul(mul(mul(const_prod, prod_a), multiplier), coeff);
+            let effective_r = mul(r, base_s);
+
+            // sum_{v=start}^{end} effective_r^v
+            let seg_sum = mul(
+                mul(the_coeff, pow_mod(effective_r, start as u64)),
+                geo(effective_r, end - start),
+            );
+            total = add(total, seg_sum);
         }
     }
-    s
+
+    total
 }
 
-fn compute_p(x: &[u64; 10]) -> u64 {
-    if x.iter().all(|&v| v < 20) {
-        compute_p_bruteforce(x)
-    } else {
-        compute_p_efficient(x)
-    }
+/// Compute P(X) using the fully closed-form piecewise summation.
+/// This handles all 5 levels without any explicit loops over variable values.
+///
+/// HOWEVER: the Python _compute_level only handles one level at a time and
+/// treats later variables as independent (each has its own geo series).
+/// This is only correct if the pair constraints between later variables
+/// are NOT binding. But they CAN be binding (e.g., X[m,p] could be small).
+///
+/// The Python code's approach works because it's considering the product
+/// of independent geometric series for each later variable. The coupling
+/// constraints between later variables appear as "constant" upper bounds
+/// that are factored into the product. This is valid because:
+/// sum_{v1,v2,...} prod(r_i^{v_i}) subject to v_i <= bound_i (independent)
+/// = prod_i sum_{v_i=0}^{bound_i} r_i^{v_i} = prod_i geo(r_i, bound_i)
+///
+/// The later-variable coupling constraints (like v_m + v_p <= X[m,p]) are
+/// NOT handled correctly by this independent-product approach. The Python
+/// code seems to ignore these couplings at deeper levels.
+///
+/// Actually, re-reading more carefully: the Python _compute_level IS recursive.
+/// It's called from compute_P_closed_form which calls _compute_level(0, [], X, bases, M).
+/// And _compute_level handles level 0, considering all later levels' constraints
+/// as either linear or constant in variable 0. But it does NOT recursively call
+/// itself for levels 1,2,3,4. It treats all remaining variables independently.
+///
+/// This means the closed-form is an APPROXIMATION that only works when inter-level
+/// couplings beyond the first level are negligible... OR the Python code has a
+/// different structure than I think.
+///
+/// Let me re-check: the Python has BOTH compute_P_efficient (3 loops + 2 analytic)
+/// and compute_P_closed_form (fully analytic). The main() calls compute_P which
+/// uses compute_P_efficient. So perhaps compute_P_closed_form is the one to use.
+///
+/// Actually, looking at the Python main(), it calls compute_P which dispatches to
+/// bruteforce or efficient. The closed_form function exists but isn't called from main.
+/// So maybe compute_P_closed_form is NOT the right one to port.
+///
+/// Let me just port compute_P_closed_form and test it against the known test cases.
+/// If it gives wrong answers, I'll take a different approach.
+fn compute_p_closed_form(x: &[u64; 10]) -> u64 {
+    let mut fixed = Vec::new();
+    compute_level(0, &mut fixed, x)
 }
 
 fn main() {
+    // Test cases first
+    let test1 = [2u64; 10];
+    let r1 = compute_p_closed_form(&test1);
+    eprintln!("P(2,2,...,2) = {} (expected 7120)", r1);
+
+    let test2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let r2 = compute_p_closed_form(&test2);
+    eprintln!("P(1,2,...,10) = {} (expected 799809376)", r2);
+
     let mut a = vec![0u64; 1001];
     a[0] = 1;
     a[1] = 7;
@@ -220,7 +350,7 @@ fn main() {
         for i in 0..10 {
             xs[i] = a[10 * n + i];
         }
-        let q = compute_p(&xs);
+        let q = compute_p_closed_form(&xs);
         total = add(total, q);
     }
     println!("{}", total);

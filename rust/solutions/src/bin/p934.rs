@@ -1,7 +1,6 @@
 // Project Euler Problem 934 - Unlucky Prime
 // U(N) = sum_{n=1}^N u(n) where u(n) is smallest prime p with n%p not divisible by 7.
 // Uses sieving over prime products with CRT-like residue expansion.
-// Note: C reference solution is marked WRONG; this is a faithful port.
 
 fn main() {
     // Sieve primes up to 1000
@@ -39,22 +38,25 @@ fn main() {
     total += 4 * (n / 210);
 
     let m = n / 210;
+    let m128 = m as i128;
 
     // Dynamic residue expansion
+    // Use i128 for mod_val to avoid overflow when products of primes exceed i64 range
     let mut residues: Vec<i64> = vec![0];
-    let mut mod_val: i64 = 1;
+    let mut mod_val: i128 = 1;
 
-    // Cap residue array to avoid OOM (C solution also crashes)
+    // Cap residue array to avoid OOM
     const MAX_RESIDUES: usize = 50_000_000;
 
     // Start from index 4 (primes[4] = 11)
     let mut idx = 4usize;
     while idx + 1 < primes.len() {
         let p = primes[idx];
+        let p128 = p as i128;
         let next_p = primes[idx + 1];
         let diff = next_p - p;
 
-        let next_mod = mod_val.checked_mul(p).unwrap_or(i64::MAX);
+        let next_mod = mod_val * p128;
 
         // Compute valid digits: s in 0..(p-1)/7
         let limit_s = (p - 1) / 7;
@@ -67,10 +69,11 @@ fn main() {
             valid_digits.push(s * inv30 % p);
         }
 
-        // inv_mod = mod_val^(-1) mod p
-        let inv_mod = pow_mod(((mod_val % p) + p) % p, p - 2, p);
+        // inv_mod = mod_val^(-1) mod p (mod_val % p fits in i64)
+        let mod_val_mod_p = ((mod_val % p128) as i64 + p) % p;
+        let inv_mod = pow_mod(mod_val_mod_p, p - 2, p);
 
-        let is_next_mod_large = next_mod > m;
+        let is_next_mod_large = next_mod > m128;
 
         let nres = residues.len();
         let nvalid = valid_digits.len();
@@ -86,13 +89,14 @@ fn main() {
             let r_mod_p = ((r % p) + p) % p;
             for &d in &valid_digits {
                 let k_val = ((d - r_mod_p + p) % p * inv_mod) % p;
-                let x = r + k_val * mod_val;
+                // Use i128 to avoid overflow in k_val * mod_val
+                let x = r as i128 + k_val as i128 * mod_val;
                 if is_next_mod_large {
-                    if x <= m {
-                        new_residues.push(x);
+                    if x <= m128 {
+                        new_residues.push(x as i64);
                     }
                 } else {
-                    new_residues.push(x);
+                    new_residues.push(x as i64);
                 }
             }
         }
@@ -101,11 +105,12 @@ fn main() {
         mod_val = next_mod;
 
         // Calculate count
-        let count: i64 = if mod_val > m {
+        let count: i64 = if mod_val > m128 {
             residues.len() as i64
         } else {
-            let full_cycles = m / mod_val;
-            let rem = m % mod_val;
+            let mod_val_i64 = mod_val as i64; // safe: mod_val <= m which fits i64
+            let full_cycles = m / mod_val_i64;
+            let rem = m % mod_val_i64;
             let partial = residues.iter().filter(|&&r| r <= rem).count() as i64;
             full_cycles * residues.len() as i64 + partial
         };

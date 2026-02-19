@@ -1,113 +1,140 @@
-// Project Euler 870 - Fraenkel sequence transitions
-// T(1)=1, T(n+1) is the smallest rational > T(n) such that the Fraenkel sequence changes.
-// Find T(123456) formatted to 10 decimal places.
+// Project Euler 870 - Stone Game IV
 //
-// Uses num::BigInt for exact rational arithmetic (sequence values grow exponentially).
-// Optimized with early termination: once the best candidate is found and no improvement
-// occurs for several consecutive iterations, we break early.
+// Two players play a stone removal game with parameter r > 0.
+// L(r) = set of pile sizes where second player wins.
+// Transition values are where L(r) changes.
+// Find T(123456) to 10 decimal places.
+//
+// Algorithm:
+// The losing positions form a sequence P_1=1, P_2, P_3, ... satisfying
+// the recurrence P_{k+1} = P_k + P_{m(k)} where
+// m(k) = min{j : floor(r * P_j) >= P_k}.
+//
+// Transition values occur at ratios P_a / P_b from the current losing sequence.
+// The next transition after r is: min{P_k / P_{m(k)-1} : m(k) >= 2, P_k/P_{m(k)-1} > r}
+// where the minimum is over all steps k in the recurrence.
+//
+// We use exact rational arithmetic (u128 for intermediate products).
+// The sequence runs until u64 overflow (no early termination).
 
-use num::bigint::BigInt;
-use num::rational::BigRational;
-use num::{Zero, One, ToPrimitive};
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
 
 fn solve() {
-    let mut rn = BigInt::from(1);
-    let mut rd = BigInt::from(1);
-    let mut count: i64 = 1;
-    let limit: i64 = 123456;
-    let buffer: usize = 5000;
+    let limit: usize = 123456;
+    let mut rn: u64 = 1; // r = rn / rd
+    let mut rd: u64 = 1;
 
-    while count < limit {
-        let start_n: BigInt = &rn / &rd + BigInt::one();
-        let start_n_usize = start_n.to_usize().unwrap();
-        let mut seq: Vec<BigInt> = Vec::with_capacity(256);
-        seq.push(start_n.clone());
-        let mut k: usize = 1;
+    let mut p: Vec<u64> = Vec::with_capacity(16384);
 
-        let mut best_cn: BigInt = BigInt::zero();
-        let mut best_cd: BigInt = BigInt::zero();
-        let mut found = false;
-        let mut no_improve_count: usize = 0;
+    for _ti in 1..limit {
+        // Compute losing sequence for r = rn/rd
+        // p[0] = dummy, p[1] = 1, ...
+        p.clear();
+        p.push(0);
+        p.push(1);
+        let mut j_lo = 1usize;
 
-        for i in 0..buffer {
-            let an = seq[i].clone();
-            let target = &an * &rd;
+        let mut best_n: u64 = 0;
+        let mut best_d: u64 = 0;
+        let mut best_set = false;
 
-            // Find k where rn * ak >= target
-            let mut ak = BigInt::zero();
-            loop {
-                if k <= start_n_usize {
-                    ak = BigInt::from(k);
-                } else {
-                    let idx = k - start_n_usize;
-                    if idx >= seq.len() {
-                        break;
-                    }
-                    ak = seq[idx].clone();
-                }
-                if &rn * &ak >= target {
+        loop {
+            let k = p.len() - 1;
+            let pk = p[k];
+
+            // Find m = min{j >= j_lo : rn * p[j] >= pk * rd}
+            let target = pk as u128 * rd as u128;
+
+            let mut m = j_lo;
+            while m <= k {
+                if rn as u128 * p[m] as u128 >= target {
                     break;
                 }
-                k += 1;
+                m += 1;
             }
+            if m > k { break; }
 
-            if k > 1 {
-                let km1 = k - 1;
-                let akm1: BigInt;
-                if km1 <= start_n_usize {
-                    akm1 = BigInt::from(km1);
-                } else {
-                    let idx = km1 - start_n_usize;
-                    if idx >= seq.len() {
-                        seq.push(&an + &ak);
-                        continue;
-                    }
-                    akm1 = seq[idx].clone();
-                }
-
-                // Check: an/akm1 > rn/rd
-                if &an * &rd > &rn * &akm1 {
-                    if !found {
-                        best_cn = an.clone();
-                        best_cd = akm1;
-                        found = true;
-                        no_improve_count = 0;
-                    } else {
-                        // Check: an/akm1 < best_cn/best_cd
-                        if &an * &best_cd < &best_cn * &akm1 {
-                            best_cn = an.clone();
-                            best_cd = akm1;
-                            no_improve_count = 0;
-                        } else {
-                            no_improve_count += 1;
-                            if no_improve_count >= 100 {
-                                break;
-                            }
-                        }
+            // Check transition candidate: pk / p[m-1]
+            if m >= 2 {
+                let cand_d = p[m - 1];
+                // Check pk / cand_d > rn / rd
+                if (pk as u128) * (rd as u128) > (rn as u128) * (cand_d as u128) {
+                    if !best_set || (pk as u128) * (best_d as u128) < (best_n as u128) * (cand_d as u128) {
+                        let g = gcd(pk, cand_d);
+                        best_n = pk / g;
+                        best_d = cand_d / g;
+                        best_set = true;
                     }
                 }
             }
 
-            seq.push(&an + &ak);
+            // Compute next element
+            let pm = p[m];
+            match pk.checked_add(pm) {
+                Some(v) => p.push(v),
+                None => break, // overflow
+            }
+            j_lo = m;
         }
 
-        if !found {
-            panic!("Buffer too small at count={}", count);
+        if !best_set {
+            eprintln!("ERROR: Could not find transition at step {}", _ti + 1);
+            return;
         }
 
-        rn = best_cn;
-        rd = best_cd;
-        // Reduce fraction
-        let r = BigRational::new(rn.clone(), rd.clone());
-        rn = r.numer().clone();
-        rd = r.denom().clone();
-        count += 1;
+        rn = best_n;
+        rd = best_d;
     }
 
-    // Convert to f64 for output
-    let r = BigRational::new(rn, rd);
-    let float_val = r.numer().to_f64().unwrap() / r.denom().to_f64().unwrap();
-    println!("{:.10}", float_val);
+    // Output T(limit) = rn/rd to 10 decimal places
+    let integer_part = rn / rd;
+    let mut remainder = (rn % rd) as u128;
+    let rd128 = rd as u128;
+
+    let mut result = format!("{}", integer_part);
+    result.push('.');
+
+    for _ in 0..10 {
+        remainder *= 10;
+        let digit = remainder / rd128;
+        remainder %= rd128;
+        result.push((b'0' + digit as u8) as char);
+    }
+
+    // Check rounding: need to look at the 11th digit
+    remainder *= 10;
+    if remainder / rd128 >= 5 {
+        let mut chars: Vec<u8> = result.bytes().collect();
+        let mut i = chars.len() - 1;
+        loop {
+            if chars[i] == b'.' {
+                if i == 0 { break; }
+                i -= 1;
+                continue;
+            }
+            if chars[i] < b'9' {
+                chars[i] += 1;
+                break;
+            } else {
+                chars[i] = b'0';
+                if i == 0 {
+                    chars.insert(0, b'1');
+                    break;
+                }
+                i -= 1;
+            }
+        }
+        result = String::from_utf8(chars).unwrap();
+    }
+
+    println!("{}", result);
 }
 
 fn main() {

@@ -111,20 +111,39 @@ fn v(p: usize, all_primes: &[usize]) -> u128 {
     }
 
     let num_subsets = 1u32 << nq;
-    let mut residues: Vec<u128> = Vec::with_capacity(num_subsets as usize);
+    let p_mod = p128 % product;
+    let mut best: u128 = u128::MAX;
+
+    // Helper closure: compute candidate A from residue and update best
+    let mut update_best = |r: u128| {
+        let a = if r > p_mod {
+            p128 - p_mod + r
+        } else {
+            p128 - p_mod + r + product
+        };
+        if a < best {
+            if a % p128 != 0 {
+                best = a;
+            } else {
+                let a2 = a + product;
+                if a2 < best && a2 % p128 != 0 {
+                    best = a2;
+                }
+            }
+        }
+    };
 
     // Use Gray code iteration: each step flips one bit, so we add or subtract
     // one contribution instead of recomputing from scratch.
     // Start with subset=0 (all bits 0, all primes in c1): sum of all contribs
     let total_contrib: u128 = contribs.iter().copied().sum::<u128>() % product;
     let mut residue = total_contrib;
-    residues.push(residue);
+    update_best(residue);
 
     for gray in 1..num_subsets {
         // Find the bit that changed (trailing zero of gray)
         let bit = gray.trailing_zeros() as usize;
         // In Gray code, gray ^ (gray >> 1) gives the subset
-        // But easier: check if this bit is now set or cleared in the Gray code subset
         let gray_subset = gray ^ (gray >> 1);
         if (gray_subset >> bit) & 1 == 1 {
             // Bit became 1: prime moved from c1 to c0, subtract its contribution
@@ -138,34 +157,7 @@ fn v(p: usize, all_primes: &[usize]) -> u128 {
             residue += contribs[bit];
             if residue >= product { residue -= product; }
         }
-        residues.push(residue);
-    }
-
-    // Sort and deduplicate
-    residues.sort_unstable();
-    residues.dedup();
-
-    // Find smallest A > p with A ≡ r (mod product) and A not divisible by p
-    let p_mod = p128 % product;
-    let mut best: u128 = u128::MAX;
-
-    for &r in &residues {
-        let a = if r > p_mod {
-            p128 - p_mod + r
-        } else {
-            p128 - p_mod + r + product
-        };
-
-        if a >= best { continue; }
-
-        if a % p128 != 0 {
-            best = a;
-        } else {
-            let a2 = a + product;
-            if a2 < best && a2 % p128 != 0 {
-                best = a2;
-            }
-        }
+        update_best(residue);
     }
 
     if best < u128::MAX { best } else { 0 }

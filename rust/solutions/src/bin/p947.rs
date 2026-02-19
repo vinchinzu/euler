@@ -164,12 +164,16 @@ fn det_vp(d: u64, p: u64, needed_e: u32) -> u64 {
     // Need precision >= 2*needed_e since det can have v_p up to 2*e
     // (when F^d - I has entries divisible by p^e, det ~ p^{2e})
     let prec = (2 * needed_e + 2).min(60);
-    // Try to compute p^prec; if it overflows u64, reduce
+    // Try to compute p^prec; if it overflows u64 or exceeds safe limit, reduce.
+    // Limit big_pe < 2^63 to avoid overflow in mat_mul (u128) and trace sum (u64).
+    const SAFE_LIMIT: u64 = 1u64 << 63;
     let (big_pe, actual_prec) = {
         let mut pr = prec;
         loop {
             if let Some(v) = checked_pow(p, pr) {
-                break (v, pr);
+                if v < SAFE_LIMIT {
+                    break (v, pr);
+                }
             }
             pr -= 1;
             if pr == 0 { break (1, 0); }

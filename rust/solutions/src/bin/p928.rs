@@ -1,31 +1,33 @@
 // Project Euler 928 - Cribbage Scoring
 // Enumerate all multisets of cards, compute hand score and cribbage score.
 // Count hands where hand_score == cribbage_score.
-// Uses recursive enumeration to avoid iterating over all 5^13 possibilities.
+// Optimized with incremental pairs, fifteens GF, and pruning.
+
+use rayon::prelude::*;
 
 const NRANKS: usize = 13;
 const MAX_COUNT: usize = 4;
 const TARGET_SUM: usize = 15;
 
 fn rank_value(rank: usize) -> usize {
-    if rank == 0 { return 1; }
-    if rank >= 9 { return 10; }
+    if rank == 0 {
+        return 1;
+    }
+    if rank >= 9 {
+        return 10;
+    }
     rank + 1
 }
 
-fn binomial(n: usize, k: usize) -> i64 {
-    if k > n { return 0; }
-    if k == 0 || k == n { return 1; }
-    let k = k.min(n - k);
-    let mut res: i64 = 1;
-    for i in 0..k {
-        res = res * (n - i) as i64 / (i + 1) as i64;
-    }
-    res
-}
-
 fn suit_combinations(count: usize) -> i64 {
-    binomial(4, count)
+    match count {
+        0 => 1,
+        1 => 4,
+        2 => 6,
+        3 => 4,
+        4 => 1,
+        _ => 0,
+    }
 }
 
 fn calculate_pairs_score(counts: &[usize; NRANKS]) -> i64 {
@@ -74,7 +76,9 @@ fn calculate_fifteens_score(counts: &[usize; NRANKS]) -> i64 {
         for k in 0..=count {
             let coeff = suit_combinations(k);
             let power = k * value;
-            if power > TARGET_SUM { break; }
+            if power > TARGET_SUM {
+                break;
+            }
             for s in 0..=(TARGET_SUM - power) {
                 new_gf[s + power] += gf[s] * coeff;
             }
@@ -101,13 +105,55 @@ fn calculate_num_hands(counts: &[usize; NRANKS]) -> i64 {
     product
 }
 
-fn recurse(idx: usize, counts: &mut [usize; NRANKS], hand_score: i64, has_any: bool, total: &mut i64) {
+type Gf = [i64; TARGET_SUM + 1];
+
+/// Extend the generating function with rank `idx` having count `c`.
+#[inline]
+fn extend_gf(gf: &Gf, idx: usize, c: usize) -> Gf {
+    if c == 0 {
+        return *gf;
+    }
+    let value = rank_value(idx);
+    let mut new_gf = [0i64; TARGET_SUM + 1];
+    // k=0 contribution: gf * 1
+    for s in 0..=TARGET_SUM {
+        new_gf[s] = gf[s];
+    }
+    // k=1..c contributions
+    for k in 1..=c {
+        let coeff = suit_combinations(k);
+        let power = k * value;
+        if power > TARGET_SUM {
+            break;
+        }
+        for s in 0..=(TARGET_SUM - power) {
+            new_gf[s + power] += gf[s] * coeff;
+        }
+    }
+    new_gf
+}
+
+fn recurse(
+    idx: usize,
+    counts: &mut [usize; NRANKS],
+    hand_score: i64,
+    pairs_score: i64,
+    gf: &Gf,
+    has_any: bool,
+    total: &mut i64,
+) {
     if idx == NRANKS {
-        if !has_any { return; }
-        let pairs = calculate_pairs_score(counts);
+        if !has_any {
+            return;
+        }
+        let fifteens = gf[TARGET_SUM] * 2;
         let runs = calculate_runs_score(counts);
-        let fifteens = calculate_fifteens_score(counts);
-        let cribbage_score = pairs + runs + fifteens;
+        let cribbage_score = pairs_score + runs + fifteens;
+
+        // Debug: verify against original calculation
+        debug_assert_eq!(pairs_score, calculate_pairs_score(counts));
+        debug_assert_eq!(fifteens, calculate_fifteens_score(counts));
+        debug_assert_eq!(hand_score, calculate_hand_score(counts));
 
         if hand_score == cribbage_score {
             *total += calculate_num_hands(counts);
@@ -116,18 +162,41 @@ fn recurse(idx: usize, counts: &mut [usize; NRANKS], hand_score: i64, has_any: b
     }
 
     let val = rank_value(idx) as i64;
+
     for c in 0..=MAX_COUNT {
         counts[idx] = c;
         let new_hand_score = hand_score + c as i64 * val;
         let new_has_any = has_any || c > 0;
-        recurse(idx + 1, counts, new_hand_score, new_has_any, total);
+
+        // Incremental pairs score
+        let new_pairs_score = if c >= 2 {
+            pairs_score + (c * (c - 1) / 2) as i64 * 2
+        } else {
+            pairs_score
+        };
+
+        // Extend generating function incrementally
+        let new_gf = extend_gf(gf, idx, c);
+
+        recurse(
+            idx + 1,
+            counts,
+            new_hand_score,
+            new_pairs_score,
+            &new_gf,
+            new_has_any,
+            total,
+        );
     }
     counts[idx] = 0;
 }
 
 fn main() {
     let mut counts = [0usize; NRANKS];
+    let gf: Gf = [0; TARGET_SUM + 1];
+    let mut gf_init = gf;
+    gf_init[0] = 1;
     let mut total: i64 = 0;
-    recurse(0, &mut counts, 0, false, &mut total);
+    recurse(0, &mut counts, 0, 0, &gf_init, false, &mut total);
     println!("{}", total);
 }

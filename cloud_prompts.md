@@ -1,10 +1,10 @@
 # Cloud Agent Prompts — Remaining Broken Euler Solutions
 
-**Last updated:** 2026-02-18
+**Last updated:** 2026-02-19
 
-17 problems remain: 11 TIMEOUT + 6 WRONG.
+11 problems originally TIMEOUT. **6 FIXED**, 5 remaining. No algorithmic overlap between the 5.
 
-The repo is at the current directory. Read `CLAUDE.md` and `rust/CLAUDE.md` for conventions.
+Read `CLAUDE.md` and `rust/CLAUDE.md` for conventions.
 
 ---
 
@@ -14,126 +14,122 @@ The repo is at the current directory. Read `CLAUDE.md` and `rust/CLAUDE.md` for 
 - Output ONLY the numeric answer on stdout
 - Must run in <120s (release build)
 - NO hardcoded answers — must compute from first principles
-- Expected answers are in `data/answers.txt`
-- C reference solutions in `c/NNN.c` — WARNING: often WRONG or slow too
-- Python references in `python/NNN.py` — also often WRONG or too slow
+- Expected answers are in `data/answers.txt` (has \r\n line endings — strip \r when comparing)
+- C/Python references exist but are often WRONG or slow — verify before trusting
 - Build: `source ~/.cargo/env && cargo build --release --bin pNNN`
 - Run: `timeout 120 ./rust/target/release/pNNN`
-- Problem statements: visit `https://projecteuler.net/problem=NNN`
+- Problem statements: `https://projecteuler.net/problem=NNN`
 
 ---
 
-## Timeout-Safe Execution Strategy
-
-### Build and test a single problem
+## Execution
 
 ```bash
+# Build and test
 source ~/.cargo/env
 cd rust && cargo build --release --bin pNNN 2>&1
 timeout 120 ./target/release/pNNN
 
-# Check against expected answer
-expected=$(grep "Problem NNN:" ../data/answers.txt | sed 's/.*: //')
+# Check answer
+expected=$(grep "Problem NNN:" ../data/answers.txt | sed 's/.*: //' | tr -d '\r')
 actual=$(timeout 120 ./target/release/pNNN)
-if [ "$actual" = "$expected" ]; then echo "OK"; else echo "WRONG: got=$actual expected=$expected"; fi
-```
+[ "$actual" = "$expected" ] && echo "OK" || echo "WRONG: got=$actual expected=$expected"
 
-### Incremental validation (Rust only)
-
-```bash
-source ~/.cargo/env
-cd rust && cargo build --release 2>&1 | tail -3
-python3 gen_status.py
-```
-
-`gen_status.py` uses a 30s timeout per problem by default. It is **incremental**: problems whose source hash hasn't changed since last validation are skipped. Only modified/new solutions are re-tested. The validation cache is at `validated.json` (project root).
-
-### Single-problem revalidation (bypasses cache)
-
-```bash
-# Delete the cached entry so gen_status.py re-tests it
-python3 -c "
-import json
-lines = open('../validated.json').readlines()
-with open('../validated.json','w') as f:
-  for l in lines:
-    d = json.loads(l)
-    if d['problem'] != NNN:
-      f.write(l)
-"
-# Then rebuild and run gen_status.py
-cargo build --release --bin pNNN && python3 gen_status.py
+# Incremental validation (all problems, skips unchanged)
+cd rust && cargo build --release 2>&1 | tail -3 && python3 gen_status.py
 ```
 
 ---
 
-## Subagent Orchestration
+## Safety
 
-### Hard limits
-
-- **Max 3 concurrent subagents** at any time
-- Each subagent should handle **one problem** (or one tightly-scoped task)
-- Always use `timeout 120` when running compiled binaries in subagents
-- After stopping subagents, **check for orphaned processes**:
-
-```bash
-ps aux | grep -E 'p[0-9]+_diag|python3 -c|target/release/p[0-9]' | grep -v grep
-# Kill any stragglers
-kill <pids>
-```
-
-### Subagent task template
-
-Each subagent should:
-1. Read the problem statement (web fetch or from `problems/` directory)
-2. Read the current Rust source and any C/Python references
-3. Identify the algorithmic bottleneck (profile if needed)
-4. Implement a faster/correct algorithm
-5. Build and test: `source ~/.cargo/env && cd rust && cargo build --release --bin pNNN && timeout 120 ./target/release/pNNN`
-6. Verify answer matches `data/answers.txt`
-7. Report result back
+- **Always** use `timeout 120` when running binaries
+- Use `ulimit -v 4000000` for memory caps on OOM-risk problems (p774)
+- Test with reduced inputs first, scale up gradually
+- After stopping agents: `ps aux | grep target/release/p | grep -v grep` and kill stragglers
+- Max 3 concurrent subagents
 
 ---
 
-## TIMEOUT Problems (11)
+## Status
 
-These compile and run but exceed the time limit. Need algorithmic improvements.
+| # | Problem | Status | Risk | Refs | Category |
+|---|---------|--------|------|------|----------|
+| 1 | p928 | **WRONG** (was TIMEOUT) | CPU hang | C, Py | Combinatorics / generating functions |
+| 2 | p968 | **WRONG** (fast) | — | Py | Constrained sums / geometric series |
+| 3 | p774 | TIMEOUT | **OOM + CPU** | C, Py | Tensor-train linear algebra |
+| 4 | p878 | TIMEOUT | CPU hang | Py | GF(2) polynomial orbit iteration |
+| 5 | p954 | TIMEOUT | CPU hang | C, Py | Digit DP / DFS with wide branching |
 
-| # | Problem | Time | Refs | Notes |
-|---|---------|------|------|-------|
-| 1 | p566 | 30s | C, Py | Cake cutting — needs event-driven + periodicity detection |
-| 2 | p574 | 120s | C, Py | CRT subset enumeration — needs meet-in-middle or pruning |
-| 3 | p641 | 30s | C, Py | Lucy DP — needs exponent-class mod 6 pruning |
-| 4 | p774 | 30s | C, Py | Tensor-train rank blow-up — needs aggressive compression |
-| 5 | p861 | 30s | C, Py | Bi-unitary DFS — needs signature caching or different approach |
-| 6 | p878 | 30s | Py | |
-| 7 | p927 | 30s | C, Py | |
-| 8 | p928 | 30s | C, Py | |
-| 9 | p953 | 30s | C, Py | |
-| 10 | p954 | 30s | C, Py | |
-| 11 | p968 | 30s | Py | |
+Previously fixed: p574 (0.09s), p566 (0.24s), p641 (0.09s), p861 (3.8s), p927 (28s), p953 (46s).
 
 ---
 
-## WRONG Problems (6)
+## Remaining Problems
 
-These produce output but it doesn't match. Need debugging.
+### p928 — Cribbage Scoring
+**Expected:** 81108001093
 
-| # | Problem | Got | Expected | Time | Refs |
-|---|---------|-----|----------|------|------|
-| 1 | p870 | 118246.0000000000 | 229.9129353234 | 5.1s | Py |
-| 2 | p933 | *(empty after 19s)* | 5707485980743099 | 19s | Py |
-| 3 | p934 | 292137809722227094 | 292137809490441370 | 655ms | C, Py |
-| 4 | p937 | 866599922 | 792169346 | 319ms | C, Py |
-| 5 | p939 | 1149840452 | 246776732 | 54ms | C, Py |
-| 6 | p947 | 235556258 | 213731313 | 6s | Py |
+**State:** Modified with incremental GF approach but gives **wrong answer** (~306M vs 81B). The incremental `extend_gf()` likely has a double-counting or backtracking bug.
+
+**Fix approach:**
+1. Revert to original brute-force GF computation at leaves (known correct, just slow)
+2. Add pruning: skip branches where remaining cards can't change score
+3. The search space is 5^13 ≈ 1.2B leaves — needs DP or aggressive pruning
+4. **Safe test:** NRANKS=8 or MAX_COUNT=2
+
+### p968 — Quintic Pair Sums
+**Expected:** 885362394
+
+**State:** Rust has partial analytical handling (d-e loops only). The a-b-c loops are still brute-force O(X^3). Currently gives wrong answer (294683487) because the analytical part is buggy.
+
+**Fix approach:**
+1. **Port `compute_P_closed_form` from Python** (python/968.py lines 167-270)
+2. The `_compute_level` recursive function handles each variable analytically via geometric series and critical-point segmentation
+3. Modular arithmetic helpers already exist in the Rust code
+4. **Safe test:** `P(2,2,2,2,2,2,2,2,2,2) = 7120`, `P(1,2,3,4,5,6,7,8,9,10) ≡ 799809376 (mod 10^9+7)`
+
+### p774 — Conjunctive Sequences
+**Expected:** 459155763
+
+**State:** Tensor-train / MPS approach with Gaussian elimination. Hadamard product multiplies TT ranks multiplicatively — ranks blow up to 100s, causing OOM.
+
+**Fix approach:**
+1. Apply `reduce_left` after EVERY operation, not just after hadamard
+2. Implement `reduce_right` (bidirectional compression)
+3. Consider entirely different algorithm: transfer matrix with zeta/Mobius on divisor lattice
+4. **Safe test:** Reduce n from 123 to 10, b to 255 (8 bits), monitor ranks
+
+### p878 — XOR-Equation B
+**Expected:** 23707109
+
+**State:** Main loop iterates k=1..10^6. For each k, factors over GF(2)[x], builds generators, iterates orbits. Orbit iteration is unbounded for some k values.
+
+**Fix approach:**
+1. Add hard cap on orbit iteration (100K steps)
+2. Profile which k values are slowest (batch test k=1..1000 first)
+3. Precompute factorizations for k=1..10^6 upfront
+4. **Safe test:** Reduce m from 10^6 to 1000, N from 10^17 to 10^8
+
+### p954 — Swap-Divisibility
+**Expected:** 736463823
+
+**State:** DFS places digits one at a time for lengths L=1..13. Branching factor ~7 gives 7^13 ≈ 96B nodes for L=13. Way too slow.
+
+**Fix approach:**
+1. **DP with compressed state:** Track (position, current_mod_7, set of relevant digit-mod-7 classes) instead of full digit sequence
+2. **Analytical counting on bad branches:** When a swap is "bad", remaining digits are free — count analytically
+3. Parallelize with rayon over first-digit choices (9 branches for L > 1)
+4. **Safe test:** Run with L limited to 1..10
 
 ---
 
-## Previously Solved This Session (25 problems)
+## Key Lessons from Previous Fixes
 
-- p780 (2.2s), p798 (1.9s), p889 (~1ms), p890 (2.9s), p894 (~4ms)
-- p895 (0.19s), p896 (0.04s), p902 (<10s, fixed sigma bug), p904 (0.29s), p908 (1.1s)
-- p911 (63ms), p920 (55ms), p922 (0.11s), p923 (130ms), p924 (0.47s)
-- p925 (OK), p935 (29ms), p941 (8.3s), p943 (OK), p949 (2.1s)
-- p950 (14ms), p958 (~14s), p961 (0.5s), p964 (8ms), p970 (~2ms)
+- **Don't trust C/Python references.** Both were wrong/slow for multiple problems.
+- **Profile the slow input, not the slow function.** Use `Instant::now()` per-call timing.
+- **Measure data structure sizes** — many timeouts stem from unexpected quadratic growth.
+- **u128 → u64 narrowing** gives 2-4x in tight mod-arith loops when modulus fits u32.
+- **Rayon parallelism** works well when per-iteration work > 1ms and units are independent.
+- **Batch + sort + merge** beats one-at-a-time insertion into sorted collections.
+- **Always use `timeout`** — multiple machine crashes from unbounded loops.
