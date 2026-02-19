@@ -27,15 +27,15 @@ fn gcd_ll(mut a: i64, mut b: i64) -> i64 {
 }
 
 fn main() {
+    use rayon::prelude::*;
     let n_max: i64 = 10_000_000;
-    let mut ans: i64 = 0;
-    for n in 3..=n_max {
+    let ans: i64 = (3..=n_max).into_par_iter().map(|n| {
         let m = 7 * n + 3;
         let t1 = mod_pow(4, n - 2, m);
         let t2 = mod_pow(3, n - 2, m);
         let term = (2 * t1 - t2 + m) % m;
         let g = gcd_ll(term, m);
-        ans += 6 * g;
-    }
+        6 * g
+    }).sum();
     println!("{}", ans);
 }

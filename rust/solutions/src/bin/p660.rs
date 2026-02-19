@@ -25,15 +25,15 @@ fn is_pandigital(a: i64, b: i64, c: i64, base: i64) -> bool {
 fn ceil_div(a: i32, b: i32) -> i32 { (a + b - 1) / b }
 
 fn main() {
-    let mut seen = HashSet::new();
-    let mut total = 0i64;
-    for base in 9..=18 {
+    use rayon::prelude::*;
+    let all_results: Vec<Vec<(i64, i64, i64)>> = (9..=18i32).into_par_iter().map(|base| {
         let e1 = ceil_div(base, 3);
         let mut limit = 1i64;
         for _ in 0..e1 { limit *= base as i64; }
         let mut limit2 = 1i64;
         for _ in 0..e1-1 { limit2 *= base as i64; }
         limit += limit2;
+        let mut results = Vec::new();
         for n in 1.. {
             if (n as i64) * (n as i64) > limit { break; }
             for m in n+1..2*n {
@@ -47,9 +47,20 @@ fn main() {
                     let a = k as i64 * ((m as i64)*(m as i64) - (n as i64)*(n as i64));
                     let b_val = k as i64 * (m as i64) * (2*n as i64 - m as i64);
                     if is_pandigital(a, b_val, c, base as i64) {
-                        if seen.insert((a, b_val, c)) { total += c; }
+                        results.push((a, b_val, c));
                     }
                 }
+            }
+        }
+        results
+    }).collect();
+
+    let mut seen = HashSet::new();
+    let mut total = 0i64;
+    for results in all_results {
+        for (a, b, c) in results {
+            if seen.insert((a, b, c)) {
+                total += c;
             }
         }
     }

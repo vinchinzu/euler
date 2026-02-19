@@ -136,13 +136,11 @@ fn main() {
     let distinct: Vec<(usize, u32)> = (1..=max_e).filter(|&e| e < exp_count.len() && exp_count[e] > 0)
         .map(|e| (e, exp_count[e])).collect();
 
-    // For each profile, coin-change DP
-    let mut dp = vec![0u32; max_e + 1];
+    // For each profile, coin-change DP (parallelized)
+    use rayon::prelude::*;
     let m_val = MOD as u32;
-    let mut answer = 0i64;
-
-    for prof in &profiles {
-        for v in dp.iter_mut() { *v = 0; }
+    let mut answer: i64 = profiles.par_iter().map(|prof| {
+        let mut dp = vec![0u32; max_e + 1];
         dp[0] = 1;
         for &c in &prof.jumps {
             let c = c as usize;
@@ -156,8 +154,8 @@ fn main() {
             prod = (prod as i128 * power(dp[e] as i64, mult as i64, MOD) as i128 % MOD as i128) as i64;
         }
         let c = ((prof.coeff % MOD) + MOD) % MOD;
-        answer = (answer + (c as i128 * prod as i128 % MOD as i128) as i64) % MOD;
-    }
+        (c as i128 * prod as i128 % MOD as i128) as i64
+    }).sum::<i64>().rem_euclid(MOD);
 
     // Divide by 1!*2!*3!*4! = 288
     answer = (answer as i128 * power(288, MOD - 2, MOD) as i128 % MOD as i128) as i64;

@@ -64,18 +64,15 @@ fn main() {
         ((sum_y - sum_mod) / d as i128) as i64
     }
 
-    let mut ans: i64 = 0;
-
-    for g in 1..=g_limit {
+    use rayon::prelude::*;
+    let mut ans: i64 = (1..=g_limit).into_par_iter().map(|g| {
         // SAFETY: g is in bounds [1, g_limit], mobius has size g_limit+1
         let m = unsafe { *mobius.get_unchecked(g) };
-        if m == 0 { continue; }
+        if m == 0 { return 0; }
         let t = l / g as i64;
         let d: i64 = if g % 3 == 0 { 3 } else { 9 };
-
-        let count = lattice_count(t, d);
-        ans += m as i64 * count;
-    }
+        m as i64 * lattice_count(t, d)
+    }).sum::<i64>();
 
     ans *= 4;
     ans += 2;

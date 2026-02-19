@@ -8,6 +8,8 @@
 // For each a, solve the linear system over GF(2) for valid (be, bo),
 // convert to b via bit interleaving, count b in [a, N].
 
+use rayon::prelude::*;
+
 fn main() {
     let n: u32 = 10_000_000;
     let answer = solve(n);
@@ -15,15 +17,13 @@ fn main() {
 }
 
 fn solve(n: u32) -> u64 {
-    let mut total: u64 = 0;
-    for a in 0..=n {
+    (0..=n).into_par_iter().map(|a| {
         let (ae, ao) = split(a);
         let basis = get_basis(ae, ao);
         let cnt_n = count_xor_leq(&basis, n);
         let cnt_a = if a > 0 { count_xor_leq(&basis, a - 1) } else { 0 };
-        total += (cnt_n - cnt_a) as u64;
-    }
-    total
+        (cnt_n - cnt_a) as u64
+    }).sum()
 }
 
 #[inline]

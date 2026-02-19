@@ -32,13 +32,12 @@ fn main() {
         s += 1;
     }
 
+    use rayon::prelude::*;
     let n_mod_exp = n % MOD_EXP;
-    let mut sum1: i64 = 0;
 
-    // Part 1: d = 2 to s
-    for d in 2..=s {
+    // Part 1: d = 2 to s (parallelized)
+    let sum1: i64 = (2..=s).into_par_iter().map(|d| {
         let n_div_d = n / d;
-        // C(floor(n/d)) = floor(n/d) * (floor(n/d)+1) / 2 mod MOD
         let nd_mod = n_div_d % MOD;
         let nd1_mod = (n_div_d + 1) % MOD;
         let c_val = if nd_mod % 2 == 0 {
@@ -46,14 +45,10 @@ fn main() {
         } else {
             (nd_mod as i128 * (nd1_mod / 2) as i128 % MOD as i128) as i64
         };
-
-        // 2^(n-d) mod MOD
         let exp = (n_mod_exp - d % MOD_EXP + MOD_EXP) % MOD_EXP;
         let power_val = power(2, exp, MOD);
-
-        let term = (power_val as i128 * c_val as i128 % MOD as i128) as i64;
-        sum1 = (sum1 + term) % MOD;
-    }
+        (power_val as i128 * c_val as i128 % MOD as i128) as i64
+    }).sum::<i64>().rem_euclid(MOD);
 
     // Part 2: d from s+1 to n, transformed to sum over k
     let k_max = n / (s + 1);
@@ -73,18 +68,16 @@ fn main() {
     }
     let term1 = (c_k_max as i128 * power(2, exp_s, MOD) as i128 % MOD as i128) as i64;
 
-    // sum k * 2^(n - floor(n/k)) for k=1..k_max
-    let mut sum_k: i64 = 0;
-    for k in 1..=k_max {
+    // sum k * 2^(n - floor(n/k)) for k=1..k_max (parallelized)
+    let sum_k: i64 = (1..=k_max).into_par_iter().map(|k| {
         let n_div_k = n / k;
         let mut exp = (n - n_div_k) % MOD_EXP;
         if exp < 0 {
             exp += MOD_EXP;
         }
         let pv = power(2, exp, MOD);
-        let tk = ((k % MOD) as i128 * pv as i128 % MOD as i128) as i64;
-        sum_k = (sum_k + tk) % MOD;
-    }
+        ((k % MOD) as i128 * pv as i128 % MOD as i128) as i64
+    }).sum::<i64>().rem_euclid(MOD);
 
     let sum2 = (term1 - sum_k % MOD + MOD) % MOD;
     let result = (sum1 + sum2) % MOD;
