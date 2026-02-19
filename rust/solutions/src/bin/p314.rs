@@ -5,6 +5,7 @@ use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 
 const NN: usize = 250;
+const N: usize = NN + 1;
 const MAX_STEP: usize = 15;
 
 #[derive(Clone, PartialEq)]
@@ -20,17 +21,23 @@ impl Ord for State {
     }
 }
 
-fn dijkstra(r: f64, step_len: &[[f64; MAX_STEP + 1]; MAX_STEP + 1]) -> f64 {
-    let mut dist = vec![vec![f64::MAX; NN + 1]; NN + 1];
-    let mut visited = vec![vec![false; NN + 1]; NN + 1];
+fn dijkstra(r: f64, step_len: &[[f64; MAX_STEP + 1]; MAX_STEP + 1],
+            dist: &mut [f64; N * N], visited: &mut [bool; N * N],
+            heap: &mut BinaryHeap<State>) -> f64 {
+    dist.fill(f64::MAX);
+    visited.fill(false);
+    heap.clear();
 
-    dist[0][NN] = 0.0;
-    let mut heap = BinaryHeap::new();
+    dist[NN] = 0.0; // idx(0, NN) = 0 * N + NN = NN
     heap.push(State { d: 0.0, x: 0, y: NN });
 
     while let Some(State { d, x, y }) = heap.pop() {
-        if visited[x][y] { continue; }
-        visited[x][y] = true;
+        let i = x * N + y;
+        // SAFETY: x <= NN, y <= NN, so i < N*N
+        unsafe {
+            if *visited.get_unchecked(i) { continue; }
+            *visited.get_unchecked_mut(i) = true;
+        }
 
         if x == NN && y == 0 { return d; }
 
@@ -42,15 +49,17 @@ fn dijkstra(r: f64, step_len: &[[f64; MAX_STEP + 1]; MAX_STEP + 1]) -> f64 {
                 if dx == 0 && dy == 0 { continue; }
                 let nx = x + dx;
                 let ny = y - dy;
-                if visited[nx][ny] { continue; }
-
-                let len = step_len[dx][dy];
-                let area = dx as f64 * (2.0 * y as f64 - dy as f64) / 2.0;
-                let w = r * len + area;
-                let nd = d + w;
-                if nd < dist[nx][ny] {
-                    dist[nx][ny] = nd;
-                    heap.push(State { d: nd, x: nx, y: ny });
+                let ni = nx * N + ny;
+                // SAFETY: nx <= NN, ny <= NN, so ni < N*N
+                unsafe {
+                    if *visited.get_unchecked(ni) { continue; }
+                    let len = *step_len.get_unchecked(dx).get_unchecked(dy);
+                    let area = dx as f64 * (2.0 * y as f64 - dy as f64) * 0.5;
+                    let nd = d + r * len + area;
+                    if nd < *dist.get_unchecked(ni) {
+                        *dist.get_unchecked_mut(ni) = nd;
+                        heap.push(State { d: nd, x: nx, y: ny });
+                    }
                 }
             }
         }
@@ -66,13 +75,17 @@ fn main() {
         }
     }
 
-    let k = 500.0 * 500.0 / 4.0; // 62500: total_area/4 = 250000/4
+    let k = 500.0 * 500.0 / 4.0;
+
+    let mut dist = Box::new([f64::MAX; N * N]);
+    let mut visited = Box::new([false; N * N]);
+    let mut heap = BinaryHeap::with_capacity(N * N / 4);
 
     let mut lo = 125.0_f64;
     let mut hi = 140.0_f64;
-    for _ in 0..100 {
+    for _ in 0..60 {
         let mid = (lo + hi) / 2.0;
-        let w = dijkstra(mid, &step_len);
+        let w = dijkstra(mid, &step_len, &mut dist, &mut visited, &mut heap);
         if w <= k { lo = mid; } else { hi = mid; }
     }
 

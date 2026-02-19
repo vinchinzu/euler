@@ -1,13 +1,18 @@
 const N: usize = 1_000_000;
 const L: usize = 512;
 
-fn nim_prod(a: i32, b: i32, cache: &mut Vec<Vec<i32>>) -> i32 {
+fn nim_prod(a: i32, b: i32, cache: &mut [i32]) -> i32 {
     if a == 0 || b == 0 { return 0; }
     if a == 1 { return b; }
     if b == 1 { return a; }
     let au = a as usize;
     let bu = b as usize;
-    if au < L && bu < L && cache[au][bu] >= 0 { return cache[au][bu]; }
+    if au < L && bu < L {
+        let idx = au * L + bu;
+        // SAFETY: au < L, bu < L so idx < L*L = cache.len()
+        let cached = unsafe { *cache.get_unchecked(idx) };
+        if cached >= 0 { return cached; }
+    }
 
     let result;
     if a & (a - 1) != 0 {
@@ -34,12 +39,16 @@ fn nim_prod(a: i32, b: i32, cache: &mut Vec<Vec<i32>>) -> i32 {
         }
     }
 
-    if au < L && bu < L { cache[au][bu] = result; }
+    if au < L && bu < L {
+        let idx = au * L + bu;
+        // SAFETY: same bounds as above
+        unsafe { *cache.get_unchecked_mut(idx) = result; }
+    }
     result
 }
 
 fn main() {
-    let mut cache = vec![vec![-1i32; L]; L];
+    let mut cache = vec![-1i32; L * L];
 
     let mut sq_steps = Vec::new();
     let mut tr_steps = Vec::new();
@@ -51,8 +60,11 @@ fn main() {
     let mut rn_x = vec![0i32; N + 1];
     let mut rn_y = vec![0i32; N + 1];
 
+    // Reusable buffer (avoids 2M allocations of vec![false; 512])
+    let mut used = vec![false; L];
+
     for j in 1..=N {
-        let mut used = vec![false; L];
+        used.fill(false);
         for &s in &sq_steps {
             if s > j { break; }
             let val = (rn_x[j - 1] ^ rn_x[j - s]) as usize;
@@ -64,7 +76,7 @@ fn main() {
     }
 
     for j in 1..=N {
-        let mut used = vec![false; L];
+        used.fill(false);
         for &s in &tr_steps {
             if s > j { break; }
             let val = (rn_y[j - 1] ^ rn_y[j - s]) as usize;
