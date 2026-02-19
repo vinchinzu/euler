@@ -206,7 +206,7 @@ fn inverse_poly_mod(a: Poly, m: Poly) -> Poly {
 fn solve_root_quadratic(c_val: Poly, p: Poly) -> Option<Poly> {
     let d = poly_deg(p);
     if d % 2 == 1 {
-        // Odd degree: use the trace-based formula
+        // Odd degree: use the trace-based formula (half-trace)
         let mut z: Poly = 0;
         let mut term = c_val;
         for _ in 0..((d + 1) / 2) {
@@ -218,15 +218,65 @@ fn solve_root_quadratic(c_val: Poly, p: Poly) -> Option<Poly> {
         }
         return Some(z);
     }
-    // Even degree: brute force
-    let limit = 1u64 << d;
-    for z in 0..limit {
-        let val = poly_sq64(z) ^ z;
-        if poly_mod(val, p) == c_val {
-            return Some(z);
+    // Even degree: solve z^2 + z = c via GF(2) linear system.
+    // The map L(z) = z^2 + z is GF(2)-linear on GF(2^d) = GF(2)[x]/(p).
+    // Express z = sum z_i * x^i, then L(z) = sum z_i * (x^{2i} mod p + x^i).
+    // Build augmented matrix [M | c] and solve with Gaussian elimination.
+    let du = d as usize;
+    // rows[j] stores bit i = M[j][i] for the matrix, and bit du = c[j]
+    let mut rows = vec![0u32; du];
+    for i in 0..du {
+        let xi = 1u64 << i;
+        let x2i_mod_p = poly_mod(poly_sq64(xi), p);
+        let col = x2i_mod_p ^ xi; // L(x^i) = x^{2i} mod p + x^i
+        for j in 0..du {
+            if (col >> j) & 1 != 0 {
+                rows[j] |= 1u32 << i;
+            }
         }
     }
-    None
+    for j in 0..du {
+        if (c_val >> j) & 1 != 0 {
+            rows[j] |= 1u32 << du;
+        }
+    }
+    // Gaussian elimination
+    let mut cur_row = 0;
+    let mut pivots = [usize::MAX; 20];
+    for col in 0..du {
+        let mut found = false;
+        for row in cur_row..du {
+            if (rows[row] >> col) & 1 != 0 {
+                rows.swap(cur_row, row);
+                pivots[col] = cur_row;
+                for r in 0..du {
+                    if r != cur_row && (rows[r] >> col) & 1 != 0 {
+                        rows[r] ^= rows[cur_row];
+                    }
+                }
+                cur_row += 1;
+                found = true;
+                break;
+            }
+        }
+        let _ = found;
+    }
+    // Check consistency: rows below cur_row must have zero augmented bit
+    for row in cur_row..du {
+        if (rows[row] >> du) & 1 != 0 {
+            return None;
+        }
+    }
+    // Extract solution (free variables = 0)
+    let mut z: Poly = 0;
+    for col in 0..du {
+        if pivots[col] != usize::MAX {
+            if (rows[pivots[col]] >> du) & 1 != 0 {
+                z |= 1u64 << col;
+            }
+        }
+    }
+    Some(z)
 }
 
 // ---- Find the prime generator for an irreducible polynomial p ----
@@ -248,7 +298,10 @@ fn find_prime_generator(p: Poly) -> Option<SElement> {
 fn iterate_orbit(start: SElement, step: SElement, n_limit: Poly, n_deg: i32) -> u64 {
     let mut count = 0u64;
     let mut curr = start;
+    let mut steps = 0u32;
     loop {
+        steps += 1;
+        if steps > 100_000 { break; }
         let da = poly_deg(curr.0);
         let db = poly_deg(curr.1);
         if da > n_deg + 2 && db > n_deg + 2 { break; }
@@ -372,6 +425,5 @@ fn solve(n: u64, m: u64) -> u64 {
 }
 
 fn main() {
-    let answer = solve(100_000_000_000_000_000, 1_000_000);
-    println!("{}", answer);
+    println!("{}", solve(100_000_000_000_000_000, 1_000_000));
 }

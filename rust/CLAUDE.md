@@ -185,12 +185,32 @@ Available modules and key functions:
 
 - **primes**: `sieve(n)`, `sieve_smallest_factor(n)`, `primes_up_to(n)`, `is_prime(n)`, `miller_rabin(n)`
 - **modular**: `mod_pow(base, exp, m)`, `mod_mul(a, b, m)`, `mod_inv(a, m)`, `extended_gcd(a, b)`, `ModInt`
-- **number**: `gcd(a, b)`, `lcm(a, b)`, `euler_phi(n)`, `divisors(n)`, `divisor_count(n)`, `divisor_sum(n)`
+- **number**: `gcd(a, b)`, `lcm(a, b)`, `euler_phi(n)`, `divisors(n)`, `divisor_count(n)`, `divisor_sum(n)`, `factor(n)`
 - **fraction**: `Rational64`, `BigRational`, `frac(num, den)`
 - **binomial**: `BinomialMod::new(max_n, modulus)`, `.choose(n, r)`
 - **crt**: `crt(remainders, moduli) -> Option<(i64, i64)>`
+- **matrix**: `ModMatrix::<N>::identity(m)`, `.from_data(arr, m)`, `.mul(&other)`, `.pow(exp)`, `.mul_vec(&v)`
 
 Note: For hot loops, inline local versions of `mod_pow`/`mod_inv` instead of calling the library (see rule 4).
+
+### Matrix Exponentiation
+
+Use `ModMatrix` for linear recurrences and similar problems:
+```rust
+use euler_utils::ModMatrix;
+
+// Fibonacci: [[1,1],[1,0]]^n
+let m = ModMatrix::<2>::from_data([[1, 1], [1, 0]], MOD);
+let fib_n = m.pow(n).data[0][1];
+
+// Apply to a column vector
+let result = m.pow(n).mul_vec(&initial_state);
+```
+
+Features:
+- Const generic dimension (stack-allocated, cache-friendly)
+- Deferred modular reduction in multiply (batched every 4 or N iterations depending on modulus size)
+- Binary exponentiation: O(N^3 log(exp))
 
 ## Common Pitfalls
 

@@ -4,7 +4,7 @@
 // where a(1) is smallest prime > 10^14, a(n+1) is next prime after a(n).
 // Uses segmented sieve + fast doubling Fibonacci.
 
-use euler_utils::mod_mul;
+use euler_utils::{mod_mul, primes_up_to};
 
 const MOD: u64 = 1_234_567_891_011;
 const START: u64 = 100_000_000_000_000; // 10^14
@@ -29,25 +29,9 @@ fn fib_mod(n: u64, m: u64) -> u64 {
 }
 
 fn main() {
-    // Sieve small primes
-    let small_limit: usize = 10_000_100;
-    let mut is_p = vec![true; small_limit];
-    is_p[0] = false;
-    is_p[1] = false;
-    {
-        let mut i = 2;
-        while i * i < small_limit {
-            if is_p[i] {
-                let mut j = i * i;
-                while j < small_limit {
-                    is_p[j] = false;
-                    j += i;
-                }
-            }
-            i += 1;
-        }
-    }
-    let small_primes: Vec<u64> = (2..small_limit).filter(|&i| is_p[i]).map(|i| i as u64).collect();
+    // Small primes for segmented sieve
+    let small_limit = 10_000_100;
+    let small_primes: Vec<u64> = primes_up_to(small_limit).into_iter().map(|p| p as u64).collect();
 
     // Segmented sieve
     let first = START + 1;

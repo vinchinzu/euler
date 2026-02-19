@@ -1,6 +1,8 @@
 // Project Euler 315 - Digital root clocks
 // Segmented sieve for primes in [10^7, 2*10^7], compute Sam-Max transitions.
 
+use euler_utils::primes_up_to;
+
 const DIGIT_MASK: [u8; 10] = [
     0b1110111, // 0: top|top_left|top_right|bot_left|bot_right|bottom
     0b0100100, // 1: top_right|bot_right
@@ -14,12 +16,8 @@ const DIGIT_MASK: [u8; 10] = [
     0b1101111, // 9: top|top_left|top_right|middle|bot_right|bottom
 ];
 
-fn popcount(x: u8) -> i32 {
-    x.count_ones() as i32
-}
-
-fn seg_count(d: usize) -> i32 { popcount(DIGIT_MASK[d]) }
-fn diff_count(a: usize, b: usize) -> i32 { popcount(DIGIT_MASK[a] ^ DIGIT_MASK[b]) }
+fn seg_count(d: usize) -> i32 { DIGIT_MASK[d].count_ones() as i32 }
+fn diff_count(a: usize, b: usize) -> i32 { (DIGIT_MASK[a] ^ DIGIT_MASK[b]).count_ones() as i32 }
 
 fn sam_minus_max(mut value: i32) -> i64 {
     let mut digits = Vec::new();
@@ -85,16 +83,7 @@ fn main() {
     let upper = 20_000_000;
     let root = (upper as f64).sqrt() as usize + 1;
 
-    let mut small_sieve = vec![true; root + 1];
-    small_sieve[0] = false;
-    small_sieve[1] = false;
-    for i in 2..=root {
-        if small_sieve[i] {
-            let mut j = i * i;
-            while j <= root { small_sieve[j] = false; j += i; }
-        }
-    }
-    let small_primes: Vec<usize> = (2..=root).filter(|&i| small_sieve[i]).collect();
+    let small_primes = primes_up_to(root);
 
     let seg_size = 1_000_000;
     let mut total: i64 = 0;

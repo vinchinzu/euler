@@ -2,26 +2,13 @@
 // A frog jumps on squares 1..500, croaking P or N.
 // Compute probability as reduced fraction.
 
+use euler_utils::sieve;
+
 const NSQUARES: usize = 500;
 const SEQLEN: usize = 15;
 
 fn main() {
-    // Sieve primes up to NSQUARES
-    let mut is_p = vec![false; NSQUARES + 1];
-    for i in 2..=NSQUARES {
-        is_p[i] = true;
-    }
-    let mut i = 2;
-    while i * i <= NSQUARES {
-        if is_p[i] {
-            let mut j = i * i;
-            while j <= NSQUARES {
-                is_p[j] = false;
-                j += i;
-            }
-        }
-        i += 1;
-    }
+    let is_p = sieve(NSQUARES);
 
     let seq = b"PPPPNNPPPNPPNPN";
 
@@ -61,19 +48,14 @@ fn main() {
     }
 
     // Reduce fraction
+    fn gcd128(a: u128, b: u128) -> u128 {
+        let (mut a, mut b) = (a, b);
+        while b != 0 { let t = b; b = a % b; a = t; }
+        a
+    }
     let g = gcd128(num.unsigned_abs(), den.unsigned_abs());
     num /= g as i128;
     den /= g as i128;
 
     println!("{}/{}", num, den);
-}
-
-fn gcd128(a: u128, b: u128) -> u128 {
-    let (mut a, mut b) = (a, b);
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
 }

@@ -1,42 +1,19 @@
 // Project Euler 342 - Sum of n where phi(n^2) is a cube.
 // Recursive backtracking approach.
 
+use euler_utils::primes_up_to;
+
 const MAXN: i64 = 10_000_000_000;
-const SQRT_MAXN: usize = 100_001;
 const MAX_PHI: usize = 30;
 
-static mut PRIMES: [i32; 10000] = [0; 10000];
-static mut NPRIMES: usize = 0;
-
-fn build_sieve() {
-    let mut sieve = vec![false; SQRT_MAXN];
-    unsafe {
-        NPRIMES = 0;
-        for i in 2..SQRT_MAXN {
-            if !sieve[i] {
-                PRIMES[NPRIMES] = i as i32;
-                NPRIMES += 1;
-                let mut j = i as u64 * i as u64;
-                while (j as usize) < SQRT_MAXN {
-                    sieve[j as usize] = true;
-                    j += i as u64;
-                }
-            }
-        }
-    }
-}
-
-fn factorize(mut n: i32) -> Vec<(i32, i32)> {
+fn factorize(mut n: i32, primes: &[i32]) -> Vec<(i32, i32)> {
     let mut factors = Vec::new();
-    unsafe {
-        for i in 0..NPRIMES {
-            let p = PRIMES[i];
-            if (p as i64) * (p as i64) > n as i64 { break; }
-            if n % p == 0 {
-                let mut e = 0;
-                while n % p == 0 { n /= p; e += 1; }
-                factors.push((p, e));
-            }
+    for &p in primes {
+        if (p as i64) * (p as i64) > n as i64 { break; }
+        if n % p == 0 {
+            let mut e = 0;
+            while n % p == 0 { n /= p; e += 1; }
+            factors.push((p, e));
         }
     }
     if n > 1 { factors.push((n, 1)); }
@@ -73,7 +50,7 @@ impl PhiState {
     }
 }
 
-fn helper(n: i64, phi: &PhiState, max_prime: i32, ans: &mut i64) {
+fn helper(n: i64, phi: &PhiState, max_prime: i32, primes: &[i32], ans: &mut i64) {
     if phi.cnt == 0 {
         if n > 1 { *ans += n; }
     } else {
@@ -81,24 +58,21 @@ fn helper(n: i64, phi: &PhiState, max_prime: i32, ans: &mut i64) {
         let idx = phi.find(mx).unwrap();
         let e_mod = phi.e[idx] % 3;
         let start_e = if e_mod == 1 { 3 } else { 1 };
-        add_prime(n, phi, mx, start_e, mx, ans);
+        add_prime(n, phi, mx, start_e, mx, primes, ans);
     }
 
     let mx_p = if phi.cnt > 0 { phi.max_prime() } else { 0 };
-    unsafe {
-        for i in 0..NPRIMES {
-            let p = PRIMES[i];
-            if p >= max_prime { break; }
-            if n * (p as i64) * (p as i64) >= MAXN { break; }
-            if n % (p as i64) == 0 { continue; }
-            if phi.cnt > 0 && p < mx_p { continue; }
-            if phi.find(p).is_some() { continue; }
-            add_prime(n, phi, p, 2, max_prime, ans);
-        }
+    for &p in primes {
+        if p >= max_prime { break; }
+        if n * (p as i64) * (p as i64) >= MAXN { break; }
+        if n % (p as i64) == 0 { continue; }
+        if phi.cnt > 0 && p < mx_p { continue; }
+        if phi.find(p).is_some() { continue; }
+        add_prime(n, phi, p, 2, max_prime, primes, ans);
     }
 }
 
-fn add_prime(n: i64, phi: &PhiState, p: i32, start_e: i32, max_prime_for_recurse: i32, ans: &mut i64) {
+fn add_prime(n: i64, phi: &PhiState, p: i32, start_e: i32, _max_prime_for_recurse: i32, primes: &[i32], ans: &mut i64) {
     let mut pe: i64 = 1;
     for _ in 0..start_e {
         if pe > MAXN / p as i64 { return; }
@@ -115,7 +89,7 @@ fn add_prime(n: i64, phi: &PhiState, p: i32, start_e: i32, max_prime_for_recurse
             new_phi.remove(idx);
         }
 
-        let factors = factorize(p - 1);
+        let factors = factorize(p - 1, primes);
         let mut good = true;
         for &(q, f) in &factors {
             if !good { break; }
@@ -138,7 +112,7 @@ fn add_prime(n: i64, phi: &PhiState, p: i32, start_e: i32, max_prime_for_recurse
         }
 
         if good {
-            helper(n * pe, &new_phi, p, ans);
+            helper(n * pe, &new_phi, p, primes, ans);
         }
 
         // Next: e += 3
@@ -147,15 +121,16 @@ fn add_prime(n: i64, phi: &PhiState, p: i32, start_e: i32, max_prime_for_recurse
             pe *= p as i64;
         }
         e += 3;
-        let _ = e; // suppress unused warning
+        let _ = e;
         if pe > MAXN { break; }
     }
 }
 
 fn main() {
-    build_sieve();
+    let sqrt_maxn = 100_001;
+    let primes: Vec<i32> = primes_up_to(sqrt_maxn).into_iter().map(|p| p as i32).collect();
     let phi = PhiState::new();
     let mut ans: i64 = 0;
-    helper(1, &phi, i32::MAX, &mut ans);
+    helper(1, &phi, i32::MAX, &primes, &mut ans);
     println!("{}", ans);
 }

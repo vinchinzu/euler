@@ -84,20 +84,22 @@ impl Matrix {
         m
     }
 
-    fn get(&self, i: usize, j: usize) -> i64 { self.data[i * self.n + j] }
-    fn set(&mut self, i: usize, j: usize, v: i64) { self.data[i * self.n + j] = v; }
-
+    /// Matrix multiplication with deferred modular reduction.
+    /// Q < 2^27, so n products of (< Q) * (< Q) fit in i64 for n < 500.
     fn mul(&self, other: &Matrix) -> Matrix {
         let n = self.n;
         let mut c = Matrix::new(n);
         for i in 0..n {
             for k in 0..n {
-                let a = self.get(i, k);
+                let a = self.data[i * n + k];
                 if a == 0 { continue; }
                 for j in 0..n {
-                    let v = ((c.get(i, j) as i128 + a as i128 * other.get(k, j) as i128) % Q as i128) as i64;
-                    c.set(i, j, v);
+                    c.data[i * n + j] += a * other.data[k * n + j];
                 }
+            }
+            // Reduce row i once after accumulating all products
+            for j in 0..n {
+                c.data[i * n + j] %= Q;
             }
         }
         c
@@ -116,11 +118,10 @@ impl Matrix {
             result = r10;
 
             // Multiply by M^digit
-            let digit = d;
-            if digit > 0 {
+            if d > 0 {
                 let mut base = self.clone();
                 let mut md = Matrix::eye(n);
-                let mut e = digit;
+                let mut e = d;
                 while e > 0 {
                     if e & 1 == 1 {
                         md = md.mul(&base);
@@ -158,7 +159,8 @@ fn main() {
     nfaces = 1;
     queue.push_back(rep0);
 
-    let mut trans = vec![vec![0i32; 100]; 100];
+    // Use flat array for transition counts (100x100 max)
+    let mut trans = Box::new([[0i32; 100]; 100]);
 
     while let Some(rep) = queue.pop_front() {
         let fi = face_index[rep] as usize;
@@ -178,7 +180,7 @@ fn main() {
     let mut a = Matrix::new(nfaces);
     for i in 0..nfaces {
         for j in 0..nfaces {
-            a.set(i, j, trans[i][j] as i64 % Q);
+            a.data[i * nfaces + j] = trans[i][j] as i64 % Q;
         }
     }
 
@@ -197,9 +199,9 @@ fn main() {
         for j in 0..ne {
             let mut sum = 0i64;
             for k in 0..nfaces {
-                sum = ((sum as i128 + a.get(even_faces[i], k) as i128 * a.get(k, even_faces[j]) as i128) % Q as i128) as i64;
+                sum += a.data[even_faces[i] * nfaces + k] * a.data[k * nfaces + even_faces[j]];
             }
-            a2.set(i, j, sum);
+            a2.data[i * ne + j] = sum % Q;
         }
     }
 
@@ -213,5 +215,5 @@ fn main() {
     for _ in 0..9999 { exp_digits.push(0u8); }
 
     let powered = a2.pow_decimal(&exp_digits);
-    println!("{}", powered.get(ei, ei));
+    println!("{}", powered.data[ei * ne + ei]);
 }

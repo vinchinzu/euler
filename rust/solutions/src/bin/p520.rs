@@ -101,16 +101,21 @@ fn main() {
         }
     }
 
-    // Matrix multiply
+    // Matrix multiply with deferred modular reduction.
+    // MOD ≈ 10^9, products < 10^18, sum of ns ≈ 127 products < 1.3×10^20 fits in i128.
     let mat_mul = |a: &[i64], b: &[i64]| -> Vec<i64> {
         let mut c = vec![0i64; ns * ns];
         for i in 0..ns {
+            let mut acc = vec![0i128; ns];
             for k in 0..ns {
-                let aik = a[i * ns + k];
+                let aik = a[i * ns + k] as i128;
                 if aik == 0 { continue; }
                 for j in 0..ns {
-                    c[i * ns + j] = (c[i * ns + j] + (aik as i128 * b[k * ns + j] as i128 % MOD as i128) as i64) % MOD;
+                    acc[j] += aik * b[k * ns + j] as i128;
                 }
+            }
+            for j in 0..ns {
+                c[i * ns + j] = (acc[j] % MOD as i128) as i64;
             }
         }
         c

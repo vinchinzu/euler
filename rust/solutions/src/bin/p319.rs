@@ -1,19 +1,5 @@
 // Project Euler 319: Bounded Sequences
-use euler_utils::mod_mul;
-
-fn mod_pow128(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    if m == 1 { return 0; }
-    let mut result = 1i64;
-    base = ((base % m) + m) % m;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = mod_mul(result as u64, base as u64, m as u64) as i64;
-        }
-        base = mod_mul(base as u64, base as u64, m as u64) as i64;
-        exp >>= 1;
-    }
-    result
-}
+use euler_utils::mod_pow;
 
 fn main() {
     let n: i64 = 10_000_000_000;
@@ -42,9 +28,9 @@ fn main() {
         while (l + 1) * (l + 1) <= ni { l += 1; }
         while l * l > ni { l -= 1; }
 
-        let p3 = mod_pow128(3, ni + 1, m2);
+        let p3 = mod_pow(3, (ni + 1) as u64, m2 as u64) as i64;
         let val3 = (p3 - 1) / 2;
-        let val2 = (mod_pow128(2, ni + 1, m) - 1 + m) % m;
+        let val2 = (mod_pow(2, (ni + 1) as u64, m as u64) as i64 - 1 + m) % m;
         let mut result = ((val3 - val2) % m + m) % m;
 
         for kk in 2..=l {

@@ -4,11 +4,17 @@ const MOD: i64 = 20092010;
 fn poly_mul_mod(a: &[i64], b: &[i64], out: &mut [i64]) {
     let mut tmp = vec![0i64; 2 * K - 1];
 
+    // Deferred reduction: MOD ≈ 2×10^7, products < 4×10^14,
+    // sum of K=2000 products < 8×10^17 < i64::MAX. Safe to accumulate in i64.
     for i in 0..K {
         if a[i] == 0 { continue; }
         for j in 0..K {
-            tmp[i + j] = (tmp[i + j] + a[i] * b[j]) % MOD;
+            tmp[i + j] += a[i] * b[j];
         }
+    }
+    // Reduce once after accumulation
+    for v in tmp.iter_mut() {
+        *v %= MOD;
     }
 
     for i in (K..=(2 * K - 2)).rev() {

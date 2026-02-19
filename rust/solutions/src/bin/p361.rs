@@ -1,17 +1,7 @@
 use std::collections::HashMap;
+use euler_utils::mod_pow;
 
-const MODULUS: i64 = 1_000_000_000;
-
-fn mod_pow_val(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut result = 1i64;
-    base = ((base % m) + m) % m;
-    while exp > 0 {
-        if exp & 1 != 0 { result = result * base % m; }
-        base = base * base % m;
-        exp >>= 1;
-    }
-    result
-}
+const MODULUS: u64 = 1_000_000_000;
 
 fn first_index_with_len(length: i64, cache: &mut HashMap<i64, i64>) -> i64 {
     if length <= 3 { return 1i64 << (length - 1); }
@@ -59,13 +49,15 @@ fn prefix_of_t(length: i64, pcache: &mut HashMap<i64, i64>) -> i64 {
     if length == 1 { return 0; }
     if let Some(&v) = pcache.get(&length) { return v; }
     let half = highest_pow2_leq(length - 1);
-    let result = ((prefix_of_t(half, pcache) + 1) % MODULUS * mod_pow_val(2, length - half, MODULUS) % MODULUS
-        - prefix_of_t(length - half, pcache) - 1 + 2 * MODULUS) % MODULUS;
+    let m = MODULUS as i64;
+    let result = ((prefix_of_t(half, pcache) + 1) % m * mod_pow(2, (length - half) as u64, MODULUS) as i64 % m
+        - prefix_of_t(length - half, pcache) - 1 + 2 * m) % m;
     pcache.insert(length, result);
     result
 }
 
 fn compute_a(n: i64, fiwl_cache: &mut HashMap<i64, i64>, pcache: &mut HashMap<i64, i64>) -> i64 {
+    let m = MODULUS as i64;
     let mut low = 0i64;
     let mut high = 10_000_000_000i64;
     while low + 1 < high {
@@ -79,8 +71,8 @@ fn compute_a(n: i64, fiwl_cache: &mut HashMap<i64, i64>, pcache: &mut HashMap<i6
     let length = low;
     let position = position_in_t(length, n - first_index_with_len(length, fiwl_cache), fiwl_cache);
     (prefix_of_t(position + length, pcache)
-        - prefix_of_t(position, pcache) % MODULUS * mod_pow_val(2, length, MODULUS) % MODULUS
-        + 2 * MODULUS * MODULUS) % MODULUS
+        - prefix_of_t(position, pcache) % m * mod_pow(2, length as u64, MODULUS) as i64 % m
+        + 2 * m * m) % m
 }
 
 fn main() {
@@ -90,7 +82,7 @@ fn main() {
     let mut ans = 0i64;
     let mut power = 10i64;
     for _ in 1..=18 {
-        ans = (ans + compute_a(power, &mut fiwl_cache, &mut pcache)) % MODULUS;
+        ans = (ans + compute_a(power, &mut fiwl_cache, &mut pcache)) % MODULUS as i64;
         power *= 10;
     }
     println!("{}", ans);

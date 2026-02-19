@@ -1,13 +1,6 @@
-fn mod_pow(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    let mut result = 1i64;
-    base %= modulus;
-    while exp > 0 {
-        if exp & 1 != 0 { result = result * base % modulus; }
-        base = base * base % modulus;
-        exp >>= 1;
-    }
-    result
-}
+// Project Euler 344
+
+use euler_utils::mod_pow;
 
 fn w(n: usize, c: usize, modulus: i64) -> i64 {
     let k = c - c / 2;
@@ -18,7 +11,7 @@ fn w(n: usize, c: usize, modulus: i64) -> i64 {
     for i in 1..=n {
         fact[i] = fact[i - 1] * i as i64 % modulus;
     }
-    inv_fact[n] = mod_pow(fact[n], modulus - 2, modulus);
+    inv_fact[n] = mod_pow(fact[n] as u64, (modulus - 2) as u64, modulus as u64) as i64;
     for i in (0..n).rev() {
         inv_fact[i] = inv_fact[i + 1] * (i + 1) as i64 % modulus;
     }
@@ -92,8 +85,8 @@ fn main() {
     let w2 = w(n, c, m2);
 
     let m = m1 * m2;
-    let x = ((w1 as i128 * m2 as i128 % m as i128 * mod_pow(m2, m1 - 2, m1) as i128 % m as i128
-        + w2 as i128 * m1 as i128 % m as i128 * mod_pow(m1, m2 - 2, m2) as i128 % m as i128)
+    let x = ((w1 as i128 * m2 as i128 % m as i128 * mod_pow(m2 as u64, (m1 - 2) as u64, m1 as u64) as i128 % m as i128
+        + w2 as i128 * m1 as i128 % m as i128 * mod_pow(m1 as u64, (m2 - 2) as u64, m2 as u64) as i128 % m as i128)
         % m as i128) as i64;
 
     println!("{}", x);

@@ -10,6 +10,7 @@ num-integer = { workspace = true }
 num-traits = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
+fxhash = { workspace = true }
 
 # Each solution is a separate binary in src/bin/pNNN.rs
 # Run with: cargo run --release --bin pNNN

@@ -8,55 +8,7 @@
 // division loop entirely. We just need to verify the prime is full reptend by
 // checking that 10 is a primitive root mod p.
 
-use euler_utils::miller_rabin;
-
-fn mod_inv(a: i64, m: i64) -> i64 {
-    let (mut old_r, mut r) = (a, m);
-    let (mut old_s, mut s) = (1i64, 0i64);
-    while r != 0 {
-        let q = old_r / r;
-        let tmp = r;
-        r = old_r - q * r;
-        old_r = tmp;
-        let tmp = s;
-        s = old_s - q * s;
-        old_s = tmp;
-    }
-    ((old_s % m) + m) % m
-}
-
-/// Modular exponentiation: base^exp mod m, using u128 to avoid overflow
-fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    let mut result = 1u64;
-    base %= m;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = (result as u128 * base as u128 % m as u128) as u64;
-        }
-        base = (base as u128 * base as u128 % m as u128) as u64;
-        exp >>= 1;
-    }
-    result
-}
-
-/// Trial division factorization. p-1 is at most ~730M so factors are small.
-fn factor(mut n: u64) -> Vec<u64> {
-    let mut factors = Vec::new();
-    let mut d = 2u64;
-    while d * d <= n {
-        if n % d == 0 {
-            factors.push(d);
-            while n % d == 0 {
-                n /= d;
-            }
-        }
-        d += 1;
-    }
-    if n > 1 {
-        factors.push(n);
-    }
-    factors
-}
+use euler_utils::{factor, miller_rabin, mod_inv, mod_pow};
 
 /// Check if 10 is a primitive root mod p (i.e., ord(10, p) = p-1).
 /// This means p is a full reptend prime.
@@ -64,8 +16,8 @@ fn factor(mut n: u64) -> Vec<u64> {
 fn is_full_reptend(p: u64) -> bool {
     let pm1 = p - 1;
     let factors = factor(pm1);
-    for &q in &factors {
-        if pow_mod(10, pm1 / q, p) == 1 {
+    for (q, _) in &factors {
+        if mod_pow(10, pm1 / q, p) == 1 {
             return false;
         }
     }
@@ -76,7 +28,7 @@ fn main() {
     let lower = 100_000_000_000i64 / 138 + 1;
     let upper = 100_000_000_000i64 / 137;
 
-    let inv = mod_inv(56789, 100000);
+    let inv = mod_inv(56789u64, 100000).unwrap() as i64;
     let target_remainder = (99999i64 * inv) % 100000;
 
     let start = lower + (target_remainder - lower % 100000 + 100000) % 100000;

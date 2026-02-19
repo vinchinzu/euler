@@ -1,6 +1,7 @@
 // Project Euler 370: Geometric triangles
 // Counts lattice triangles with specific properties.
 
+use euler_utils::sieve_smallest_factor;
 use rayon::prelude::*;
 
 fn get_prime_factors(mut q: usize, spf: &[u32]) -> Vec<i64> {
@@ -76,17 +77,7 @@ fn main() {
     let big_l: i64 = 25_000_000_000_000;
     let maxq = 2_900_000usize;
 
-    // Smallest prime factor sieve
-    let mut spf = vec![0u32; maxq + 1];
-    for i in 2..=maxq {
-        if spf[i] == 0 {
-            let mut j = i;
-            while j <= maxq {
-                if spf[j] == 0 { spf[j] = i as u32; }
-                j += i;
-            }
-        }
-    }
+    let spf = sieve_smallest_factor(maxq);
 
     let mut q_max = ((big_l as f64 / 3.0).sqrt() as i64) + 2;
     while 3 * q_max * q_max + 3 * q_max + 1 > big_l { q_max -= 1; }

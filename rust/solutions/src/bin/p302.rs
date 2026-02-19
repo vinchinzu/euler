@@ -3,10 +3,10 @@
 // Recursive generation of candidates with factorizations of n and phi(n).
 
 use std::collections::HashSet;
+use euler_utils::{gcd_i32, is_prime, sieve, sieve_smallest_factor};
 
 const N: i64 = 1_000_000_000_000_000_000; // 10^18
 const MAX_SPF: usize = 1_000_100;
-const MAX_DICT: usize = 64;
 
 #[derive(Clone)]
 struct Dict {
@@ -63,57 +63,12 @@ impl Dict {
     }
 }
 
-fn gcd_i32(a: i32, b: i32) -> i32 {
-    let (mut a, mut b) = (a.abs(), b.abs());
-    while b != 0 { let t = b; b = a % b; a = t; }
-    a
-}
-
-fn is_prime_check(n: i32) -> bool {
-    if n < 2 { return false; }
-    if n == 2 { return true; }
-    if n % 2 == 0 { return false; }
-    let mut i = 3;
-    while (i as i64) * (i as i64) <= n as i64 {
-        if n % i == 0 { return false; }
-        i += 2;
-    }
-    true
-}
-
 fn main() {
-    // Sieve SPF
-    let mut spf = vec![0u32; MAX_SPF];
-    for i in 0..MAX_SPF { spf[i] = i as u32; }
-    {
-        let mut i = 2;
-        while i * i < MAX_SPF {
-            if spf[i] == i as u32 {
-                let mut j = i * i;
-                while j < MAX_SPF {
-                    if spf[j] == j as u32 { spf[j] = i as u32; }
-                    j += i;
-                }
-            }
-            i += 1;
-        }
-    }
+    let spf = sieve_smallest_factor(MAX_SPF);
 
-    // Sieve primes up to N^(1/3)
+    // Primes up to N^(1/3)
     let limit = (N as f64).cbrt() as usize + 2;
-    let mut is_p = vec![true; limit + 1];
-    is_p[0] = false;
-    if limit >= 1 { is_p[1] = false; }
-    {
-        let mut i = 2;
-        while i * i <= limit {
-            if is_p[i] {
-                let mut j = i * i;
-                while j <= limit { is_p[j] = false; j += i; }
-            }
-            i += 1;
-        }
-    }
+    let is_p = sieve(limit);
     let primes: Vec<i32> = (2..=limit).filter(|&i| is_p[i]).map(|i| i as i32).collect();
 
     let mut achilles_set: HashSet<i64> = HashSet::new();
@@ -172,7 +127,7 @@ fn helper(
 
         let mut p = bad_p + 1;
         while p < max_p && (n as f64) * (p as f64) * (p as f64) < N as f64 {
-            if p % bad_p == 1 && is_prime_check(p) {
+            if p % bad_p == 1 && is_prime(p as u64) {
                 add_prime_fn(n, p, 2, factors, phi, max_p, primes, spf, achilles_set);
             }
             p += bad_p;

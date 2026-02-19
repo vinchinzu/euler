@@ -1,7 +1,13 @@
-// Project Euler 928 - Cribbage Scoring
-// Enumerate all multisets of cards, compute hand score and cribbage score.
-// Count hands where hand_score == cribbage_score.
-// Optimized with incremental pairs, fifteens GF, and pruning.
+// Project Euler 928 – Cribbage Scoring
+//
+// For every non-empty subset of a standard 52-card deck compute
+//   hand_score  = sum of card values (A=1, 2‑9 face, 10/J/Q/K=10)
+//   crib_score  = pairs + runs + fifteens
+// Count the number of subsets where hand_score == crib_score.
+//
+// BUG FIX: the fifteens GF must use C(count_i, k) — the number of
+// ways to choose k cards from the count_i cards of rank i in the hand.
+// The old code used C(4, k) which overcounts fifteens.
 
 use rayon::prelude::*;
 
@@ -9,194 +15,194 @@ const NRANKS: usize = 13;
 const MAX_COUNT: usize = 4;
 const TARGET_SUM: usize = 15;
 
-fn rank_value(rank: usize) -> usize {
-    if rank == 0 {
-        return 1;
-    }
-    if rank >= 9 {
-        return 10;
-    }
-    rank + 1
-}
+/// C(n, k) for n, k ≤ 4
+const BINOM: [[i64; 5]; 5] = [
+    [1, 0, 0, 0, 0],
+    [1, 1, 0, 0, 0],
+    [1, 2, 1, 0, 0],
+    [1, 3, 3, 1, 0],
+    [1, 4, 6, 4, 1],
+];
 
-fn suit_combinations(count: usize) -> i64 {
-    match count {
-        0 => 1,
-        1 => 4,
-        2 => 6,
-        3 => 4,
-        4 => 1,
-        _ => 0,
-    }
-}
-
-fn calculate_pairs_score(counts: &[usize; NRANKS]) -> i64 {
-    let mut score: i64 = 0;
-    for i in 0..NRANKS {
-        if counts[i] >= 2 {
-            score += (counts[i] * (counts[i] - 1) / 2) as i64 * 2;
-        }
-    }
-    score
-}
-
-fn calculate_runs_score(counts: &[usize; NRANKS]) -> i64 {
-    let mut score: i64 = 0;
-    let mut i = 0;
-    while i < NRANKS - 2 {
-        let mut run_length = 0;
-        let mut j = i;
-        while j < NRANKS && counts[j] > 0 {
-            run_length += 1;
-            j += 1;
-        }
-        if run_length >= 3 {
-            let mut run_product: i64 = 1;
-            for k in i..i + run_length {
-                run_product *= counts[k] as i64;
-            }
-            score += run_length as i64 * run_product;
-            i += run_length;
-        } else {
-            i += 1;
-        }
-    }
-    score
-}
-
-fn calculate_fifteens_score(counts: &[usize; NRANKS]) -> i64 {
-    let mut gf = [0i64; TARGET_SUM + 1];
-    gf[0] = 1;
-
-    for idx in 0..NRANKS {
-        let value = rank_value(idx);
-        let count = counts[idx];
-        let mut new_gf = [0i64; TARGET_SUM + 1];
-
-        for k in 0..=count {
-            let coeff = suit_combinations(k);
-            let power = k * value;
-            if power > TARGET_SUM {
-                break;
-            }
-            for s in 0..=(TARGET_SUM - power) {
-                new_gf[s + power] += gf[s] * coeff;
-            }
-        }
-        gf = new_gf;
-    }
-
-    gf[TARGET_SUM] * 2
-}
-
-fn calculate_hand_score(counts: &[usize; NRANKS]) -> i64 {
-    let mut total: i64 = 0;
-    for i in 0..NRANKS {
-        total += counts[i] as i64 * rank_value(i) as i64;
-    }
-    total
-}
-
-fn calculate_num_hands(counts: &[usize; NRANKS]) -> i64 {
-    let mut product: i64 = 1;
-    for i in 0..NRANKS {
-        product *= suit_combinations(counts[i]);
-    }
-    product
-}
+const RANK_VAL: [usize; NRANKS] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10];
 
 type Gf = [i64; TARGET_SUM + 1];
 
-/// Extend the generating function with rank `idx` having count `c`.
-#[inline]
-fn extend_gf(gf: &Gf, idx: usize, c: usize) -> Gf {
-    if c == 0 {
-        return *gf;
-    }
-    let value = rank_value(idx);
-    let mut new_gf = [0i64; TARGET_SUM + 1];
-    // k=0 contribution: gf * 1
-    for s in 0..=TARGET_SUM {
-        new_gf[s] = gf[s];
-    }
-    // k=1..c contributions
-    for k in 1..=c {
-        let coeff = suit_combinations(k);
-        let power = k * value;
-        if power > TARGET_SUM {
+/// Multiply gf by the polynomial for a rank with given `value` and
+/// `count` cards in hand: Σ_{k=0}^{count} C(count,k) · x^{k·value}
+#[inline(always)]
+fn extend_gf(gf: &Gf, value: usize, count: usize) -> Gf {
+    let mut r = [0i64; TARGET_SUM + 1];
+    for k in 0..=count {
+        let coeff = BINOM[count][k];
+        let pwr = k * value;
+        if pwr > TARGET_SUM {
             break;
         }
-        for s in 0..=(TARGET_SUM - power) {
-            new_gf[s + power] += gf[s] * coeff;
+        for s in 0..=(TARGET_SUM - pwr) {
+            // SAFETY: s + pwr ≤ TARGET_SUM, s ≤ TARGET_SUM
+            unsafe {
+                *r.get_unchecked_mut(s + pwr) += *gf.get_unchecked(s) * coeff;
+            }
         }
     }
-    new_gf
+    r
 }
 
 fn recurse(
     idx: usize,
     counts: &mut [usize; NRANKS],
-    hand_score: i64,
-    pairs_score: i64,
+    hs: i64,   // hand_score accumulated
+    ps: i64,   // pairs_score accumulated
+    ra: i64,   // runs_score accumulated (finalized runs only)
+    rl: usize, // current open-run length
+    rp: i64,   // current open-run product of counts
     gf: &Gf,
     has_any: bool,
     total: &mut i64,
+    max_rem: &[i64; NRANKS + 1],
 ) {
     if idx == NRANKS {
         if !has_any {
             return;
         }
-        let fifteens = gf[TARGET_SUM] * 2;
-        let runs = calculate_runs_score(counts);
-        let cribbage_score = pairs_score + runs + fifteens;
-
-        // Debug: verify against original calculation
-        debug_assert_eq!(pairs_score, calculate_pairs_score(counts));
-        debug_assert_eq!(fifteens, calculate_fifteens_score(counts));
-        debug_assert_eq!(hand_score, calculate_hand_score(counts));
-
-        if hand_score == cribbage_score {
-            *total += calculate_num_hands(counts);
+        let runs = if rl >= 3 { ra + rl as i64 * rp } else { ra };
+        let deficit = hs - ps - runs;
+        if deficit < 0 {
+            return;
+        }
+        let need = gf[TARGET_SUM];
+        if need * 2 == deficit {
+            let mut nh = 1i64;
+            for i in 0..NRANKS {
+                nh *= BINOM[4][counts[i]];
+            }
+            *total += nh;
         }
         return;
     }
 
-    let val = rank_value(idx) as i64;
+    let v = RANK_VAL[idx] as i64;
 
     for c in 0..=MAX_COUNT {
-        counts[idx] = c;
-        let new_hand_score = hand_score + c as i64 * val;
-        let new_has_any = has_any || c > 0;
+        let new_hs = hs + c as i64 * v;
+        let new_ps = ps + if c >= 2 { (c * (c - 1) / 2) as i64 * 2 } else { 0 };
 
-        // Incremental pairs score
-        let new_pairs_score = if c >= 2 {
-            pairs_score + (c * (c - 1) / 2) as i64 * 2
+        // Incremental run tracking
+        let (new_ra, new_rl, new_rp) = if c > 0 {
+            if rl > 0 {
+                (ra, rl + 1, rp * c as i64)
+            } else {
+                (ra, 1, c as i64)
+            }
+        } else if rl >= 3 {
+            (ra + rl as i64 * rp, 0, 0)
         } else {
-            pairs_score
+            (ra, 0, 0)
         };
 
-        // Extend generating function incrementally
-        let new_gf = extend_gf(gf, idx, c);
+        // Prune: pairs + finalized runs already exceed max possible hand_score
+        if new_ps + new_ra > new_hs + max_rem[idx + 1] {
+            continue;
+        }
 
-        recurse(
-            idx + 1,
-            counts,
-            new_hand_score,
-            new_pairs_score,
-            &new_gf,
-            new_has_any,
-            total,
-        );
+        counts[idx] = c;
+        if c == 0 {
+            recurse(
+                idx + 1, counts, new_hs, new_ps, new_ra, new_rl, new_rp, gf, has_any,
+                total, max_rem,
+            );
+        } else {
+            let new_gf = extend_gf(gf, RANK_VAL[idx], c);
+            recurse(
+                idx + 1, counts, new_hs, new_ps, new_ra, new_rl, new_rp, &new_gf, true,
+                total, max_rem,
+            );
+        }
     }
     counts[idx] = 0;
 }
 
 fn main() {
-    let mut counts = [0usize; NRANKS];
-    let gf: Gf = [0; TARGET_SUM + 1];
-    let mut gf_init = gf;
-    gf_init[0] = 1;
-    let mut total: i64 = 0;
-    recurse(0, &mut counts, 0, 0, &gf_init, false, &mut total);
+    // max_rem[i] = max additional hand_score from ranks i..NRANKS-1
+    let mut max_rem = [0i64; NRANKS + 1];
+    for i in (0..NRANKS).rev() {
+        max_rem[i] = max_rem[i + 1] + MAX_COUNT as i64 * RANK_VAL[i] as i64;
+    }
+
+    // Parallelize: depth-3 split (125 tasks)
+    const SPLIT: usize = 3;
+    let mut tasks = Vec::new();
+    for c0 in 0..=MAX_COUNT {
+        for c1 in 0..=MAX_COUNT {
+            for c2 in 0..=MAX_COUNT {
+                tasks.push([c0, c1, c2]);
+            }
+        }
+    }
+
+    let total: i64 = tasks
+        .par_iter()
+        .map(|cs| {
+            let mut counts = [0usize; NRANKS];
+            let mut hs = 0i64;
+            let mut ps = 0i64;
+            let mut ra = 0i64;
+            let mut rl = 0usize;
+            let mut rp = 0i64;
+            let mut has_any = false;
+
+            let mut gf: Gf = [0; TARGET_SUM + 1];
+            gf[0] = 1;
+
+            for i in 0..SPLIT {
+                let c = cs[i];
+                counts[i] = c;
+                hs += c as i64 * RANK_VAL[i] as i64;
+                if c >= 2 {
+                    ps += (c * (c - 1) / 2) as i64 * 2;
+                }
+                if c > 0 {
+                    has_any = true;
+                    gf = extend_gf(&gf, RANK_VAL[i], c);
+                    if rl > 0 {
+                        rl += 1;
+                        rp *= c as i64;
+                    } else {
+                        rl = 1;
+                        rp = c as i64;
+                    }
+                } else {
+                    if rl >= 3 {
+                        ra += rl as i64 * rp;
+                    }
+                    rl = 0;
+                    rp = 0;
+                }
+            }
+
+            // Early prune
+            if ps + ra > hs + max_rem[SPLIT] {
+                return 0;
+            }
+
+            let mut local_total = 0i64;
+            recurse(
+                SPLIT,
+                &mut counts,
+                hs,
+                ps,
+                ra,
+                rl,
+                rp,
+                &gf,
+                has_any,
+                &mut local_total,
+                &max_rem,
+            );
+            local_total
+        })
+        .sum();
+
     println!("{}", total);
 }

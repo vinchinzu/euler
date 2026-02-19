@@ -9,6 +9,7 @@ num-traits = "0.2"
 primal = "0.3"
 itertools = "0.14"
 rayon = "1.10"
+fxhash = "0.2"
 
 [profile.release]
 opt-level = 3
