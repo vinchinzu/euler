@@ -3,33 +3,137 @@
 // A number m is in S if for all prime factors p of phi(m),
 // the map x -> 1 + x^p mod m reaches 0 from 1.
 // R(N) = sum of elements of S not exceeding N.
+//
+// Optimizations over naive visited-array orbit tracing:
+// 1. Brent's cycle detection for large m (cache-friendly, O(1) memory)
+// 2. Barrett reduction for fast modular arithmetic (avoid slow div)
+// 3. Specialised step functions for small exponents (2, 3, 5, 7)
+// 4. Stack-allocated phi_factors instead of Vec heap allocation
+// 5. Collect all exponents first, amortize Barrett precomputation
 
 use rayon::prelude::*;
 use std::cell::RefCell;
 
 const N_LIMIT: usize = 10_000_000;
+const VIS_LIMIT: usize = 200_000;
 
 thread_local! {
     static TL: RefCell<(Vec<u32>, u32)> =
-        RefCell::new((vec![0u32; N_LIMIT + 1], 0));
+        RefCell::new((vec![0u32; VIS_LIMIT + 1], 0));
+}
+
+/// Barrett reduction for fast modular arithmetic.
+/// For m <= 10^7, products a*b < 10^14 < 2^47.
+/// Precompute inv = floor(2^47 / m), then reduce via multiply+shift.
+#[derive(Copy, Clone)]
+struct Barrett {
+    m: u64,
+    inv: u64,
+}
+
+impl Barrett {
+    #[inline(always)]
+    fn new(m: u64) -> Self {
+        Barrett {
+            m,
+            inv: (1u64 << 47) / m,
+        }
+    }
+
+    /// Reduce x mod m for x < m^2 < 2^48.
+    /// Uses u128 multiplication for Barrett quotient estimation.
+    #[inline(always)]
+    fn reduce(&self, x: u64) -> u64 {
+        // q = floor(x * inv >> 47) approximates floor(x / m)
+        // x < 2^48, inv < 2^24 => x*inv < 2^72, needs u128
+        let q = ((x as u128 * self.inv as u128) >> 47) as u64;
+        let r = x - q * self.m;
+        // r < 2*m guaranteed by Barrett theory
+        if r >= self.m { r - self.m } else { r }
+    }
+
+    /// Compute (a * b) % m where a, b < m.
+    #[inline(always)]
+    fn mul_mod(&self, a: u64, b: u64) -> u64 {
+        self.reduce(a * b)
+    }
 }
 
 #[inline(always)]
-fn pow_mod(mut b: u64, mut e: u64, m: u64) -> u64 {
-    // m <= 10^7, so b*b <= (10^7)^2 = 10^14 < 2^47 — fits in u64
+fn pow_mod_barrett(mut b: u64, mut e: u64, bar: &Barrett) -> u64 {
     let mut r = 1u64;
-    b %= m;
+    b = bar.reduce(b);
     while e > 0 {
         if e & 1 == 1 {
-            r = r * b % m;
+            r = bar.mul_mod(r, b);
         }
-        b = b * b % m;
+        b = bar.mul_mod(b, b);
         e >>= 1;
     }
     r
 }
 
-fn check_reach(m: u64, exp: u64) -> bool {
+/// f(x) = (x^exp + 1) % m using Barrett reduction, small-exp specialised.
+#[inline(always)]
+fn step_bar(x: u64, exp: u64, bar: &Barrett) -> u64 {
+    let m = bar.m;
+    match exp {
+        2 => {
+            let v = bar.mul_mod(x, x) + 1;
+            if v >= m { v - m } else { v }
+        }
+        3 => {
+            let x2 = bar.mul_mod(x, x);
+            let v = bar.mul_mod(x2, x) + 1;
+            if v >= m { v - m } else { v }
+        }
+        5 => {
+            let x2 = bar.mul_mod(x, x);
+            let x4 = bar.mul_mod(x2, x2);
+            let v = bar.mul_mod(x4, x) + 1;
+            if v >= m { v - m } else { v }
+        }
+        7 => {
+            let x2 = bar.mul_mod(x, x);
+            let x4 = bar.mul_mod(x2, x2);
+            let v = bar.mul_mod(bar.mul_mod(x4, x2), x) + 1;
+            if v >= m { v - m } else { v }
+        }
+        _ => {
+            let v = pow_mod_barrett(x, exp, bar) + 1;
+            if v >= m { v - m } else { v }
+        }
+    }
+}
+
+/// Brent's cycle detection for orbit x -> f(x) starting at x=1.
+/// Returns true if 0 is reached before entering a cycle.
+#[inline(never)]
+fn check_reach_brent(bar: &Barrett, exp: u64) -> bool {
+    let mut power = 1u64;
+    let mut lam = 0u64;
+    let mut tortoise = 1u64;
+    let mut hare = step_bar(1, exp, bar);
+    if hare == 0 {
+        return true;
+    }
+    while tortoise != hare {
+        if lam == power {
+            tortoise = hare;
+            power <<= 1;
+            lam = 0;
+        }
+        hare = step_bar(hare, exp, bar);
+        if hare == 0 {
+            return true;
+        }
+        lam += 1;
+    }
+    false
+}
+
+/// Visited-array orbit detection for small m (fits in cache).
+fn check_reach_visited(bar: &Barrett, exp: u64) -> bool {
     TL.with(|cell| {
         let (vis, gn) = &mut *cell.borrow_mut();
         *gn = gn.wrapping_add(1);
@@ -39,106 +143,121 @@ fn check_reach(m: u64, exp: u64) -> bool {
         }
         let g = *gn;
         let mut x = 1u64;
-        if exp == 2 {
-            loop {
-                let i = x as usize;
-                // SAFETY: x < m <= N_LIMIT, vis has N_LIMIT+1 entries
-                unsafe {
-                    if *vis.get_unchecked(i) == g {
-                        return false;
-                    }
-                    *vis.get_unchecked_mut(i) = g;
+        loop {
+            let i = x as usize;
+            // SAFETY: x < m <= VIS_LIMIT, vis has VIS_LIMIT+1 entries
+            unsafe {
+                if *vis.get_unchecked(i) == g {
+                    return false;
                 }
-                if x == 0 {
-                    return true;
-                }
-                x = (x * x % m + 1) % m;
-                if x == 0 {
-                    return true;
-                }
+                *vis.get_unchecked_mut(i) = g;
             }
-        } else {
-            loop {
-                let i = x as usize;
-                unsafe {
-                    if *vis.get_unchecked(i) == g {
-                        return false;
-                    }
-                    *vis.get_unchecked_mut(i) = g;
-                }
-                if x == 0 {
-                    return true;
-                }
-                x = (pow_mod(x, exp, m) + 1) % m;
-                if x == 0 {
-                    return true;
-                }
+            if x == 0 {
+                return true;
+            }
+            x = step_bar(x, exp, bar);
+            if x == 0 {
+                return true;
             }
         }
     })
+}
+
+/// Check reachability for all exponents, amortizing Barrett precomputation.
+fn check_reach_all(m: u64, exps: &[u64]) -> bool {
+    let bar = Barrett::new(m);
+    if m <= VIS_LIMIT as u64 {
+        for &exp in exps {
+            if !check_reach_visited(&bar, exp) {
+                return false;
+            }
+        }
+    } else {
+        for &exp in exps {
+            if !check_reach_brent(&bar, exp) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn is_prime_in_s(q: usize, spf: &[usize]) -> bool {
     if q == 2 {
         return true;
     }
+    // Collect distinct prime factors of phi(q) = q-1
+    let mut exps = [0u64; 16];
+    let mut ne = 0usize;
     let mut phi = q - 1;
     if phi & 1 == 0 {
-        if !check_reach(q as u64, 2) {
-            return false;
-        }
+        exps[ne] = 2;
+        ne += 1;
         while phi & 1 == 0 {
             phi >>= 1;
         }
     }
     while phi > 1 {
         let p = spf[phi];
-        if !check_reach(q as u64, p as u64) {
-            return false;
-        }
+        exps[ne] = p as u64;
+        ne += 1;
         while phi % p == 0 {
             phi /= p;
         }
     }
-    true
+    check_reach_all(q as u64, &exps[..ne])
 }
 
 fn is_composite_in_s(m: usize, spf: &[usize]) -> bool {
-    let mut phi_factors = Vec::with_capacity(16);
+    let mut phi_factors = [0u64; 32];
+    let mut nf = 0usize;
     let mut temp = m;
     while temp > 1 {
         let p = spf[temp];
-        // Add prime factors of p-1
         let mut t = p - 1;
         while t > 1 {
             let f = spf[t];
-            if !phi_factors.contains(&f) {
-                phi_factors.push(f);
+            let fv = f as u64;
+            let mut found = false;
+            for i in 0..nf {
+                if phi_factors[i] == fv {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                phi_factors[nf] = fv;
+                nf += 1;
             }
             while t % f == 0 {
                 t /= f;
             }
         }
-        // If p^2 | m, add p as a factor of phi(m)
         let mut cnt = 0;
         let mut tmp = m;
         while tmp % p == 0 {
             cnt += 1;
             tmp /= p;
         }
-        if cnt >= 2 && !phi_factors.contains(&p) {
-            phi_factors.push(p);
+        if cnt >= 2 {
+            let pv = p as u64;
+            let mut found = false;
+            for i in 0..nf {
+                if phi_factors[i] == pv {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                phi_factors[nf] = pv;
+                nf += 1;
+            }
         }
         while temp % p == 0 {
             temp /= p;
         }
     }
-    for &f in &phi_factors {
-        if !check_reach(m as u64, f as u64) {
-            return false;
-        }
-    }
-    true
+    check_reach_all(m as u64, &phi_factors[..nf])
 }
 
 fn main() {

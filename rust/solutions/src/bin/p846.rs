@@ -4,6 +4,7 @@
 
 use rayon::prelude::*;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const MAXN: usize = 1_000_001;
 
@@ -43,6 +44,16 @@ fn dfs_cycle(
         }
     }
     pot
+}
+
+/// Work item with inline prefix (no heap allocation).
+struct WorkItem {
+    start: u32,
+    current: u32,
+    sum: i64,
+    len: i32,
+    prefix: [u32; 5],
+    prefix_len: u8,  // 0 = direct cycle (sum only), 2-5 = prefix nodes
 }
 
 fn main() {
@@ -262,18 +273,18 @@ fn main() {
 
         if nn > 100 {
             // Large component: decompose work into fine-grained items for parallelism.
-            // Work item: (start, current_node, current_sum, length, path_prefix)
-            let mut work_items: Vec<(u32, u32, i64, i32, Vec<u32>)> = Vec::new();
+            // All work items use inline fixed-size prefix (no heap allocation).
+            let mut work_items: Vec<WorkItem> = Vec::new();
 
-            let deep3_limit = 20u32;  // starts 0..20 get depth-3 decomposition
-            let deep4_limit = 2u32;   // starts 0..2 get depth-4 decomposition
+            let deep3_limit = 20u32;
+            let deep4_limit = 2u32;
+            let _deep5_limit = 0u32;  // no depth-5
 
             for start in 0..nn as u32 {
                 let s_off = sub_offset[start as usize];
                 let s_end = sub_offset[start as usize + 1];
 
                 if start < deep3_limit {
-                    // Depth 3+: enumerate (start, v, w) triples, optionally go deeper
                     for ei in s_off..s_end {
                         let v = sub_data[ei as usize];
                         if v <= start { continue; }
@@ -284,70 +295,102 @@ fn main() {
                             if w == start || w <= start || w == v { continue; }
 
                             if start < deep4_limit {
-                                // Depth 4: enumerate (start, v, w, x) quadruples
                                 let w_off = sub_offset[w as usize];
                                 let w_end = sub_offset[w as usize + 1];
-                                let mut any_pushed = false;
                                 for ei3 in w_off..w_end {
                                     let x = sub_data[ei3 as usize];
                                     if x == start {
-                                        // Cycle of length 3: start→v→w→start
-                                        // Handle directly (no further DFS needed)
-                                        work_items.push((
-                                            start, start, // current = start signals direct cycle
-                                            node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
-                                            3,
-                                            vec![], // empty prefix = direct cycle contribution
-                                        ));
-                                        any_pushed = true;
+                                        work_items.push(WorkItem {
+                                            start, current: start,
+                                            sum: node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
+                                            len: 3, prefix: [0; 5], prefix_len: 0,
+                                        });
                                     } else if x > start && x != v && x != w {
-                                        work_items.push((
-                                            start, x,
-                                            node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize] + node_vals[x as usize],
-                                            4,
-                                            vec![start, v, w, x],
-                                        ));
-                                        any_pushed = true;
+                                        work_items.push(WorkItem {
+                                            start, current: x,
+                                            sum: node_vals[start as usize] + node_vals[v as usize]
+                                                + node_vals[w as usize] + node_vals[x as usize],
+                                            len: 4,
+                                            prefix: [start, v, w, x, 0],
+                                            prefix_len: 4,
+                                        });
                                     }
                                 }
-                                let _ = any_pushed;
                             } else {
-                                work_items.push((
-                                    start, w,
-                                    node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
-                                    3,
-                                    vec![start, v, w],
-                                ));
+                                work_items.push(WorkItem {
+                                    start, current: w,
+                                    sum: node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
+                                    len: 3,
+                                    prefix: [start, v, w, 0, 0],
+                                    prefix_len: 3,
+                                });
                             }
                         }
                     }
                 } else {
-                    // Depth 2: (start, v) pairs
                     for ei in s_off..s_end {
                         let v = sub_data[ei as usize];
                         if v > start {
-                            work_items.push((
-                                start, v,
-                                node_vals[start as usize] + node_vals[v as usize],
-                                2,
-                                vec![start, v],
-                            ));
+                            work_items.push(WorkItem {
+                                start, current: v,
+                                sum: node_vals[start as usize] + node_vals[v as usize],
+                                len: 2,
+                                prefix: [start, v, 0, 0, 0],
+                                prefix_len: 2,
+                            });
                         }
                     }
                 }
             }
 
-            let blk_potency: i64 = work_items.par_iter().map(|(start, current, sum, len, prefix)| {
-                if prefix.is_empty() {
-                    // Direct cycle found during decomposition (length-3 cycle)
-                    return *sum;
+            // Pre-allocate a pool of vis buffers (one per rayon thread).
+            // SAFETY: each rayon thread gets a unique buffer via thread-local ID.
+            struct SendPtr(*mut [bool]);
+            unsafe impl Send for SendPtr {}
+            unsafe impl Sync for SendPtr {}
+
+            let num_threads = rayon::current_num_threads();
+            let mut pool: Vec<Vec<bool>> = (0..num_threads)
+                .map(|_| vec![false; nn])
+                .collect();
+            let pool_ptrs: Vec<SendPtr> = pool.iter_mut()
+                .map(|v| SendPtr(v.as_mut_slice() as *mut [bool]))
+                .collect();
+
+            static THREAD_COUNTER: AtomicUsize = AtomicUsize::new(0);
+            THREAD_COUNTER.store(0, Ordering::SeqCst);
+            thread_local! {
+                static TID: std::cell::Cell<usize> = std::cell::Cell::new(usize::MAX);
+            }
+
+            let blk_potency: i64 = work_items.par_iter().map(|wi| {
+                if wi.prefix_len == 0 {
+                    return wi.sum;
                 }
-                let mut path_vis = vec![false; nn];
-                for &p in prefix { path_vis[p as usize] = true; }
-                dfs_cycle(
-                    *current, *start, *sum, *len,
-                    &mut path_vis, &sub_offset, &sub_data, &node_vals,
-                )
+                let tid = TID.with(|t| {
+                    let v = t.get();
+                    if v == usize::MAX {
+                        let new_id = THREAD_COUNTER.fetch_add(1, Ordering::Relaxed);
+                        t.set(new_id);
+                        new_id
+                    } else {
+                        v
+                    }
+                });
+                let ptr = pool_ptrs[tid].0;
+                let vis: &mut [bool] = unsafe { &mut *ptr };
+                let plen = wi.prefix_len as usize;
+                for i in 0..plen {
+                    vis[wi.prefix[i] as usize] = true;
+                }
+                let result = dfs_cycle(
+                    wi.current, wi.start, wi.sum, wi.len,
+                    vis, &sub_offset, &sub_data, &node_vals,
+                );
+                for i in 0..plen {
+                    vis[wi.prefix[i] as usize] = false;
+                }
+                result
             }).sum();
 
             total_potency += blk_potency / 2;

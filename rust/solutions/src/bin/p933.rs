@@ -13,13 +13,36 @@
 //    For large H, this decomposes into prefix (transient) and tail (stabilized) parts
 //    with a closed-form formula, avoiding enumeration over all h.
 
+use rayon::prelude::*;
+
+/// Wrapper around a raw pointer to allow sharing across rayon threads.
+/// SAFETY: The caller must ensure no data races (readers don't overlap with writers).
+struct SharedSlice {
+    ptr: usize, // store as usize to satisfy Send+Sync
+}
+unsafe impl Send for SharedSlice {}
+unsafe impl Sync for SharedSlice {}
+
+impl SharedSlice {
+    fn new(slice: &[u8]) -> Self {
+        SharedSlice {
+            ptr: slice.as_ptr() as usize,
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get(&self, idx: usize) -> u8 {
+        unsafe { *(self.ptr as *const u8).add(idx) }
+    }
+}
+
 fn main() {
     let w_max: usize = 123;
     let h_target: usize = 1234567;
 
     // Phase 1: Compute Grundy values G(w,h) for w=2..123, h until stabilization.
-    // Empirically, max stabilization point for w<=123 is ~3320.
-    let h_budget: usize = 5000;
+    // Empirically, max stabilization point for w<=123 is 3320.
+    let h_budget: usize = 3500;
     let stride = h_budget + 1;
 
     // Flat contiguous array for cache-friendly access: g[w * stride + h]
@@ -33,31 +56,50 @@ fn main() {
     h_stab[1] = 1;
 
     for w in 2..=w_max {
-        for h in 2..=h_budget {
-            let mut seen = [false; 256];
-            for a in 1..w {
-                let wa = w - a;
-                for b in 1..h {
-                    let hb = h - b;
-                    // SAFETY: a,wa < w_max+1 and b,hb <= h_budget, so indices are in bounds
-                    unsafe {
-                        let xor = *g.get_unchecked(a * stride + b)
-                            ^ *g.get_unchecked(a * stride + hb)
-                            ^ *g.get_unchecked(wa * stride + b)
-                            ^ *g.get_unchecked(wa * stride + hb);
-                        *seen.get_unchecked_mut(xor as usize) = true;
+        // For this w, all reads are to rows a < w which are already computed.
+        // Writes go to row w only. Compute row w in parallel over h.
+        //
+        // Symmetry: XOR(a,b,w,h) is symmetric in a <-> w-a, so iterate a=1..(w-1)/2.
+        // For even w, a=w/2 gives a=w-a, making XOR always 0.
+        let half_w = (w - 1) / 2;
+        let w_even = w % 2 == 0;
+
+        let shared = SharedSlice::new(&g);
+
+        let row: Vec<u8> = (2..=h_budget)
+            .into_par_iter()
+            .map(|h| {
+                let mut seen = [false; 256];
+                if w_even {
+                    seen[0] = true;
+                }
+                for a in 1..=half_w {
+                    let a_off = a * stride;
+                    let wa_off = (w - a) * stride;
+                    for b in 1..h {
+                        let hb = h - b;
+                        // SAFETY: a,w-a < w_max+1 and b,hb in [1,h_budget],
+                        // so all indices are in bounds. Only reading rows < w.
+                        unsafe {
+                            let xor = shared.get(a_off + b)
+                                ^ shared.get(a_off + hb)
+                                ^ shared.get(wa_off + b)
+                                ^ shared.get(wa_off + hb);
+                            *seen.get_unchecked_mut(xor as usize) = true;
+                        }
                     }
                 }
-            }
-            let mut mex = 0u8;
-            while seen[mex as usize] {
-                mex += 1;
-            }
-            // SAFETY: w * stride + h is in bounds
-            unsafe {
-                *g.get_unchecked_mut(w * stride + h) = mex;
-            }
-        }
+                let mut mex = 0u8;
+                while seen[mex as usize] {
+                    mex += 1;
+                }
+                mex
+            })
+            .collect();
+
+        // Copy computed row into the main array
+        let row_start = w * stride;
+        g[row_start + 2..row_start + 2 + row.len()].copy_from_slice(&row);
 
         // Find stabilization: longest constant run at the end of the computed range
         let val = g[w * stride + h_budget];
@@ -97,16 +139,12 @@ fn main() {
     for w in 2..=w_max {
         for a in 1..w {
             let c = w - a;
-            // b_stab: smallest b such that L(b') = l_inf for all b' >= b_stab.
-            // Must be >= 1 since b indices start at 1.
             let b_stab = std::cmp::max(std::cmp::max(h_stab[a], h_stab[c]), 1);
             let l_inf = g_inf[a] ^ g_inf[c];
 
-            // Count prefix values and sum of b-positions with L(b) = l_inf
             let mut count_map = [0i64; 256];
             let mut prefix_b_sum_linf: i64 = 0;
             for b in 1..b_stab {
-                // SAFETY: a,c <= w_max and b < b_stab <= h_budget
                 let lb = unsafe {
                     *g.get_unchecked(a * stride + b) ^ *g.get_unchecked(c * stride + b)
                 };
@@ -121,7 +159,6 @@ fn main() {
             let h = h_target as i64;
             let bs = b_stab as i64;
 
-            // Contribution from non-l_inf prefix pairs (all pairs satisfy b1+b2 <= H)
             let mut s: i64 = 0;
             for v in 0..256u16 {
                 if v as u8 != l_inf {
@@ -130,12 +167,11 @@ fn main() {
                 }
             }
 
-            // l_inf contributions
-            s += p * p; // prefix-prefix
-            s += 2 * (p * (h - bs + 1) - sum_p); // prefix-tail cross
+            s += p * p;
+            s += 2 * (p * (h - bs + 1) - sum_p);
             let m = h - 2 * bs + 1;
             if m > 0 {
-                s += m * (m + 1) / 2; // tail-tail
+                s += m * (m + 1) / 2;
             }
 
             total_d += s;
