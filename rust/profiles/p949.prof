@@ -1,0 +1,11 @@
+=== Problem 949 (10.11s) ===
+
+IPC: 0.38  Cache miss: 73.1%  Branch miss: 3.4%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS | BRANCH-HEAVY
+
+--- Top Functions ---
+   84.23%  hashbrown::rustc_entry::<impl hashbrown::map::HashMap<K,V,S,A>>::rustc_entry
+    7.08%  p949::pow_small
+    5.09%  p949::main
+    1.75%  __umodti3
+

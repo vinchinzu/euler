@@ -191,6 +191,13 @@ def validate_all(answers, bench, existing_solutions):
             statuses[num] = "MISSING"  # no known answer
             continue
 
+        # Preserve custom fields (optimized, optimization_notes, etc.) from old entry
+        old_entry = cache.get(num, {})
+        extra = {}
+        for key in ("optimized", "optimization_notes"):
+            if key in old_entry:
+                extra[key] = old_entry[key]
+
         validated_count += 1
         status_str, answer, time_ms = run_solution(num)
 
@@ -202,6 +209,7 @@ def validate_all(answers, bench, existing_solutions):
                 "status": "TIMEOUT",
                 "answer": "",
                 "time_ms": time_ms,
+                **extra,
             }
             print(f"  P{num:03d}: TIMEOUT ({time_ms}ms)")
         elif status_str == "MISSING_BIN":
@@ -215,6 +223,7 @@ def validate_all(answers, bench, existing_solutions):
                 "answer": answer,
                 "expected": expected,
                 "time_ms": time_ms,
+                **extra,
             }
             print(f"  P{num:03d}: ERROR - {answer}")
         else:
@@ -229,6 +238,7 @@ def validate_all(answers, bench, existing_solutions):
                     "status": "OK",
                     "answer": answer_clean,
                     "time_ms": time_ms,
+                    **extra,
                 }
                 if validated_count % 50 == 0:
                     print(f"  P{num:03d}: PASS ({time_ms}ms) [{validated_count} validated]")
@@ -241,6 +251,7 @@ def validate_all(answers, bench, existing_solutions):
                     "answer": answer_clean,
                     "expected": expected_clean,
                     "time_ms": time_ms,
+                    **extra,
                 }
                 print(f"  P{num:03d}: FAIL (got={answer_clean}, expected={expected_clean}, {time_ms}ms)")
 

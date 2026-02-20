@@ -1,0 +1,8 @@
+=== Problem 513 (9.12s) ===
+
+IPC: 0.98  Cache miss: 6.2%  Branch miss: 2.7%
+Classification: MODERATE-IPC
+
+--- Top Functions ---
+   99.98%  p513::count_for_u
+

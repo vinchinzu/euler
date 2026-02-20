@@ -1,0 +1,8 @@
+=== Problem 846 (21.00s) ===
+
+IPC: 1.93  Cache miss: 0.1%  Branch miss: 0.8%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   99.88%  p846::dfs_cycle
+

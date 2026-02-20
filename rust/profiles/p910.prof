@@ -1,0 +1,14 @@
+=== Problem 910 (9.55s) ===
+
+IPC: 0.78  Cache miss: 48.6%  Branch miss: 1.4%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   75.93%  hashbrown::map::HashMap<K,V,S,A>::get_inner
+    6.31%  hashbrown::map::HashMap<K,V,S,A>::insert
+    5.84%  hashbrown::raw::RawTable<T,A>::reserve_rehash
+    3.42%  p910::Phi5Solver::jump_phi
+    2.94%  p910::GCIterator::pow_unit
+    2.85%  __umodti3
+    1.47%  p910::GCIterator::jump
+

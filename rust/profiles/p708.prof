@@ -1,0 +1,9 @@
+=== Problem 708 (7.61s) ===
+
+IPC: 0.37  Cache miss: 73.1%  Branch miss: 0.1%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   77.80%  p708::helper
+   22.04%  p708::main
+

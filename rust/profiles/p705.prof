@@ -1,0 +1,10 @@
+=== Problem 705 (8.26s) ===
+
+IPC: 1.01  Cache miss: 84.3%  Branch miss: 0.7%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   58.39%  __umodti3
+   33.13%  p705::main
+    1.18%  alloc::raw_vec::RawVec<T,A>::grow_one
+

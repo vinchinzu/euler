@@ -3,6 +3,8 @@
 // Expected number of people before K=4 share birthdays within 7 days (D=365 days).
 // Uses transfer matrix exponentiation with polynomial coefficients.
 
+use rayon::prelude::*;
+
 const D: usize = 365;
 const W: usize = 8;        // "within 7 days" = window of 8 consecutive days
 const STATE_LEN: usize = 7; // W-1
@@ -115,9 +117,11 @@ fn main() {
 }
 
 fn mat_mul(a: &[f64], b: &[f64], c: &mut [f64], ns: usize, plen: usize) {
-    c.iter_mut().for_each(|x| *x = 0.0);
+    // Parallelize over rows (i)
+    let row_size = ns * plen;
+    c.par_chunks_mut(row_size).enumerate().for_each(|(i, c_row)| {
+        c_row.iter_mut().for_each(|x| *x = 0.0);
 
-    for i in 0..ns {
         for k in 0..ns {
             let a_start = (i * ns + k) * plen;
             // Check if a row is zero
@@ -126,15 +130,15 @@ fn mat_mul(a: &[f64], b: &[f64], c: &mut [f64], ns: usize, plen: usize) {
 
             for j in 0..ns {
                 let b_start = (k * ns + j) * plen;
-                let c_start = (i * ns + j) * plen;
+                let c_start = j * plen;
                 for p in 0..plen {
                     if a[a_start + p] == 0.0 { continue; }
                     let ap = a[a_start + p];
                     for q in 0..plen - p {
-                        c[c_start + p + q] += ap * b[b_start + q];
+                        c_row[c_start + p + q] += ap * b[b_start + q];
                     }
                 }
             }
         }
-    }
+    });
 }

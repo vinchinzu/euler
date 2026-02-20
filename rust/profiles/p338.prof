@@ -1,0 +1,8 @@
+=== Problem 338 (9.06s) ===
+
+IPC: 1.64  Cache miss: 19.5%  Branch miss: 0.0%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   99.75%  p338::main
+

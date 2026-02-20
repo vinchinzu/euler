@@ -1,0 +1,10 @@
+=== Problem 448 (10.66s) ===
+
+IPC: 1.56  Cache miss: 27.2%  Branch miss: 0.4%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   66.98%  p448::main::k_phi_sum
+   27.86%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+    4.93%  __modti3
+

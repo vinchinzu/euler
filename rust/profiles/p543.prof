@@ -1,0 +1,8 @@
+=== Problem 543 (7.37s) ===
+
+IPC: 0.58  Cache miss: 85.2%  Branch miss: 0.0%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.77%  p543::main
+

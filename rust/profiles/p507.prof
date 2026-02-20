@@ -1,0 +1,10 @@
+=== Problem 507 (7.40s) ===
+
+IPC: 2.02  Cache miss: 74.5%  Branch miss: 2.8%
+Classification: COMPUTE-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   73.74%  p507::gauss
+   24.57%  p507::main
+    1.69%  0xffffffff92a01968
+

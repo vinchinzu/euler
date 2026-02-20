@@ -1,0 +1,9 @@
+=== Problem 415 (7.28s) ===
+
+IPC: 1.44  Cache miss: 46.6%  Branch miss: 0.8%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   92.75%  p415::main
+    7.02%  __umodti3
+

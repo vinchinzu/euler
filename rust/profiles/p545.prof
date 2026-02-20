@@ -1,0 +1,8 @@
+=== Problem 545 (8.65s) ===
+
+IPC: 1.43  Cache miss: 0.0%  Branch miss: 1.1%
+Classification: MODERATE-IPC
+
+--- Top Functions ---
+   99.62%  p545::main
+

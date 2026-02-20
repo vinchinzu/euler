@@ -1,0 +1,13 @@
+=== Problem 461 (7.87s) ===
+
+IPC: 1.16  Cache miss: 47.1%  Branch miss: 1.7%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   48.30%  core::slice::sort::stable::drift::sort
+   24.91%  core::slice::sort::stable::quicksort::quicksort
+   11.21%  p461::main
+    1.98%  0x000000000016cb87
+    1.49%  0xffffffff92a01968
+    1.13%  0x000000000016cc60
+

@@ -1,0 +1,8 @@
+=== Problem 693 (7.15s) ===
+
+IPC: 0.55  Cache miss: 27.1%  Branch miss: 0.6%
+Classification: MEMORY-BOUND
+
+--- Top Functions ---
+   92.54%  p693::helper
+

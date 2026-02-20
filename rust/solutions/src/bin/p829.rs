@@ -46,24 +46,38 @@ fn best_divisor(n: u64) -> u64 {
     let sqrt_n = isqrt_ull(n);
     let mut best = 1u64;
 
-    fn dfs(idx: usize, nf: usize, ps: &[u64; 16], es: &[i32; 16], cur: u64, sqrt_n: u64, best: &mut u64) {
+    // Precompute max_remaining[i] = max divisor using only factors from index i..nf
+    let mut max_rem = [1u64; 17];
+    for i in (0..nf).rev() {
+        let mut pw = 1u64;
+        for _ in 0..es[i] {
+            pw = pw.saturating_mul(ps[i]);
+        }
+        max_rem[i] = max_rem[i + 1].saturating_mul(pw);
+    }
+
+    #[inline]
+    fn dfs(idx: usize, nf: usize, ps: &[u64; 16], es: &[i32; 16],
+           cur: u64, sqrt_n: u64, best: &mut u64, max_rem: &[u64; 17]) {
         if idx == nf {
             if cur <= sqrt_n && cur > *best { *best = cur; }
             return;
         }
+        // Prune: if cur * max_remaining <= best, no point continuing
+        if (cur as u128) * (max_rem[idx] as u128) <= *best as u128 { return; }
         let p = ps[idx];
         let e = es[idx];
         let mut mul = 1u64;
         for _ in 0..=e {
             let next = (cur as u128) * (mul as u128);
             if next > sqrt_n as u128 { break; }
-            dfs(idx + 1, nf, ps, es, next as u64, sqrt_n, best);
+            dfs(idx + 1, nf, ps, es, next as u64, sqrt_n, best, max_rem);
             if mul as u128 * p as u128 > sqrt_n as u128 { break; }
             mul *= p;
         }
     }
 
-    dfs(0, nf, &ps, &es, 1, sqrt_n, &mut best);
+    dfs(0, nf, &ps, &es, 1, sqrt_n, &mut best, &max_rem);
     best
 }
 

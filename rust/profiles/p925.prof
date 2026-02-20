@@ -1,0 +1,13 @@
+=== Problem 925 (8.13s) ===
+
+IPC: 1.70  Cache miss: 5.4%  Branch miss: 0.6%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   52.29%  p925::main
+   17.39%  __udivti3
+   10.83%  p925::next_permutation
+   10.31%  __umodti3
+    7.68%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+    1.49%  __modti3
+

@@ -1,0 +1,8 @@
+=== Problem 559 (7.09s) ===
+
+IPC: 2.81  Cache miss: 0.6%  Branch miss: 0.0%
+Classification: COMPUTE-EFFICIENT
+
+--- Top Functions ---
+   99.96%  p559::main
+

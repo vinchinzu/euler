@@ -1,0 +1,9 @@
+=== Problem 379 (7.83s) ===
+
+IPC: 1.51  Cache miss: 15.2%  Branch miss: 0.1%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   88.20%  rayon::iter::plumbing::bridge_producer_consumer::helper
+   11.62%  rayon::iter::plumbing::bridge_producer_consumer::helper
+

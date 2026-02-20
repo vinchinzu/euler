@@ -17,21 +17,23 @@ fn count_outcomes(n: usize) -> i64 {
 
     // maxh[i] = 2 * i * (n - i)
     let maxh: Vec<usize> = (0..=n).map(|i| 2 * i * (n - i)).collect();
+    let max_h = *maxh.iter().max().unwrap();
 
-    // dp[h][vi] where vi encodes d = vi-off, after i steps.
-    // Start at i=1: p_1 = d_1 (since p_0=0), and d_1 >= 0.
-    let mut dp: Vec<Vec<i64>> = vec![vec![0; v]; vmax + 1];
+    // Flat 1D DP tables, pre-allocated to max height
+    let mut dp = vec![0i64; (max_h + 1) * v];
+    let mut nxt = vec![0i64; (max_h + 1) * v];
+
     for d in 0..=vmax {
-        dp[d][d + off] = 1;
+        dp[d * v + d + off] = 1;
     }
 
     for step in 1..n {
         let mh = maxh[step];
         let mh_next = maxh[step + 1];
-        let mut nxt: Vec<Vec<i64>> = vec![vec![0; v]; mh_next + 1];
+        nxt[..(mh_next + 1) * v].fill(0);
 
         for h in 0..=mh {
-            let row = &dp[h];
+            let row_start = h * v;
             let mut cum: i64 = 0;
 
             let base = h as i64 - off as i64 - 4;
@@ -49,7 +51,7 @@ fn count_outcomes(n: usize) -> i64 {
 
             // cum for vi < vi_start
             for vi in 0..(vi_start as usize) {
-                cum += row[vi];
+                cum += dp[row_start + vi];
                 if cum >= MOD {
                     cum -= MOD;
                 }
@@ -58,19 +60,19 @@ fn count_outcomes(n: usize) -> i64 {
             // cum + updates for vi in [vi_start, vi_end]
             if vi_start <= vi_end {
                 for vi in (vi_start as usize)..=(vi_end as usize) {
-                    cum += row[vi];
+                    cum += dp[row_start + vi];
                     if cum >= MOD {
                         cum -= MOD;
                     }
                     let h2 = (base + vi as i64) as usize;
-                    let idx = vi - 4;
-                    let val = nxt[h2][idx] + cum;
-                    nxt[h2][idx] = if val >= MOD { val - MOD } else { val };
+                    let nxt_idx = h2 * v + vi - 4;
+                    let val = nxt[nxt_idx] + cum;
+                    nxt[nxt_idx] = if val >= MOD { val - MOD } else { val };
                 }
 
                 // finish cum for vi > vi_end
                 for vi in (vi_end as usize + 1)..v {
-                    cum += row[vi];
+                    cum += dp[row_start + vi];
                     if cum >= MOD {
                         cum -= MOD;
                     }
@@ -78,7 +80,7 @@ fn count_outcomes(n: usize) -> i64 {
             } else {
                 // no update region
                 for vi in (vi_start as usize)..v {
-                    cum += row[vi];
+                    cum += dp[row_start + vi];
                     if cum >= MOD {
                         cum -= MOD;
                     }
@@ -94,18 +96,19 @@ fn count_outcomes(n: usize) -> i64 {
                 for vi in (v - 4)..v {
                     let h2 = (base_h + vi as i64) as usize;
                     if h2 <= mh_next {
-                        let val = nxt[h2][vi] + total;
-                        nxt[h2][vi] = if val >= MOD { val - MOD } else { val };
+                        let nxt_idx = h2 * v + vi;
+                        let val = nxt[nxt_idx] + total;
+                        nxt[nxt_idx] = if val >= MOD { val - MOD } else { val };
                     }
                 }
             }
         }
 
-        dp = nxt;
+        std::mem::swap(&mut dp, &mut nxt);
     }
 
     // At step n, height must be 0; sum over all last differences.
-    dp[0].iter().sum::<i64>() % MOD
+    dp[..v].iter().sum::<i64>() % MOD
 }
 
 fn main() {

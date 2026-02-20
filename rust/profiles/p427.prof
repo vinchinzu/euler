@@ -1,0 +1,8 @@
+=== Problem 427 (8.25s) ===
+
+IPC: 0.42  Cache miss: 83.4%  Branch miss: 0.0%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.79%  p427::main
+

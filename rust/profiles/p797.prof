@@ -1,0 +1,8 @@
+=== Problem 797 (7.00s) ===
+
+IPC: 0.54  Cache miss: 78.2%  Branch miss: 5.1%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS | BRANCH-HEAVY
+
+--- Top Functions ---
+   99.79%  p797::main
+

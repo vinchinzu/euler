@@ -1,0 +1,8 @@
+=== Problem 552 (8.47s) ===
+
+IPC: 0.48  Cache miss: 0.1%  Branch miss: 6.0%
+Classification: STALLED | BRANCH-HEAVY
+
+--- Top Functions ---
+   99.97%  p552::main
+

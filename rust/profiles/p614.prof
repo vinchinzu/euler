@@ -1,0 +1,10 @@
+=== Problem 614 (7.28s) ===
+
+IPC: 1.23  Cache miss: 4.3%  Branch miss: 0.2%
+Classification: MODERATE-IPC
+
+--- Top Functions ---
+   91.41%  rayon::iter::plumbing::bridge_producer_consumer::helper
+    6.76%  p614::main
+    1.19%  0000000000000000
+

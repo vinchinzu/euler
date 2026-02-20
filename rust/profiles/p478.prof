@@ -1,0 +1,11 @@
+=== Problem 478 (9.36s) ===
+
+IPC: 1.11  Cache miss: 68.3%  Branch miss: 1.1%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   42.07%  __umodti3
+   30.19%  p478::main
+   22.52%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+    5.09%  __modti3
+

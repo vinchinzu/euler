@@ -1,0 +1,14 @@
+=== Problem 563 (10.37s) ===
+
+IPC: 1.24  Cache miss: 48.9%  Branch miss: 4.5%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS | BRANCH-HEAVY
+
+--- Top Functions ---
+   73.24%  core::slice::sort::stable::quicksort::quicksort
+    4.30%  core::slice::sort::stable::drift::sort
+    3.80%  p563::main
+    2.42%  0x000000000016cb87
+    1.44%  core::slice::sort::shared::smallsort::sort8_stable
+    1.32%  0xffffffff92a01968
+    1.05%  core::slice::sort::shared::pivot::median3_rec
+

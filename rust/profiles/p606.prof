@@ -1,0 +1,10 @@
+=== Problem 606 (10.13s) ===
+
+IPC: 1.06  Cache miss: 65.3%  Branch miss: 1.3%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   60.54%  p606::main
+   33.17%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+    6.25%  __modti3
+

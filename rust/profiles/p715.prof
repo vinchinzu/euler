@@ -1,0 +1,10 @@
+=== Problem 715 (9.96s) ===
+
+IPC: 0.98  Cache miss: 49.6%  Branch miss: 0.6%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   88.70%  p715::main
+    8.21%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+    2.23%  __modti3
+

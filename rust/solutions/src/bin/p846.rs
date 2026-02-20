@@ -278,7 +278,6 @@ fn main() {
 
             let deep3_limit = 20u32;
             let deep4_limit = 2u32;
-            let _deep5_limit = 0u32;  // no depth-5
 
             for start in 0..nn as u32 {
                 let s_off = sub_offset[start as usize];

@@ -1,0 +1,10 @@
+=== Problem 941 (7.98s) ===
+
+IPC: 2.69  Cache miss: 35.8%  Branch miss: 1.4%
+Classification: COMPUTE-EFFICIENT | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   85.34%  p941::RankScratch::rank_db
+    8.82%  p941::main
+    5.28%  p941::largest_necklace
+

@@ -1,0 +1,10 @@
+=== Problem 847 (10.27s) ===
+
+IPC: 2.65  Cache miss: 20.5%  Branch miss: 3.5%
+Classification: COMPUTE-EFFICIENT | BRANCH-HEAVY
+
+--- Top Functions ---
+   91.40%  p847::solve_dp
+    5.22%  malloc
+    3.30%  cfree
+

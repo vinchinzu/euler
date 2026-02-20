@@ -1,0 +1,9 @@
+=== Problem 829 (17.74s) ===
+
+IPC: 2.98  Cache miss: 62.6%  Branch miss: 0.9%
+Classification: COMPUTE-EFFICIENT | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   95.80%  p829::best_divisor::dfs
+    4.07%  p829::ShapeSystem::shape_of
+

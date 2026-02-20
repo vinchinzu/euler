@@ -1,0 +1,9 @@
+=== Problem 536 (8.53s) ===
+
+IPC: 0.22  Cache miss: 69.9%  Branch miss: 2.6%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   63.36%  p536::helper
+   36.23%  p536::main
+

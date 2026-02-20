@@ -1,6 +1,6 @@
 // Project Euler 910 — correct Phi-recursion + CRT solver
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 const MOD: u64 = 1_000_000_000;
 const M1: u64 = 512; // 2^9
@@ -16,8 +16,9 @@ fn bit_len(n: u64) -> usize {
     64 - n.leading_zeros() as usize
 }
 
+#[inline(always)]
 fn mul_mod(a: u64, b: u64, m: u64) -> u64 {
-    ((a as u128 * b as u128) % m as u128) as u64
+    a * b % m
 }
 
 fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
@@ -207,8 +208,8 @@ fn one_plus_5u_pow(u: u64, k: usize, coeffs: &[u64; 10], modulus: u64) -> u64 {
 struct GCIterator {
     modulus: u64,
     k5: usize,
-    jump_cache: Vec<HashMap<u64, u64>>,
-    unit_cache: HashMap<u64, (u64, u64)>,
+    jump_cache: Vec<FxHashMap<u64, u64>>,
+    unit_cache: FxHashMap<u64, (u64, u64)>,
     binom_c: [u64; 10],
     binom_cp1: [u64; 10],
 }
@@ -218,12 +219,12 @@ impl GCIterator {
         let k5 = modulus_to_k(modulus);
         let binom_c = binom_prefix_array(C, k5, modulus);
         let binom_cp1 = binom_prefix_array(C + 1, k5, modulus);
-        let jump_cache = (0..bits).map(|_| HashMap::new()).collect();
+        let jump_cache = (0..bits).map(|_| FxHashMap::default()).collect();
         Self {
             modulus,
             k5,
             jump_cache,
-            unit_cache: HashMap::new(),
+            unit_cache: FxHashMap::default(),
             binom_c,
             binom_cp1,
         }
@@ -302,8 +303,8 @@ impl GCIterator {
 struct Phi5Solver {
     modulus: u64,
     g_iter: GCIterator,
-    phi_cache: Vec<HashMap<u64, u64>>,
-    jump_cache: Vec<Vec<HashMap<u64, u64>>>,
+    phi_cache: Vec<FxHashMap<u64, u64>>,
+    jump_cache: Vec<Vec<FxHashMap<u64, u64>>>,
 }
 
 impl Phi5Solver {
@@ -314,8 +315,8 @@ impl Phi5Solver {
         let mut phi_cache = Vec::with_capacity(levels);
         let mut jump_cache = Vec::with_capacity(levels);
         for _ in 0..levels {
-            phi_cache.push(HashMap::new());
-            jump_cache.push((0..bits).map(|_| HashMap::new()).collect());
+            phi_cache.push(FxHashMap::default());
+            jump_cache.push((0..bits).map(|_| FxHashMap::default()).collect());
         }
         Self {
             modulus,

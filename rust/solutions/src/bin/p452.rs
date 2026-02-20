@@ -7,8 +7,8 @@ fn mod_pow(mut base: i64, mut exp: i64) -> i64 {
     let mut res = 1i64;
     base %= M;
     while exp > 0 {
-        if exp & 1 == 1 { res = (res as i128 * base as i128 % M as i128) as i64; }
-        base = (base as i128 * base as i128 % M as i128) as i64;
+        if exp & 1 == 1 { res = res * base % M; }
+        base = base * base % M;
         exp >>= 1;
     }
     res
@@ -21,11 +21,11 @@ static mut INV_FACT: [i64; 64] = [0; 64];
 fn helper(min_val: i64, n: i64, prev: i32, num_elements: usize, num_perm: i64) {
     unsafe {
         if prev != 1 {
-            ANS = (ANS + (num_perm as i128 * PRODS[num_elements] as i128 % M as i128) as i64) % M;
+            ANS = (ANS + num_perm * PRODS[num_elements] % M) % M;
         }
         if min_val <= N / n {
-            let term = (num_perm as i128 * PRODS[num_elements + 1] as i128 % M as i128
-                * ((N / n - min_val + 1) as i128) % M as i128) as i64;
+            let term = num_perm * PRODS[num_elements + 1] % M
+                * ((N / n - min_val + 1) % M) % M;
             ANS = (ANS + term % M) % M;
         }
 
@@ -34,7 +34,7 @@ fn helper(min_val: i64, n: i64, prev: i32, num_elements: usize, num_perm: i64) {
             let mut count = 1;
             let mut new_n = n * i;
             while new_n <= N {
-                let new_perm = (num_perm as i128 * INV_FACT[count] as i128 % M as i128) as i64;
+                let new_perm = num_perm * INV_FACT[count] % M;
                 helper(i + 1, new_n, count as i32, num_elements + count, new_perm);
                 count += 1;
                 if new_n > N / i { break; }
@@ -54,16 +54,16 @@ fn main() {
 
         PRODS[0] = 1;
         for i in 1..=l {
-            PRODS[i] = (PRODS[i - 1] as i128 * ((N + 1 - i as i64) as i128) % M as i128) as i64;
+            PRODS[i] = PRODS[i - 1] * ((N + 1 - i as i64) % M) % M;
         }
 
         let mut fact = 1i64;
         for i in 1..=l {
-            fact = (fact as i128 * i as i128 % M as i128) as i64;
+            fact = fact * (i as i64) % M;
         }
         INV_FACT[l] = mod_pow(fact, M - 2);
         for i in (1..=l).rev() {
-            INV_FACT[i - 1] = (INV_FACT[i] as i128 * i as i128 % M as i128) as i64;
+            INV_FACT[i - 1] = INV_FACT[i] * (i as i64) % M;
         }
 
         ANS = 0;

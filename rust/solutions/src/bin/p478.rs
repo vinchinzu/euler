@@ -10,9 +10,9 @@ fn pow_mod(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
     base = base.rem_euclid(modulus);
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % modulus as i128) as i64;
+            result = result * base % modulus;
         }
-        base = (base as i128 * base as i128 % modulus as i128) as i64;
+        base = base * base % modulus;
         exp >>= 1;
     }
     result

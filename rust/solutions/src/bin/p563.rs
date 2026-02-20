@@ -4,6 +4,8 @@
 // manufactured as w*h in exactly n variants with h/w <= 11/10.
 // Dimensions are 23-smooth numbers.
 
+use rayon::prelude::*;
+
 fn main() {
     let primes: &[i64] = &[2, 3, 5, 7, 11, 13, 17, 19, 23];
     let limit: i64 = 500_000_000;
@@ -55,7 +57,7 @@ fn main() {
         }
     }
 
-    areas.sort();
+    areas.par_sort_unstable();
 
     let mut found_area = [0i64; 101];
     let mut i = 0;

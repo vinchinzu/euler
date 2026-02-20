@@ -1,0 +1,8 @@
+=== Problem 737 (11.89s) ===
+
+IPC: 0.45  Cache miss: 49.9%  Branch miss: 0.0%
+Classification: STALLED | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.96%  p737::main
+

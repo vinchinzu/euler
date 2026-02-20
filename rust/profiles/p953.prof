@@ -1,0 +1,9 @@
+=== Problem 953 (9.10s) ===
+
+IPC: 1.51  Cache miss: 35.4%  Branch miss: 1.6%
+Classification: COMPUTE-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   96.17%  p953::dfs
+    3.38%  rayon::iter::plumbing::bridge_producer_consumer::helper
+

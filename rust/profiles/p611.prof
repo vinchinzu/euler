@@ -1,0 +1,8 @@
+=== Problem 611 (7.12s) ===
+
+IPC: 0.62  Cache miss: 58.3%  Branch miss: 0.6%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.97%  p611::main
+

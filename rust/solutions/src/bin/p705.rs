@@ -11,9 +11,9 @@ fn mod_inv(a: u64) -> u64 {
     let mut base = a % M;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as u128 * base as u128 % M as u128) as u64;
+            result = result * base % M;
         }
-        base = (base as u128 * base as u128 % M as u128) as u64;
+        base = base * base % M;
         exp >>= 1;
     }
     result
@@ -69,7 +69,7 @@ fn main() {
         let d = digits(p);
         for &k in &d {
             if k > 0 {
-                num_sequences = (num_sequences as u128 * num_divisors[k] as u128 % M as u128) as u64;
+                num_sequences = num_sequences * num_divisors[k] as u64 % M;
             }
         }
     }
@@ -93,13 +93,13 @@ fn main() {
                 // Count inversions
                 for &div in divisors_table[k] {
                     for i in 1..div {
-                        ans = (ans as u128 + counts[i] as u128 * inv_nd as u128 % M as u128) as u64 % M;
+                        ans = (ans + counts[i] * inv_nd % M) % M;
                     }
                 }
 
                 // Update counts
                 for &div in divisors_table[k] {
-                    counts[div] = ((counts[div] as u128 + num_sequences as u128 * inv_nd as u128 % M as u128) % M as u128) as u64;
+                    counts[div] = (counts[div] + num_sequences * inv_nd % M) % M;
                 }
             }
         }

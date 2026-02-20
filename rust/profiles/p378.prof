@@ -1,0 +1,8 @@
+=== Problem 378 (10.06s) ===
+
+IPC: 1.09  Cache miss: 68.1%  Branch miss: 1.7%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.58%  p378::main
+

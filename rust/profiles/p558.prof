@@ -1,0 +1,8 @@
+=== Problem 558 (7.49s) ===
+
+IPC: 1.98  Cache miss: 16.4%  Branch miss: 1.4%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   94.30%  p558::main
+

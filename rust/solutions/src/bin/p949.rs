@@ -5,7 +5,7 @@
 // For each word of length n (encoded as bit-string of L=0/R=1), we compute
 // a game value via DP over all subwords. Then we count k-tuples where Right wins.
 
-use std::collections::HashMap;
+use fxhash::FxHashMap as HashMap;
 
 const MOD: u64 = 1_001_001_011;
 
@@ -119,7 +119,7 @@ fn compute_u_hot(n: u32) -> (Vec<i64>, Vec<bool>) {
 
 /// Build a histogram: value -> count (mod MOD).
 fn hist_from_values(values: &[i64], modulus: u64) -> HashMap<i64, u64> {
-    let mut hist: HashMap<i64, u64> = HashMap::new();
+    let mut hist: HashMap<i64, u64> = HashMap::default();
     for &v in values {
         let e = hist.entry(v).or_insert(0);
         *e = (*e + 1) % modulus;
@@ -131,15 +131,15 @@ fn hist_from_values(values: &[i64], modulus: u64) -> HashMap<i64, u64> {
 /// Sparse convolution of two histograms (sum of independent random variables).
 fn convolve(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64) -> HashMap<i64, u64> {
     if a.is_empty() || b.is_empty() {
-        return HashMap::new();
+        return HashMap::default();
     }
     // Iterate over the smaller one in the outer loop
     let (small, large) = if a.len() <= b.len() { (a, b) } else { (b, a) };
-    let mut out: HashMap<i64, u64> = HashMap::with_capacity(small.len() * large.len());
+    let mut out: HashMap<i64, u64> = HashMap::with_capacity_and_hasher(small.len() * large.len(), Default::default());
     for (&xa, &ca) in small.iter() {
         for (&xb, &cb) in large.iter() {
             let k = xa + xb;
-            let prod = (ca as u128 * cb as u128 % modulus as u128) as u64;
+            let prod = ca * cb % modulus;
             let e = out.entry(k).or_insert(0);
             *e = (*e + prod) % modulus;
         }
@@ -151,7 +151,7 @@ fn convolve(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64) -> HashM
 /// Repeated convolution: hist convolved with itself t times.
 fn pow_small(hist: &HashMap<i64, u64>, t: u32, modulus: u64) -> HashMap<i64, u64> {
     if t == 0 {
-        let mut r = HashMap::new();
+        let mut r = HashMap::default();
         r.insert(0, 1u64);
         return r;
     }
@@ -184,7 +184,7 @@ fn count_sum_lt_zero(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64)
         let target = -sa;
         let idx = b_sums.partition_point(|&x| x < target);
         let count_b = pref[idx];
-        ans = (ans + (ca as u128 * count_b as u128 % modulus as u128) as u64) % modulus;
+        ans = (ans + ca * count_b % modulus) % modulus;
     }
     ans
 }
@@ -196,7 +196,7 @@ fn count_sum_eq_zero(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64)
     let mut ans = 0u64;
     for (&s, &ca) in small.iter() {
         if let Some(&cb) = large.get(&(-s)) {
-            ans = (ans + (ca as u128 * cb as u128 % modulus as u128) as u64) % modulus;
+            ans = (ans + ca * cb % modulus) % modulus;
         }
     }
     ans

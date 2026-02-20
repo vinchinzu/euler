@@ -1,0 +1,8 @@
+=== Problem 681 (14.84s) ===
+
+IPC: 0.52  Cache miss: 3.2%  Branch miss: 5.6%
+Classification: MEMORY-BOUND | BRANCH-HEAVY
+
+--- Top Functions ---
+   98.59%  rayon::iter::plumbing::bridge_producer_consumer::helper
+

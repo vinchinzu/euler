@@ -1,0 +1,10 @@
+=== Problem 452 (10.53s) ===
+
+IPC: 1.52  Cache miss: 29.5%  Branch miss: 1.0%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   49.82%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+   38.32%  p452::helper
+   11.82%  __modti3
+

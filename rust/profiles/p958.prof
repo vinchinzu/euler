@@ -1,0 +1,10 @@
+=== Problem 958 (14.73s) ===
+
+IPC: 1.65  Cache miss: 39.7%  Branch miss: 1.8%
+Classification: COMPUTE-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   51.72%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+   36.19%  p958::main
+   12.05%  __modti3
+

@@ -1,0 +1,12 @@
+=== Problem 962 (9.99s) ===
+
+IPC: 0.78  Cache miss: 1.7%  Branch miss: 1.1%
+Classification: STALLED
+
+--- Top Functions ---
+   56.61%  p962::factor
+   26.05%  rayon::iter::plumbing::bridge_producer_consumer::helper
+    3.22%  realloc
+    1.32%  0x00000000000a38e9
+    1.17%  alloc::raw_vec::RawVec<T,A>::grow_one
+

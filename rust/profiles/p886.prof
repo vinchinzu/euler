@@ -1,0 +1,11 @@
+=== Problem 886 (7.97s) ===
+
+IPC: 1.04  Cache miss: 53.8%  Branch miss: 5.8%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS | BRANCH-HEAVY
+
+--- Top Functions ---
+   81.43%  p886::num_perms
+   12.45%  p886::helper
+    4.02%  0xffffffff92a01968
+    1.14%  0x000000000016d3d0
+

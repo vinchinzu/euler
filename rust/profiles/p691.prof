@@ -1,0 +1,8 @@
+=== Problem 691 (8.10s) ===
+
+IPC: 0.19  Cache miss: 70.4%  Branch miss: 0.3%
+Classification: MEMORY-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.19%  p691::main
+

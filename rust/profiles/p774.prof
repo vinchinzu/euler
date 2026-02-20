@@ -1,0 +1,12 @@
+=== Problem 774 (17.42s) ===
+
+IPC: 2.46  Cache miss: 21.3%  Branch miss: 0.6%
+Classification: COMPUTE-BOUND
+
+--- Top Functions ---
+   82.23%  p774::TT::reduce_left
+    8.72%  p774::main
+    3.64%  p774::TT::sum_all
+    2.96%  0x000000000016d353
+    2.26%  0xffffffff92a01968
+

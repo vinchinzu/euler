@@ -1,0 +1,10 @@
+=== Problem 677 (7.39s) ===
+
+IPC: 1.29  Cache miss: 7.5%  Branch miss: 0.1%
+Classification: MODERATE-IPC
+
+--- Top Functions ---
+   67.28%  compiler_builtins::int::specialized_div_rem::u128_div_rem
+   22.69%  p677::main
+   10.03%  __modti3
+

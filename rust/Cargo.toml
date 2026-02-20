@@ -18,3 +18,8 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 overflow-checks = false
+
+[profile.profiling]
+inherits = "release"
+strip = "none"
+debug = 1

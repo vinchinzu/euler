@@ -1,0 +1,8 @@
+=== Problem 238 (8.03s) ===
+
+IPC: 1.10  Cache miss: 72.0%  Branch miss: 0.7%
+Classification: MODERATE-IPC | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   98.39%  p238::main
+

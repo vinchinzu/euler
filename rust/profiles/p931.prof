@@ -1,0 +1,8 @@
+=== Problem 931 (8.09s) ===
+
+IPC: 1.63  Cache miss: 50.7%  Branch miss: 0.0%
+Classification: COMPUTE-BOUND | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.85%  p931::main
+

@@ -1,0 +1,8 @@
+=== Problem 584 (8.98s) ===
+
+IPC: 3.22  Cache miss: 35.1%  Branch miss: 0.0%
+Classification: COMPUTE-EFFICIENT | HIGH-CACHE-MISS
+
+--- Top Functions ---
+   99.63%  p584::mat_mul
+
