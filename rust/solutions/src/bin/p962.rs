@@ -4,72 +4,120 @@
 // Uses factorization approach: for each z up to N/3, factor z, generate candidate u values
 // from z's factors, then enumerate v values and divisor pairs to find valid triangles.
 
-use euler_utils::primes_up_to;
 use rayon::prelude::*;
+use std::cell::RefCell;
 
-fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
+const N: u64 = 1_000_000;
+const MAX_Z: usize = (N / 3) as usize;
+
+#[inline(always)]
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
 }
 
-fn factor(mut n: u64, primes: &[usize]) -> Vec<(u64, u32)> {
-    let mut res = Vec::new();
+/// Build smallest-prime-factor sieve up to max_val
+fn build_spf(max_val: usize) -> Vec<u32> {
+    let mut spf = vec![0u32; max_val + 1];
+    for i in 2..=max_val {
+        if spf[i] == 0 {
+            // i is prime
+            let p = i as u32;
+            let mut j = i;
+            while j <= max_val {
+                if spf[j] == 0 {
+                    spf[j] = p;
+                }
+                j += i;
+            }
+        }
+    }
+    spf
+}
+
+/// Factor n using SPF table (for n <= MAX_Z)
+#[inline]
+fn factor_spf(mut n: u64, spf: &[u32], out: &mut Vec<(u64, u32)>) {
+    out.clear();
+    let mut ni = n as usize;
+    while ni > 1 {
+        let p = unsafe { *spf.get_unchecked(ni) } as u64;
+        let mut e = 0u32;
+        while n % p == 0 {
+            n /= p;
+            e += 1;
+        }
+        ni = n as usize;
+        out.push((p, e));
+    }
+}
+
+/// Factor n using trial division with primes list (for larger n)
+#[inline]
+fn factor_trial(mut n: u64, primes: &[u32], out: &mut Vec<(u64, u32)>) {
+    out.clear();
     for &p in primes {
-        let p = p as u64;
-        if p * p > n {
+        let p64 = p as u64;
+        if p64 * p64 > n {
             break;
         }
-        if n % p == 0 {
+        if n % p64 == 0 {
             let mut e = 0u32;
-            while n % p == 0 {
-                n /= p;
+            while n % p64 == 0 {
+                n /= p64;
                 e += 1;
             }
-            res.push((p, e));
+            out.push((p64, e));
         }
     }
     if n > 1 {
-        res.push((n, 1));
+        out.push((n, 1));
     }
-    res
 }
 
-fn divisors_from_factors(factors: &[(u64, u32)]) -> Vec<u64> {
-    let mut divs = vec![1u64];
+fn divisors_from_factors_buf(factors: &[(u64, u32)], divs: &mut Vec<u64>) {
+    divs.clear();
+    divs.push(1u64);
     for &(p, e) in factors {
         let len = divs.len();
         let mut pe = 1u64;
         for _ in 0..e {
             pe *= p;
             for j in 0..len {
-                divs.push(divs[j] * pe);
+                // SAFETY: j < len, and len is the original length before we started pushing
+                let base = unsafe { *divs.get_unchecked(j) };
+                divs.push(base * pe);
             }
         }
     }
-    divs
 }
 
-fn gen_us_from_z_factor(z_factors: &[(u64, u32)]) -> Vec<u64> {
+fn gen_us_from_z_factor_buf(z_factors: &[(u64, u32)], us: &mut Vec<u64>) {
+    us.clear();
     if z_factors.is_empty() {
-        return vec![1];
-    }
-    let bases: Vec<u64> = z_factors.iter().map(|&(p, _)| p).collect();
-    let limits: Vec<u32> = z_factors.iter().map(|&(_, e)| (2 * e) / 3).collect();
-    let mut us = Vec::new();
-
-    fn backtrack(i: usize, cur: u64, bases: &[u64], limits: &[u32], us: &mut Vec<u64>) {
-        if i == bases.len() {
-            us.push(cur);
-            return;
-        }
-        let mut val = 1u64;
-        for _ in 0..=limits[i] {
-            backtrack(i + 1, cur * val, bases, limits, us);
-            val *= bases[i];
-        }
+        us.push(1);
+        return;
     }
 
-    backtrack(0, 1, &bases, &limits, &mut us);
-    us
+    // Use iterative approach instead of recursive backtrack
+    us.push(1);
+    for &(p, e) in z_factors {
+        let limit = (2 * e) / 3;
+        let base_len = us.len();
+        let mut pe = 1u64;
+        for _ in 0..limit {
+            pe *= p;
+            for j in 0..base_len {
+                // SAFETY: j < base_len which is original length
+                let base = unsafe { *us.get_unchecked(j) };
+                us.push(base * pe);
+            }
+        }
+    }
 }
 
 fn integer_cuberoot_floor(n: u64) -> u64 {
@@ -87,79 +135,124 @@ fn integer_cuberoot_floor(n: u64) -> u64 {
     x
 }
 
-fn count_for_z(z: u64, n: u64, primes: &[usize]) -> u64 {
-    let mut total = 0u64;
-    let z_factors = factor(z, primes);
-    let z2 = z * z;
-    let u_candidates = gen_us_from_z_factor(&z_factors);
-    for u in u_candidates {
-        let u3 = u * u * u;
-        if z2 % u3 != 0 {
-            continue;
-        }
-        let w = z2 / u3;
-        if w == 0 {
-            continue;
-        }
-        // v_max^3 <= N^2 / w
-        let v_max_cubed = n * n / w;
-        if v_max_cubed == 0 {
-            continue;
-        }
-        let v_max = integer_cuberoot_floor(v_max_cubed);
-        if v_max < u {
-            continue;
-        }
-        for v in u..=v_max {
-            if gcd(u, v) != 1 {
-                continue;
-            }
-            let t = v * w;
-            let t_factors = factor(t, primes);
-            let divisors = divisors_from_factors(&t_factors);
-            let uv_sum = u + v;
-            for &p_div in &divisors {
-                let q = t / p_div;
-                if p_div <= q {
-                    continue;
+/// Build primes list up to max_val as u32
+fn primes_up_to_u32(max_val: usize) -> Vec<u32> {
+    let mut is_composite = vec![false; max_val + 1];
+    let mut primes = Vec::new();
+    for i in 2..=max_val {
+        if !is_composite[i] {
+            primes.push(i as u32);
+            if i * i <= max_val {
+                let mut j = i * i;
+                while j <= max_val {
+                    is_composite[j] = true;
+                    j += i;
                 }
-                if (p_div ^ q) & 1 != 0 {
-                    continue;
-                }
-                let g = (p_div + q) / 2;
-                let m = (p_div - q) / 2;
-                if m == 0 || g <= m {
-                    continue;
-                }
-                let a = g * u;
-                let b = g * v;
-                let c = m * uv_sum;
-                let perimeter = a + b + c;
-                if perimeter > n {
-                    continue;
-                }
-                if !(a <= b && b <= c) {
-                    continue;
-                }
-                if a + b <= c {
-                    continue;
-                }
-                total += 1;
             }
         }
     }
-    total
+    primes
 }
 
-fn count_triangles(n: u64, primes: &[usize]) -> u64 {
-    let max_z = n / 3;
+thread_local! {
+    static TL_BUFS: RefCell<(Vec<(u64, u32)>, Vec<(u64, u32)>, Vec<u64>, Vec<u64>)> =
+        RefCell::new((
+            Vec::with_capacity(16),  // z_factors
+            Vec::with_capacity(16),  // t_factors
+            Vec::with_capacity(128), // divisors
+            Vec::with_capacity(64),  // u_candidates
+        ));
+}
+
+fn count_for_z(z: u64, spf: &[u32], primes: &[u32]) -> u64 {
+    TL_BUFS.with(|tl| {
+        let mut bufs = tl.borrow_mut();
+        let (ref mut z_factors, ref mut t_factors, ref mut divisors, ref mut u_candidates) = *bufs;
+
+        let mut total = 0u64;
+        factor_spf(z, spf, z_factors);
+        let z2 = z * z;
+        gen_us_from_z_factor_buf(z_factors, u_candidates);
+
+        for idx in 0..u_candidates.len() {
+            // SAFETY: idx < u_candidates.len()
+            let u = unsafe { *u_candidates.get_unchecked(idx) };
+            let u3 = u * u * u;
+            if z2 % u3 != 0 {
+                continue;
+            }
+            let w = z2 / u3;
+            if w == 0 {
+                continue;
+            }
+            // v_max^3 <= N^2 / w
+            let v_max_cubed = N * N / w;
+            if v_max_cubed == 0 {
+                continue;
+            }
+            let v_max = integer_cuberoot_floor(v_max_cubed);
+            if v_max < u {
+                continue;
+            }
+            for v in u..=v_max {
+                if gcd(u, v) != 1 {
+                    continue;
+                }
+                let t = v * w;
+                // Factor t: use SPF if small enough, otherwise trial division
+                if (t as usize) < spf.len() {
+                    factor_spf(t, spf, t_factors);
+                } else {
+                    factor_trial(t, primes, t_factors);
+                }
+                divisors_from_factors_buf(t_factors, divisors);
+                let uv_sum = u + v;
+                for didx in 0..divisors.len() {
+                    // SAFETY: didx < divisors.len()
+                    let p_div = unsafe { *divisors.get_unchecked(didx) };
+                    let q = t / p_div;
+                    if p_div <= q {
+                        continue;
+                    }
+                    if (p_div ^ q) & 1 != 0 {
+                        continue;
+                    }
+                    let g = (p_div + q) / 2;
+                    let m = (p_div - q) / 2;
+                    if m == 0 || g <= m {
+                        continue;
+                    }
+                    let a = g * u;
+                    let b = g * v;
+                    let c = m * uv_sum;
+                    let perimeter = a + b + c;
+                    if perimeter > N {
+                        continue;
+                    }
+                    if !(a <= b && b <= c) {
+                        continue;
+                    }
+                    if a + b <= c {
+                        continue;
+                    }
+                    total += 1;
+                }
+            }
+        }
+        total
+    })
+}
+
+fn count_triangles(spf: &[u32], primes: &[u32]) -> u64 {
+    let max_z = N / 3;
     (1..=max_z)
         .into_par_iter()
-        .map(|z| count_for_z(z, n, primes))
+        .map(|z| count_for_z(z, spf, primes))
         .sum()
 }
 
 fn main() {
-    let primes = primes_up_to(1_000_000);
-    println!("{}", count_triangles(1_000_000, &primes));
+    let spf = build_spf(MAX_Z);
+    let primes = primes_up_to_u32(1_000_000);
+    println!("{}", count_triangles(&spf, &primes));
 }

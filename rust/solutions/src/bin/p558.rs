@@ -4,6 +4,7 @@
 // beyond 64-bit range).
 
 use num::BigUint;
+use rayon::prelude::*;
 
 const N_VAL: u64 = 5_000_000;
 const L_VAL: usize = 200;
@@ -20,10 +21,11 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
+    let a_l = &a[L_VAL];
 
-    for j in 1..=N_VAL {
-        let mut target = &a[L_VAL] * BigUint::from(j) * BigUint::from(j);
+    let ans: i64 = (1..=N_VAL).into_par_iter().map(|j| {
+        let j_big = BigUint::from(j);
+        let mut target = a_l * &j_big * &j_big;
         let mut count = 0i64;
 
         for i in (0..TOTAL).rev() {
@@ -32,8 +34,8 @@ fn main() {
                 count += 1;
             }
         }
-        ans += count;
-    }
+        count
+    }).sum();
 
     println!("{ans}");
 }

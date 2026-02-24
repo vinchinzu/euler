@@ -4,10 +4,13 @@
 // Find T(16).
 // Expected: 72673459417881349
 
-fn isqrt(n: u128) -> u128 {
+use rayon::prelude::*;
+
+#[inline(always)]
+fn isqrt64(n: u64) -> u64 {
     if n == 0 { return 0; }
-    let mut x = (n as f64).sqrt() as u128;
-    // Newton's method refinement
+    let mut x = (n as f64).sqrt() as u64;
+    // Newton's refinement
     loop {
         let x1 = (x + n / x) / 2;
         if x1 >= x { break; }
@@ -19,35 +22,21 @@ fn isqrt(n: u128) -> u128 {
     x
 }
 
-fn compute(max_digits: u32) -> u128 {
-    let mut total: u128 = 0;
-    // -1 to account for (a, b) = (0, 1) which gives 01 = 1 but a must be > 0
-    // Actually the Python starts with total = -1. Let's follow the logic.
-    // When b has n digits, we iterate b from 1 to 10^(N/2)-1
-    // For each b, compute discriminant v^2 = 4b(1-10^n) + 10^(2n)
-    // = 10^(2n) - 4b*10^n + 4b = (10^n - 2b)^2 - 4b^2 + 4b = (10^n)^2 - 4b(10^n - 1)
-    // If v is a perfect square, then a = (10^n - 2b ± v) / 2
+/// Process a band of b values where all b in [b_lo, b_hi) have exactly `n` digits.
+/// pow10n = 10^n, pow10_2n = 10^(2n), max_digits is the overall digit limit.
+fn process_band(b_lo: u64, b_hi: u64, _n: u32, pow10n: u64, pow10_2n: u64, max_digits: u32) -> u64 {
+    let pow10n_minus1 = pow10n - 1;
+    let max_val = 10u64.pow(max_digits); // values must be < 10^max_digits
 
-    let half_digits = max_digits / 2;
-    let b_limit = 10u128.pow(half_digits); // b < 10^(N/2)
+    let mut total: u64 = 0;
 
-    for b in 1..b_limit {
-        let n = {
-            let mut digits = 0u32;
-            let mut tmp = b;
-            while tmp > 0 { digits += 1; tmp /= 10; }
-            digits
-        };
-        let pow10n = 10u128.pow(n);
-        let pow10_2n = pow10n * pow10n;
-
-        // v^2 = 4*b*(1 - 10^n) + 10^(2n)
-        // = 10^(2n) - 4*b*(10^n - 1)
-        let term = 4 * b * (pow10n - 1);
+    for b in b_lo..b_hi {
+        // disc = 10^(2n) - 4*b*(10^n - 1)
+        let term = 4 * b * pow10n_minus1;
         if pow10_2n <= term { continue; }
         let disc = pow10_2n - term;
 
-        let v = isqrt(disc);
+        let v = isqrt64(disc);
         if v * v != disc { continue; }
 
         // a1 = (10^n - 2*b + v) / 2
@@ -56,17 +45,8 @@ fn compute(max_digits: u32) -> u128 {
             let a = num1 / 2;
             if a > 0 {
                 let val = a * pow10n + b;
-                // Verify total digits <= max_digits
-                if val > 0 {
-                    let total_digits = {
-                        let mut d = 0u32;
-                        let mut tmp = val;
-                        while tmp > 0 { d += 1; tmp /= 10; }
-                        d
-                    };
-                    if total_digits <= max_digits {
-                        total += val;
-                    }
+                if val < max_val {
+                    total += val;
                 }
             }
         }
@@ -78,16 +58,8 @@ fn compute(max_digits: u32) -> u128 {
                 let a = num2 / 2;
                 if a > 0 {
                     let val = a * pow10n + b;
-                    if val > 0 {
-                        let total_digits = {
-                            let mut d = 0u32;
-                            let mut tmp = val;
-                            while tmp > 0 { d += 1; tmp /= 10; }
-                            d
-                        };
-                        if total_digits <= max_digits {
-                            total += val;
-                        }
+                    if val < max_val {
+                        total += val;
                     }
                 }
             }
@@ -95,6 +67,34 @@ fn compute(max_digits: u32) -> u128 {
     }
 
     total
+}
+
+fn compute(max_digits: u32) -> u64 {
+    let half_digits = max_digits / 2;
+
+    // Build work units: one per digit-band, chunked for parallelism
+    let chunk_size: u64 = 500_000; // ~500K per chunk for good load balancing
+    let mut work_units: Vec<(u64, u64, u32, u64, u64)> = Vec::new();
+
+    for n in 1..=half_digits {
+        let pow10n = 10u64.pow(n);
+        let pow10_2n = pow10n * pow10n;
+        let b_lo = if n == 1 { 1 } else { 10u64.pow(n - 1) };
+        let b_hi = pow10n;
+
+        let mut start = b_lo;
+        while start < b_hi {
+            let end = (start + chunk_size).min(b_hi);
+            work_units.push((start, end, n, pow10n, pow10_2n));
+            start = end;
+        }
+    }
+
+    work_units.par_iter()
+        .map(|&(b_lo, b_hi, n, pow10n, pow10_2n)| {
+            process_band(b_lo, b_hi, n, pow10n, pow10_2n, max_digits)
+        })
+        .sum()
 }
 
 fn main() {

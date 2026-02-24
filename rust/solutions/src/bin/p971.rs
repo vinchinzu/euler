@@ -2,6 +2,8 @@
 // For primes p ≡ 1 (mod 5), compute periodic points of a map on the 5th roots of unity mod p,
 // then sum C_p = 1 + n * t where n = (p-1)/5 and t = count of periodic points in mu5.
 
+use rayon::prelude::*;
+
 fn sieve_primes_upto(n: usize) -> Vec<usize> {
     if n < 2 {
         return vec![];
@@ -32,15 +34,17 @@ fn sieve_primes_upto(n: usize) -> Vec<usize> {
     primes
 }
 
+// All primes < 10^8 < 2^27, so base < p < 2^27.
+// Products base*base < 2^54, which fits in u64. No u128 needed.
 #[inline]
 fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
     let mut result = 1u64;
     base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as u128 * base as u128 % m as u128) as u64;
+            result = result * base % m;
         }
-        base = (base as u128 * base as u128 % m as u128) as u64;
+        base = base * base % m;
         exp >>= 1;
     }
     result
@@ -62,7 +66,7 @@ fn count_periodic_in_mu5(p: u64) -> u64 {
     mu5[0] = 1;
     let mut cur = 1u64;
     for i in 1..5 {
-        cur = (cur as u128 * zeta as u128 % p as u128) as u64;
+        cur = cur * zeta % p;
         mu5[i] = cur;
     }
 
@@ -72,7 +76,7 @@ fn count_periodic_in_mu5(p: u64) -> u64 {
         let s = mu5[i];
         let one_plus = (1 + s) % p;
         let pow_val = pow_mod(one_plus, n, p);
-        phi[i] = (s as u128 * pow_val as u128 % p as u128) as u64;
+        phi[i] = s * pow_val % p;
     }
 
     // Map phi values back to indices in mu5
@@ -87,7 +91,7 @@ fn count_periodic_in_mu5(p: u64) -> u64 {
         }
     }
 
-    // Find periodic points (nodes in cycles)
+    // Find periodic points (nodes in cycles) using stack array instead of Vec
     let mut in_cycle = 0u64;
     let mut visited = [0u8; 5]; // 0=unvisited, 1=in-progress, 2=done
 
@@ -95,30 +99,35 @@ fn count_periodic_in_mu5(p: u64) -> u64 {
         if visited[start as usize] != 0 {
             continue;
         }
-        let mut path = Vec::new();
+        let mut path = [0u8; 5];
+        let mut path_len = 0usize;
         let mut cur_idx = start;
         loop {
             if visited[cur_idx as usize] != 0 {
                 if visited[cur_idx as usize] == 1 {
-                    // Found a cycle - mark nodes from cur_idx onwards in path
-                    let pos = path.iter().position(|&x| x == cur_idx).unwrap();
-                    in_cycle += (path.len() - pos) as u64;
+                    // Found a cycle - count nodes from cur_idx onwards in path
+                    let mut pos = 0;
+                    while pos < path_len && path[pos] != cur_idx {
+                        pos += 1;
+                    }
+                    in_cycle += (path_len - pos) as u64;
                 }
-                for &node in &path {
-                    visited[node as usize] = 2;
+                for k in 0..path_len {
+                    visited[path[k] as usize] = 2;
                 }
                 break;
             }
             let next = phi_idx[cur_idx as usize];
             if next == 255 {
                 // phi maps outside mu5
-                for &node in &path {
-                    visited[node as usize] = 2;
+                for k in 0..path_len {
+                    visited[path[k] as usize] = 2;
                 }
                 break;
             }
             visited[cur_idx as usize] = 1;
-            path.push(cur_idx);
+            path[path_len] = cur_idx;
+            path_len += 1;
             cur_idx = next;
         }
     }
@@ -128,21 +137,23 @@ fn count_periodic_in_mu5(p: u64) -> u64 {
 
 fn compute_s(limit: usize) -> u64 {
     let primes = sieve_primes_upto(limit);
-    let mut total = 0u64;
-    for &p in &primes {
-        if p < 5 {
-            continue;
-        }
-        if p % 5 != 1 {
-            continue;
-        }
-        let p = p as u64;
-        let n = (p - 1) / 5;
-        let t = count_periodic_in_mu5(p);
-        let c_p = 1 + n * t;
-        total += c_p;
-    }
-    total
+
+    // Filter to primes ≡ 1 (mod 5) with p >= 5
+    let qualifying: Vec<u64> = primes
+        .iter()
+        .filter(|&&p| p >= 5 && p % 5 == 1)
+        .map(|&p| p as u64)
+        .collect();
+
+    // Parallel sum over qualifying primes
+    qualifying
+        .par_iter()
+        .map(|&p| {
+            let n = (p - 1) / 5;
+            let t = count_periodic_in_mu5(p);
+            1 + n * t
+        })
+        .sum()
 }
 
 fn main() {
