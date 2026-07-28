@@ -1,13 +1,11 @@
 // Project Euler 774 - Conjunctive Sequences
-// Tensor-Train / MPS representation with left-sweep Gaussian elimination compression.
+// Tensor-Train / MPS with left-sweep Gaussian elimination compression.
 //
-// Count sequences of length n with each a_i in [0,b], consecutive a_i & a_{i+1} != 0.
-// Uses inclusion-exclusion: conjunctive = total - disjoint, represented in TT format.
-//
-// Optimizations over original:
-// - Left-sweep only (no reduce_right), matching C reference approach
-// - Pure i64 arithmetic (MOD < 2^30, all products fit in i64)
+// Optimizations:
+// - Pre-allocated scratch buffers for gauss / reduce (no per-step alloc churn)
+// - Pure i64 arithmetic (MOD < 2^30)
 // - unsafe get_unchecked in proven-safe hot loops
+// - Reuse Core data via capacity-preserving clear where possible
 
 const MOD: i64 = 998244353;
 
@@ -40,7 +38,6 @@ fn modinv(a: i64) -> i64 {
     powmod(modd(a), MOD - 2)
 }
 
-#[derive(Clone)]
 struct Core {
     r_l: usize,
     r_r: usize,
@@ -55,6 +52,12 @@ impl Core {
             data: vec![0; r_l * 2 * r_r],
         }
     }
+    fn with_capacity_like(r_l: usize, r_r: usize, cap_hint: usize) -> Self {
+        let need = r_l * 2 * r_r;
+        let mut data = Vec::with_capacity(need.max(cap_hint));
+        data.resize(need, 0);
+        Core { r_l, r_r, data }
+    }
     #[inline(always)]
     fn get(&self, l: usize, bit: usize, r: usize) -> i64 {
         // SAFETY: callers ensure l < r_l, bit < 2, r < r_r
@@ -64,14 +67,59 @@ impl Core {
     fn set(&mut self, l: usize, bit: usize, r: usize, val: i64) {
         let i = l * 2 * self.r_r + bit * self.r_r + r;
         // SAFETY: callers ensure l < r_l, bit < 2, r < r_r
-        unsafe { *self.data.get_unchecked_mut(i) = val; }
+        unsafe {
+            *self.data.get_unchecked_mut(i) = val;
+        }
     }
 }
 
-#[derive(Clone)]
+impl Clone for Core {
+    fn clone(&self) -> Self {
+        Core {
+            r_l: self.r_l,
+            r_r: self.r_r,
+            data: self.data.clone(),
+        }
+    }
+}
+
 struct TT {
     m: usize,
     cores: Vec<Core>,
+}
+
+impl Clone for TT {
+    fn clone(&self) -> Self {
+        TT {
+            m: self.m,
+            cores: self.cores.clone(),
+        }
+    }
+}
+
+// Thread-local scratch for reduce_left to avoid alloc churn
+thread_local! {
+    static SCRATCH: std::cell::RefCell<Scratch> = std::cell::RefCell::new(Scratch::new());
+}
+
+struct Scratch {
+    mat: Vec<i64>,
+    pivots: Vec<usize>,
+    is_pivot: Vec<bool>,
+    sum_vec: Vec<i64>,
+    sum_new: Vec<i64>,
+}
+
+impl Scratch {
+    fn new() -> Self {
+        Scratch {
+            mat: Vec::with_capacity(1 << 16),
+            pivots: Vec::with_capacity(256),
+            is_pivot: Vec::with_capacity(256),
+            sum_vec: Vec::with_capacity(256),
+            sum_new: Vec::with_capacity(256),
+        }
+    }
 }
 
 impl TT {
@@ -215,11 +263,15 @@ impl TT {
                     for bit in 0..2usize {
                         for ra in 0..a.r_r {
                             let av = a.get(la, bit, ra);
-                            if av == 0 { continue; }
+                            if av == 0 {
+                                continue;
+                            }
                             let c_base = l * 2 * r_r + bit * r_r + ra * b_r_r;
                             for rb in 0..b_r_r {
                                 let bv = b.get(lb, bit, rb);
-                                if bv == 0 { continue; }
+                                if bv == 0 {
+                                    continue;
+                                }
                                 // SAFETY: c_base + rb < r_l * 2 * r_r
                                 unsafe {
                                     let p = c.data.get_unchecked_mut(c_base + rb);
@@ -240,7 +292,7 @@ impl TT {
         let mut cores = Vec::with_capacity(m);
         for i in 0..m {
             let s = &self.cores[i];
-            let mut c = Core::new(s.r_l, s.r_r);
+            let mut c = Core::with_capacity_like(s.r_l, s.r_r, s.data.len());
             for l in 0..s.r_l {
                 for r in 0..s.r_r {
                     let a0 = s.get(l, 0, r);
@@ -255,37 +307,51 @@ impl TT {
     }
 
     fn sum_all(&self) -> i64 {
-        let mut vec = vec![1i64];
-        for i in 0..self.m {
-            let c = &self.cores[i];
-            let mut newvec = vec![0i64; c.r_r];
-            for l in 0..c.r_l {
-                let vl = vec[l];
-                if vl == 0 { continue; }
-                for bit in 0..2 {
-                    for r in 0..c.r_r {
-                        newvec[r] = (newvec[r] + mulmod(vl, c.get(l, bit, r))) % MOD;
+        SCRATCH.with(|sc| {
+            let mut sc = sc.borrow_mut();
+            sc.sum_vec.clear();
+            sc.sum_vec.push(1i64);
+            for i in 0..self.m {
+                let c = &self.cores[i];
+                sc.sum_new.clear();
+                sc.sum_new.resize(c.r_r, 0);
+                for l in 0..c.r_l {
+                    let vl = sc.sum_vec[l];
+                    if vl == 0 {
+                        continue;
+                    }
+                    for bit in 0..2 {
+                        for r in 0..c.r_r {
+                            sc.sum_new[r] = (sc.sum_new[r] + mulmod(vl, c.get(l, bit, r))) % MOD;
+                        }
                     }
                 }
+                // Avoid dual mutable borrow of sc fields
+                let tmp = std::mem::take(&mut sc.sum_new);
+                sc.sum_new = std::mem::replace(&mut sc.sum_vec, tmp);
             }
-            vec = newvec;
-        }
-        modd(vec[0])
+            modd(sc.sum_vec[0])
+        })
     }
 
-    fn gauss_elim(mat: &mut [i64], nrows: usize, ncols: usize) -> Vec<usize> {
-        let mut pivots = Vec::new();
+    fn gauss_elim(mat: &mut [i64], nrows: usize, ncols: usize, pivots: &mut Vec<usize>) {
+        pivots.clear();
         let mut row_ptr = 0;
         for c in 0..ncols {
-            if row_ptr >= nrows { break; }
+            if row_ptr >= nrows {
+                break;
+            }
             let mut piv = usize::MAX;
             for rr in row_ptr..nrows {
                 // SAFETY: rr * ncols + c < nrows * ncols = mat.len()
                 if unsafe { *mat.get_unchecked(rr * ncols + c) } != 0 {
-                    piv = rr; break;
+                    piv = rr;
+                    break;
                 }
             }
-            if piv == usize::MAX { continue; }
+            if piv == usize::MAX {
+                continue;
+            }
             if piv != row_ptr {
                 for j in 0..ncols {
                     mat.swap(row_ptr * ncols + j, piv * ncols + j);
@@ -300,7 +366,9 @@ impl TT {
                 }
             }
             for rr in 0..nrows {
-                if rr == row_ptr { continue; }
+                if rr == row_ptr {
+                    continue;
+                }
                 let rr_base = rr * ncols;
                 let f = unsafe { *mat.get_unchecked(rr_base + c) };
                 if f != 0 {
@@ -316,75 +384,98 @@ impl TT {
             pivots.push(c);
             row_ptr += 1;
         }
-        pivots
     }
 
     fn reduce_left(&mut self) {
         let m = self.m;
-        for i in 0..m - 1 {
-            let r_l = self.cores[i].r_l;
-            let r_r = self.cores[i].r_r;
-            if r_r <= 1 { continue; }
-            let nrows = 2 * r_l;
-            let mut mat = vec![0i64; nrows * r_r];
-            for l in 0..r_l {
-                for r in 0..r_r {
-                    mat[(2 * l) * r_r + r] = self.cores[i].get(l, 0, r);
-                    mat[(2 * l + 1) * r_r + r] = self.cores[i].get(l, 1, r);
+        SCRATCH.with(|sc| {
+            let mut sc = sc.borrow_mut();
+            for i in 0..m - 1 {
+                let r_l = self.cores[i].r_l;
+                let r_r = self.cores[i].r_r;
+                if r_r <= 1 {
+                    continue;
                 }
-            }
-            let pivots = Self::gauss_elim(&mut mat, nrows, r_r);
-            let rank = pivots.len();
-            if rank == 0 || rank == r_r { continue; }
-
-            let mut new_core = Core::new(r_l, rank);
-            for l in 0..r_l {
-                for (k, &p) in pivots.iter().enumerate() {
-                    new_core.set(l, 0, k, self.cores[i].get(l, 0, p));
-                    new_core.set(l, 1, k, self.cores[i].get(l, 1, p));
-                }
-            }
-
-            let r_next = self.cores[i + 1].r_r;
-            let mut new_nxt = Core::new(rank, r_next);
-            let mut is_pivot = vec![false; r_r];
-            for &p in &pivots { is_pivot[p] = true; }
-
-            for (k, &p) in pivots.iter().enumerate() {
-                for bit in 0..2 {
-                    for t in 0..r_next {
-                        new_nxt.set(k, bit, t, self.cores[i + 1].get(p, bit, t));
+                let nrows = 2 * r_l;
+                let need = nrows * r_r;
+                sc.mat.clear();
+                sc.mat.resize(need, 0);
+                for l in 0..r_l {
+                    for r in 0..r_r {
+                        sc.mat[(2 * l) * r_r + r] = self.cores[i].get(l, 0, r);
+                        sc.mat[(2 * l + 1) * r_r + r] = self.cores[i].get(l, 1, r);
                     }
                 }
-            }
+                // Extract pivots buffer to allow simultaneous mat mut borrow
+                let mut pivots = std::mem::take(&mut sc.pivots);
+                Self::gauss_elim(&mut sc.mat, nrows, r_r, &mut pivots);
+                let rank = pivots.len();
+                if rank == 0 || rank == r_r {
+                    sc.pivots = pivots;
+                    continue;
+                }
 
-            for j in 0..r_r {
-                if is_pivot[j] { continue; }
-                for k in 0..rank {
-                    let coeff = unsafe { *mat.get_unchecked(k * r_r + j) };
-                    if coeff == 0 { continue; }
+                let mut new_core = Core::new(r_l, rank);
+                for l in 0..r_l {
+                    for (k, &p) in pivots.iter().enumerate() {
+                        new_core.set(l, 0, k, self.cores[i].get(l, 0, p));
+                        new_core.set(l, 1, k, self.cores[i].get(l, 1, p));
+                    }
+                }
+
+                let r_next = self.cores[i + 1].r_r;
+                let mut new_nxt = Core::new(rank, r_next);
+                sc.is_pivot.clear();
+                sc.is_pivot.resize(r_r, false);
+                for &p in &pivots {
+                    sc.is_pivot[p] = true;
+                }
+
+                for (k, &p) in pivots.iter().enumerate() {
                     for bit in 0..2 {
-                        let dst_base = k * 2 * r_next + bit * r_next;
-                        let src_base = j * 2 * r_next + bit * r_next;
                         for t in 0..r_next {
-                            unsafe {
-                                let src = *self.cores[i + 1].data.get_unchecked(src_base + t);
-                                let dst = new_nxt.data.get_unchecked_mut(dst_base + t);
-                                *dst = modd(*dst + mulmod(coeff, src));
+                            new_nxt.set(k, bit, t, self.cores[i + 1].get(p, bit, t));
+                        }
+                    }
+                }
+
+                for j in 0..r_r {
+                    if sc.is_pivot[j] {
+                        continue;
+                    }
+                    for k in 0..rank {
+                        let coeff = unsafe { *sc.mat.get_unchecked(k * r_r + j) };
+                        if coeff == 0 {
+                            continue;
+                        }
+                        for bit in 0..2 {
+                            let dst_base = k * 2 * r_next + bit * r_next;
+                            let src_base = j * 2 * r_next + bit * r_next;
+                            for t in 0..r_next {
+                                unsafe {
+                                    let src = *self.cores[i + 1].data.get_unchecked(src_base + t);
+                                    let dst = new_nxt.data.get_unchecked_mut(dst_base + t);
+                                    *dst = modd(*dst + mulmod(coeff, src));
+                                }
                             }
                         }
                     }
                 }
-            }
+                sc.pivots = pivots;
 
-            self.cores[i] = new_core;
-            self.cores[i + 1] = new_nxt;
-        }
+                self.cores[i] = new_core;
+                self.cores[i + 1] = new_nxt;
+            }
+        });
     }
 }
 
 fn solve(n: usize, b: i64) -> i64 {
-    let m = if b == 0 { 1 } else { (64 - b.leading_zeros()) as usize };
+    let m = if b == 0 {
+        1
+    } else {
+        (64 - b.leading_zeros()) as usize
+    };
 
     let mut mask = TT::indicator_leq(b, m);
     mask.reduce_left();

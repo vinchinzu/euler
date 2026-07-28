@@ -1,6 +1,7 @@
 // Project Euler 681 - Maximal Area
 // Enumerate (w,x,y,z) with wxyz = K^2, w<=x<=y<=z, z < w+x+y, even perimeter.
-// Parallelized Case 2 with rayon.
+// Work flattening: process (K, w-index-range) chunks so highly-composite K
+// do not starve light ones under rayon.
 
 use rayon::prelude::*;
 
@@ -11,13 +12,17 @@ fn main() {
     // SPF sieve
     let maxn = (n as usize) + 1;
     let mut spf = vec![0u32; maxn];
-    for i in 0..maxn { spf[i] = i as u32; }
+    for i in 0..maxn {
+        spf[i] = i as u32;
+    }
     let mut i = 2;
     while i * i < maxn {
         if spf[i] == i as u32 {
             let mut j = i * i;
             while j < maxn {
-                if spf[j] == j as u32 { spf[j] = i as u32; }
+                if spf[j] == j as u32 {
+                    spf[j] = i as u32;
+                }
                 j += i;
             }
         }
@@ -32,12 +37,23 @@ fn main() {
         while w * x * x * x <= n2 {
             let wx = w * x;
             let swx = (wx as f64).sqrt() as i64;
-            let sq = if swx * swx == wx { swx }
-                     else if (swx + 1) * (swx + 1) == wx { swx + 1 }
-                     else { x += 1; continue };
-            if (w + x) & 1 != 0 { x += 1; continue; }
+            let sq = if swx * swx == wx {
+                swx
+            } else if (swx + 1) * (swx + 1) == wx {
+                swx + 1
+            } else {
+                x += 1;
+                continue;
+            };
+            if (w + x) & 1 != 0 {
+                x += 1;
+                continue;
+            }
             let y_max = n / sq;
-            if y_max < x { x += 1; continue; }
+            if y_max < x {
+                x += 1;
+                continue;
+            }
             let count = y_max - x + 1;
             ans += count * (w + x + x + y_max);
             x += 1;
@@ -45,11 +61,19 @@ fn main() {
         w += 1;
     }
 
-    // Case 2: z > y, parallelized with rayon
-    let ans_dpos: i64 = (4..=n as usize).into_par_iter().map(|k| {
-        if spf[k] == k as u32 { return 0i64; } // skip primes
+    // Precompute non-prime K and their divisors of K^2.
+    // Work unit = (k_idx, i_lo, i_hi) over the w-divisor index range.
+    struct KData {
+        k2: i64,
+        divs: Vec<i64>,
+    }
 
-        // Factor K using stack arrays
+    let mut kdatas: Vec<KData> = Vec::new();
+    for k in 4..=n as usize {
+        if spf[k] == k as u32 {
+            continue; // skip primes
+        }
+
         let mut prms = [0i64; 20];
         let mut exps = [0usize; 20];
         let mut np = 0;
@@ -57,58 +81,100 @@ fn main() {
         while tmp > 1 {
             let p = spf[tmp] as usize;
             let mut e = 0;
-            while tmp % p == 0 { tmp /= p; e += 1; }
+            while tmp % p == 0 {
+                tmp /= p;
+                e += 1;
+            }
             prms[np] = p as i64;
-            exps[np] = e * 2; // exponents of K^2
+            exps[np] = e * 2;
             np += 1;
         }
 
         let k2 = (k as i64) * (k as i64);
-
-        // Build divisors in stack array
-        let mut divs = [0i64; 4096];
-        divs[0] = 1;
-        let mut nd = 1usize;
+        let mut divs = Vec::with_capacity(256);
+        divs.push(1i64);
         for i in 0..np {
-            let old = nd;
+            let old = divs.len();
             let mut pp = 1i64;
             for _ in 0..exps[i] {
                 pp *= prms[i];
                 for j in 0..old {
-                    divs[nd] = divs[j] * pp;
-                    nd += 1;
+                    divs.push(divs[j] * pp);
                 }
             }
         }
-        // Sort divisors
-        let ds = &mut divs[..nd];
-        ds.sort_unstable();
+        divs.sort_unstable();
+        kdatas.push(KData { k2, divs });
+    }
 
-        let mut local_sum = 0i64;
-        for i in 0..nd {
-            let w = ds[i];
-            if w * w * w * w > k2 { break; }
-            let r1 = k2 / w;
-            for j in i..nd {
-                let x = ds[j];
-                if x * x * x > r1 { break; }
-                if r1 % x != 0 { continue; }
-                let r2 = r1 / x;
-                for l in j..nd {
-                    let y = ds[l];
-                    if y * y > r2 { break; }
-                    if r2 % y != 0 { continue; }
-                    let z = r2 / y;
-                    if z <= y { continue; }
-                    if z >= w + x + y { continue; }
-                    let total = w + x + y + z;
-                    if total & 1 != 0 { continue; }
-                    local_sum += total;
+    // Flatten: for each K, split the outer w-loop into fixed-size chunks.
+    const W_CHUNK: usize = 16;
+    let mut work: Vec<(usize, usize, usize)> = Vec::new();
+    for (ki, kd) in kdatas.iter().enumerate() {
+        let nd = kd.divs.len();
+        let mut i_lo = 0;
+        while i_lo < nd {
+            // Bound: w^4 <= k2
+            let w = kd.divs[i_lo];
+            if w * w * w * w > kd.k2 {
+                break;
+            }
+            let i_hi = (i_lo + W_CHUNK).min(nd);
+            work.push((ki, i_lo, i_hi));
+            i_lo = i_hi;
+        }
+    }
+
+    let ans_dpos: i64 = work
+        .par_iter()
+        .map(|&(ki, i_lo, i_hi)| {
+            let kd = &kdatas[ki];
+            let k2 = kd.k2;
+            let ds = &kd.divs;
+            let nd = ds.len();
+            let mut local_sum = 0i64;
+
+            for i in i_lo..i_hi {
+                let w = ds[i];
+                if w * w * w * w > k2 {
+                    break;
+                }
+                let r1 = k2 / w;
+                for j in i..nd {
+                    let x = ds[j];
+                    if x * x * x > r1 {
+                        break;
+                    }
+                    if r1 % x != 0 {
+                        continue;
+                    }
+                    let r2 = r1 / x;
+                    for l in j..nd {
+                        let y = ds[l];
+                        if y * y > r2 {
+                            break;
+                        }
+                        if r2 % y != 0 {
+                            continue;
+                        }
+                        let z = r2 / y;
+                        if z <= y {
+                            continue;
+                        }
+                        if z >= w + x + y {
+                            continue;
+                        }
+                        let total = w + x + y + z;
+                        if total & 1 != 0 {
+                            continue;
+                        }
+                        local_sum += total;
+                    }
                 }
             }
-        }
-        local_sum
-    }).sum();
+            local_sum
+        })
+        .sum();
 
     println!("{}", ans + ans_dpos);
 }

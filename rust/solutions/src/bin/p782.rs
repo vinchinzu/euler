@@ -1,58 +1,78 @@
 // Project Euler 782 - Distinct Rows and Columns
 // C(n) = 3n^2 - 1 - N2 + N4 via bitarray sieve for achievability.
-// Optimized with rayon parallelism, incremental inner loops, and bitset storage.
+// Optimizations: non-atomic bitset (no AtomicU64 contention), per-thread
+// private bitsets for form enumeration with OR-merge.
 
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 fn main() {
     let n: i64 = 10000;
     let big_n = n * n;
     let big_n_u = big_n as usize;
 
-    // Use atomic u64 bitset: 100M bits = ~1.56M words * 8 bytes = 12.5MB
+    // Plain u64 bitset: 100M bits ≈ 12.5 MB (matches C's byte array density better via words)
     let nwords = (big_n_u + 64) / 64;
-    let achievable: Vec<AtomicU64> = (0..nwords).map(|_| AtomicU64::new(0)).collect();
+    let mut achievable = vec![0u64; nwords];
 
     #[inline(always)]
-    fn bit_set(ach: &[AtomicU64], k: usize) {
+    fn bit_set(ach: &mut [u64], k: usize) {
         let word = k >> 6;
         let bit = 1u64 << (k & 63);
-        unsafe { ach.get_unchecked(word).fetch_or(bit, Ordering::Relaxed); }
+        // SAFETY: k < big_n_u+1, word < nwords
+        unsafe {
+            *ach.get_unchecked_mut(word) |= bit;
+        }
     }
 
     #[inline(always)]
-    fn bit_get(ach: &[AtomicU64], k: usize) -> bool {
+    fn bit_set_ro(ach: &mut [u64], k: usize) {
         let word = k >> 6;
         let bit = 1u64 << (k & 63);
-        unsafe { (ach.get_unchecked(word).load(Ordering::Relaxed) & bit) != 0 }
+        unsafe {
+            *ach.get_unchecked_mut(word) |= bit;
+        }
     }
 
-    bit_set(&achievable, 0);
-    bit_set(&achievable, big_n_u);
+    #[inline(always)]
+    fn bit_get(ach: &[u64], k: usize) -> bool {
+        let word = k >> 6;
+        let bit = 1u64 << (k & 63);
+        unsafe { (*ach.get_unchecked(word) & bit) != 0 }
+    }
+
+    bit_set(&mut achievable, 0);
+    bit_set(&mut achievable, big_n_u);
 
     // S2: comp=2 values from 2x2 block matrices
     let mut is_s2 = vec![false; big_n_u + 1];
 
     for c in 1..n {
         let v = (c * c) as usize;
-        if v > 0 && v < big_n_u { is_s2[v] = true; }
+        if v > 0 && v < big_n_u {
+            is_s2[v] = true;
+        }
         let w = big_n_u - v;
-        if w > 0 && w < big_n_u { is_s2[w] = true; }
+        if w > 0 && w < big_n_u {
+            is_s2[w] = true;
+        }
     }
     for x in 1..n {
         let y = n - x;
         let v1 = (x * x + y * y) as usize;
         let v2 = (2 * x * y) as usize;
-        if v1 > 0 && v1 < big_n_u { is_s2[v1] = true; }
-        if v2 > 0 && v2 < big_n_u { is_s2[v2] = true; }
+        if v1 > 0 && v1 < big_n_u {
+            is_s2[v1] = true;
+        }
+        if v2 > 0 && v2 < big_n_u {
+            is_s2[v2] = true;
+        }
     }
 
     let mut n2: i64 = 0;
     for k in 1..big_n_u {
         if is_s2[k] {
             n2 += 1;
-            bit_set(&achievable, k);
+            bit_set(&mut achievable, k);
         }
     }
     drop(is_s2);
@@ -62,27 +82,24 @@ fn main() {
         let mut k = d;
         let limit = d * n as usize;
         while k < limit {
-            bit_set(&achievable, k);
+            bit_set(&mut achievable, k);
             k += d;
         }
     }
 
-    // Construction 2: Complement symmetry
-    let mut comp_to_set = Vec::new();
-    for k in 1..big_n_u {
+    // Construction 2: Complement symmetry (single pass, non-atomic)
+    for k in 1..=(big_n_u / 2) {
         let comp = big_n_u - k;
-        if k <= comp {
-            let ak = bit_get(&achievable, k);
-            let ac = bit_get(&achievable, comp);
-            if ak && !ac {
-                comp_to_set.push(comp);
-            } else if ac && !ak {
-                comp_to_set.push(k);
+        let ak = bit_get(&achievable, k);
+        let ac = bit_get(&achievable, comp);
+        if ak || ac {
+            if !ak {
+                bit_set(&mut achievable, k);
+            }
+            if !ac {
+                bit_set(&mut achievable, comp);
             }
         }
-    }
-    for k in comp_to_set {
-        bit_set(&achievable, k);
     }
 
     // Construction 3: Kernel 3x3 matrices
@@ -108,11 +125,19 @@ fn main() {
                     let col = [m[0][j], m[1][j], m[2][j]];
                     let mut found = false;
                     for ri in 0..3 {
-                        if m[ri] == col { found = true; break; }
+                        if m[ri] == col {
+                            found = true;
+                            break;
+                        }
                     }
-                    if !found { ok = false; break; }
+                    if !found {
+                        ok = false;
+                        break;
+                    }
                 }
-                if !ok { continue; }
+                if !ok {
+                    continue;
+                }
 
                 let (a_coeff, b_coeff, c_coeff) = (m[0][0], m[1][1], m[2][2]);
                 let d01 = m[0][1] + m[1][0];
@@ -133,45 +158,74 @@ fn main() {
         }
     }
 
-    let ach_ref: &[AtomicU64] = &achievable;
+    // Parallel form enumeration with private per-thread bitsets, then OR-merge.
+    // Avoids atomic contention. Empirically 4 threads beat 8 here (L3 thrashing
+    // on random bitset writes when too many private 12.5MB maps are hot).
+    let n_threads = std::thread::available_parallelism()
+        .map(|n| n.get().clamp(1, 4))
+        .unwrap_or(4);
+    let _ = rayon::ThreadPoolBuilder::new()
+        .num_threads(n_threads)
+        .build_global();
+    let n_threads = rayon::current_num_threads().max(1);
+    let chunk = (forms.len() + n_threads - 1) / n_threads;
 
-    // Parallelize across forms (66 forms, rayon work-stealing handles imbalance)
-    forms.par_iter().for_each(|f| {
-        let aa = f[0];
-        let bb = f[1];
-        let ab = f[2];
-        let a1 = f[3];
-        let b1 = f[4];
-        let c0 = f[5];
-        let two_bb = 2 * bb;
-
-        for a in 0..=n {
-            let b_max = n - a;
-            let base = aa * a * a + a1 * a + c0;
-            let lin = ab * a + b1;
-            let mut k = base;
-            let mut delta = bb + lin;
-
-            if k > 0 && k < big_n {
-                bit_set(ach_ref, k as usize);
+    let partials: Vec<Vec<u64>> = (0..n_threads)
+        .into_par_iter()
+        .map(|ti| {
+            let start = ti * chunk;
+            let end = (start + chunk).min(forms.len());
+            if start >= end {
+                return vec![];
             }
+            let mut local = vec![0u64; nwords];
+            for fi in start..end {
+                let f = &forms[fi];
+                let aa = f[0];
+                let bb = f[1];
+                let ab = f[2];
+                let a1 = f[3];
+                let b1 = f[4];
+                let c0 = f[5];
+                let two_bb = 2 * bb;
 
-            for _b in 1..=b_max {
-                k += delta;
-                delta += two_bb;
-                if k > 0 && k < big_n {
-                    bit_set(ach_ref, k as usize);
+                for a in 0..=n {
+                    let b_max = n - a;
+                    let base = aa * a * a + a1 * a + c0;
+                    let lin = ab * a + b1;
+                    let mut k = base;
+                    let mut delta = bb + lin;
+
+                    if k > 0 && k < big_n {
+                        bit_set_ro(&mut local, k as usize);
+                    }
+
+                    for _b in 1..=b_max {
+                        k += delta;
+                        delta += two_bb;
+                        if k > 0 && k < big_n {
+                            bit_set_ro(&mut local, k as usize);
+                        }
+                    }
                 }
             }
-        }
-    });
+            local
+        })
+        .collect();
 
-    std::sync::atomic::fence(Ordering::SeqCst);
+    for local in partials {
+        if local.is_empty() {
+            continue;
+        }
+        for w in 0..nwords {
+            achievable[w] |= local[w];
+        }
+    }
 
     // Count N4: non-achievable values in [1, big_n-1]
     let mut n4: i64 = 0;
     for w in 0..nwords {
-        let bits = achievable[w].load(Ordering::Relaxed);
+        let bits = achievable[w];
         let base = w * 64;
         if base + 64 <= big_n_u {
             if w == 0 {
@@ -183,10 +237,8 @@ fn main() {
         } else {
             for bit in 0..64 {
                 let k = base + bit;
-                if k >= 1 && k < big_n_u {
-                    if bits & (1u64 << bit) == 0 {
-                        n4 += 1;
-                    }
+                if k >= 1 && k < big_n_u && (bits & (1u64 << bit)) == 0 {
+                    n4 += 1;
                 }
             }
         }

@@ -1,101 +1,124 @@
 // Project Euler 391 - Hopping Game
 //
-// Compute sum of M(n)^3 for 1 <= n <= 1000.
-// M(n) is found via iterated function composition DP.
+// M(n) = largest winning first move. Equivalent to scanning a popcount-derived
+// sequence with accumulator s <- s+v if s+v <= n else 0; final s is M(n).
 //
-// For each n, initialize f[s][x] = s+x if s+x < n+1, else 0.
-// Iterate: g[s][x] = f[s][f[s+1][x]] for n+1 steps.
-// M(n) = f[0][0] after iteration.
+// Popcounts on [0, 2^k) have structure P(k) = P(k-1) || (P(k-1)+1). Scanning
+// descending gives block transforms F(k,off) = F(k-1,off) ∘ F(k-1,off+1).
+// Represent each transform as a table on {0..n}; compose in O(n). Once F(k,0)
+// is constant, larger k stay constant (early saturation) — for n<=1000 this
+// happens by k≈25, so each M(n) is O(n * k_sat) rather than O(n^3).
 
 use rayon::prelude::*;
-use std::cell::RefCell;
 
-thread_local! {
-    static BUFS: RefCell<(Vec<u16>, Vec<u16>)> = RefCell::new((Vec::new(), Vec::new()));
+/// Mapping s |-> f(s) on {0..=n}.
+enum Map {
+    Id,
+    Const(u16),
+    Table(Vec<u16>),
 }
 
-fn compute(i: usize) -> i64 {
-    BUFS.with(|bufs| {
-        let mut bufs = bufs.borrow_mut();
-        let (buf_a, buf_b) = &mut *bufs;
+#[inline]
+fn apply(m: &Map, s: u16) -> u16 {
+    match m {
+        Map::Id => s,
+        Map::Const(c) => *c,
+        Map::Table(t) => t[s as usize],
+    }
+}
 
-        let n = i + 1;
-        let stride = n + 1;
-        let rows = n + 2;
-        let size = rows * stride;
-
-        if buf_a.len() < size { buf_a.resize(size, 0); }
-        if buf_b.len() < size { buf_b.resize(size, 0); }
-
-        // Initialize f[s][x] = s+x if s+x < n, else 0
-        let fa = buf_a.as_mut_ptr();
-        let fb = buf_b.as_mut_ptr();
-        unsafe {
-            for s in 0..rows {
-                let base = s * stride;
-                for x in 0..=n {
-                    let v = s + x;
-                    *fa.add(base + x) = if v < n { v as u16 } else { 0 };
-                }
+fn compose(a: &Map, b: &Map, n: usize) -> Map {
+    // A ∘ B: s -> A(B(s))
+    match (a, b) {
+        (Map::Const(c), _) => Map::Const(*c),
+        (_, Map::Const(c)) => Map::Const(apply(a, *c)),
+        (Map::Id, other) => match other {
+            Map::Id => Map::Id,
+            Map::Const(c) => Map::Const(*c),
+            Map::Table(t) => Map::Table(t.clone()),
+        },
+        (other, Map::Id) => match other {
+            Map::Id => Map::Id,
+            Map::Const(c) => Map::Const(*c),
+            Map::Table(t) => Map::Table(t.clone()),
+        },
+        (Map::Table(ta), Map::Table(tb)) => {
+            let mut out = vec![0u16; n + 1];
+            for s in 0..=n {
+                out[s] = ta[tb[s] as usize];
+            }
+            // Collapse to Const if uniform (helps early saturation detection
+            // and shrinks later compositions).
+            let c0 = out[0];
+            if out.iter().all(|&x| x == c0) {
+                Map::Const(c0)
+            } else {
+                Map::Table(out)
             }
         }
+    }
+}
 
-        let xlim = n + 1;
-        let mut fi = 0usize;
-        for h in 1..=n {
-            let (src, dst) = if fi == 0 { (fa as *const u16, fb) } else { (fb as *const u16, fa) };
-            let slim = n - h;
-            unsafe {
-                for s in 0..=slim {
-                    let s1_base = src.add((s + 1) * stride);
-                    let s_base_r = src.add(s * stride);
-                    let s_base_w = dst.add(s * stride);
-                    let mut x = 0usize;
-                    let xlim4 = xlim & !3;
-                    while x < xlim4 {
-                        let y0 = *s1_base.add(x) as usize;
-                        let y1 = *s1_base.add(x + 1) as usize;
-                        let y2 = *s1_base.add(x + 2) as usize;
-                        let y3 = *s1_base.add(x + 3) as usize;
-                        *s_base_w.add(x) = *s_base_r.add(y0);
-                        *s_base_w.add(x + 1) = *s_base_r.add(y1);
-                        *s_base_w.add(x + 2) = *s_base_r.add(y2);
-                        *s_base_w.add(x + 3) = *s_base_r.add(y3);
-                        x += 4;
-                    }
-                    while x < xlim {
-                        let y = *s1_base.add(x) as usize;
-                        *s_base_w.add(x) = *s_base_r.add(y);
-                        x += 1;
-                    }
-                }
-            }
-            fi = 1 - fi;
-        }
+fn m_of(n: usize) -> i64 {
+    // Base k=0: sequence length 1 with value = off (popcount structure offset).
+    // off=0 is identity (value 0 never changes accumulator via +0, but the
+    // recurrence uses off as the additive offset in the reset rule).
+    //
+    // For offset `off`, one step: s -> s+off if s+off <= n else 0.
+    // Need offsets up to MAX_K+1 for the recurrence's off+1 look-ahead.
+    const MAX_K: usize = 40;
+    let width = MAX_K + 2;
 
-        if fi == 0 {
-            unsafe { *fa as i64 }
+    let mut prev: Vec<Map> = Vec::with_capacity(width);
+    for off in 0..width {
+        if off == 0 {
+            prev.push(Map::Id);
+        } else if off > n {
+            // Adding off always overflows => constant 0
+            prev.push(Map::Const(0));
         } else {
-            unsafe { *fb as i64 }
+            let mut t = vec![0u16; n + 1];
+            let lim = n - off;
+            for s in 0..=lim {
+                t[s] = (s + off) as u16;
+            }
+            // s > lim already 0
+            prev.push(Map::Table(t));
         }
-    })
+    }
+
+    for _k in 1..=MAX_K {
+        let mut curr: Vec<Map> = Vec::with_capacity(width);
+        for off in 0..width - 1 {
+            // F(k,off) = F(k-1,off) ∘ F(k-1,off+1)
+            // Scan order: upper half (off+1) first, then lower (off).
+            // Composition A∘B means apply B first: so B = upper = off+1, A = off.
+            curr.push(compose(&prev[off], &prev[off + 1], n));
+        }
+        curr.push(Map::Const(0)); // unused boundary
+
+        match &curr[0] {
+            Map::Const(c) => return *c as i64,
+            Map::Id => return 0, // identity at root would mean M=0 only if start at 0; shouldn't happen
+            Map::Table(t) => {
+                let c0 = t[0];
+                if t.iter().all(|&x| x == c0) {
+                    return c0 as i64;
+                }
+            }
+        }
+        prev = curr;
+    }
+    panic!("no saturation for n={n}; increase MAX_K");
 }
 
 fn main() {
-    // Limit to physical cores to avoid L3 cache thrashing
-    let n_threads = std::thread::available_parallelism()
-        .map(|n| std::cmp::max(1, n.get() / 2))
-        .unwrap_or(4);
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(n_threads)
-        .build_global()
-        .unwrap();
-
-    // Process large n first for better load balancing
-    let indices: Vec<i32> = (1..=1000i32).rev().collect();
-    let ans: i64 = indices.into_par_iter().map(|i| {
-        let x = compute(i as usize);
-        x * x * x
-    }).sum();
+    let ans: i64 = (1..=1000usize)
+        .into_par_iter()
+        .map(|n| {
+            let x = m_of(n);
+            x * x * x
+        })
+        .sum();
     println!("{}", ans);
 }

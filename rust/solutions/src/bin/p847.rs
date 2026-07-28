@@ -1,10 +1,11 @@
 // Project Euler 847 - Digit DP with bit-level processing
-// Hash map DP for (R, carries, c_states) -> count mod MOD
+// Optimizations: FxHashMap + stack arrays for carry transitions (no Vec allocs).
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 const MOD: i64 = 1_000_000_007;
 
+#[inline(always)]
 fn pack_state(r_off: i32, carries: i32, c0: i32, c1: i32, c2: i32) -> u64 {
     let mut k = r_off as u64;
     k = k * 8 + carries as u64;
@@ -14,11 +15,16 @@ fn pack_state(r_off: i32, carries: i32, c0: i32, c1: i32, c2: i32) -> u64 {
     k
 }
 
+#[inline(always)]
 fn unpack_state(mut k: u64) -> (i32, i32, i32, i32, i32) {
-    let c2 = (k & 255) as i32; k >>= 8;
-    let c1 = (k & 255) as i32; k >>= 8;
-    let c0 = (k & 255) as i32; k >>= 8;
-    let carries = (k & 7) as i32; k >>= 3;
+    let c2 = (k & 255) as i32;
+    k >>= 8;
+    let c1 = (k & 255) as i32;
+    k >>= 8;
+    let c0 = (k & 255) as i32;
+    k >>= 8;
+    let carries = (k & 7) as i32;
+    k >>= 3;
     let r_off = k as i32;
     (r_off, carries, c0, c1, c2)
 }
@@ -36,8 +42,10 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
     }
     let nb = actual_bits.max(kval as usize);
 
-    let mut cur: HashMap<u64, i64> = HashMap::new();
-    let mut nxt: HashMap<u64, i64> = HashMap::new();
+    let mut cur: FxHashMap<u64, i64> = FxHashMap::default();
+    let mut nxt: FxHashMap<u64, i64> = FxHashMap::default();
+    cur.reserve(4096);
+    nxt.reserve(4096);
 
     let init_cs = 1i32;
     let c0_init = if nchk > 0 { init_cs } else { 0 };
@@ -53,7 +61,9 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
         let has_source = j < kval as usize;
 
         for (&skey, &sval) in &cur {
-            if sval == 0 { continue; }
+            if sval == 0 {
+                continue;
+            }
             let (r_off, carries_packed, cs0, cs1, cs2) = unpack_state(skey);
             let r = r_off - 3;
             let c_a = (carries_packed >> 2) & 1;
@@ -64,34 +74,75 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
                 for b in 0..2i32 {
                     for c in 0..2i32 {
                         let mut new_r = 2 * r + (a + b + c) - limit_bit;
-                        if new_r >= 2 { continue; }
-                        if new_r <= -3 { new_r = -3; }
+                        if new_r >= 2 {
+                            continue;
+                        }
+                        if new_r <= -3 {
+                            new_r = -3;
+                        }
 
-                        let valid_nca: Vec<i32> = if c_a != 0 {
-                            if a == 1 { vec![1] } else { continue; }
+                        // Stack arrays (no heap allocs in hot loop)
+                        let mut valid_nca = [0i32; 2];
+                        let nca_count = if c_a != 0 {
+                            if a == 1 {
+                                valid_nca[0] = 1;
+                                1
+                            } else {
+                                continue;
+                            }
+                        } else if a == 0 {
+                            valid_nca[0] = 0;
+                            valid_nca[1] = 1;
+                            2
                         } else {
-                            if a == 0 { vec![0, 1] } else { vec![0] }
+                            valid_nca[0] = 0;
+                            1
                         };
 
-                        let valid_ncb: Vec<i32> = if c_b != 0 {
-                            if b == 1 { vec![1] } else { continue; }
+                        let mut valid_ncb = [0i32; 2];
+                        let ncb_count = if c_b != 0 {
+                            if b == 1 {
+                                valid_ncb[0] = 1;
+                                1
+                            } else {
+                                continue;
+                            }
+                        } else if b == 0 {
+                            valid_ncb[0] = 0;
+                            valid_ncb[1] = 1;
+                            2
                         } else {
-                            if b == 0 { vec![0, 1] } else { vec![0] }
+                            valid_ncb[0] = 0;
+                            1
                         };
 
-                        let valid_ncc: Vec<i32> = if c_c != 0 {
-                            if c == 1 { vec![1] } else { continue; }
+                        let mut valid_ncc = [0i32; 2];
+                        let ncc_count = if c_c != 0 {
+                            if c == 1 {
+                                valid_ncc[0] = 1;
+                                1
+                            } else {
+                                continue;
+                            }
+                        } else if c == 0 {
+                            valid_ncc[0] = 0;
+                            valid_ncc[1] = 1;
+                            2
                         } else {
-                            if c == 0 { vec![0, 1] } else { vec![0] }
+                            valid_ncc[0] = 0;
+                            1
                         };
 
-                        for &nca in &valid_nca {
+                        for ia in 0..nca_count {
+                            let nca = valid_nca[ia];
                             let bit_a = a;
                             let bit_a1 = a + nca - 2 * c_a;
-                            for &ncb in &valid_ncb {
+                            for ib in 0..ncb_count {
+                                let ncb = valid_ncb[ib];
                                 let bit_b = b;
                                 let bit_b1 = b + ncb - 2 * c_b;
-                                for &ncc in &valid_ncc {
+                                for ic in 0..ncc_count {
+                                    let ncc = valid_ncc[ic];
                                     let bit_c = c;
                                     let bit_c1 = c + ncc - 2 * c_c;
 
@@ -104,13 +155,17 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
                                         let b_c = if checks[idx][2] != 0 { bit_c1 } else { bit_c };
 
                                         let prev_states = match idx {
-                                            0 => cs0, 1 => cs1, _ => cs2,
+                                            0 => cs0,
+                                            1 => cs1,
+                                            _ => cs2,
                                         };
 
                                         let mut current_possible = 0i32;
 
                                         for ps in 0..8 {
-                                            if prev_states & (1 << ps) == 0 { continue; }
+                                            if prev_states & (1 << ps) == 0 {
+                                                continue;
+                                            }
                                             let ps_a = (ps >> 2) & 1;
                                             let ps_b = (ps >> 1) & 1;
                                             let ps_c = ps & 1;
@@ -124,32 +179,47 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
                                                 let mut ns_c = ps_c;
 
                                                 if owner == 0 {
-                                                    if ps_a == 0 && b_a == 0 { ns_a = 1; }
+                                                    if ps_a == 0 && b_a == 0 {
+                                                        ns_a = 1;
+                                                    }
                                                 } else if ps_a == 0 && b_a == 1 {
                                                     valid_owner = false;
                                                 }
-                                                if !valid_owner { continue; }
+                                                if !valid_owner {
+                                                    continue;
+                                                }
 
                                                 if owner == 1 {
-                                                    if ps_b == 0 && b_b == 0 { ns_b = 1; }
+                                                    if ps_b == 0 && b_b == 0 {
+                                                        ns_b = 1;
+                                                    }
                                                 } else if ps_b == 0 && b_b == 1 {
                                                     valid_owner = false;
                                                 }
-                                                if !valid_owner { continue; }
+                                                if !valid_owner {
+                                                    continue;
+                                                }
 
                                                 if owner == 2 {
-                                                    if ps_c == 0 && b_c == 0 { ns_c = 1; }
+                                                    if ps_c == 0 && b_c == 0 {
+                                                        ns_c = 1;
+                                                    }
                                                 } else if ps_c == 0 && b_c == 1 {
                                                     valid_owner = false;
                                                 }
-                                                if !valid_owner { continue; }
+                                                if !valid_owner {
+                                                    continue;
+                                                }
 
                                                 let ns = (ns_a << 2) | (ns_b << 1) | ns_c;
                                                 current_possible |= 1 << ns;
                                             }
                                         }
 
-                                        if current_possible == 0 { possible = false; break; }
+                                        if current_possible == 0 {
+                                            possible = false;
+                                            break;
+                                        }
                                         new_cs[idx] = current_possible;
                                     }
 
@@ -192,7 +262,9 @@ fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
     let mut r = 1i64;
     base %= m;
     while exp > 0 {
-        if exp & 1 == 1 { r = r * base % m; }
+        if exp & 1 == 1 {
+            r = r * base % m;
+        }
         base = base * base % m;
         exp >>= 1;
     }
@@ -200,7 +272,9 @@ fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
 }
 
 fn c_val_mod(n: i64) -> i64 {
-    if n < 0 { return 0; }
+    if n < 0 {
+        return 0;
+    }
     let a = (n + 3) % MOD;
     let b = (n + 2) % MOD;
     let c = (n + 1) % MOD;
@@ -235,11 +309,15 @@ fn main() {
         let size_sk = ((3 * t1 % MOD - 3 * t2 % MOD + t3 % MOD) % MOD + MOD) % MOD;
         let term = (c_n_mod - size_sk % MOD + MOD) % MOD;
 
-        if term == 0 { break; }
+        if term == 0 {
+            break;
+        }
 
         total_h = (total_h + term) % MOD;
         k += 1;
-        if k > 100 { break; }
+        if k > 100 {
+            break;
+        }
     }
 
     println!("{}", total_h);

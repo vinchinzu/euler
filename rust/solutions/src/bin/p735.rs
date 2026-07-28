@@ -10,12 +10,19 @@ fn isq(n: i64) -> i64 { n * n }
 #[inline(always)]
 fn icb(n: i64) -> i64 { n * n * n }
 
+#[inline(always)]
 fn isqrt_f(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
+    // f64 sqrt is exact for integers up to 2^53; big_n=1e12 so n/x fits.
     let mut sq = (n as f64).sqrt() as i64;
-    if sq < 0 { sq = 0; }
-    while sq * sq > n { sq -= 1; }
-    while (sq + 1) * (sq + 1) <= n { sq += 1; }
+    // Single adjust is almost always enough; keep safety loops cheap.
+    if sq * sq > n {
+        sq -= 1;
+    } else if (sq + 1) * (sq + 1) <= n {
+        sq += 1;
+    }
     sq
 }
 
@@ -28,57 +35,57 @@ fn cbrt_f(n: i64) -> i64 {
     c
 }
 
-// Compute all 6 sub-loop sums sequentially for small n_val
+// Fused sub-loops: share isqrt_f(n/x) across related inner passes.
 fn compute_inner(n_val: i64) -> i64 {
     let mut res: i64 = 0;
+    let cbrt_n = cbrt_f(n_val);
 
-    {
-        let mut x: i64 = 1;
-        while icb(x) <= n_val {
-            let sq_nox = isqrt_f(n_val / x);
-            let mut y = x + 1;
-            while y <= sq_nox { res += n_val / (x * y) - y; y += 1; }
-            x += 1;
+    // Loops 0+1+3+4 share outer x and isqrt(n/x)
+    for x in 1..=cbrt_n {
+        let sq_nox = isqrt_f(n_val / x);
+        // loop 0: y in (x+1)..sq
+        let mut y = x + 1;
+        while y <= sq_nox {
+            res += n_val / (x * y) - y;
+            y += 1;
         }
-        x = 1;
-        while icb(x) <= n_val {
-            let sq_nox = isqrt_f(n_val / x);
-            let mut z = x + 1;
-            while z <= sq_nox { res += n_val / (x * z) - (z - 1); z += 1; }
-            x += 1;
+        // loop 1: z in (x+1)..sq → n/(x*z) - (z-1)
+        let mut z = x + 1;
+        while z <= sq_nox {
+            res += n_val / (x * z) - (z - 1);
+            z += 1;
         }
-        let mut z: i64 = 1;
-        while icb(z) <= n_val {
-            let sq_noz = isqrt_f(n_val / z);
-            let mut x = z;
-            while x <= sq_noz { res += n_val / (x * z) - x; x += 1; }
+        // loop 3: y in (2x+1)..sq
+        y = 2 * x + 1;
+        while y <= sq_nox {
+            res += n_val / (x * y) - y;
+            y += 1;
+        }
+        // loop 4: z in (x+1)..min(sq, n/(2x^2))
+        let z_max_cap = n_val / (2 * isq(x));
+        let hi = sq_nox.min(z_max_cap);
+        z = x + 1;
+        while z <= hi {
+            res += n_val / (x * z) - (2 * x).max(z - 1);
             z += 1;
         }
     }
-    {
-        let mut x: i64 = 1;
-        while icb(x) <= n_val {
-            let sq_nox = isqrt_f(n_val / x);
-            let mut y = 2 * x + 1;
-            while y <= sq_nox { res += n_val / (x * y) - y; y += 1; }
+
+    // Loops 2+5 share outer z
+    for z in 1..=cbrt_n {
+        let sq_noz = isqrt_f(n_val / z);
+        // loop 2: x in z..sq
+        let mut x = z;
+        while x <= sq_noz {
+            res += n_val / (x * z) - x;
             x += 1;
         }
-        x = 1;
-        while icb(x) <= n_val {
-            let sq_nox = isqrt_f(n_val / x);
-            let mut z = x + 1;
-            while z <= sq_nox {
-                if 2 * z * isq(x) > n_val { break; }
-                res += n_val / (x * z) - (2 * x).max(z - 1);
-                z += 1;
-            }
+        // loop 5: x in z..sqrt(n/(2z))
+        let x_max = isqrt_f(n_val / (2 * z));
+        x = z;
+        while x <= x_max {
+            res += n_val / (x * z) - 2 * x;
             x += 1;
-        }
-        let mut z: i64 = 1;
-        while icb(z) <= n_val {
-            let mut x = z;
-            while 2 * z * isq(x) <= n_val { res += n_val / (x * z) - 2 * x; x += 1; }
-            z += 1;
         }
     }
     res
@@ -88,7 +95,8 @@ fn compute_inner(n_val: i64) -> i64 {
 // loop_id 255 = run compute_inner on n_val (outer/inner_lo/inner_hi unused)
 type WorkUnit = (i8, u8, i64, i64, i64, i64);
 
-const CHUNK: i64 = 20_000;
+// Larger chunks reduce rayon scheduling overhead; 50k keeps units ~ms-scale.
+const CHUNK: i64 = 50_000;
 
 fn build_sub_loop_units(sign: i8, n_val: i64, work: &mut Vec<WorkUnit>) {
     let cbrt_n = cbrt_f(n_val);

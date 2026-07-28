@@ -4,7 +4,6 @@
 
 use rayon::prelude::*;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const MAXN: usize = 1_000_001;
 
@@ -46,15 +45,7 @@ fn dfs_cycle(
     pot
 }
 
-/// Work item with inline prefix (no heap allocation).
-struct WorkItem {
-    start: u32,
-    current: u32,
-    sum: i64,
-    len: i32,
-    prefix: [u32; 5],
-    prefix_len: u8,  // 0 = direct cycle (sum only), 2-5 = prefix nodes
-}
+
 
 fn main() {
     let n_val = 1_000_000usize;
@@ -272,127 +263,153 @@ fn main() {
         let node_vals: Vec<i64> = nodes.iter().map(|&ni| allowed_set[ni] as i64).collect();
 
         if nn > 100 {
-            // Large component: decompose work into fine-grained items for parallelism.
-            // All work items use inline fixed-size prefix (no heap allocation).
-            let mut work_items: Vec<WorkItem> = Vec::new();
+            // Search-tree balance: seed every (start, first edge); expand a second hop
+            // for the heaviest low-index starts so rayon steals more evenly.
+            struct Seed {
+                start: u32,
+                cur: u32,
+                sum: i64,
+                len: i32,
+                path: [u32; 3],
+                path_len: u8,
+            }
 
-            let deep3_limit = 20u32;
-            let deep4_limit = 2u32;
-
+            // Extend Seed for depth-4 paths on the very heaviest starts.
+            struct Seed4 {
+                start: u32,
+                cur: u32,
+                sum: i64,
+                len: i32,
+                path: [u32; 4],
+                path_len: u8,
+            }
+            let mut seeds: Vec<Seed> = Vec::with_capacity(nn * 4);
+            let mut seeds4: Vec<Seed4> = Vec::new();
             for start in 0..nn as u32 {
                 let s_off = sub_offset[start as usize];
                 let s_end = sub_offset[start as usize + 1];
-
-                if start < deep3_limit {
-                    for ei in s_off..s_end {
-                        let v = sub_data[ei as usize];
-                        if v <= start { continue; }
+                let deep4 = start < 8;
+                let deep3 = start < 40;
+                for ei in s_off..s_end {
+                    let v = sub_data[ei as usize];
+                    if v <= start {
+                        continue;
+                    }
+                    if deep3 {
                         let v_off = sub_offset[v as usize];
                         let v_end = sub_offset[v as usize + 1];
                         for ei2 in v_off..v_end {
                             let w = sub_data[ei2 as usize];
-                            if w == start || w <= start || w == v { continue; }
-
-                            if start < deep4_limit {
+                            if w == start {
+                                // cycle of length 2 invalid; length would be 2 at v
+                                continue;
+                            }
+                            if w <= start || w == v {
+                                continue;
+                            }
+                            if deep4 {
                                 let w_off = sub_offset[w as usize];
                                 let w_end = sub_offset[w as usize + 1];
                                 for ei3 in w_off..w_end {
                                     let x = sub_data[ei3 as usize];
                                     if x == start {
-                                        work_items.push(WorkItem {
-                                            start, current: start,
-                                            sum: node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
-                                            len: 3, prefix: [0; 5], prefix_len: 0,
+                                        // completed 3-cycle; contribute sum immediately via a dummy seed
+                                        seeds4.push(Seed4 {
+                                            start,
+                                            cur: start, // unused
+                                            sum: node_vals[start as usize]
+                                                + node_vals[v as usize]
+                                                + node_vals[w as usize],
+                                            len: 0, // flag: pure cycle contribution
+                                            path: [0; 4],
+                                            path_len: 0,
                                         });
                                     } else if x > start && x != v && x != w {
-                                        work_items.push(WorkItem {
-                                            start, current: x,
-                                            sum: node_vals[start as usize] + node_vals[v as usize]
-                                                + node_vals[w as usize] + node_vals[x as usize],
+                                        seeds4.push(Seed4 {
+                                            start,
+                                            cur: x,
+                                            sum: node_vals[start as usize]
+                                                + node_vals[v as usize]
+                                                + node_vals[w as usize]
+                                                + node_vals[x as usize],
                                             len: 4,
-                                            prefix: [start, v, w, x, 0],
-                                            prefix_len: 4,
+                                            path: [start, v, w, x],
+                                            path_len: 4,
                                         });
                                     }
                                 }
                             } else {
-                                work_items.push(WorkItem {
-                                    start, current: w,
-                                    sum: node_vals[start as usize] + node_vals[v as usize] + node_vals[w as usize],
+                                seeds.push(Seed {
+                                    start,
+                                    cur: w,
+                                    sum: node_vals[start as usize]
+                                        + node_vals[v as usize]
+                                        + node_vals[w as usize],
                                     len: 3,
-                                    prefix: [start, v, w, 0, 0],
-                                    prefix_len: 3,
+                                    path: [start, v, w],
+                                    path_len: 3,
                                 });
                             }
                         }
-                    }
-                } else {
-                    for ei in s_off..s_end {
-                        let v = sub_data[ei as usize];
-                        if v > start {
-                            work_items.push(WorkItem {
-                                start, current: v,
-                                sum: node_vals[start as usize] + node_vals[v as usize],
-                                len: 2,
-                                prefix: [start, v, 0, 0, 0],
-                                prefix_len: 2,
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Pre-allocate a pool of vis buffers (one per rayon thread).
-            // SAFETY: each rayon thread gets a unique buffer via thread-local ID.
-            struct SendPtr(*mut [bool]);
-            unsafe impl Send for SendPtr {}
-            unsafe impl Sync for SendPtr {}
-
-            let num_threads = rayon::current_num_threads();
-            let mut pool: Vec<Vec<bool>> = (0..num_threads)
-                .map(|_| vec![false; nn])
-                .collect();
-            let pool_ptrs: Vec<SendPtr> = pool.iter_mut()
-                .map(|v| SendPtr(v.as_mut_slice() as *mut [bool]))
-                .collect();
-
-            static THREAD_COUNTER: AtomicUsize = AtomicUsize::new(0);
-            THREAD_COUNTER.store(0, Ordering::SeqCst);
-            thread_local! {
-                static TID: std::cell::Cell<usize> = std::cell::Cell::new(usize::MAX);
-            }
-
-            let blk_potency: i64 = work_items.par_iter().map(|wi| {
-                if wi.prefix_len == 0 {
-                    return wi.sum;
-                }
-                let tid = TID.with(|t| {
-                    let v = t.get();
-                    if v == usize::MAX {
-                        let new_id = THREAD_COUNTER.fetch_add(1, Ordering::Relaxed);
-                        t.set(new_id);
-                        new_id
                     } else {
-                        v
+                        seeds.push(Seed {
+                            start,
+                            cur: v,
+                            sum: node_vals[start as usize] + node_vals[v as usize],
+                            len: 2,
+                            path: [start, v, 0],
+                            path_len: 2,
+                        });
                     }
-                });
-                let ptr = pool_ptrs[tid].0;
-                let vis: &mut [bool] = unsafe { &mut *ptr };
-                let plen = wi.prefix_len as usize;
-                for i in 0..plen {
-                    vis[wi.prefix[i] as usize] = true;
                 }
-                let result = dfs_cycle(
-                    wi.current, wi.start, wi.sum, wi.len,
-                    vis, &sub_offset, &sub_data, &node_vals,
-                );
-                for i in 0..plen {
-                    vis[wi.prefix[i] as usize] = false;
-                }
-                result
-            }).sum();
+            }
 
-            total_potency += blk_potency / 2;
+            let pot3: i64 = seeds
+                .into_par_iter()
+                .map_init(
+                    || vec![false; nn],
+                    |vis, seed| {
+                        let plen = seed.path_len as usize;
+                        for i in 0..plen {
+                            vis[seed.path[i] as usize] = true;
+                        }
+                        let pot = dfs_cycle(
+                            seed.cur, seed.start, seed.sum, seed.len,
+                            vis, &sub_offset, &sub_data, &node_vals,
+                        );
+                        for i in 0..plen {
+                            vis[seed.path[i] as usize] = false;
+                        }
+                        pot
+                    },
+                )
+                .sum();
+
+            let pot4: i64 = seeds4
+                .into_par_iter()
+                .map_init(
+                    || vec![false; nn],
+                    |vis, seed| {
+                        if seed.path_len == 0 {
+                            return seed.sum;
+                        }
+                        let plen = seed.path_len as usize;
+                        for i in 0..plen {
+                            vis[seed.path[i] as usize] = true;
+                        }
+                        let pot = dfs_cycle(
+                            seed.cur, seed.start, seed.sum, seed.len,
+                            vis, &sub_offset, &sub_data, &node_vals,
+                        );
+                        for i in 0..plen {
+                            vis[seed.path[i] as usize] = false;
+                        }
+                        pot
+                    },
+                )
+                .sum();
+
+            total_potency += (pot3 + pot4) / 2;
         } else {
             // Small component: sequential
             let mut blk_potency: i64 = 0;

@@ -215,17 +215,35 @@ fn count_for_u(u: u32, half_n: u32) -> i64 {
 fn f_count(n: i64) -> i64 {
     let half_n = (n / 2) as u32;
 
-    let chunk_size = 32u32;
-    let num_chunks = (half_n + chunk_size - 1) / chunk_size;
+    // Work is quadratic in (half_n - u): large u is light, small u is heavy.
+    // Emit fixed-cost-ish chunks by growing chunk size as u grows, and schedule
+    // heavy (small-u) chunks first for better rayon balance.
+    let mut ranges: Vec<(u32, u32)> = Vec::new();
+    let mut u = 1u32;
+    while u <= half_n {
+        // Rough cost ~ (half_n/u)^2; keep ~similar work per chunk
+        let span = if u < 100 {
+            4
+        } else if u < 1000 {
+            16
+        } else if u < 5000 {
+            64
+        } else {
+            256
+        };
+        let u_end = (u + span - 1).min(half_n);
+        ranges.push((u, u_end));
+        u = u_end + 1;
+    }
+    // Heavy first
+    ranges.reverse();
 
-    (0..num_chunks)
+    ranges
         .into_par_iter()
-        .map(|chunk_idx| {
-            let u_start = chunk_idx * chunk_size + 1;
-            let u_end = std::cmp::min(u_start + chunk_size - 1, half_n);
+        .map(|(u_start, u_end)| {
             let mut total = 0i64;
-            for u in u_start..=u_end {
-                total += count_for_u(u, half_n);
+            for uu in u_start..=u_end {
+                total += count_for_u(uu, half_n);
             }
             total
         })
