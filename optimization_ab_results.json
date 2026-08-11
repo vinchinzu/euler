@@ -1,241 +1,370 @@
 [
-{
-  "problem": 558,
-  "baseline_median_ms": 6937.8,
-  "candidate_median_ms": 1175.1,
-  "speedup": 5.904,
-  "correct": true,
-  "baseline_times": [
-    7114.6,
-    7146.5,
-    6915.7,
-    6860.3,
-    6937.8
-  ],
-  "candidate_times": [
-    1177.1,
-    1175.1,
-    1168.8,
-    1164.7,
-    1327.2
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=5.904x"
-}
-,
-{
-  "problem": 782,
-  "baseline_median_ms": 18761.0,
-  "candidate_median_ms": 18054.8,
-  "speedup": 1.039,
-  "correct": true,
-  "baseline_times": [
-    18713.6,
-    18761.0,
-    21420.5,
-    19493.2,
-    15929.5
-  ],
-  "candidate_times": [
-    18744.3,
-    18054.8,
-    17469.3,
-    17303.1,
-    18180.8
-  ],
-  "decision": "NEUTRAL",
-  "reason": "within noise (1.039x)"
-}
-,
-{
-  "problem": 829,
-  "baseline_median_ms": 12319.4,
-  "candidate_median_ms": 17462.2,
-  "speedup": 0.705,
-  "correct": true,
-  "baseline_times": [
-    12319.4,
-    11936.8,
-    11770.8,
-    12918.4,
-    13193.7
-  ],
-  "candidate_times": [
-    15860.4,
-    17462.2,
-    16170.4,
-    20224.8,
-    23846.8
-  ],
-  "decision": "REJECT",
-  "reason": "regression=0.705x"
-}
-,
-{
-  "problem": 847,
-  "baseline_median_ms": 11668.1,
-  "candidate_median_ms": 11237.6,
-  "speedup": 1.038,
-  "correct": true,
-  "baseline_times": [
-    10804.4,
-    15754.2,
-    11063.3,
-    11668.1,
-    15676.5
-  ],
-  "candidate_times": [
-    11237.6,
-    11872.7,
-    12164.2,
-    10525.1,
-    11004.0
-  ],
-  "decision": "NEUTRAL",
-  "reason": "within noise (1.038x)"
-}
-,
-{
-  "problem": 910,
-  "baseline_median_ms": 25310.4,
-  "candidate_median_ms": 7158.6,
-  "speedup": 3.536,
-  "correct": true,
-  "baseline_times": [
-    25310.4,
-    19241.2,
-    28828.3,
-    27503.7,
-    22013.2
-  ],
-  "candidate_times": [
-    5808.4,
-    7153.2,
-    7450.5,
-    7183.2,
-    7158.6
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=3.536x"
-}
-,
-{
-  "problem": 932,
-  "baseline_median_ms": 4637.5,
-  "candidate_median_ms": 135.1,
-  "speedup": 34.337,
-  "correct": true,
-  "baseline_times": [
-    4468.8,
-    4637.5,
-    4304.2,
-    4932.2,
-    4862.7
-  ],
-  "candidate_times": [
-    95.3,
-    123.0,
-    135.4,
-    135.1,
-    148.7
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=34.337x"
-}
-,
-{
-  "problem": 937,
-  "baseline_median_ms": 14406.0,
-  "candidate_median_ms": 4309.6,
-  "speedup": 3.343,
-  "correct": true,
-  "baseline_times": [
-    14309.3,
-    13962.6,
-    14406.0,
-    17344.6,
-    14651.6
-  ],
-  "candidate_times": [
-    4591.3,
-    4309.6,
-    4111.5,
-    4358.9,
-    3666.2
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=3.343x"
-}
-,
-{
-  "problem": 941,
-  "baseline_median_ms": 14353.0,
-  "candidate_median_ms": 5205.0,
-  "speedup": 2.758,
-  "correct": true,
-  "baseline_times": [
-    14353.0,
-    14843.1,
-    14082.2,
-    12593.5,
-    14399.6
-  ],
-  "candidate_times": [
-    5398.6,
-    5051.3,
-    5205.0,
-    5469.3,
-    5163.5
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=2.758x"
-}
-,
-{
-  "problem": 962,
-  "baseline_median_ms": 8877.1,
-  "candidate_median_ms": 7186.4,
-  "speedup": 1.235,
-  "correct": true,
-  "baseline_times": [
-    8799.6,
-    8855.5,
-    8929.4,
-    9125.9,
-    8877.1
-  ],
-  "candidate_times": [
-    7186.4,
-    7098.0,
-    7124.7,
-    7505.4,
-    7283.7
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=1.235x"
-}
-,
-{
-  "problem": 971,
-  "baseline_median_ms": 5525.7,
-  "candidate_median_ms": 1980.5,
-  "speedup": 2.79,
-  "correct": true,
-  "baseline_times": [
-    5045.4,
-    5837.7,
-    5525.7,
-    5530.4,
-    5328.9
-  ],
-  "candidate_times": [
-    2217.5,
-    1980.5,
-    1922.7,
-    1954.7,
-    2246.8
-  ],
-  "decision": "ACCEPT",
-  "reason": "speedup=2.79x"
-}
+  {
+    "problem": 421,
+    "baseline_median_ms": 5947.7,
+    "candidate_median_ms": 2053.9,
+    "speedup": 2.896,
+    "correct": true,
+    "baseline_times": [
+      5843.7,
+      5947.7,
+      5858.5,
+      6186.1,
+      6201.8
+    ],
+    "candidate_times": [
+      2314.8,
+      1912.6,
+      2383.2,
+      2000.5,
+      2053.9
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=2.896x"
+  },
+  {
+    "problem": 507,
+    "baseline_median_ms": 6142.3,
+    "candidate_median_ms": 2707.8,
+    "speedup": 2.268,
+    "correct": true,
+    "baseline_times": [
+      6142.3,
+      6164.9,
+      6235.7,
+      5907.6,
+      6132.7
+    ],
+    "candidate_times": [
+      2531.3,
+      2560.7,
+      2707.8,
+      2916.7,
+      2877.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=2.268x"
+  },
+  {
+    "problem": 540,
+    "baseline_median_ms": 7063.2,
+    "candidate_median_ms": 4974.3,
+    "speedup": 1.42,
+    "correct": true,
+    "baseline_times": [
+      7014.0,
+      7147.4,
+      6962.0,
+      7375.2,
+      7063.2
+    ],
+    "candidate_times": [
+      4898.5,
+      5127.8,
+      5407.7,
+      4832.7,
+      4974.3
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=1.420x"
+  },
+  {
+    "problem": 557,
+    "baseline_median_ms": 5290.9,
+    "candidate_median_ms": 889.7,
+    "speedup": 5.947,
+    "correct": true,
+    "baseline_times": [
+      5321.9,
+      5290.9,
+      5283.0,
+      5273.5,
+      5335.8
+    ],
+    "candidate_times": [
+      903.4,
+      889.7,
+      865.8,
+      871.7,
+      893.1
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=5.947x"
+  },
+  {
+    "problem": 558,
+    "baseline_median_ms": 6937.8,
+    "candidate_median_ms": 1175.1,
+    "speedup": 5.904,
+    "correct": true,
+    "baseline_times": [
+      7114.6,
+      7146.5,
+      6915.7,
+      6860.3,
+      6937.8
+    ],
+    "candidate_times": [
+      1177.1,
+      1175.1,
+      1168.8,
+      1164.7,
+      1327.2
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=5.904x"
+  },
+  {
+    "problem": 693,
+    "baseline_median_ms": 6877.7,
+    "candidate_median_ms": 5281.6,
+    "speedup": 1.302,
+    "correct": true,
+    "baseline_times": [
+      6877.7,
+      7476.1,
+      6303.8,
+      7487.5,
+      5030.3
+    ],
+    "candidate_times": [
+      5281.6,
+      5974.7,
+      4738.5,
+      5995.9,
+      4730.9
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=1.302x"
+  },
+  {
+    "problem": 782,
+    "baseline_median_ms": 18761.0,
+    "candidate_median_ms": 18054.8,
+    "speedup": 1.039,
+    "correct": true,
+    "baseline_times": [
+      18713.6,
+      18761.0,
+      21420.5,
+      19493.2,
+      15929.5
+    ],
+    "candidate_times": [
+      18744.3,
+      18054.8,
+      17469.3,
+      17303.1,
+      18180.8
+    ],
+    "decision": "NEUTRAL",
+    "reason": "within noise (1.039x)"
+  },
+  {
+    "problem": 785,
+    "baseline_median_ms": 5569.6,
+    "candidate_median_ms": 942.6,
+    "speedup": 5.908,
+    "correct": true,
+    "baseline_times": [
+      5644.6,
+      5550.2,
+      5538.5,
+      5569.6,
+      5593.4
+    ],
+    "candidate_times": [
+      863.0,
+      942.6,
+      927.8,
+      983.6,
+      943.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=5.908x"
+  },
+  {
+    "problem": 829,
+    "baseline_median_ms": 12319.4,
+    "candidate_median_ms": 17462.2,
+    "speedup": 0.705,
+    "correct": true,
+    "baseline_times": [
+      12319.4,
+      11936.8,
+      11770.8,
+      12918.4,
+      13193.7
+    ],
+    "candidate_times": [
+      15860.4,
+      17462.2,
+      16170.4,
+      20224.8,
+      23846.8
+    ],
+    "decision": "REJECT",
+    "reason": "regression=0.705x"
+  },
+  {
+    "problem": 847,
+    "baseline_median_ms": 11668.1,
+    "candidate_median_ms": 11237.6,
+    "speedup": 1.038,
+    "correct": true,
+    "baseline_times": [
+      10804.4,
+      15754.2,
+      11063.3,
+      11668.1,
+      15676.5
+    ],
+    "candidate_times": [
+      11237.6,
+      11872.7,
+      12164.2,
+      10525.1,
+      11004.0
+    ],
+    "decision": "NEUTRAL",
+    "reason": "within noise (1.038x)"
+  },
+  {
+    "problem": 910,
+    "baseline_median_ms": 25310.4,
+    "candidate_median_ms": 7158.6,
+    "speedup": 3.536,
+    "correct": true,
+    "baseline_times": [
+      25310.4,
+      19241.2,
+      28828.3,
+      27503.7,
+      22013.2
+    ],
+    "candidate_times": [
+      5808.4,
+      7153.2,
+      7450.5,
+      7183.2,
+      7158.6
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=3.536x"
+  },
+  {
+    "problem": 932,
+    "baseline_median_ms": 4637.5,
+    "candidate_median_ms": 135.1,
+    "speedup": 34.337,
+    "correct": true,
+    "baseline_times": [
+      4468.8,
+      4637.5,
+      4304.2,
+      4932.2,
+      4862.7
+    ],
+    "candidate_times": [
+      95.3,
+      123.0,
+      135.4,
+      135.1,
+      148.7
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=34.337x"
+  },
+  {
+    "problem": 937,
+    "baseline_median_ms": 14406.0,
+    "candidate_median_ms": 4309.6,
+    "speedup": 3.343,
+    "correct": true,
+    "baseline_times": [
+      14309.3,
+      13962.6,
+      14406.0,
+      17344.6,
+      14651.6
+    ],
+    "candidate_times": [
+      4591.3,
+      4309.6,
+      4111.5,
+      4358.9,
+      3666.2
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=3.343x"
+  },
+  {
+    "problem": 941,
+    "baseline_median_ms": 14353.0,
+    "candidate_median_ms": 5205.0,
+    "speedup": 2.758,
+    "correct": true,
+    "baseline_times": [
+      14353.0,
+      14843.1,
+      14082.2,
+      12593.5,
+      14399.6
+    ],
+    "candidate_times": [
+      5398.6,
+      5051.3,
+      5205.0,
+      5469.3,
+      5163.5
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=2.758x"
+  },
+  {
+    "problem": 962,
+    "baseline_median_ms": 8877.1,
+    "candidate_median_ms": 7186.4,
+    "speedup": 1.235,
+    "correct": true,
+    "baseline_times": [
+      8799.6,
+      8855.5,
+      8929.4,
+      9125.9,
+      8877.1
+    ],
+    "candidate_times": [
+      7186.4,
+      7098.0,
+      7124.7,
+      7505.4,
+      7283.7
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=1.235x"
+  },
+  {
+    "problem": 971,
+    "baseline_median_ms": 5525.7,
+    "candidate_median_ms": 1980.5,
+    "speedup": 2.79,
+    "correct": true,
+    "baseline_times": [
+      5045.4,
+      5837.7,
+      5525.7,
+      5530.4,
+      5328.9
+    ],
+    "candidate_times": [
+      2217.5,
+      1980.5,
+      1922.7,
+      1954.7,
+      2246.8
+    ],
+    "decision": "ACCEPT",
+    "reason": "speedup=2.79x"
+  }
 ]
