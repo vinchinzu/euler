@@ -1,7 +1,10 @@
 // Project Euler 445 - Retractions A
+// Optimization: cache p^{e} in cur_pow; update via delta p^Δe (avoids full
+// re-exponentiation); extended-gcd modular inverse (faster than Fermat).
 
 const NN: usize = 10_000_000;
 const MOD: u64 = 1_000_000_007;
+const MOD_I64: i64 = 1_000_000_007;
 
 #[inline(always)]
 fn power_mod(mut base: u64, mut exp: u64) -> u64 {
@@ -17,9 +20,37 @@ fn power_mod(mut base: u64, mut exp: u64) -> u64 {
     result
 }
 
+/// Modular inverse via extended Euclidean algorithm (MOD prime).
 #[inline(always)]
 fn mod_inv(a: u64) -> u64 {
-    power_mod(a, MOD - 2)
+    let mut t: i64 = 0;
+    let mut newt: i64 = 1;
+    let mut r: i64 = MOD_I64;
+    let mut newr: i64 = (a % MOD) as i64;
+    while newr != 0 {
+        let q = r / newr;
+        let tmp_t = t - q * newt;
+        t = newt;
+        newt = tmp_t;
+        let tmp_r = r - q * newr;
+        r = newr;
+        newr = tmp_r;
+    }
+    if t < 0 {
+        t += MOD_I64;
+    }
+    t as u64
+}
+
+#[inline(always)]
+fn pow_small(p: u64, e: u32) -> u64 {
+    match e {
+        0 => 1,
+        1 => p,
+        2 => p * p % MOD,
+        3 => p * p % MOD * p % MOD,
+        _ => power_mod(p, e as u64),
+    }
 }
 
 fn main() {
@@ -43,7 +74,9 @@ fn main() {
         }
     }
 
-    let mut exps = vec![0i32; NN + 1];
+    // cur_pow[p] = p^{current exponent in C(N,k)} mod MOD
+    let mut cur_pow = vec![1u64; NN + 1];
+
     let mut res_prod_pe: u64 = 1;
     let mut res_prod_1pe: u64 = 1;
     let mut ans: u64 = 0;
@@ -53,7 +86,7 @@ fn main() {
         let mut num = (NN + 1 - k) as u32;
         while num > 1 {
             let p = unsafe { *spf.get_unchecked(num as usize) };
-            let mut e = 0i32;
+            let mut e = 0u32;
             while num % p == 0 {
                 num /= p;
                 e += 1;
@@ -61,13 +94,32 @@ fn main() {
             let p64 = p as u64;
             let pidx = p as usize;
 
-            let old_pow = power_mod(p64, exps[pidx] as u64);
-            exps[pidx] += e;
-            let new_pow = power_mod(p64, exps[pidx] as u64);
+            let old_pow = unsafe { *cur_pow.get_unchecked(pidx) };
+            let pe = pow_small(p64, e);
+            let new_pow = old_pow * pe % MOD;
+            unsafe {
+                *cur_pow.get_unchecked_mut(pidx) = new_pow;
+            }
 
-            res_prod_pe = res_prod_pe * mod_inv(old_pow) % MOD * new_pow % MOD;
-            let old_term = if old_pow == 1 { 1 } else { (1 + old_pow) % MOD };
-            let new_term = (1 + new_pow) % MOD;
+            res_prod_pe = res_prod_pe * pe % MOD;
+            let old_term = if old_pow == 1 {
+                1
+            } else {
+                let t = 1 + old_pow;
+                if t >= MOD {
+                    t - MOD
+                } else {
+                    t
+                }
+            };
+            let new_term = {
+                let t = 1 + new_pow;
+                if t >= MOD {
+                    t - MOD
+                } else {
+                    t
+                }
+            };
             res_prod_1pe = res_prod_1pe * mod_inv(old_term) % MOD * new_term % MOD;
         }
 
@@ -75,7 +127,7 @@ fn main() {
         let mut den = k as u32;
         while den > 1 {
             let p = unsafe { *spf.get_unchecked(den as usize) };
-            let mut e = 0i32;
+            let mut e = 0u32;
             while den % p == 0 {
                 den /= p;
                 e += 1;
@@ -83,13 +135,33 @@ fn main() {
             let p64 = p as u64;
             let pidx = p as usize;
 
-            let old_pow = power_mod(p64, exps[pidx] as u64);
-            exps[pidx] -= e;
-            let new_pow = power_mod(p64, exps[pidx] as u64);
+            let old_pow = unsafe { *cur_pow.get_unchecked(pidx) };
+            let pe = pow_small(p64, e);
+            // new = old / p^e
+            let new_pow = old_pow * mod_inv(pe) % MOD;
+            unsafe {
+                *cur_pow.get_unchecked_mut(pidx) = new_pow;
+            }
 
-            res_prod_pe = res_prod_pe * mod_inv(old_pow) % MOD * new_pow % MOD;
-            let old_term = (1 + old_pow) % MOD;
-            let new_term = if new_pow == 1 { 1 } else { (1 + new_pow) % MOD };
+            res_prod_pe = res_prod_pe * mod_inv(pe) % MOD;
+            let old_term = {
+                let t = 1 + old_pow;
+                if t >= MOD {
+                    t - MOD
+                } else {
+                    t
+                }
+            };
+            let new_term = if new_pow == 1 {
+                1
+            } else {
+                let t = 1 + new_pow;
+                if t >= MOD {
+                    t - MOD
+                } else {
+                    t
+                }
+            };
             res_prod_1pe = res_prod_1pe * mod_inv(old_term) % MOD * new_term % MOD;
         }
 

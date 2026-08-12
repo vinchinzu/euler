@@ -3,7 +3,9 @@
 // Q(n, w) = ways to place n non-attacking queens on n x n board
 // with limited attack range. Sum of Q(14, w) for w = 0..13.
 // Profile DP for small k, DFS with bitmask pruning for large k.
+// Optimization: rayon over independent k values.
 
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 const NN: usize = 14;
@@ -76,13 +78,13 @@ fn solve_dp(k: usize) -> i64 {
     gen_configs(k, 0, &mut tmp, &mut configs);
     let nconfigs = configs.len();
 
-    let mut config_map = HashMap::new();
+    let mut config_map = HashMap::with_capacity(nconfigs * 2);
     for (i, cfg) in configs.iter().enumerate() {
         config_map.insert(encode_config(cfg, k), i);
     }
 
     // Build transition list
-    let mut trans_target = Vec::new();
+    let mut trans_target = Vec::with_capacity(nconfigs * 4);
     let mut trans_offset = vec![0usize; nconfigs + 1];
 
     for i in 0..nconfigs {
@@ -108,33 +110,35 @@ fn solve_dp(k: usize) -> i64 {
     trans_offset[nconfigs] = trans_target.len();
 
     let mut dp = vec![1i64; nconfigs];
+    let mut dp2 = vec![0i64; nconfigs];
 
     for _ in k..NN {
-        let mut dp2 = vec![0i64; nconfigs];
+        for x in dp2.iter_mut() { *x = 0; }
         for i in 0..nconfigs {
-            if dp[i] == 0 { continue; }
+            let v = dp[i];
+            if v == 0 { continue; }
             for t in trans_offset[i]..trans_offset[i + 1] {
-                dp2[trans_target[t]] += dp[i];
+                dp2[trans_target[t]] += v;
             }
         }
-        dp = dp2;
+        std::mem::swap(&mut dp, &mut dp2);
     }
 
     dp.iter().sum()
 }
 
-fn main() {
-    let mut ans: i64 = 0;
-    for k in 0..NN {
-        let q = if k <= 8 {
-            solve_dp(k)
-        } else {
-            let mut cols = [0usize; NN];
-            let mut count = 0i64;
-            dfs_fast(0, &mut cols, k, &mut count);
-            count
-        };
-        ans += q;
+fn solve_k(k: usize) -> i64 {
+    if k <= 8 {
+        solve_dp(k)
+    } else {
+        let mut cols = [0usize; NN];
+        let mut count = 0i64;
+        dfs_fast(0, &mut cols, k, &mut count);
+        count
     }
+}
+
+fn main() {
+    let ans: i64 = (0..NN).into_par_iter().map(solve_k).sum();
     println!("{ans}");
 }

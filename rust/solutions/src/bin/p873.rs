@@ -1,20 +1,9 @@
 // Project Euler 873 - W(p,q,r) words with separation constraint
 // Stars-and-bars approach iterating over run counts
+// Optimization: precompute modular inverse table (linear sieve);
+// pure u64 modular mul (MOD < 2^30).
 
-const MOD: i64 = 1_000_000_007;
-
-fn power(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut res: i64 = 1;
-    base %= m;
-    while exp > 0 {
-        if exp & 1 == 1 { res = res * base % m; }
-        base = base * base % m;
-        exp >>= 1;
-    }
-    res
-}
-
-fn mod_inv(a: i64, m: i64) -> i64 { power(a, m - 2, m) }
+const MOD: u64 = 1_000_000_007;
 
 fn main() {
     let p: i64 = 1_000_000;
@@ -24,24 +13,31 @@ fn main() {
     let k_sb = p + q;
     let mut curr_n_sb = r - 2 + p + q;
 
-    // Compute initial binom(curr_n_sb, k_sb) mod MOD
-    let mut sb_num: i64 = 1;
-    let mut sb_den: i64 = 1;
-    for i in 0..k_sb {
-        sb_num = (sb_num as i128 * ((curr_n_sb - i).rem_euclid(MOD)) as i128 % MOD as i128) as i64;
-        sb_den = (sb_den as i128 * ((i + 1) % MOD) as i128 % MOD as i128) as i64;
+    // Inverse table: covers m in 1..=q and curr_n_sb values (start ~1.11e8 down).
+    let inv_limit = (curr_n_sb as usize) + 2;
+    let mut inv = vec![0u64; inv_limit];
+    inv[1] = 1;
+    for i in 2..inv_limit {
+        // SAFETY: i < MOD so MOD % i < i, already computed
+        inv[i] = (MOD - (MOD / i as u64) * inv[(MOD % i as u64) as usize] % MOD) % MOD;
     }
-    let mut curr_sb_val = (sb_num as i128 * mod_inv(sb_den, MOD) as i128 % MOD as i128) as i64;
 
-    let mut comb_p: i64 = 1;
-    let mut comb_q: i64 = 1;
-    let mut ans: i64 = 0;
+    // Initial binom(curr_n_sb, k_sb) via successive multiply + table inv
+    let mut curr_sb_val: u64 = 1;
+    for i in 0..k_sb {
+        let num = (curr_n_sb - i).rem_euclid(MOD as i64) as u64;
+        curr_sb_val = curr_sb_val * num % MOD * inv[(i + 1) as usize] % MOD;
+    }
+
+    let mut comb_p: u64 = 1;
+    let mut comb_q: u64 = 1;
+    let mut ans: u64 = 0;
     let mut m: i64 = 1;
 
     loop {
         // Case k = 2m
         if m <= p && m <= q {
-            let term = (2i128 * comb_p as i128 % MOD as i128 * comb_q as i128 % MOD as i128 * curr_sb_val as i128 % MOD as i128) as i64;
+            let term = 2 * comb_p % MOD * comb_q % MOD * curr_sb_val % MOD;
             ans = (ans + term) % MOD;
         }
 
@@ -50,33 +46,39 @@ fn main() {
             if curr_n_sb - k_sb < 0 {
                 curr_sb_val = 0;
             } else if curr_sb_val != 0 {
-                let factor = ((curr_n_sb - k_sb).rem_euclid(MOD) as i128
-                    * mod_inv(curr_n_sb.rem_euclid(MOD), MOD) as i128 % MOD as i128) as i64;
-                curr_sb_val = (curr_sb_val as i128 * factor as i128 % MOD as i128) as i64;
+                let num = (curr_n_sb - k_sb).rem_euclid(MOD as i64) as u64;
+                let den = curr_n_sb.rem_euclid(MOD as i64) as usize;
+                curr_sb_val = curr_sb_val * num % MOD * inv[den] % MOD;
             }
             curr_n_sb -= 1;
         }
 
-        if curr_sb_val == 0 { break; }
+        if curr_sb_val == 0 {
+            break;
+        }
 
-        let inv_m = mod_inv(m % MOD, MOD);
+        let inv_m = inv[m as usize];
 
         let next_comb_p = if m <= p - 1 {
-            (comb_p as i128 * ((p - m).rem_euclid(MOD)) as i128 % MOD as i128 * inv_m as i128 % MOD as i128) as i64
-        } else { 0 };
+            comb_p * ((p - m).rem_euclid(MOD as i64) as u64) % MOD * inv_m % MOD
+        } else {
+            0
+        };
 
         let next_comb_q = if m <= q - 1 {
-            (comb_q as i128 * ((q - m).rem_euclid(MOD)) as i128 % MOD as i128 * inv_m as i128 % MOD as i128) as i64
-        } else { 0 };
+            comb_q * ((q - m).rem_euclid(MOD as i64) as u64) % MOD * inv_m % MOD
+        } else {
+            0
+        };
 
-        let mut term_odd: i64 = 0;
+        let mut term_odd: u64 = 0;
         if m + 1 <= p && m <= q {
-            term_odd = (term_odd + (next_comb_p as i128 * comb_q as i128 % MOD as i128) as i64) % MOD;
+            term_odd = (term_odd + next_comb_p * comb_q % MOD) % MOD;
         }
         if m <= p && m + 1 <= q {
-            term_odd = (term_odd + (comb_p as i128 * next_comb_q as i128 % MOD as i128) as i64) % MOD;
+            term_odd = (term_odd + comb_p * next_comb_q % MOD) % MOD;
         }
-        term_odd = (term_odd as i128 * curr_sb_val as i128 % MOD as i128) as i64;
+        term_odd = term_odd * curr_sb_val % MOD;
         ans = (ans + term_odd) % MOD;
 
         // Update SB for next m
@@ -84,9 +86,9 @@ fn main() {
             if curr_n_sb <= 0 || curr_n_sb - k_sb < 0 {
                 curr_sb_val = 0;
             } else if curr_sb_val != 0 {
-                let factor = ((curr_n_sb - k_sb).rem_euclid(MOD) as i128
-                    * mod_inv(curr_n_sb.rem_euclid(MOD), MOD) as i128 % MOD as i128) as i64;
-                curr_sb_val = (curr_sb_val as i128 * factor as i128 % MOD as i128) as i64;
+                let num = (curr_n_sb - k_sb).rem_euclid(MOD as i64) as u64;
+                let den = curr_n_sb.rem_euclid(MOD as i64) as usize;
+                curr_sb_val = curr_sb_val * num % MOD * inv[den] % MOD;
             }
             curr_n_sb -= 1;
         }
@@ -95,7 +97,9 @@ fn main() {
         comb_q = next_comb_q;
         m += 1;
 
-        if (comb_p == 0 && comb_q == 0) || (m > p && m > q) { break; }
+        if (comb_p == 0 && comb_q == 0) || (m > p && m > q) {
+            break;
+        }
     }
 
     println!("{}", ans);

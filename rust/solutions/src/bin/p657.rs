@@ -1,38 +1,63 @@
 // Project Euler 657 - Incomplete Words
 // Inclusion-exclusion for words of length <= N using K letters, N=10^12, K=10^7.
+// Optimization: rayon-parallel pow[] init; pure u64 modular arithmetic.
 
-const MOD: i64 = 1_000_000_007;
+use rayon::prelude::*;
 
-fn power_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut r = 1i64;
-    base %= m; if base < 0 { base += m; }
+const MOD: u64 = 1_000_000_007;
+
+#[inline(always)]
+fn power_mod(mut base: u64, mut exp: u64) -> u64 {
+    let mut r = 1u64;
+    base %= MOD;
     while exp > 0 {
-        if exp & 1 == 1 { r = (r as i128 * base as i128 % m as i128) as i64; }
-        base = (base as i128 * base as i128 % m as i128) as i64;
+        if exp & 1 == 1 {
+            r = r * base % MOD;
+        }
+        base = base * base % MOD;
         exp >>= 1;
     }
     r
 }
 
 fn main() {
-    let n: i64 = 1_000_000_000_000;
+    let n: u64 = 1_000_000_000_000;
     let k = 10_000_000usize;
-    let mut pows = vec![0i64; k + 1];
-    for i in 1..=k { pows[i] = power_mod(i as i64, n + 1, MOD); }
-    let mut invs = vec![0i64; k + 1];
+    let exp = n + 1;
+
+    // Parallel precompute t^(N+1) mod MOD for t = 1..K
+    let mut pows = vec![0u64; k + 1];
+    pows
+        .par_iter_mut()
+        .enumerate()
+        .skip(1)
+        .for_each(|(i, slot)| {
+            *slot = power_mod(i as u64, exp);
+        });
+
+    // Linear modular inverses 1..K
+    let mut invs = vec![0u64; k + 1];
     invs[1] = 1;
-    for i in 2..=k { invs[i] = (MOD - (MOD / i as i64) * invs[(MOD % i as i64) as usize] % MOD) % MOD; }
-    let mut ans = 0i64;
-    let mut num_choices = 1i64;
+    for i in 2..=k {
+        invs[i] = (MOD - (MOD / i as u64) * invs[(MOD % i as u64) as usize] % MOD) % MOD;
+    }
+
+    let mut ans = 0u64;
+    let mut num_choices = 1u64;
     for t in 0..k {
-        let num_words = if t == 0 { 1i64 }
-            else if t == 1 { (n + 1) % MOD }
-            else { (pows[t] - 1 + MOD) % MOD * invs[t - 1] % MOD };
-        let sign = if (k - t) % 2 == 0 { 1i64 } else { MOD - 1 };
-        ans = (ans - (sign as i128 * num_words as i128 % MOD as i128 * num_choices as i128 % MOD as i128) as i64 % MOD + MOD) % MOD;
+        let num_words = if t == 0 {
+            1u64
+        } else if t == 1 {
+            (n + 1) % MOD
+        } else {
+            (pows[t] + MOD - 1) % MOD * invs[t - 1] % MOD
+        };
+        let sign = if (k - t) % 2 == 0 { 1u64 } else { MOD - 1 };
+        // ans -= sign * num_words * num_choices
+        let term = sign * num_words % MOD * num_choices % MOD;
+        ans = (ans + MOD - term % MOD) % MOD;
         if t < k - 1 {
-            num_choices = (num_choices as i128 * ((k - t) as i64 % MOD) as i128 % MOD as i128) as i64;
-            num_choices = (num_choices as i128 * invs[t + 1] as i128 % MOD as i128) as i64;
+            num_choices = num_choices * ((k - t) as u64 % MOD) % MOD * invs[t + 1] % MOD;
         }
     }
     println!("{}", ans % MOD);

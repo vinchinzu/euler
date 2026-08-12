@@ -86,6 +86,20 @@ cd rust && ./bench.sh all        # All problems with both C and Rust sources
 
 All solutions output **only the numeric answer** on stdout. No headers, no verbose text. Use stderr for debug output.
 
+## Optimization
+
+Rust wall-clock tuning uses a static triage + A/B gate (accept only if median is ≥5% faster and the answer is correct).
+
+| File | Purpose |
+|------|---------|
+| `optimization_applied_summary.md` | **Current status**: accepted speedups, rejects, and **partials** to resume |
+| `optimization_ab_results.csv` / `.json` | Per-problem A/B timings and decisions |
+| `optimization_triage.csv` / `.json` | Ranked optimization opportunity estimates |
+| `rust/CLAUDE.md` | Performance rules learned from C→Rust ports |
+| `rust/profiles/SUMMARY.md` | Profiling classes for solutions >1s |
+
+**Partials:** wave-2 batches B/C/D were stopped mid-run. Unvalidated candidates may still live under `~/.grok/worktrees/euler-project-euler/subagent-*`. **Do not merge them without re-running the A/B gate** (≥5% faster median + correct answer). See the Partials section in `optimization_applied_summary.md` for the worktree map, WIP tables, and resume recipe.
+
 ## Key Files
 
 | File | Purpose |
@@ -96,3 +110,4 @@ All solutions output **only the numeric answer** on stdout. No headers, no verbo
 | `rust/bench.sh` | C vs Rust benchmark |
 | `rust/CLAUDE.md` | Rust performance guide |
 | `c/validate.sh` | C-only validation (used by bench.sh) |
+| `optimization_applied_summary.md` | Optimization accepts / rejects / partials |

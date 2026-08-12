@@ -15,3 +15,11 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 941,14353.0,5205.0,63.74,True,True,speedup=2.758x
 962,8877.1,7186.4,19.03,True,True,speedup=1.235x
 971,5525.7,1980.5,64.16,True,True,speedup=2.79x
+445,11426.8,4741.7,58.50,True,True,cache cur_pow + delta p^e updates; egcd mod_inv instead of Fermat speedup=2.41x
+534,10197.7,1850.0,81.86,True,True,rayon over independent k=0..13 (DP + DFS); HashMap->FxHashMap alone regressed speedup=5.512x
+606,8804.7,8804.7,0.00,False,True,already pure u64; rayon large_s snapshot and final-sum parallelization regressed or no gain
+650,4715.4,1174.0,75.10,True,True,i128->u64 in power() and D(n) product (MOD<2^30) speedup=4.017x
+657,5074.4,411.4,91.89,True,True,rayon parallel pow[t]^(N+1) init over 10M; i128->u64 power_mod speedup=12.335x
+873,5428.0,2472.1,54.46,True,True,precompute inv table via linear sieve (~1.11e8); i128->u64 mul speedup=2.196x
+946,10516.8,4311.6,59.00,True,True,i128->i32 (max_abs=79); specialize coeff=1; positive floor_div speedup=2.439x
+774,15887.1,11351.1,28.55,True,True,i32 cores+mat; extended-euclid modinv; ptr GE; mat reuse speedup=1.4x

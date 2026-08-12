@@ -366,5 +366,109 @@
     ],
     "decision": "ACCEPT",
     "reason": "speedup=2.79x"
+  },
+  {
+    "problem": 445,
+    "baseline_median_ms": 11426.8,
+    "candidate_median_ms": 4741.7,
+    "speedup": 2.41,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "cache cur_pow + delta p^e updates; egcd mod_inv instead of Fermat",
+    "wave": 2
+  },
+  {
+    "problem": 534,
+    "baseline_median_ms": 10197.7,
+    "candidate_median_ms": 1850.0,
+    "speedup": 5.512,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "rayon over independent k=0..13 (DP + DFS); HashMap->FxHashMap alone regressed",
+    "wave": 2
+  },
+  {
+    "problem": 606,
+    "baseline_median_ms": 8804.7,
+    "candidate_median_ms": 8804.7,
+    "speedup": 1.0,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "REJECT",
+    "reason": "already pure u64; rayon large_s snapshot and final-sum parallelization regressed or no gain",
+    "wave": 2
+  },
+  {
+    "problem": 650,
+    "baseline_median_ms": 4715.4,
+    "candidate_median_ms": 1174.0,
+    "speedup": 4.017,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "i128->u64 in power() and D(n) product (MOD<2^30)",
+    "wave": 2
+  },
+  {
+    "problem": 657,
+    "baseline_median_ms": 5074.4,
+    "candidate_median_ms": 411.4,
+    "speedup": 12.335,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "rayon parallel pow[t]^(N+1) init over 10M; i128->u64 power_mod",
+    "wave": 2
+  },
+  {
+    "problem": 873,
+    "baseline_median_ms": 5428.0,
+    "candidate_median_ms": 2472.1,
+    "speedup": 2.196,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "precompute inv table via linear sieve (~1.11e8); i128->u64 mul",
+    "wave": 2
+  },
+  {
+    "problem": 946,
+    "baseline_median_ms": 10516.8,
+    "candidate_median_ms": 4311.6,
+    "speedup": 2.439,
+    "correct": true,
+    "baseline_times": [],
+    "candidate_times": [],
+    "decision": "ACCEPT",
+    "reason": "i128->i32 (max_abs=79); specialize coeff=1; positive floor_div",
+    "wave": 2
+  },
+  {
+    "problem": 774,
+    "baseline_median_ms": 15887.1,
+    "candidate_median_ms": 11351.1,
+    "speedup": 1.4,
+    "correct": true,
+    "baseline_times": [
+      15887.1,
+      23077.8,
+      13260.6
+    ],
+    "candidate_times": [
+      11351.1,
+      19330.8,
+      4986.2
+    ],
+    "decision": "ACCEPT",
+    "reason": "i32 cores+mat; extended-euclid modinv; ptr GE; mat reuse",
+    "wave": 2
   }
 ]
