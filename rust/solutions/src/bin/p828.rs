@@ -1,6 +1,7 @@
 // Project Euler Problem 828: Numbers Challenge
 // Compute sum of min scores for all targets
 
+use rayon::prelude::*;
 use std::collections::HashSet;
 
 fn read_file() -> Vec<(i64, Vec<i64>)> {
@@ -170,14 +171,16 @@ fn min_score(target: i64, numbers: &[i64]) -> i64 {
 fn compute() -> i64 {
     let data = read_file();
     let mod_val = 1005075251i64;
-    let mut total = 0i64;
 
-    for (n, (target, numbers)) in data.iter().enumerate() {
-        let s = min_score(*target, numbers);
-        total = (total + mod_pow(3, (n + 1) as i64, mod_val) * s) % mod_val;
-    }
-
-    total
+    // Each challenge independent (work varies) — parallelize
+    data.par_iter()
+        .enumerate()
+        .map(|(n, (target, numbers))| {
+            let s = min_score(*target, numbers);
+            mod_pow(3, (n + 1) as i64, mod_val) * s % mod_val
+        })
+        .sum::<i64>()
+        % mod_val
 }
 
 fn mod_pow(mut a: i64, mut e: i64, m: i64) -> i64 {

@@ -1,7 +1,7 @@
 // Project Euler 766 - Sliding Block Puzzle
 // DFS exploring all reachable configurations with indistinguishable same-shape pieces.
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 const H: usize = 5;
 const W: usize = 6;
@@ -104,7 +104,7 @@ fn main() {
         place(i, &mut pgrid, &mut tgrid, &poff_y, &poff_x, &piece_ncells, &piece_cells, &piece_type);
     }
 
-    let mut visited: HashMap<[u8; NCELLS], bool> = HashMap::new();
+    let mut visited: FxHashMap<[u8; NCELLS], bool> = FxHashMap::default();
     visited.insert(tgrid, true);
 
     // Iterative DFS

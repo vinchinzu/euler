@@ -8,6 +8,8 @@
 //   2. WHT of f.
 //   3. C(n,s) = (1/L) * sum_t (f_hat[t])^s  (mod MOD), L = next power of 2 >= n.
 
+use rayon::prelude::*;
+
 const MOD: u64 = 1_000_000_007;
 
 /// Fast modular exponentiation using u64 only (MOD < 2^32, so a*b < 2^64).
@@ -194,15 +196,12 @@ fn compute_c(n: usize, s: u64) -> u64 {
 
     fwht_xor_inplace(&mut f);
 
-    // Pointwise exponentiation and sum
-    let mut total = 0u64;
-    for (i, &v) in f.iter().enumerate() {
-        total += pow_mod(v, s, MOD);
-        if i & 8191 == 0 {
-            total %= MOD;
-        }
-    }
-    total %= MOD;
+    // Pointwise exponentiation and sum (independent) — parallelize
+    let total: u64 = f
+        .par_iter()
+        .map(|&v| pow_mod(v, s, MOD))
+        .sum::<u64>()
+        % MOD;
 
     let inv_l = pow_mod(l as u64, MOD - 2, MOD);
     total * inv_l % MOD

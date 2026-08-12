@@ -3,13 +3,43 @@
 // A mountain range with slopes of prime lengths, alternating up/down 45 degrees.
 // P(k) = number of peaks visible from peak k. Find sum P(k) for k=1..N.
 
-use euler_utils::primes_up_to;
-
 const N: usize = 2_500_000;
+
+fn primes_odd_sieve(limit: usize) -> Vec<usize> {
+    let n_odds = (limit + 1) / 2;
+    let mut odd = vec![true; n_odds];
+    odd[0] = false;
+    let mut i = 1usize;
+    while {
+        let p = 2 * i + 1;
+        p * p <= limit
+    } {
+        if odd[i] {
+            let p = 2 * i + 1;
+            let mut j = (p * p) / 2;
+            while j < n_odds {
+                odd[j] = false;
+                j += p;
+            }
+        }
+        i += 1;
+    }
+    let mut primes = Vec::with_capacity(n_odds / 5);
+    primes.push(2);
+    for i in 1..n_odds {
+        if odd[i] {
+            let p = 2 * i + 1;
+            if p <= limit {
+                primes.push(p);
+            }
+        }
+    }
+    primes
+}
 
 fn main() {
     let prime_sieve_limit = 90_000_000;
-    let primes = primes_up_to(prime_sieve_limit);
+    let primes = primes_odd_sieve(prime_sieve_limit);
 
     if primes.len() < 2 * N {
         eprintln!("Not enough primes: {} < {}", primes.len(), 2 * N);

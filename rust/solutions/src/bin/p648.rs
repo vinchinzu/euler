@@ -4,44 +4,56 @@
 const NN: usize = 1000;
 const MOD: i64 = 1_000_000_000;
 
-fn isqrt(n: i32) -> i32 {
-    let mut r = (n as f64).sqrt() as i32;
-    while r > 0 && r * r > n { r -= 1; }
-    while (r + 1) * (r + 1) <= n { r += 1; }
-    r
-}
-
-fn is_square(n: i32) -> bool {
-    let r = isqrt(n);
-    r * r == n
-}
-
 fn main() {
-    let max_s = (NN as i32 / 2) * (NN as i32 / 2);
+    let max_s = (NN / 2) * (NN / 2);
+
+    // Precompute which s are perfect squares and their roots
+    let mut is_sq = vec![false; max_s + 1];
+    let mut sqrt_of = vec![0i32; max_s + 1];
+    {
+        let mut r = 0i32;
+        while (r * r) as usize <= max_s {
+            is_sq[(r * r) as usize] = true;
+            sqrt_of[(r * r) as usize] = r;
+            r += 1;
+        }
+    }
 
     let mut jump1 = vec![0i64; NN + 1];
     let mut jump2 = vec![0i64; NN + 1];
     let mut f = vec![0i64; NN + 1];
 
-    for s in (0..=max_s as usize).rev() {
-        for k in 0..=NN { f[k] = 0; }
-
-        if s > 0 && is_square(s as i32) {
-            f[0] = (isqrt(s as i32) - 1) as i64;
+    for s in (0..=max_s).rev() {
+        if s > 0 && is_sq[s] {
+            f.fill(0);
+            f[0] = (sqrt_of[s] - 1) as i64;
         } else {
-            f[0] = jump2[0];
-            for k in 1..=NN {
-                f[k] = ((jump2[k] + jump1[k - 1] - jump2[k - 1]) % MOD + MOD) % MOD;
+            // SAFETY: k in 0..=NN; all arrays length NN+1
+            unsafe {
+                *f.get_unchecked_mut(0) = *jump2.get_unchecked(0);
+                for k in 1..=NN {
+                    let mut v = *jump2.get_unchecked(k) + *jump1.get_unchecked(k - 1)
+                        - *jump2.get_unchecked(k - 1);
+                    v %= MOD;
+                    if v < 0 {
+                        v += MOD;
+                    }
+                    *f.get_unchecked_mut(k) = v;
+                }
             }
         }
 
-        jump2.copy_from_slice(&jump1);
-        jump1.copy_from_slice(&f);
+        // jump2 <- jump1; jump1 <- f  via swaps (no copies)
+        std::mem::swap(&mut jump2, &mut jump1);
+        std::mem::swap(&mut jump1, &mut f);
     }
 
     let mut ans = 0i64;
-    for k in 0..=NN {
-        ans = (ans + jump1[k]) % MOD;
+    for &v in &jump1 {
+        ans += v;
+        if ans >= MOD {
+            ans -= MOD;
+        }
     }
     println!("{}", ans);
 }

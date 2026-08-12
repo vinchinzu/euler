@@ -4,6 +4,7 @@
 // cyclic polygon area for each, weight by multinomial count, and average over
 // C(2n-4, n-1) total compositions. Sum E(n) for n=3..50.
 
+use rayon::prelude::*;
 use std::f64::consts::PI;
 
 #[derive(Clone, Copy)]
@@ -82,7 +83,9 @@ fn helper(n: i32, rem_sides: i32, rem_perim: i32, sides: &mut Vec<Side>, ans: &m
         let mut area = 0.0;
         prev = 0.0;
         for s in sides.iter() {
-            prev = s.count as f64 * s.val as f64 * (low * low - (s.val as f64) * (s.val as f64)).sqrt() / 4.0;
+            prev = s.count as f64 * s.val as f64
+                * (low * low - (s.val as f64) * (s.val as f64)).sqrt()
+                / 4.0;
             area += prev;
         }
         if co {
@@ -97,7 +100,11 @@ fn helper(n: i32, rem_sides: i32, rem_perim: i32, sides: &mut Vec<Side>, ans: &m
         return;
     }
 
-    let start_val = if sides.is_empty() { 1 } else { sides.last().unwrap().val + 1 };
+    let start_val = if sides.is_empty() {
+        1
+    } else {
+        sides.last().unwrap().val + 1
+    };
     for val in start_val..=(rem_perim / rem_sides) {
         for count in 1..=rem_sides {
             if val * count <= rem_perim {
@@ -109,13 +116,15 @@ fn helper(n: i32, rem_sides: i32, rem_perim: i32, sides: &mut Vec<Side>, ans: &m
     }
 }
 
-fn main() {
+fn e_n(n: i32) -> f64 {
     let mut ans = 0.0;
     let mut sides = Vec::new();
+    helper(n, n, 2 * n - 3, &mut sides, &mut ans);
+    ans
+}
 
-    for n in 3..=50 {
-        helper(n, n, 2 * n - 3, &mut sides, &mut ans);
-    }
-
+fn main() {
+    // n=3..50 independent; large n dominates — rayon work-steals
+    let ans: f64 = (3..=50).into_par_iter().map(e_n).sum();
     println!("{:.6}", ans);
 }

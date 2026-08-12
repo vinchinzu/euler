@@ -5,6 +5,7 @@ fn main() {
     const N: usize = 100_000_000;
     const M: u64 = 1_000_000_007;
 
+    #[inline]
     fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
         let mut result = 1u64;
         base %= m;
@@ -18,24 +19,45 @@ fn main() {
         result
     }
 
-    // Sieve
-    let mut is_prime = vec![true; N + 1];
-    is_prime[0] = false;
-    is_prime[1] = false;
-    let sq = (N as f64).sqrt() as usize;
-    for i in 2..=sq {
-        if is_prime[i] {
-            let mut j = i * i;
-            while j <= N {
-                is_prime[j] = false;
-                j += i;
+    // Odd-only sieve
+    let n_odds = (N + 1) / 2;
+    let mut is_odd_prime = vec![true; n_odds];
+    is_odd_prime[0] = false;
+    let mut i = 1usize;
+    while {
+        let p = 2 * i + 1;
+        p * p <= N
+    } {
+        if is_odd_prime[i] {
+            let p = 2 * i + 1;
+            let mut j = (p * p) / 2;
+            while j < n_odds {
+                is_odd_prime[j] = false;
+                j += p;
             }
         }
+        i += 1;
     }
 
     let mut ans: u64 = 2;
-    for p in 2..=N {
-        if !is_prime[p] { continue; }
+    // p=2
+    {
+        let mut pe = 2u64;
+        let mut exp = 1u64;
+        while pe <= N as u64 / 2 {
+            pe *= 2;
+            exp += 1;
+        }
+        ans = (ans as u128 * pow_mod(2, exp, M) as u128 % M as u128) as u64;
+    }
+    for i in 1..n_odds {
+        if !is_odd_prime[i] {
+            continue;
+        }
+        let p = 2 * i + 1;
+        if p > N {
+            break;
+        }
         let mut pe = p as u64;
         let mut exp = 1u64;
         while pe <= N as u64 / p as u64 {

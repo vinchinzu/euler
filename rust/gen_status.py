@@ -37,7 +37,7 @@ SRC_DIR = SCRIPT_DIR / "solutions" / "src" / "bin"
 STATUS_PNG = SCRIPT_DIR / "status.png"
 
 TIMEOUT_SECS = 30
-MAX_PROBLEM = 972  # show all problems up to the highest existing solution
+MAX_PROBLEM = 997  # show all problems up to the highest existing solution
 
 
 def load_answers():

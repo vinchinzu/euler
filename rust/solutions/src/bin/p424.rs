@@ -1,4 +1,5 @@
 // Project Euler 424: Kakuro puzzles
+use rayon::prelude::*;
 use std::fs;
 
 const MAXCELLS: usize = 50;
@@ -344,25 +345,36 @@ fn main() {
         .or_else(|_| fs::read_to_string("../data/kakuro200.txt"))
         .expect("Cannot open kakuro200.txt");
 
-    let mut total: i64 = 0;
+    let lines: Vec<&str> = content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() { continue; }
+    // Each puzzle is independent — parallelize solve
+    let total: i64 = lines
+        .into_par_iter()
+        .map(|line| {
+            let p = parse_puzzle(line);
+            let mut letter_vals = [-1i32; 10];
+            let mut cell_vals = [0i32; MAXCELLS];
+            let mut used_letters = 0u32;
 
-        let p = parse_puzzle(line);
-        let mut letter_vals = [-1i32; 10];
-        let mut cell_vals = [0i32; MAXCELLS];
-        let mut used_letters = 0u32;
-
-        if solve_bt(&p, &mut letter_vals, &mut cell_vals, &mut used_letters) {
-            let mut val: i64 = 0;
-            for i in 0..10 {
-                val = val * 10 + if letter_vals[i] >= 0 { letter_vals[i] as i64 } else { 0 };
+            if solve_bt(&p, &mut letter_vals, &mut cell_vals, &mut used_letters) {
+                let mut val: i64 = 0;
+                for i in 0..10 {
+                    val = val * 10 + if letter_vals[i] >= 0 {
+                        letter_vals[i] as i64
+                    } else {
+                        0
+                    };
+                }
+                val
+            } else {
+                0
             }
-            total += val;
-        }
-    }
+        })
+        .sum();
 
     println!("{}", total);
 }

@@ -1,15 +1,25 @@
 // Project Euler 450 - Hypocycloid lattice points
 
+use rayon::prelude::*;
+
 fn gcd_ll(a: i64, b: i64) -> i64 {
     let (mut a, mut b) = (a.abs(), b.abs());
-    while b != 0 { let t = b; b = a % b; a = t; }
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
     a
 }
 
 fn isqrt_int(n: i64) -> i32 {
     let mut r = (n as f64).sqrt() as i64;
-    while r * r > n { r -= 1; }
-    while (r + 1) * (r + 1) <= n { r += 1; }
+    while r * r > n {
+        r -= 1;
+    }
+    while (r + 1) * (r + 1) <= n {
+        r += 1;
+    }
     r as i32
 }
 
@@ -18,7 +28,9 @@ fn main() {
     let lim = 2 * big_n;
 
     let mut phi = vec![0i64; lim + 1];
-    for i in 0..=lim { phi[i] = i as i64; }
+    for i in 0..=lim {
+        phi[i] = i as i64;
+    }
     for i in 2..=lim {
         if phi[i] == i as i64 {
             for j in (i..=lim).step_by(i) {
@@ -34,7 +46,9 @@ fn main() {
     for i in 2..=lim {
         if is_prime[i] {
             for j in (i..=lim).step_by(i) {
-                if j != i { is_prime[j] = false; }
+                if j != i {
+                    is_prime[j] = false;
+                }
                 if (j as i64) % ((i as i64) * (i as i64)) == 0 {
                     mu[j] = 0;
                 } else {
@@ -44,34 +58,38 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
+    let ans_main: i64 = (3..=big_n)
+        .into_par_iter()
+        .map(|s| {
+            let ns = (big_n / s) as i64;
+            let tr_ns = ns * (ns + 1) / 2;
+            let mut local = 2 * phi[s] * tr_ns * s as i64;
 
-    for s in 3..=big_n {
-        let ns = (big_n / s) as i64;
-        let tr_ns = ns * (ns + 1) / 2;
-        ans += 2 * phi[s] * tr_ns * s as i64;
+            if s % 4 != 0 {
+                let mut res: i64 = 0;
+                let sq = isqrt_int(s as i64);
+                for d in 1..=sq as usize {
+                    if s % d == 0 {
+                        let half = ((s - 1) / 2 / d) as i64;
+                        let tr_val = half * (half + 1) / 2;
+                        res += d as i64 * tr_val * mu[d] as i64;
 
-        if s % 4 != 0 {
-            let mut res: i64 = 0;
-            let sq = isqrt_int(s as i64);
-            for d in 1..=sq as usize {
-                if s % d == 0 {
-                    let half = ((s - 1) / 2 / d) as i64;
-                    let tr_val = half * (half + 1) / 2;
-                    res += d as i64 * tr_val * mu[d] as i64;
-
-                    if d != s / d {
-                        let d2 = s / d;
-                        let half2 = ((s - 1) / 2 / d2) as i64;
-                        let tr_val2 = half2 * (half2 + 1) / 2;
-                        res += d2 as i64 * tr_val2 * mu[d2] as i64;
+                        if d != s / d {
+                            let d2 = s / d;
+                            let half2 = ((s - 1) / 2 / d2) as i64;
+                            let tr_val2 = half2 * (half2 + 1) / 2;
+                            res += d2 as i64 * tr_val2 * mu[d2] as i64;
+                        }
                     }
                 }
+                let factor = if s % 2 == 0 { 2i64 } else { 1i64 };
+                local -= 2 * factor * tr_ns * res;
             }
-            let factor = if s % 2 == 0 { 2i64 } else { 1i64 };
-            ans -= 2 * factor * tr_ns * res;
-        }
-    }
+            local
+        })
+        .sum();
+
+    let mut ans: i64 = ans_main;
 
     // Pythagorean triples part
     for m in 2..1000i64 {

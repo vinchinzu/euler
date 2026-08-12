@@ -6,7 +6,7 @@
 // Optimization: memoize by compact u64 key, fast paths for common cases,
 // struct to reduce function parameter overhead in DFS.
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 const NLIMIT: u64 = 100_000_000;
 const MAX_EXP_SUM: usize = 26;
@@ -29,7 +29,7 @@ fn make_key(exps: &[i32]) -> u64 {
 struct Solver {
     primes: Vec<u64>,
     binom_half: [i64; MAX_EXP_SUM + 1],
-    memo: HashMap<u64, i64>,
+    memo: FxHashMap<u64, i64>,
     exponents: Vec<i32>,
     non_one_count: usize,
     ans: i64,
@@ -159,7 +159,7 @@ fn main() {
     let mut solver = Solver {
         primes,
         binom_half,
-        memo: HashMap::with_capacity(4096),
+        memo: FxHashMap::with_capacity_and_hasher(4096, Default::default()),
         exponents: Vec::with_capacity(30),
         non_one_count: 0,
         ans: 0,
