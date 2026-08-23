@@ -1,6 +1,6 @@
 # Validation Status - Python Solutions
 
-Last updated: 2026-02-03
+Archived. Last updated 2026-02-03. Python is legacy; Rust is the primary language. Do not treat remaining WRONG/TIMEOUT lists as current.
 
 ## Overview
 

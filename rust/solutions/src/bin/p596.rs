@@ -2,47 +2,68 @@
 //
 // Find the number of integer quadruples (x,y,z,t) with x^2+y^2+z^2+t^2 <= N^2.
 // Uses Jacobi's four square theorem.
+//
+// sigma2(n) = sum_{k=1}^n k * floor(n/k) = sum_{d=1}^n sigma(d)  (mod MOD)
+// Hyperbola identity (one O(sqrt n) loop):
+//   sum_{i=1}^s (i * floor(n/i) + tri(floor(n/i))) - s * tri(s)
 
-const MOD: i64 = 1_000_000_007;
+const MOD: u64 = 1_000_000_007;
 
-fn sigma2(n: i64, modulus: i64) -> i64 {
-    let mut val: i64 = 0;
-    let sq = (n as f64).sqrt() as i64;
-    // Adjust for precision
-    let sq = {
-        let mut s = sq;
-        while s * s > n { s -= 1; }
-        while (s + 1) * (s + 1) <= n { s += 1; }
-        s
+/// n_mod = n % MOD, 0 <= n_mod < MOD. Returns n*(n+1)/2 % MOD.
+#[inline(always)]
+fn tri_from_mod(n_mod: u64) -> u64 {
+    let prod = if n_mod & 1 == 0 {
+        (n_mod >> 1) * (n_mod + 1)
+    } else {
+        n_mod * ((n_mod + 1) >> 1)
     };
+    prod % MOD
+}
 
-    for k in 1..=sq {
-        val = (val + ((n / k) % modulus) * (k % modulus)) % modulus;
+/// sum_{k=1}^n k * floor(n/k)  mod MOD
+fn sigma2(n: u64) -> u64 {
+    let s = n.isqrt();
+    let mut acc = 0u64;
+    let mut i = 1u64;
+
+    // i < MOD (s = 1e8), so i * (n/i % MOD) fits in u64. Reduce every 64 steps.
+    while i + 3 <= s {
+        let r0 = (n / i) % MOD;
+        let r1 = (n / (i + 1)) % MOD;
+        let r2 = (n / (i + 2)) % MOD;
+        let r3 = (n / (i + 3)) % MOD;
+        acc = acc
+            .wrapping_add(i * r0)
+            .wrapping_add(tri_from_mod(r0))
+            .wrapping_add((i + 1) * r1)
+            .wrapping_add(tri_from_mod(r1))
+            .wrapping_add((i + 2) * r2)
+            .wrapping_add(tri_from_mod(r2))
+            .wrapping_add((i + 3) * r3)
+            .wrapping_add(tri_from_mod(r3));
+        i += 4;
+        if i & 63 == 1 {
+            acc %= MOD;
+        }
     }
-
-    for t in 1..sq {
-        let low = n / (t + 1) + 1;
-        let high = n / t;
-        let count = high - low + 1;
-        let sum_range = if (low + high) % 2 == 0 {
-            (((low + high) / 2) % modulus) * (count % modulus) % modulus
-        } else {
-            ((low + high) % modulus) * ((count / 2) % modulus) % modulus
-        };
-        val = (val + sum_range * (t % modulus)) % modulus;
+    while i <= s {
+        let r = (n / i) % MOD;
+        acc = acc.wrapping_add(i * r).wrapping_add(tri_from_mod(r));
+        i += 1;
     }
+    acc %= MOD;
 
-    ((val % modulus) + modulus) % modulus
+    // s < MOD, so s * tri(s) % MOD = (s % MOD) * tri_from_mod(s % MOD) % MOD
+    let sub = (s % MOD) * tri_from_mod(s % MOD) % MOD;
+    if acc >= sub { acc - sub } else { acc + MOD - sub }
 }
 
 fn main() {
-    let n: i64 = 100_000_000; // 10^8
-    let n_sq: i64 = n * n; // 10^16
+    let n: u64 = 100_000_000; // 10^8
+    let n_sq = n * n; // 10^16
 
-    let s1 = sigma2(n_sq, MOD);
-    let s2 = sigma2(n_sq / 4, MOD);
+    let (s1, s2) = rayon::join(|| sigma2(n_sq), || sigma2(n_sq / 4));
 
-    let ans = ((1 + 8 * s1 % MOD - 32 * s2 % MOD + 2 * MOD) % MOD + MOD) % MOD;
-
+    let ans = (1 + 8 * s1 + 2 * MOD - 32 * s2 % MOD) % MOD;
     println!("{}", ans);
 }

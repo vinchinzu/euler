@@ -2,8 +2,10 @@
 // For each valid triangle with integer sides summing to <= 200,
 // find the maximal area of a circle of area = triangle area placed inside
 
+use rayon::prelude::*;
 use std::f64::consts::PI;
 
+#[inline(always)]
 fn arc_area(x1: f64, y1: f64, x2: f64, y2: f64, r2: f64) -> f64 {
     let t1 = y1.atan2(x1);
     let t2 = y2.atan2(x2);
@@ -13,6 +15,7 @@ fn arc_area(x1: f64, y1: f64, x2: f64, y2: f64, r2: f64) -> f64 {
     r2 * dt * 0.5
 }
 
+#[inline(always)]
 fn seg(x1: f64, y1: f64, x2: f64, y2: f64, r2: f64) -> f64 {
     let d1sq = x1 * x1 + y1 * y1;
     let d2sq = x2 * x2 + y2 * y2;
@@ -60,6 +63,7 @@ fn seg(x1: f64, y1: f64, x2: f64, y2: f64, r2: f64) -> f64 {
     area
 }
 
+#[inline(always)]
 fn circle_triangle_intersection(cx: f64, cy: f64, r2: f64, v1x: f64, v2x: f64, v2y: f64) -> f64 {
     let t = seg(-cx, -cy, v1x - cx, -cy, r2)
           + seg(v1x - cx, -cy, v2x - cx, v2y - cy, r2)
@@ -129,49 +133,60 @@ fn optimize(r2: f64, v1x: f64, v2x: f64, v2y: f64, sx: f64, sy: f64) -> f64 {
     -fv[0]
 }
 
-fn main() {
-    let mut total = 0.0f64;
+fn contrib(a: i32, b: i32, c: i32) -> f64 {
+    let s = (a + b + c) as f64 * 0.5;
+    let area = (s * (s - a as f64) * (s - b as f64) * (s - c as f64)).sqrt();
+    if area <= 0.0 {
+        return 0.0;
+    }
 
+    let r = (area / PI).sqrt();
+    let r2 = r * r;
+    let inr = area / s;
+
+    let cos_a = (b as f64 * b as f64 + c as f64 * c as f64 - a as f64 * a as f64)
+              / (2.0 * b as f64 * c as f64);
+    let sin_a = (1.0 - cos_a * cos_a).sqrt();
+    let v2x = b as f64 * cos_a;
+    let v2y = b as f64 * sin_a;
+    let v1x = c as f64;
+
+    if r <= inr {
+        return area;
+    }
+
+    let p = (a + b + c) as f64;
+    let ix = (b as f64 * c as f64 + c as f64 * v2x) / p;
+    let iy = c as f64 * v2y / p;
+    let best1 = optimize(r2, v1x, v2x, v2y, ix, iy);
+
+    let cx2 = (v1x + v2x) / 3.0;
+    let cy2 = v2y / 3.0;
+    let best2 = optimize(r2, v1x, v2x, v2y, cx2, cy2);
+
+    best1.max(best2)
+}
+
+fn main() {
+    // Flatten valid triangles so rayon can steal evenly (work is independent per triple).
+    let mut tris = Vec::with_capacity(60_000);
     for a in 1..=200i32 {
         for b in a..=200 {
-            if a + b > 200 { break; }
+            if a + b > 200 {
+                break;
+            }
             for c in b..=200 {
-                if a + b + c > 200 { break; }
-                if c >= a + b { continue; }
-
-                let s = (a + b + c) as f64 * 0.5;
-                let area = (s * (s - a as f64) * (s - b as f64) * (s - c as f64)).sqrt();
-                if area <= 0.0 { continue; }
-
-                let r = (area / PI).sqrt();
-                let r2 = r * r;
-                let inr = area / s;
-
-                let cos_a = (b as f64 * b as f64 + c as f64 * c as f64 - a as f64 * a as f64)
-                          / (2.0 * b as f64 * c as f64);
-                let sin_a = (1.0 - cos_a * cos_a).sqrt();
-                let v2x = b as f64 * cos_a;
-                let v2y = b as f64 * sin_a;
-                let v1x = c as f64;
-
-                if r <= inr {
-                    total += area;
+                if a + b + c > 200 {
+                    break;
+                }
+                if c >= a + b {
                     continue;
                 }
-
-                let p = (a + b + c) as f64;
-                let ix = (b as f64 * c as f64 + c as f64 * v2x) / p;
-                let iy = c as f64 * v2y / p;
-                let best1 = optimize(r2, v1x, v2x, v2y, ix, iy);
-
-                let cx2 = (v1x + v2x) / 3.0;
-                let cy2 = v2y / 3.0;
-                let best2 = optimize(r2, v1x, v2x, v2y, cx2, cy2);
-
-                total += best1.max(best2);
+                tris.push((a, b, c));
             }
         }
     }
 
+    let total: f64 = tris.into_par_iter().map(|(a, b, c)| contrib(a, b, c)).sum();
     println!("{:.2}", total);
 }

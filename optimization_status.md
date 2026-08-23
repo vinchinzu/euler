@@ -1,6 +1,6 @@
 # Optimization status — Ryzen 9 5900XT re-time
 
-Generated: 2026-08-22
+**Frozen snapshot.** Generated 2026-08-22 *before* waves 4–6. Do not treat the queues below as the current work list. Living log and remaining counts: `optimization_applied_summary.md`.
 
 Re-timed every Rust binary on this box after a clean fat-LTO release build. Classification uses the new wall-clock plus existing notes (`optimization_applied_summary.md`, A/B CSV, `validated.json` `optimized` flags, wave-2 partials) and a source skim of the slow set.
 
@@ -301,17 +301,16 @@ Loop-carried Lucy / Fenwick / Garner / treap. Rayon over tiny inner iterations a
 | 938 | 2306 | 2641 | 1.15 | needs_refactor |  |
 | 478 | 2284 | 3672 | 1.61 | already_opt_still_slow | optimized=true |
 
-## p968 WRONG
+## p968
 
-`p968` source hash matches the July cache (then marked OK / `885362394`), but this rebuild prints extra debug lines and a final answer `294683487`. Sample `P(2,…,2)` is already wrong vs 7120. Likely UB or a rustc 1.98 / `target-cpu=native` codegen change — not a timing artifact. Stdout is also not “answer only”.
+Wrong at this snapshot (printed `294683487`, extra debug). **Fixed in wave 4** — digit DP, `885362394` in 69 ms. See `optimization_applied_summary.md`.
 
 ## Artifacts
 
 | File | Role |
 |---|---|
-| `validated.json` | new times + hashes (canonical cache for `rust/gen_status.py`) |
-| `optimization_status.csv` | one row per problem |
-| `optimization_applied_summary.md` | historical A/B waves (not rewritten) |
+| `validated.json` | times + hashes (canonical cache for `rust/gen_status.py`) |
+| `optimization_status.csv` | one row per problem at this snapshot |
+| `optimization_applied_summary.md` | living wave log (includes work after this snapshot) |
 | `optimization_ab_results.csv` | A/B gate log |
-| `.grok/already_optimized_catalog.json` | union of notes used here |
 

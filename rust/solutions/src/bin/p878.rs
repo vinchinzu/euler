@@ -10,114 +10,172 @@
 // G(N, m) = sum_{k=0..m} F(N, k), where F(N,k) counts pairs (a,b) with
 // 0 <= a <= b <= N and S-norm(a,b) = k.
 
-use std::collections::HashMap;
-
-// ---- GF(2) polynomial arithmetic ----
-// Polynomials over GF(2) represented as u64 bitmasks.
+use rayon::prelude::*;
 
 type Poly = u64;
+type SElement = (Poly, Poly);
 
 const X: Poly = 2;
 
+// Packed generator table: index by polynomial bitmask (all keys are <= m).
+// 0 = unknown, 1 = inert (no prime generator), 2 = Some(gen_val[p]).
+struct GenTable {
+    flag: Vec<u8>,
+    val: Vec<SElement>,
+}
+
+impl GenTable {
+    #[inline(always)]
+    fn get(&self, p: Poly) -> Option<SElement> {
+        let i = p as usize;
+        match self.flag[i] {
+            1 => None,
+            2 => Some(self.val[i]),
+            _ => find_prime_generator(p),
+        }
+    }
+}
+
+#[inline(always)]
 fn poly_deg(a: Poly) -> i32 {
-    if a == 0 { -1 } else { 63 - a.leading_zeros() as i32 }
+    if a == 0 {
+        -1
+    } else {
+        63 - a.leading_zeros() as i32
+    }
 }
 
-// Poly mul that stays in u64 (for cases where we know result fits)
+#[inline(always)]
 fn poly_mul64(a: Poly, b: Poly) -> Poly {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        return poly_mul64_pclmul(a, b);
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        poly_mul64_soft(a, b)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "pclmulqdq")]
+#[inline]
+unsafe fn poly_mul64_pclmul(a: Poly, b: Poly) -> Poly {
+    use std::arch::x86_64::*;
+    let va = _mm_cvtsi64_si128(a as i64);
+    let vb = _mm_cvtsi64_si128(b as i64);
+    let r = _mm_clmulepi64_si128::<0>(va, vb);
+    _mm_cvtsi128_si64(r) as u64
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline(always)]
+fn poly_mul64_soft(mut a: Poly, mut b: Poly) -> Poly {
     let mut res: Poly = 0;
-    let mut aa = a;
-    let mut bb = b;
-    while bb > 0 {
-        if bb & 1 != 0 {
-            res ^= aa;
+    while b > 0 {
+        if b & 1 != 0 {
+            res ^= a;
         }
-        aa <<= 1;
-        bb >>= 1;
+        a <<= 1;
+        b >>= 1;
     }
     res
 }
 
-fn poly_mod(a: Poly, b: Poly) -> Poly {
-    if b == 0 { panic!("division by zero"); }
-    let db = poly_deg(b);
-    let mut aa = a;
-    let mut da = poly_deg(aa);
-    while da >= db {
-        aa ^= b << (da - db);
-        da = poly_deg(aa);
+#[inline(always)]
+fn poly_mod(mut a: Poly, b: Poly) -> Poly {
+    if a == 0 {
+        return 0;
     }
-    aa
+    let lb = b.leading_zeros();
+    while a != 0 {
+        let la = a.leading_zeros();
+        if la > lb {
+            break;
+        }
+        a ^= b << (lb - la);
+    }
+    a
 }
 
-fn poly_divmod(a: Poly, b: Poly) -> (Poly, Poly) {
-    if b == 0 { panic!("division by zero"); }
-    let db = poly_deg(b);
-    let mut aa = a;
-    let mut da = poly_deg(aa);
-    if da < db { return (0, a); }
+#[inline(always)]
+fn poly_divmod(mut a: Poly, b: Poly) -> (Poly, Poly) {
+    if a == 0 {
+        return (0, 0);
+    }
+    let lb = b.leading_zeros();
     let mut q: Poly = 0;
-    while da >= db {
-        let shift = da - db;
-        q ^= 1u64 << shift;
-        aa ^= b << shift;
-        da = poly_deg(aa);
-    }
-    (q, aa)
-}
-
-// poly_sq that stays in u64
-fn poly_sq64(a: Poly) -> Poly {
-    let mut res: Poly = 0;
-    let mut shift = 0;
-    let mut aa = a;
-    while aa > 0 {
-        if aa & 1 != 0 {
-            res |= 1u64 << shift;
+    while a != 0 {
+        let la = a.leading_zeros();
+        if la > lb {
+            break;
         }
-        aa >>= 1;
-        shift += 2;
+        let shift = lb - la;
+        q |= 1u64 << shift;
+        a ^= b << shift;
     }
-    res
+    (q, a)
 }
 
-// ---- S-element: elements of Z_2[x][omega] / (omega^2 + x*omega + 1) ----
-// Represented as (A, B) meaning A + B*omega, where A, B are GF(2) polynomials.
+#[inline(always)]
+fn poly_try_div(mut a: Poly, b: Poly) -> Option<Poly> {
+    if a == 0 {
+        return Some(0);
+    }
+    let lb = b.leading_zeros();
+    let mut q: Poly = 0;
+    while a != 0 {
+        let la = a.leading_zeros();
+        if la > lb {
+            return None;
+        }
+        let shift = lb - la;
+        q |= 1u64 << shift;
+        a ^= b << shift;
+    }
+    Some(q)
+}
 
-type SElement = (Poly, Poly);
+// a(x)^2 = a(x^2): scatter bits into even positions (fits in u64 for deg < 32).
+#[inline(always)]
+fn poly_sq64(a: Poly) -> Poly {
+    let mut x = a;
+    x = (x | (x << 16)) & 0x0000_FFFF_0000_FFFF;
+    x = (x | (x << 8)) & 0x00FF_00FF_00FF_00FF;
+    x = (x | (x << 4)) & 0x0F0F_0F0F_0F0F_0F0F;
+    x = (x | (x << 2)) & 0x3333_3333_3333_3333;
+    x = (x | (x << 1)) & 0x5555_5555_5555_5555;
+    x
+}
 
-const OMEGA: SElement = (0, 1);
-const OMEGA_INV: SElement = (X, 1);
-
+#[inline(always)]
 fn s_mul(alpha: SElement, beta: SElement) -> SElement {
     let (a1, b1) = alpha;
     let (a2, b2) = beta;
-    // (A1 + B1*w)(A2 + B2*w) = A1*A2 + (A1*B2 + B1*A2)*w + B1*B2*w^2
-    // w^2 = x*w + 1, so B1*B2*w^2 = B1*B2 + x*B1*B2*w
-    // Result: (A1*A2 + B1*B2, A1*B2 + B1*A2 + x*B1*B2)
     let a1a2 = poly_mul64(a1, a2);
     let b1b2 = poly_mul64(b1, b2);
     let outer = poly_mul64(a1, b2) ^ poly_mul64(b1, a2);
-    (a1a2 ^ b1b2, outer ^ poly_mul64(X, b1b2))
+    (a1a2 ^ b1b2, outer ^ (b1b2 << 1))
 }
 
 fn s_norm(alpha: SElement) -> Poly {
     let (a, b) = alpha;
-    // norm = A^2 + x*A*B + B^2 (all in GF(2) polynomial arithmetic)
-    // Since we're working with small polynomials in the iteration, use u64 versions
-    poly_sq64(a) ^ poly_mul64(poly_mul64(X, a), b) ^ poly_sq64(b)
+    poly_sq64(a) ^ poly_mul64(a << 1, b) ^ poly_sq64(b)
 }
 
+#[inline(always)]
 fn s_conjugate(alpha: SElement) -> SElement {
     let (a, b) = alpha;
-    (a ^ poly_mul64(X, b), b)
+    (a ^ (b << 1), b)
 }
 
 fn s_divmod(alpha: SElement, beta: SElement) -> (SElement, SElement) {
     let beta_conj = s_conjugate(beta);
     let num = s_mul(alpha, beta_conj);
     let den = s_norm(beta);
-    if den == 0 { panic!("division by zero s-element"); }
+    if den == 0 {
+        panic!("division by zero s-element");
+    }
     let (u, v) = num;
     let (qu, _) = poly_divmod(u, den);
     let (qv, _) = poly_divmod(v, den);
@@ -127,8 +185,12 @@ fn s_divmod(alpha: SElement, beta: SElement) -> (SElement, SElement) {
 }
 
 fn s_gcd(mut alpha: SElement, mut beta: SElement) -> SElement {
-    if alpha == (0, 0) { return beta; }
-    if beta == (0, 0) { return alpha; }
+    if alpha == (0, 0) {
+        return beta;
+    }
+    if beta == (0, 0) {
+        return alpha;
+    }
     while beta != (0, 0) {
         let (_, r) = s_divmod(alpha, beta);
         alpha = beta;
@@ -137,51 +199,88 @@ fn s_gcd(mut alpha: SElement, mut beta: SElement) -> SElement {
     alpha
 }
 
-// ---- Irreducible polynomial generation over GF(2) ----
-
 fn get_irreducibles(max_deg: i32) -> Vec<Poly> {
     let mut irreds: Vec<Poly> = Vec::new();
     let upper = 1u64 << (max_deg + 1);
     for i in 2..upper {
-        if i > 2 && (i & 1) == 0 { continue; }
+        if i > 2 && (i & 1) == 0 {
+            continue;
+        }
         let deg = poly_deg(i);
         let mut is_irred = true;
         for &p in &irreds {
-            if poly_deg(p) * 2 > deg { break; }
-            if poly_mod(i, p) == 0 { is_irred = false; break; }
+            if poly_deg(p) * 2 > deg {
+                break;
+            }
+            if poly_mod(i, p) == 0 {
+                is_irred = false;
+                break;
+            }
         }
-        if is_irred { irreds.push(i); }
+        if is_irred {
+            irreds.push(i);
+        }
     }
     irreds
 }
 
-// ---- Polynomial factorization over GF(2) ----
-
-fn factor_poly(k: Poly, irreds: &[Poly]) -> Vec<(Poly, u32)> {
-    let mut factors: Vec<(Poly, u32)> = Vec::new();
-    if k <= 1 { return factors; }
-    let mut rem = k;
+// Smallest irreducible polynomial factor of every k in 1..=m.
+fn build_spf(m: u64, irreds: &[Poly]) -> Vec<u32> {
+    let mu = m as usize;
+    let mut spf = vec![0u32; mu + 1];
+    let max_deg = poly_deg(m);
     for &p in irreds {
-        if poly_deg(p) * 2 > poly_deg(rem) { break; }
-        let mut count = 0u32;
-        loop {
-            let (q, r) = poly_divmod(rem, p);
-            if r == 0 {
-                count += 1;
-                rem = q;
-            } else {
-                break;
+        let dp = poly_deg(p);
+        let max_q = 1u64 << ((max_deg - dp + 1) as u32);
+        for q in 1..max_q {
+            let prod = poly_mul64(p, q);
+            if prod <= m {
+                let idx = prod as usize;
+                if spf[idx] == 0 {
+                    spf[idx] = p as u32;
+                }
             }
-            if rem == 1 { break; }
         }
-        if count > 0 { factors.push((p, count)); }
-        if rem == 1 { break; }
     }
-    if rem > 1 { factors.push((rem, 1)); }
-    factors
+    spf
 }
 
-// ---- Modular inverse of polynomial mod another polynomial ----
+const MAX_FACTORS: usize = 12;
+
+fn factor_poly_spf(mut k: Poly, spf: &[u32]) -> ([(Poly, u32); MAX_FACTORS], usize) {
+    let mut items = [(0u64, 0u32); MAX_FACTORS];
+    let mut n = 0usize;
+    if k <= 1 {
+        return (items, 0);
+    }
+    let tz = k.trailing_zeros();
+    if tz > 0 {
+        items[n] = (X, tz);
+        n += 1;
+        k >>= tz;
+    }
+    while k > 1 {
+        let p = spf[k as usize] as Poly;
+        if p == 0 {
+            items[n] = (k, 1);
+            n += 1;
+            break;
+        }
+        let mut e = 0u32;
+        loop {
+            match poly_try_div(k, p) {
+                Some(q) => {
+                    k = q;
+                    e += 1;
+                }
+                None => break,
+            }
+        }
+        items[n] = (p, e);
+        n += 1;
+    }
+    (items, n)
+}
 
 fn inverse_poly_mod(a: Poly, m: Poly) -> Poly {
     let mut t: Poly = 0;
@@ -197,38 +296,30 @@ fn inverse_poly_mod(a: Poly, m: Poly) -> Poly {
         newr = r ^ poly_mul64(q, newr);
         r = tmp_r;
     }
-    if poly_deg(r) > 0 { panic!("not invertible"); }
+    if poly_deg(r) > 0 {
+        panic!("not invertible");
+    }
     t
 }
-
-// ---- Solving x^2 + x = c (mod p) over GF(2)[x]/(p) ----
 
 fn solve_root_quadratic(c_val: Poly, p: Poly) -> Option<Poly> {
     let d = poly_deg(p);
     if d % 2 == 1 {
-        // Odd degree: use the trace-based formula (half-trace)
         let mut z: Poly = 0;
         let mut term = c_val;
         for _ in 0..((d + 1) / 2) {
             z ^= term;
-            term = poly_sq64(term);
-            term = poly_mod(term, p);
-            term = poly_sq64(term);
-            term = poly_mod(term, p);
+            term = poly_mod(poly_sq64(term), p);
+            term = poly_mod(poly_sq64(term), p);
         }
         return Some(z);
     }
-    // Even degree: solve z^2 + z = c via GF(2) linear system.
-    // The map L(z) = z^2 + z is GF(2)-linear on GF(2^d) = GF(2)[x]/(p).
-    // Express z = sum z_i * x^i, then L(z) = sum z_i * (x^{2i} mod p + x^i).
-    // Build augmented matrix [M | c] and solve with Gaussian elimination.
     let du = d as usize;
-    // rows[j] stores bit i = M[j][i] for the matrix, and bit du = c[j]
-    let mut rows = vec![0u32; du];
+    let mut rows = [0u32; 24];
     for i in 0..du {
         let xi = 1u64 << i;
         let x2i_mod_p = poly_mod(poly_sq64(xi), p);
-        let col = x2i_mod_p ^ xi; // L(x^i) = x^{2i} mod p + x^i
+        let col = x2i_mod_p ^ xi;
         for j in 0..du {
             if (col >> j) & 1 != 0 {
                 rows[j] |= 1u32 << i;
@@ -240,78 +331,97 @@ fn solve_root_quadratic(c_val: Poly, p: Poly) -> Option<Poly> {
             rows[j] |= 1u32 << du;
         }
     }
-    // Gaussian elimination
     let mut cur_row = 0;
-    let mut pivots = [usize::MAX; 20];
+    let mut pivots = [usize::MAX; 24];
     for col in 0..du {
-        let mut found = false;
         for row in cur_row..du {
             if (rows[row] >> col) & 1 != 0 {
                 rows.swap(cur_row, row);
                 pivots[col] = cur_row;
+                let pivot = rows[cur_row];
                 for r in 0..du {
                     if r != cur_row && (rows[r] >> col) & 1 != 0 {
-                        rows[r] ^= rows[cur_row];
+                        rows[r] ^= pivot;
                     }
                 }
                 cur_row += 1;
-                found = true;
                 break;
             }
         }
-        let _ = found;
     }
-    // Check consistency: rows below cur_row must have zero augmented bit
     for row in cur_row..du {
         if (rows[row] >> du) & 1 != 0 {
             return None;
         }
     }
-    // Extract solution (free variables = 0)
     let mut z: Poly = 0;
     for col in 0..du {
-        if pivots[col] != usize::MAX {
-            if (rows[pivots[col]] >> du) & 1 != 0 {
-                z |= 1u64 << col;
-            }
+        if pivots[col] != usize::MAX && (rows[pivots[col]] >> du) & 1 != 0 {
+            z |= 1u64 << col;
         }
     }
     Some(z)
 }
 
-// ---- Find the prime generator for an irreducible polynomial p ----
-
 fn find_prime_generator(p: Poly) -> Option<SElement> {
-    if p == X { return Some((1, 1)); }
-    let x_sq = poly_sq64(X); // = 4 in bit representation (x^2)
-    let inv_x2 = inverse_poly_mod(x_sq, p);
+    if p == X {
+        return Some((1, 1));
+    }
+    let inv_x2 = inverse_poly_mod(poly_sq64(X), p);
     let z = solve_root_quadratic(inv_x2, p)?;
     let val = poly_sq64(z) ^ z;
-    if poly_mod(val, p) != inv_x2 { return None; }
-    let t0 = poly_mod(poly_mul64(z, X), p);
+    if poly_mod(val, p) != inv_x2 {
+        return None;
+    }
+    let t0 = poly_mod(z << 1, p);
     let pg = s_gcd((p, 0), (t0, 1));
     Some(pg)
 }
 
-// ---- Main counting logic ----
-
-fn iterate_orbit(start: SElement, step: SElement, n_limit: Poly, n_deg: i32) -> u64 {
+// Multiplication by omega: (A, B) -> (B, A + x*B)
+fn iterate_orbit_omega(start: SElement, n_limit: Poly, n_deg: i32) -> u64 {
     let mut count = 0u64;
-    let mut curr = start;
-    let mut steps = 0u32;
-    loop {
-        steps += 1;
-        if steps > 100_000 { break; }
-        let da = poly_deg(curr.0);
-        let db = poly_deg(curr.1);
-        if da > n_deg + 2 && db > n_deg + 2 { break; }
-        let (val_a, val_b) = curr;
-        if val_a <= n_limit && val_b <= n_limit && val_a <= val_b {
-            count += 1;
-        } else if val_a > n_limit && val_b > n_limit && da > n_deg && db > n_deg {
+    let mut a = start.0;
+    let mut b = start.1;
+    let n_deg_p2 = n_deg + 2;
+    for _ in 0..100_000 {
+        let da = poly_deg(a);
+        let db = poly_deg(b);
+        if da > n_deg_p2 && db > n_deg_p2 {
             break;
         }
-        curr = s_mul(curr, step);
+        if a <= n_limit && b <= n_limit && a <= b {
+            count += 1;
+        } else if a > n_limit && b > n_limit && da > n_deg && db > n_deg {
+            break;
+        }
+        let nb = a ^ b.wrapping_shl(1);
+        a = b;
+        b = nb;
+    }
+    count
+}
+
+// Multiplication by omega^{-1}: (A, B) -> (x*A + B, A)
+fn iterate_orbit_omega_inv(start: SElement, n_limit: Poly, n_deg: i32) -> u64 {
+    let mut count = 0u64;
+    let mut a = start.0;
+    let mut b = start.1;
+    let n_deg_p2 = n_deg + 2;
+    for _ in 0..100_000 {
+        let da = poly_deg(a);
+        let db = poly_deg(b);
+        if da > n_deg_p2 && db > n_deg_p2 {
+            break;
+        }
+        if a <= n_limit && b <= n_limit && a <= b {
+            count += 1;
+        } else if a > n_limit && b > n_limit && da > n_deg && db > n_deg {
+            break;
+        }
+        let na = a.wrapping_shl(1) ^ b;
+        b = a;
+        a = na;
     }
     count
 }
@@ -320,54 +430,69 @@ fn count_for_k(
     k: Poly,
     n_limit: Poly,
     n_deg: i32,
-    irreds: &[Poly],
-    prime_gen_cache: &mut HashMap<Poly, Option<SElement>>,
+    spf: &[u32],
+    gens: &GenTable,
+    current: &mut Vec<SElement>,
+    next: &mut Vec<SElement>,
 ) -> u64 {
-    if k == 0 { return 1; }
+    if k == 0 {
+        return 1;
+    }
 
-    let factors = factor_poly(k, irreds);
+    let (factors, nfact) = factor_poly_spf(k, spf);
 
-    let mut current_gens: Vec<SElement> = vec![(1, 0)];
+    current.clear();
+    current.push((1, 0));
 
-    for &(p, e) in &factors {
+    for i in 0..nfact {
+        let (p, e) = factors[i];
         if p == X {
-            let pg = get_prime_gen(p, prime_gen_cache);
+            let pg = gens.get(p);
             if let Some(g) = pg {
-                // Compute g^e
                 let mut term: SElement = (1, 0);
                 let mut base = g;
                 let mut exp = e;
                 while exp > 0 {
-                    if exp & 1 != 0 { term = s_mul(term, base); }
+                    if exp & 1 != 0 {
+                        term = s_mul(term, base);
+                    }
                     base = s_mul(base, base);
                     exp >>= 1;
                 }
-                current_gens = current_gens.iter().map(|&cg| s_mul(cg, term)).collect();
+                for cg in current.iter_mut() {
+                    *cg = s_mul(*cg, term);
+                }
             } else {
-                current_gens = current_gens.iter().map(|&cg| s_mul(cg, (0, 0))).collect();
+                for cg in current.iter_mut() {
+                    *cg = (0, 0);
+                }
             }
             continue;
         }
 
-        let pg = get_prime_gen(p, prime_gen_cache);
+        let pg = gens.get(p);
         if pg.is_none() {
-            if e % 2 != 0 { return 0; }
+            if e % 2 != 0 {
+                return 0;
+            }
             let half = e / 2;
             let mut scale: Poly = 1;
-            for _ in 0..half { scale = poly_mul64(scale, p); }
-            current_gens = current_gens.iter().map(|&(ga, gb)| {
-                (poly_mul64(ga, scale), poly_mul64(gb, scale))
-            }).collect();
+            for _ in 0..half {
+                scale = poly_mul64(scale, p);
+            }
+            for (ga, gb) in current.iter_mut() {
+                *ga = poly_mul64(*ga, scale);
+                *gb = poly_mul64(*gb, scale);
+            }
             continue;
         }
 
         let pg = pg.unwrap();
         let pg_conj = s_conjugate(pg);
 
-        // Precompute powers of pg and pg_conj up to e
         let eu = e as usize;
-        let mut pow_pi = vec![(1u64, 0u64); eu + 1];
-        let mut pow_bar = vec![(1u64, 0u64); eu + 1];
+        let mut pow_pi = [(1u64, 0u64); 20];
+        let mut pow_bar = [(1u64, 0u64); 20];
         let mut curr: SElement = (1, 0);
         for i in 1..=eu {
             curr = s_mul(curr, pg);
@@ -379,49 +504,69 @@ fn count_for_k(
             pow_bar[i] = curr;
         }
 
-        let mut next_gens: Vec<SElement> = Vec::new();
-        for &g in &current_gens {
+        next.clear();
+        for &g in current.iter() {
             for a in 0..=eu {
                 let b = eu - a;
                 let factor = s_mul(pow_pi[a], pow_bar[b]);
-                let combined = s_mul(g, factor);
-                next_gens.push(combined);
+                next.push(s_mul(g, factor));
             }
         }
-        current_gens = next_gens;
+        std::mem::swap(current, next);
     }
 
     let mut total_count = 0u64;
-    for &g in &current_gens {
-        total_count += iterate_orbit(g, OMEGA, n_limit, n_deg);
-        total_count += iterate_orbit(s_mul(g, OMEGA_INV), OMEGA_INV, n_limit, n_deg);
+    for &g in current.iter() {
+        total_count += iterate_orbit_omega(g, n_limit, n_deg);
+        // g * omega^{-1} = (x*A + B, A)
+        let g_inv = (g.0.wrapping_shl(1) ^ g.1, g.0);
+        total_count += iterate_orbit_omega_inv(g_inv, n_limit, n_deg);
     }
     total_count
 }
 
-fn get_prime_gen(p: Poly, cache: &mut HashMap<Poly, Option<SElement>>) -> Option<SElement> {
-    if let Some(&cached) = cache.get(&p) {
-        return cached;
-    }
-    let res = if p == X {
-        Some((1, 1))
-    } else {
-        find_prime_generator(p)
-    };
-    cache.insert(p, res);
-    res
-}
-
 fn solve(n: u64, m: u64) -> u64 {
     let irreds = get_irreducibles(10);
-    let n_deg = 64 - n.leading_zeros() as i32; // bit_length
-    let mut prime_gen_cache: HashMap<Poly, Option<SElement>> = HashMap::new();
+    let n_deg = 64 - n.leading_zeros() as i32;
+    let mu = m as usize;
+    let spf = build_spf(m, &irreds);
 
-    let mut total: u64 = 1; // k=0 contributes 1
-    for k in 1..=m {
-        total += count_for_k(k, n, n_deg, &irreds, &mut prime_gen_cache);
+    let mut keys: Vec<Poly> = Vec::with_capacity(irreds.len() + 65536);
+    keys.extend_from_slice(&irreds);
+    for k in 2..=m {
+        if spf[k as usize] == 0 {
+            keys.push(k);
+        }
     }
-    total
+
+    let computed: Vec<(Poly, Option<SElement>)> = keys
+        .into_par_iter()
+        .map(|p| (p, find_prime_generator(p)))
+        .collect();
+
+    let mut flag = vec![0u8; mu + 1];
+    let mut val = vec![(0u64, 0u64); mu + 1];
+    for (p, g) in computed {
+        let i = p as usize;
+        match g {
+            None => flag[i] = 1,
+            Some(s) => {
+                flag[i] = 2;
+                val[i] = s;
+            }
+        }
+    }
+    let gens = GenTable { flag, val };
+
+    let total: u64 = (1..mu + 1)
+        .into_par_iter()
+        .with_min_len(64)
+        .map_init(
+            || (Vec::with_capacity(16), Vec::with_capacity(16)),
+            |(current, next), k| count_for_k(k as Poly, n, n_deg, &spf, &gens, current, next),
+        )
+        .sum();
+    total + 1
 }
 
 fn main() {

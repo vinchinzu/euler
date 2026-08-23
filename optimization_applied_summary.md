@@ -1,11 +1,10 @@
 # Optimization Applied Summary
 
-Updated: 2026-08-22 (5900XT re-time; Wave 6 500ms leftovers + first sub-500ms)
+Updated: 2026-08-22 (5900XT re-time; Wave 7 leftover ≥1s playbook)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
-Artifacts: `optimization_ab_results.csv`, `optimization_ab_results.json`, `optimization_triage.csv`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
-**Current queue:** `optimization_status.md` (re-timed on Ryzen 9 5900XT, 16c/32t).
+`optimization_status.md` is the 5900XT re-time **before** waves 4–7. Remaining counts after wave 7 are in this file.
 
 ## 2026-08-22 re-time (this machine)
 
@@ -21,8 +20,6 @@ Clean fat-LTO rebuild + sequential wall-clock of all 997 `pNNN` binaries. `RAYON
 | ≥10s | 6 | 0 |
 
 **p968 is fixed** this wave (digit-DP over 3^10 carries; prints `885362394` in 69 ms). The old closed-form was algorithmically wrong (`P(2,…,2)` ≠ 7120); Python `compute_P_closed_form` has the same bug.
-
-`optimization_status.md` is the **pre-wave-4** 5900XT snapshot. Wave 4 merged 52 speed/correctness candidates (12 full A/B, 40 one-run + answer).
 
 ---
 
@@ -172,11 +169,53 @@ No reverts this wave.
 
 Wave 6 net (sum of parent one-run saves): **~13.6s**.
 
-Estimated remaining after waves 4–6 (overlay on 5900XT re-time, not a full re-validate): **~264s** total. Still **83 ≥1s**, **65 in 500ms–1s**, **116 in 200–500ms**, **198 in 50–200ms**. Named 500ms leftovers still untouched: p642, p625, p643 (Lucy/totient sequential). Next: remaining ≥1s playbook + cursory 50–500ms.
+---
+
+## Wave 7 — leftover ≥1s playbook (this session)
+
+Worktree-isolated subagents, one problem each. Parent copied candidates and sequential-smoke-checked stdout vs `data/answers.txt` (`RAYON_NUM_THREADS=32`, fat LTO). 21 of 22 were ≥2.2× (most 10–500×) so they were **not** A/B-gated — same rule as waves 4–6 one-run wins. **p850** was 1.44× and went through `python3 ab_bench.py 850 1 3`.
+
+**A/B accepted (1)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p850 | 1137 | 787 | 1.44× | rayon first-level DFS; integer isqrt/icbrt; stack C_k |
+
+**One-run + answer (21)** — parent smoke vs 5900XT `validated.json` baseline; all stdout match `data/answers.txt`:
+
+| P | was ms | now ms | × | What changed |
+|--:|-------:|-------:|--:|---|
+| 626 | 1039 | 2 | 520× | rayon partitions; compact `Copy` parts; u64 mulmod |
+| 984 | 1264 | 6 | 211× | rayon boards; bit-parallel flood fill |
+| 878 | 1287 | 20 | 64× | GF(2) SPF sieve; pclmul; rayon k |
+| 420 | 1072 | 24 | 45× | rayon t1; divisor sieve shrunk to n/4 |
+| 470 | 1053 | 28 | 38× | rayon c_val; stack `r_func` |
+| 153 | 1012 | 36 | 28× | memo G floors; rayon u |
+| 748 | 1088 | 35 | 31× | rayon n; binary-search m bound |
+| 155 | 1226 | 51 | 24× | packed 8192² bitset; rayon pair stripes |
+| 963 | 1307 | 53 | 25× | interned packed L keys |
+| 729 | 1830 | 73 | 25× | Newton fixed-point; rayon FKM |
+| 919 | 1247 | 114 | 11× | rayon generators; par_sort unique |
+| 331 | 1726 | 121 | 14× | incremental squares; rayon y-chunks |
+| 966 | 2101 | 146 | 14× | rayon valid triangles |
+| 975 | 2524 | 167 | 15× | rayon prime pairs |
+| 623 | 2336 | 216 | 11× | FPS sqrt via 3-mod NTT |
+| 596 | 1090 | 280 | 3.9× | join two sigma2; fused hyperbola |
+| 883 | 1486 | 306 | 4.9× | integer disc; rayon n_val |
+| 642 | 810 | 308 | 2.6× | rayon DFS after Lucy |
+| 448 | 3563 | 553 | 6.4× | Du Jiao linearized S(⌊N/i⌋) |
+| 211 | 1394 | 646 | 2.2× | u16 SPF wheel; integer isqrt; QR filters |
+| 464 | 4113 | 1151 | 3.6× | linear-sieve μ; join Fenwick; i32 BIT |
+
+No reverts this wave.
+
+Wave 7 net (sum of parent one-run saves): **~30.6s**.
+
+Estimated remaining after waves 4–7 (overlay on 5900XT re-time, not a full re-validate): **~241s** total. Still **67 ≥1s**, **69 in 500ms–1s**, **122 in 200–500ms**, **202 in 50–200ms**. Named leftovers still sequential-hard: p625, p643 (Lucy/totient). Still ≥1s already-opt / skip-first: p846, p468, p505, p847, p774, p459, p886, p954, p552, p989, p938, p478, p994, p337, p931, p797, p655, … Next: remaining ≥1s algorithm work (p846/p468/p847/p774) + 500ms Lucy leftovers.
 
 ---
 
-## Accepted (133 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6)
+## Accepted (155 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7)
 
 ### Wave 3 — 2s band (this session)
 
@@ -268,97 +307,9 @@ Wave 2 rejected: **p606** (already pure u64; rayon attempts no gain).
 
 ---
 
-## Partials (not merged — resume here)
+## Wave-2 partials (historical)
 
-Wave 2 spawned four worktree-isolated subagents. **Batch A finished** and was applied
-(plus p774/p946 from D). Batches **B**, **C**, and residual **D** were stopped mid-run.
-Candidate sources still live in worktrees but **were not A/B-gated**. **Do not merge
-without re-running the A/B gate** (≥5% faster median + correct answer vs `data/answers.txt`).
-
-### Worktree map
-
-Base: `~/.grok/worktrees/euler-project-euler/`
-
-| Batch | Subagent id | Status | Problems |
-|-------|-------------|--------|----------|
-| A | `subagent-019ff34b-e55d-7e53-8074-bee5dc72cf88` | **Done** — merged | 445, 534, 650, 657, 873 (+ rejected 606) |
-| B | `subagent-019ff34b-e55e-7d00-9311-8150cfbb4921` | **Partial** — unvalidated WIP | 448, 513, 543, 559, 715 |
-| C | `subagent-019ff34b-e55e-7d00-9311-816f01d2535a` | **Partial** — unvalidated WIP | 415, 427, 536 (391, 681 untouched) |
-| D | `subagent-019ff34b-e55e-7d00-9311-817bfa5b6d1a` | **Partial** — 774/946 merged from here; rest WIP | 735, 958 (+846 no diff) |
-
-Also: `/tmp/euler_opt/cands/` has snapshot copies of p735, p774, p846, p946, p958
-from mid-batch D (may be stale vs worktree).
-
-Batch results JSONL (present only for finished A/B runs):
-- `/tmp/euler_opt/batch_a_results.jsonl` — complete
-- `/tmp/euler_opt/batch_d_results.jsonl` — partial (774, 946 only)
-- `batch_b_results.jsonl` / `batch_c_results.jsonl` — **missing** (agents stopped early)
-
-### Batch B — candidate WIP (needs A/B)
-
-No `batch_b_results.jsonl` (agent stopped before A/B). All five have source diffs:
-
-| Problem | Worktree diff | Triage estimate | Intended approach (from triage) |
-|--------:|:-------------:|-----------------|----------------------------------|
-| p448 | yes (~77+/41−) | 1.5–2× high | FxHashMap; drop dyn Fn; u64 mod arith |
-| p513 | yes (~436+/141−) | 4–10× med | Port C Mobius / O(√N) pair approach from `c/513.c` |
-| p543 | yes (~105+/38−) | 1.5–2× med | Sort queries; single linear prime scan |
-| p559 | yes (~51+/34−) | 2–4× high | DP / convolution or rayon over k |
-| p715 | yes (~91+/45−) | 1.5–2× high | `usize→u32` for `ff`; parallel `big[i]` fill |
-
-### Batch C — candidate WIP (needs A/B)
-
-No `batch_c_results.jsonl`. Three of five have source diffs; two untouched:
-
-| Problem | Worktree diff | Triage estimate | Intended approach |
-|--------:|:-------------:|-----------------|-------------------|
-| p391 | **no** (still baseline) | 2–4× high | Thread/cache tuning vs C static arrays |
-| p415 | yes (~125+/53−) | 1.5–2× med | Fuse Lucy passes; incremental `pow(2,g)` |
-| p427 | yes (~134+/43−) | 1.5–2× med | Parallel `fk` precompute; sequential delta |
-| p536 | yes (~130+/17−) | 2–4× med | Rayon root-level prime iteration |
-| p681 | **no** (still baseline) | 1.5–2× med | Rebalance rayon for highly-composite K |
-
-### Batch D — residual WIP (needs A/B)
-
-Merged already (A/B passed): **p774**, **p946**. Remaining unvalidated:
-
-| Problem | Worktree diff | Triage estimate | Intended approach |
-|--------:|:-------------:|-----------------|-------------------|
-| p735 | yes (~17+/27−) | 1.5–2× med | CHUNK tune; fuse inner loops; isqrt |
-| p846 | **no** (snapshot only in `/tmp/euler_opt/cands/`) | 1.5–2× low | Already parallel DFS; work decomposition |
-| p958 | yes (~34+/8−) | 2–4× low | Top-level rayon; memoize BFS/DFS |
-
-### Resume recipe (per partial problem)
-
-```bash
-# 1. Copy candidate from worktree (example: batch B p513)
-WT=~/.grok/worktrees/euler-project-euler/subagent-019ff34b-e55e-7d00-9311-8150cfbb4921
-P=513
-cp "$WT/rust/solutions/src/bin/p${P}.rs" rust/solutions/src/bin/p${P}.rs
-
-# 2. Build + A/B (keep HEAD baseline available via git)
-cd rust && cargo build --release --bin p${P}
-# baseline: git stash or checkout HEAD file, rebuild, time ≥5 runs (median)
-# candidate: restore candidate, rebuild, same protocol
-# accept only if median ≥5% faster AND stdout matches data/answers.txt
-
-# 3. If reject:
-git checkout -- rust/solutions/src/bin/p${P}.rs
-
-# 4. Append result to optimization_ab_results.csv / .json
-```
-
-Helper (if still present): `/tmp/euler_opt/ab_bench.py NNN EXPECTED --runs 5 --timeout 120`
-
-### Cleanup (optional)
-
-When partials are either merged or abandoned:
-
-```bash
-# remove worktrees after extracting any wanted candidates
-rm -rf ~/.grok/worktrees/euler-project-euler/subagent-019ff34b-*
-rm -rf /tmp/euler_opt
-```
+Wave-2 batches B/C/D left unmerged worktree candidates. Those worktrees are **gone** — do not copy stale candidates. Later waves already covered most of those IDs (p415, p427, p536, p543, p559, p681, p715, …). Remaining slow leftovers are at the end of Wave 6 above.
 
 ---
 
@@ -377,11 +328,9 @@ rm -rf /tmp/euler_opt
 
 | File | Role |
 |------|------|
-| `optimization_status.md` / `.csv` | 2026-08-22 5900XT re-time + already-optimized vs needs-refactor |
-| `optimization_triage.csv` / `.json` | Ranked opportunity estimates (static; pre-wave-2 times) |
+| `optimization_status.md` / `.csv` | Frozen 5900XT re-time (pre-wave-4 snapshot) |
 | `optimization_ab_results.csv` / `.json` | Every A/B decision with timings |
-| `optimize_top20_prompt.md` | Wave-1 agent prompt template |
-| `triage_optimization_prompt.md` | How triage was generated |
+| `ab_bench.py` | A/B gate (HEAD vs working tree) |
 | `rust/CLAUDE.md` | Performance rules (HashMap→Vec, u128→u64, rayon, etc.) |
-| `rust/profiles/SUMMARY.md` | perf classification for solutions >1s |
+| `rust/profiles/SUMMARY.md` | Feb 2026 perf classes (times are not current) |
 | `.grok/skills/euler-rust-speed/SKILL.md` | 2s→<1s playbook |

@@ -2,106 +2,129 @@
 //
 // Game theory problem with subset enumeration and tridiagonal system solving.
 
+use rayon::prelude::*;
+
 const N: usize = 20;
+const FULL: usize = 1 << N;
 
-fn ilog2(mut n: usize) -> usize {
-    let mut r = 0;
-    while n > 1 {
-        n >>= 1;
-        r += 1;
-    }
-    r
-}
-
-fn popcount(x: usize) -> usize {
-    x.count_ones() as usize
-}
-
+#[inline(always)]
 fn r_func(subset: usize, c: f64) -> f64 {
     if c == 0.0 {
-        return 1.0 + ilog2(subset) as f64;
+        return (usize::BITS - subset.leading_zeros()) as f64;
     }
 
-    let cnt = popcount(subset);
-    let mut vals = Vec::with_capacity(cnt);
-    for i in 0..N {
-        if (subset & (1 << i)) != 0 {
-            vals.push((i + 1) as f64);
+    let mut vals = [0.0f64; N];
+    let mut bits = subset;
+    let mut cnt = 0usize;
+    let mut sum = 0.0;
+    while bits != 0 {
+        let v = (bits.trailing_zeros() + 1) as f64;
+        // SAFETY: cnt < popcount(subset) <= N
+        unsafe {
+            *vals.get_unchecked_mut(cnt) = v;
         }
+        sum += v;
+        cnt += 1;
+        bits &= bits - 1;
     }
 
-    let mut best_expected_earning = 0.0;
-    for t in 1.. {
-        let mean: f64 = vals.iter().sum::<f64>() / cnt as f64;
-        let expected_earning = mean - c * t as f64;
-        if expected_earning < best_expected_earning {
-            return best_expected_earning;
+    let inv_cnt = 1.0 / cnt as f64;
+    let mut suffix_sum = sum;
+    let mut k = 0usize;
+    let mut best = 0.0;
+    let mut ct = c;
+    loop {
+        let mean = sum * inv_cnt;
+        let expected = mean - ct;
+        if expected < best {
+            return best;
         }
-        best_expected_earning = expected_earning;
+        best = expected;
+        ct += c;
 
-        for v in vals.iter_mut() {
-            if *v < mean {
-                *v = mean;
+        // vals stays the original sorted faces; k is how many have been
+        // raised to the running mean. Equivalent to clamping a prefix.
+        while k < cnt {
+            // SAFETY: k < cnt <= N
+            let v = unsafe { *vals.get_unchecked(k) };
+            if v >= mean {
+                break;
             }
+            suffix_sum -= v;
+            k += 1;
         }
+        sum = mean.mul_add(k as f64, suffix_sum);
     }
-    unreachable!()
 }
 
-fn tridiagonal_system(a: &[f64], b: &[f64], c: &[f64], d: &[f64], n: usize) -> Vec<f64> {
-    let mut c_prime = vec![0.0; n];
-    let mut d_prime = vec![0.0; n];
-
-    c_prime[0] = c[0] / b[0];
-    d_prime[0] = d[0] / b[0];
-
+fn tridiag_last(a: &[f64; N + 1], c: &[f64; N + 1], d: &[f64; N + 1], n: usize) -> f64 {
+    let mut c_prime = [0.0f64; N + 1];
+    let mut d_prime = [0.0f64; N + 1];
+    // Diagonal b[i] = 1 for all i.
+    c_prime[0] = c[0];
+    d_prime[0] = d[0];
     for i in 1..n {
-        let denom = b[i] - a[i] * c_prime[i - 1];
-        c_prime[i] = if i < n - 1 { c[i] / denom } else { 0.0 };
-        d_prime[i] = (d[i] - a[i] * d_prime[i - 1]) / denom;
+        // SAFETY: i < n <= N+1, i-1 >= 0
+        let denom = unsafe { 1.0 - a.get_unchecked(i) * c_prime.get_unchecked(i - 1) };
+        if i < n - 1 {
+            unsafe {
+                *c_prime.get_unchecked_mut(i) = c.get_unchecked(i) / denom;
+            }
+        }
+        unsafe {
+            *d_prime.get_unchecked_mut(i) =
+                (d.get_unchecked(i) - a.get_unchecked(i) * d_prime.get_unchecked(i - 1)) / denom;
+        }
     }
+    // x[n-1] = d_prime[n-1]; back-substitution is not needed.
+    d_prime[n - 1]
+}
 
-    let mut x = vec![0.0; n];
-    x[n - 1] = d_prime[n - 1];
-    for i in (0..n - 1).rev() {
-        x[i] = d_prime[i] - c_prime[i] * x[i + 1];
+fn process_c(c_val: usize) -> f64 {
+    let c = c_val as f64;
+    let mut r_cache = vec![0.0f64; FULL];
+
+    const CHUNK: usize = 4096;
+    r_cache.par_chunks_mut(CHUNK).enumerate().for_each(|(ci, chunk)| {
+        let base = ci * CHUNK;
+        for (off, slot) in chunk.iter_mut().enumerate() {
+            let subset = base + off;
+            if subset != 0 {
+                *slot = r_func(subset, c);
+            }
+        }
+    });
+
+    let mut local = 0.0;
+    for d in 4..=N {
+        let n = d + 1;
+        let mut a = [0.0f64; N + 1];
+        let mut c_arr = [0.0f64; N + 1];
+        let mut d_arr = [0.0f64; N + 1];
+        let inv_d = 1.0 / d as f64;
+        for i in 1..=d {
+            a[i] = -((d - i + 1) as f64) * inv_d;
+        }
+        for i in 1..d {
+            c_arr[i] = -((i + 1) as f64) * inv_d;
+        }
+        for subset in 1..(1usize << d) {
+            let pc = subset.count_ones() as usize;
+            // SAFETY: 1 <= pc <= d <= N; subset < 1<<d <= FULL
+            unsafe {
+                *d_arr.get_unchecked_mut(pc) += *r_cache.get_unchecked(subset);
+            }
+        }
+        local += tridiag_last(&a, &c_arr, &d_arr, n);
     }
-    x
+    local
 }
 
 fn main() {
-    let mut ans = 0.0;
-    let mut r_cache = vec![0.0; 1 << N];
-
-    for c_val in 0..=N {
-        for subset in 1..(1 << N) {
-            r_cache[subset] = r_func(subset, c_val as f64);
-        }
-
-        for d in 4..=N {
-            let size = d + 1;
-            let mut a = vec![0.0; size];
-            let mut b = vec![0.0; size];
-            let mut c_arr = vec![0.0; size];
-            let mut d_arr = vec![0.0; size];
-
-            for i in 1..=d {
-                a[i] = -((d - i + 1) as f64) / d as f64;
-            }
-            for i in 0..=d {
-                b[i] = 1.0;
-            }
-            for i in 1..d {
-                c_arr[i] = -((i + 1) as f64) / d as f64;
-            }
-            for subset in 1..(1usize << d) {
-                d_arr[popcount(subset)] += r_cache[subset];
-            }
-
-            let x = tridiagonal_system(&a, &b, &c_arr, &d_arr, size);
-            ans += x[d];
-        }
-    }
-
+    let ans: f64 = (0..N + 1)
+        .into_par_iter()
+        .with_min_len(1)
+        .map(process_c)
+        .sum();
     println!("{}", ans.round() as i64);
 }

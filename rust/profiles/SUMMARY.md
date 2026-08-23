@@ -2,6 +2,8 @@
 
 Generated: 2026-02-19 16:44  |  Problems: 273  |  Profiling time: 1628s
 
+Times and classifications are from this 2026-02-19 `perf` run, not the 5900XT re-time. Current remaining counts: `optimization_applied_summary.md`.
+
 ## Classification Counts
 
 - **HIGH-CACHE-MISS**: 153

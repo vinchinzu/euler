@@ -12,7 +12,8 @@ description: >
 Repo-local workflow for wall-clock cuts on `rust/solutions/src/bin/pNNN.rs`.
 
 Canonical rules: `rust/CLAUDE.md`.
-Canonical status: `optimization_applied_summary.md`.
+Living log: `optimization_applied_summary.md`.
+5900XT snapshot (pre-wave-4): `optimization_status.md`.
 A/B log: `optimization_ab_results.csv` / `.json`.
 Times: `validated.json` (JSONL at repo root). Answers: `data/answers.txt`.
 
@@ -58,7 +59,7 @@ python3 ab_bench.py NNN 1 3    # warmup=1, runs=3 is enough for 2s problems
 
 On reject: `git checkout -- rust/solutions/src/bin/pNNN.rs`.
 
-Do not A/B two problems at once on this machine (8 threads; times fight).
+Do not A/B two problems at once on this machine (16c/32t; times fight).
 
 ## Sub-agents
 
@@ -66,4 +67,4 @@ Worktree-isolate children so they cannot clobber an in-progress wave. One proble
 
 ## After a wave
 
-Update `optimization_applied_summary.md` (accepted / rejected / still-2s list) and the README Optimization table if a new artifact appears. Do not rewrite `optimization_triage.csv` (static, pre-wave-2).
+Update `optimization_applied_summary.md` (accepted / rejected / remaining counts). Do not rewrite `optimization_status.md` (frozen 5900XT snapshot).

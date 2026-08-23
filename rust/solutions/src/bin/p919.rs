@@ -2,160 +2,191 @@
 // S(P) = sum of a+b+c over all fortunate triangles with perimeter <= P.
 // Two generators based on quadratic forms.
 
-use std::collections::HashSet;
+use rayon::prelude::*;
 
+const LIMIT: i64 = 10_000_000;
+
+#[inline(always)]
 fn gcd(mut a: i64, mut b: i64) -> i64 {
-    a = a.abs();
-    b = b.abs();
     while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+        let t = a % b;
+        a = b;
+        b = t;
     }
     a
 }
 
-fn pack_tri(mut a: i64, mut b: i64, mut c: i64) -> (i64, i64, i64) {
-    // Sort a <= b <= c
-    if a > b { std::mem::swap(&mut a, &mut b); }
-    if b > c { std::mem::swap(&mut b, &mut c); }
-    if a > b { std::mem::swap(&mut a, &mut b); }
-    (a, b, c)
+#[inline(always)]
+fn consider(a: i64, b: i64, c: i64, gbc: i64, out: &mut Vec<(u32, u32, u32)>) {
+    if a <= 0 {
+        return;
+    }
+    let s = a + b + c;
+    let m = a.max(b).max(c);
+    if m * 2 >= s {
+        return;
+    }
+    let g = gcd(a, gbc);
+    if s / g > LIMIT {
+        return;
+    }
+    let mut pa = a / g;
+    let mut pb = b / g;
+    let mut pc = c / g;
+    if pa > pb {
+        std::mem::swap(&mut pa, &mut pb);
+    }
+    if pb > pc {
+        std::mem::swap(&mut pb, &mut pc);
+    }
+    if pa > pb {
+        std::mem::swap(&mut pa, &mut pb);
+    }
+    out.push((pa as u32, pb as u32, pc as u32));
+}
+
+#[inline(always)]
+fn emit_g1_mixed(u: i64, v: i64, v15: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let u2 = u * u;
+    let uv2 = 2 * u * v;
+    let c = u2 + v15;
+    let b = 8 * u * v;
+    let gbc = gcd(b, c);
+    consider((v15 - u2 + uv2).abs(), b, c, gbc, out);
+    consider((v15 - u2 - uv2).abs(), b, c, gbc, out);
+}
+
+#[inline(always)]
+fn emit_g1_odd(u: i64, v: i64, v15: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let u2 = u * u;
+    let uv2 = 2 * u * v;
+    let c = (u2 + v15) / 4;
+    let b = uv2;
+    let gbc = gcd(b, c);
+    consider(((v15 - u2 + uv2) / 4).abs(), b, c, gbc, out);
+    consider(((v15 - u2 - uv2) / 4).abs(), b, c, gbc, out);
+}
+
+#[inline(always)]
+fn emit_g2_mixed(u: i64, v: i64, v5: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let u2_3 = 3 * u * u;
+    let uv2 = 2 * u * v;
+    let c = u2_3 + v5;
+    let b = 8 * u * v;
+    let gbc = gcd(b, c);
+    consider((v5 - u2_3 + uv2).abs(), b, c, gbc, out);
+    consider((v5 - u2_3 - uv2).abs(), b, c, gbc, out);
+}
+
+#[inline(always)]
+fn emit_g2_odd(u: i64, v: i64, v5: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let u2_3 = 3 * u * u;
+    let uv2 = 2 * u * v;
+    let c = (u2_3 + v5) / 4;
+    let b = uv2;
+    let gbc = gcd(b, c);
+    consider(((v5 - u2_3 + uv2) / 4).abs(), b, c, gbc, out);
+    consider(((v5 - u2_3 - uv2) / 4).abs(), b, c, gbc, out);
+}
+
+fn gen1_v(v: i64, max_u: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let v15 = 15 * v * v;
+    if v & 1 == 0 {
+        for u in (1..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g1_mixed(u, v, v15, out);
+        }
+    } else {
+        for u in (2..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g1_mixed(u, v, v15, out);
+        }
+        for u in (1..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g1_odd(u, v, v15, out);
+        }
+    }
+}
+
+fn gen2_v(v: i64, max_u: i64, out: &mut Vec<(u32, u32, u32)>) {
+    let v5 = 5 * v * v;
+    if v & 1 == 0 {
+        for u in (1..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g2_mixed(u, v, v5, out);
+        }
+    } else {
+        for u in (2..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g2_mixed(u, v, v5, out);
+        }
+        for u in (1..max_u).step_by(2) {
+            if gcd(u, v) != 1 {
+                continue;
+            }
+            emit_g2_odd(u, v, v5, out);
+        }
+    }
+}
+
+fn collect_gen(
+    max_v: i64,
+    max_u: i64,
+    emit_v: impl Fn(i64, i64, &mut Vec<(u32, u32, u32)>) + Sync,
+) -> Vec<(u32, u32, u32)> {
+    (1..max_v)
+        .into_par_iter()
+        .fold(
+            || Vec::with_capacity(1 << 18),
+            |mut acc, v| {
+                emit_v(v, max_u, &mut acc);
+                acc
+            },
+        )
+        .reduce(Vec::new, |mut a, mut b| {
+            if a.len() < b.len() {
+                std::mem::swap(&mut a, &mut b);
+            }
+            a.append(&mut b);
+            a
+        })
 }
 
 fn main() {
-    let limit: i64 = 10_000_000;
+    let max_v1 = ((2.5 * LIMIT as f64 / 15.0).sqrt() as i64) + 2;
+    let max_u1 = ((2.5 * LIMIT as f64).sqrt() as i64) + 2;
+    let max_v2 = ((2.5 * LIMIT as f64 / 5.0).sqrt() as i64) + 2;
+    let max_u2 = ((2.5 * LIMIT as f64 / 3.0).sqrt() as i64) + 2;
 
-    let mut primitives: HashSet<(i64, i64, i64)> = HashSet::new();
-
-    let add_primitive = |a: i64, b: i64, c: i64, limit: i64, set: &mut HashSet<(i64, i64, i64)>| {
-        if a <= 0 || b <= 0 || c <= 0 {
-            return;
-        }
-        let (sa, sb, sc) = pack_tri(a, b, c);
-        if sa + sb <= sc {
-            return; // Invalid triangle
-        }
-        let g = gcd(sa, gcd(sb, sc));
-        let (pa, pb, pc) = (sa / g, sb / g, sc / g);
-        if pa + pb + pc > limit {
-            return;
-        }
-        set.insert((pa, pb, pc));
-    };
-
-    // Generator 1: u^2 + 15v^2
-    let max_v1 = ((2.5 * limit as f64 / 15.0).sqrt() as i64) + 2;
-    let max_u1 = ((2.5 * limit as f64).sqrt() as i64) + 2;
-
-    for v in 1..max_v1 {
-        for u in 1..max_u1 {
-            if gcd(u, v) != 1 {
-                continue;
-            }
-
-            if u % 2 != 0 && v % 2 != 0 {
-                let c_val = u * u + 15 * v * v;
-                if c_val % 4 != 0 {
-                    continue;
-                }
-                let c = c_val / 4;
-                let b = 2 * u * v;
-
-                let val1 = 15 * v * v - u * u + 2 * u * v;
-                if val1 % 4 == 0 {
-                    let a1 = (val1 / 4).abs();
-                    if a1 > 0 {
-                        add_primitive(a1, b, c, limit, &mut primitives);
-                    }
-                }
-
-                let val2 = 15 * v * v - u * u - 2 * u * v;
-                if val2 % 4 == 0 {
-                    let a2 = (val2 / 4).abs();
-                    if a2 > 0 {
-                        add_primitive(a2, b, c, limit, &mut primitives);
-                    }
-                }
-            } else {
-                let c = u * u + 15 * v * v;
-                let b = 8 * u * v;
-                let val1 = 15 * v * v - u * u + 2 * u * v;
-                let a1 = val1.abs();
-                if a1 > 0 {
-                    add_primitive(a1, b, c, limit, &mut primitives);
-                }
-
-                let val2 = 15 * v * v - u * u - 2 * u * v;
-                let a2 = val2.abs();
-                if a2 > 0 {
-                    add_primitive(a2, b, c, limit, &mut primitives);
-                }
-            }
-        }
+    let (mut t1, mut t2) = rayon::join(
+        || collect_gen(max_v1, max_u1, gen1_v),
+        || collect_gen(max_v2, max_u2, gen2_v),
+    );
+    if t1.len() < t2.len() {
+        std::mem::swap(&mut t1, &mut t2);
     }
+    t1.append(&mut t2);
+    t1.par_sort_unstable();
+    t1.dedup();
 
-    // Generator 2: 3u^2 + 5v^2
-    let max_v2 = ((2.5 * limit as f64 / 5.0).sqrt() as i64) + 2;
-    let max_u2 = ((2.5 * limit as f64 / 3.0).sqrt() as i64) + 2;
-
-    for v in 1..max_v2 {
-        for u in 1..max_u2 {
-            if gcd(u, v) != 1 {
-                continue;
-            }
-
-            if u % 2 != 0 && v % 2 != 0 {
-                let c_val = 3 * u * u + 5 * v * v;
-                if c_val % 4 != 0 {
-                    continue;
-                }
-                let c = c_val / 4;
-                let b = 2 * u * v;
-
-                let val1 = 5 * v * v - 3 * u * u + 2 * u * v;
-                if val1 % 4 == 0 {
-                    let a1 = (val1 / 4).abs();
-                    if a1 > 0 {
-                        add_primitive(a1, b, c, limit, &mut primitives);
-                    }
-                }
-
-                let val2 = 5 * v * v - 3 * u * u - 2 * u * v;
-                if val2 % 4 == 0 {
-                    let a2 = (val2 / 4).abs();
-                    if a2 > 0 {
-                        add_primitive(a2, b, c, limit, &mut primitives);
-                    }
-                }
-            } else {
-                let c = 3 * u * u + 5 * v * v;
-                let b = 8 * u * v;
-                let val1 = 5 * v * v - 3 * u * u + 2 * u * v;
-                let a1 = val1.abs();
-                if a1 > 0 {
-                    add_primitive(a1, b, c, limit, &mut primitives);
-                }
-
-                let val2 = 5 * v * v - 3 * u * u - 2 * u * v;
-                let a2 = val2.abs();
-                if a2 > 0 {
-                    add_primitive(a2, b, c, limit, &mut primitives);
-                }
-            }
-        }
-    }
-
-    // Sum over all primitives
-    let mut ans: i64 = 0;
-    for &(a, b, c) in &primitives {
-        let p = a + b + c;
-        if p > limit {
-            continue;
-        }
-        let count = limit / p;
-        ans += p * count * (count + 1) / 2;
-    }
+    let ans: i64 = t1
+        .par_iter()
+        .map(|&(a, b, c)| {
+            let p = a as i64 + b as i64 + c as i64;
+            let count = LIMIT / p;
+            p * count * (count + 1) / 2
+        })
+        .sum();
 
     println!("{}", ans);
 }

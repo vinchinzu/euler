@@ -1,10 +1,13 @@
 // Project Euler 448: Average least common multiple
-// Optimizations: FxHashMap, no dyn Fn, u64 modular arithmetic (MOD < 2^30).
+// S(N) = (N + sum_{k=1}^N floor(N/k) * k * phi(k)) / 2  (mod MOD)
+//
+// Prefix of k*phi(k) is sieved to ~N^{2/3}. Remaining S(floor(N/i))
+// values are filled bottom-up (Du Jiao linearization): each is O(sqrt)
+// with array hits, no recursive HashMap.
 
-use fxhash::FxHashMap;
-
-const N: i64 = 99999999019;
-const MOD: u64 = 999999017;
+const N: u64 = 99_999_999_019;
+const MOD: u64 = 999_999_017;
+const INV2: u64 = (MOD + 1) / 2;
 
 fn mod_inv(mut a: i64, m: i64) -> i64 {
     let (mut g, mut x, mut y) = (m, 0i64, 1i64);
@@ -22,126 +25,164 @@ fn mod_inv(mut a: i64, m: i64) -> i64 {
 
 #[inline(always)]
 fn mul_mod(a: u64, b: u64) -> u64 {
-    (a * b) % MOD
+    a * b % MOD
 }
 
 #[inline(always)]
-fn sum_sq(m: i64, inv6: u64) -> u64 {
-    let mm = (m % MOD as i64) as u64;
-    // mm*(mm+1)*(2mm+1)/6 mod MOD; all intermediates fit in u64 since MOD^2 < 2^64 / 4
-    let t1 = mul_mod(mm, mm + 1);
-    let t2 = mul_mod(t1, (2 * mm + 1) % MOD);
-    mul_mod(t2, inv6)
+fn add_mod(a: u64, b: u64) -> u64 {
+    let s = a + b;
+    if s >= MOD { s - MOD } else { s }
 }
 
-fn k_phi_sum(
-    n: i64,
-    l: usize,
-    k_phi_sum_small: &[u64],
-    cache: &mut FxHashMap<i64, u64>,
-    inv6: u64,
-) -> u64 {
-    if n <= 0 {
-        return 0;
-    }
-    if n <= l as i64 {
-        return k_phi_sum_small[n as usize];
-    }
-    if let Some(&v) = cache.get(&n) {
-        return v;
-    }
+#[inline(always)]
+fn sub_mod(a: u64, b: u64) -> u64 {
+    if a >= b { a - b } else { a + MOD - b }
+}
 
-    let mut result = sum_sq(n, inv6) as i64;
-    let sqrt_n = {
-        let mut v = (n as f64).sqrt() as i64;
-        while (v + 1) * (v + 1) <= n {
-            v += 1;
-        }
-        while v * v > n {
-            v -= 1;
-        }
-        v
-    };
+/// n(n+1)/2 mod MOD.
+#[inline(always)]
+fn p1(n: u64) -> u64 {
+    let n = n % MOD;
+    let np1 = n + 1;
+    let np1 = if np1 >= MOD { 0 } else { np1 };
+    (n * np1 / 2) % MOD
+}
 
-    for d in 2..=sqrt_n {
-        let sub = mul_mod(
-            k_phi_sum(n / d, l, k_phi_sum_small, cache, inv6),
-            (d as u64) % MOD,
-        );
-        result = (result - sub as i64) % MOD as i64;
-    }
+/// n(n+1)(2n+1)/6 mod MOD.
+#[inline(always)]
+fn p2(n: u64, inv6: u64) -> u64 {
+    let n = n % MOD;
+    let np1 = n + 1;
+    let np1 = if np1 >= MOD { 0 } else { np1 };
+    mul_mod(mul_mod(mul_mod(n, np1), (2 * n + 1) % MOD), inv6)
+}
 
-    for q in 1..=sqrt_n {
-        if n / q > sqrt_n {
-            let d_lo = n / (q + 1) + 1;
-            let d_hi = n / q;
-            // sum of d from d_lo to d_hi = hi*(hi+1)/2 - (lo-1)*lo/2
-            let sum_hi = (d_hi as u128) * ((d_hi + 1) as u128) / 2;
-            let sum_lo = (d_lo as u128) * ((d_lo - 1) as u128) / 2;
-            let sum_d = ((sum_hi - sum_lo) % MOD as u128) as u64;
-            let sub = mul_mod(
-                k_phi_sum(q, l, k_phi_sum_small, cache, inv6),
-                sum_d,
-            );
-            result = (result - sub as i64) % MOD as i64;
-        }
+/// S(x) = sum_{k<=x} k phi(k) from the identity
+/// sum_{d<=x} d S(floor(x/d)) = P2(x).
+fn compute_s(x: u64, limit: u64, small: &[u32], large: &[u64], parent: u64, inv6: u64) -> u64 {
+    let mut f = p2(x, inv6);
+    // Skip d=1 (that term is S(x) itself). prev_p1 = p1(1) = 1.
+    let mut prev_p1 = 1u64;
+    let mut l = 2u64;
+    while l <= x {
+        let q = x / l;
+        let r = x / q;
+        let pr1 = p1(r);
+        let sum_d = sub_mod(pr1, prev_p1);
+        let sq = if q <= limit {
+            // SAFETY: q <= limit and small.len() == limit+1.
+            unsafe { *small.get_unchecked(q as usize) as u64 }
+        } else {
+            // SAFETY: q > limit ⇒ parent/q <= parent/(limit+1) = max_i < large.len().
+            unsafe { *large.get_unchecked((parent / q) as usize) }
+        };
+        f = sub_mod(f, mul_mod(sum_d, sq));
+        prev_p1 = pr1;
+        l = r + 1;
     }
-
-    if result < 0 {
-        result += MOD as i64;
-    }
-    let result = result as u64;
-    cache.insert(n, result);
-    result
+    f
 }
 
 fn main() {
     let inv6 = mod_inv(6, MOD as i64) as u64;
-    let l = (N as f64).sqrt() as usize + 10;
 
-    // Sieve phi
-    let mut phi = vec![0i32; l + 1];
-    for i in 0..=l {
-        phi[i] = i as i32;
-    }
-    for i in 2..=l {
-        if phi[i] == i as i32 {
-            for j in (i..=l).step_by(i) {
-                phi[j] -= phi[j] / i as i32;
+    // Sieve ~ N^{2/3} so Du Jiao work is O(N^{2/3}) rather than O(N^{3/4}).
+    let cbrt_n = {
+        let mut x = (N as f64).cbrt() as u64;
+        while x.saturating_mul(x).saturating_mul(x) > N {
+            x -= 1;
+        }
+        while (x + 1).saturating_mul(x + 1).saturating_mul(x + 1) <= N {
+            x += 1;
+        }
+        x
+    };
+    let limit = (cbrt_n * cbrt_n) as usize;
+    let limit_u = limit as u64;
+
+    let mut phi = vec![0u32; limit + 1];
+    let mut lp = vec![0u32; limit + 1];
+    let mut primes: Vec<u32> = Vec::with_capacity(limit / 16);
+    phi[1] = 1;
+    for i in 2..=limit {
+        // SAFETY: i <= limit; lp/phi have length limit+1.
+        let lpi = unsafe { *lp.get_unchecked(i) };
+        if lpi == 0 {
+            unsafe {
+                *lp.get_unchecked_mut(i) = i as u32;
+                *phi.get_unchecked_mut(i) = (i - 1) as u32;
+            }
+            primes.push(i as u32);
+        }
+        let lpi = unsafe { *lp.get_unchecked(i) };
+        let phi_i = unsafe { *phi.get_unchecked(i) };
+        for &p in &primes {
+            let ip = i as u64 * p as u64;
+            if ip > limit_u || p > lpi {
+                break;
+            }
+            let j = ip as usize;
+            // SAFETY: j = i*p <= limit.
+            unsafe {
+                *lp.get_unchecked_mut(j) = p;
+                *phi.get_unchecked_mut(j) = if p == lpi {
+                    phi_i.wrapping_mul(p)
+                } else {
+                    phi_i.wrapping_mul(p - 1)
+                };
+            }
+            if p == lpi {
+                break;
             }
         }
     }
+    drop(lp);
+    drop(primes);
 
-    let mut k_phi_sum_small = vec![0u64; l + 1];
-    for k in 1..=l {
-        let term = ((k as u64) % MOD) * ((phi[k] as u64) % MOD) % MOD;
-        k_phi_sum_small[k] = (k_phi_sum_small[k - 1] + term) % MOD;
+    let mut acc = 0u64;
+    for k in 1..=limit {
+        // SAFETY: 1 <= k <= limit.
+        let ph = unsafe { *phi.get_unchecked(k) } as u64;
+        acc += ph * k as u64;
+        acc %= MOD;
+        unsafe {
+            *phi.get_unchecked_mut(k) = acc as u32;
+        }
+    }
+    let small = phi;
+
+    let max_i = (N / (limit_u + 1)) as usize;
+    let mut large = vec![0u64; max_i + 1];
+    // Increasing floors: i = max_i .. 1 ⇒ x = N/i runs from just above the
+    // sieve through N, so every S(x/d) is already in `small` or `large`.
+    for i in (1..=max_i).rev() {
+        let x = N / i as u64;
+        let val = compute_s(x, limit_u, &small, &large, N, inv6);
+        // SAFETY: i in 1..=max_i.
+        unsafe {
+            *large.get_unchecked_mut(i) = val;
+        }
     }
 
-    let mut cache: FxHashMap<i64, u64> = FxHashMap::default();
-    cache.reserve(1 << 20);
-
-    let threshold = (N / l as i64) as usize;
-    let mut ans: u64 = 0;
-
-    for k in 1..=threshold {
-        let term = mul_mod(
-            mul_mod((N / k as i64) as u64 % MOD, (k as u64) % MOD),
-            phi[k] as u64,
-        );
-        ans = (ans + term) % MOD;
+    // sum_k floor(N/k) * k phi(k) via floor blocks; S(l-1) is the previous S(r).
+    let mut ans = 0u64;
+    let mut l = 1u64;
+    let mut sprev = 0u64;
+    while l <= N {
+        let q = N / l;
+        let r = N / q;
+        let sr = if r <= limit_u {
+            // SAFETY: r <= limit.
+            unsafe { *small.get_unchecked(r as usize) as u64 }
+        } else {
+            // SAFETY: r > limit ⇒ q = N/l <= N/(limit+1) = max_i.
+            unsafe { *large.get_unchecked(q as usize) }
+        };
+        ans = add_mod(ans, mul_mod(q % MOD, sub_mod(sr, sprev)));
+        sprev = sr;
+        l = r + 1;
     }
 
-    for q in 1..l {
-        let t1 = k_phi_sum(N / q as i64, l, &k_phi_sum_small, &mut cache, inv6);
-        let t2 = k_phi_sum(N / (q as i64 + 1), l, &k_phi_sum_small, &mut cache, inv6);
-        let diff = (t1 + MOD - t2) % MOD;
-        ans = (ans + mul_mod(diff, (q as u64) % MOD)) % MOD;
-    }
-
-    ans = (ans + (N as u64) % MOD) % MOD;
-    let inv2 = mod_inv(2, MOD as i64) as u64;
-    ans = mul_mod(ans, inv2);
-
+    ans = mul_mod(add_mod(ans, N % MOD), INV2);
     println!("{ans}");
 }

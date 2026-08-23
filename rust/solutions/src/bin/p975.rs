@@ -1,6 +1,7 @@
 // Problem 975: A Winding Path
 // Ported from python/975.py.
 
+use rayon::prelude::*;
 use std::f64::consts::PI;
 
 fn primes_up_to(n: usize) -> Vec<usize> {
@@ -31,20 +32,27 @@ fn primes_up_to(n: usize) -> Vec<usize> {
 }
 
 fn critical_z_values(a: i32, b: i32) -> Vec<f64> {
-    assert!(a > 0 && b > 0 && (a & 1) == 1 && (b & 1) == 1);
-    assert!(a != b);
+    debug_assert!(a > 0 && b > 0 && (a & 1) == 1 && (b & 1) == 1);
+    debug_assert!(a != b);
     let s = (a + b) as i64;
     let d = (a - b).abs() as i64;
-    assert!(s % 2 == 0 && d % 2 == 0);
+    debug_assert!(s % 2 == 0 && d % 2 == 0);
 
     let a_len = s / 2 + 1;
     let b_len = d / 2;
 
     let mut i = 0_i64;
     let mut j = 0_i64;
-    let mut out = Vec::<f64>::new();
+    let mut out = Vec::<f64>::with_capacity((a_len + b_len) as usize);
     let mut prev_num: Option<i64> = None;
     let mut prev_den = 1_i64;
+
+    let a_f = a as f64;
+    let s_f = s as f64;
+    let d_f = d as f64;
+    let two_pi_a_over_s = 2.0 * PI * a_f / s_f;
+    let pi_a_over_d = PI * a_f / d_f;
+    let d_over_2s = d_f / (2.0 * s_f);
 
     while i < a_len || j < b_len {
         let (num, den, kind, k) = if j == b_len {
@@ -87,10 +95,9 @@ fn critical_z_values(a: i32, b: i32) -> Vec<f64> {
         prev_den = den;
 
         let z = if kind == 0 {
-            0.5 - 0.5 * ((2.0 * PI * a as f64 * k as f64) / s as f64).cos()
+            0.5 - 0.5 * (two_pi_a_over_s * k as f64).cos()
         } else {
-            0.5 - (d as f64 / (2.0 * s as f64))
-                * ((PI * a as f64 * (2 * k + 1) as f64) / d as f64).cos()
+            0.5 - d_over_2s * (pi_a_over_d * (2 * k + 1) as f64).cos()
         };
         out.push(z);
     }
@@ -105,32 +112,27 @@ enum Pt {
     Corner(usize, usize), // ("corner", ix, jy)
 }
 
-#[inline]
+#[inline(always)]
 fn sgn(v: f64, eps: f64) -> i32 {
-    if v > eps {
-        1
-    } else if v < -eps {
-        -1
-    } else {
-        0
-    }
+    (v > eps) as i32 - (v < -eps) as i32
 }
 
+#[inline]
 fn cell_segment(i: usize, j: usize, zx: &[f64], zy: &[f64], eps: f64) -> Option<(Pt, Pt)> {
-    let zxi = zx[i];
-    let zxip = zx[i + 1];
-    let zyj = zy[j];
-    let zyjp = zy[j + 1];
+    // SAFETY: traversal stays on the (m x n) cell grid, so i+1 < zx.len() and j+1 < zy.len().
+    let (zxi, zxip, zyj, zyjp) = unsafe {
+        (
+            *zx.get_unchecked(i),
+            *zx.get_unchecked(i + 1),
+            *zy.get_unchecked(j),
+            *zy.get_unchecked(j + 1),
+        )
+    };
 
-    let d00 = zxi - zyj;
-    let d10 = zxip - zyj;
-    let d01 = zxi - zyjp;
-    let d11 = zxip - zyjp;
-
-    let s00 = sgn(d00, eps);
-    let s10 = sgn(d10, eps);
-    let s01 = sgn(d01, eps);
-    let s11 = sgn(d11, eps);
+    let s00 = sgn(zxi - zyj, eps);
+    let s10 = sgn(zxip - zyj, eps);
+    let s01 = sgn(zxi - zyjp, eps);
+    let s11 = sgn(zxip - zyjp, eps);
 
     let mut p1: Option<Pt> = None;
     let mut p2: Option<Pt> = None;
@@ -152,45 +154,29 @@ fn cell_segment(i: usize, j: usize, zx: &[f64], zy: &[f64], eps: f64) -> Option<
         panic!("Degenerate cell (too many boundary points)");
     };
 
-    // left edge
+    // Each zero-corner is recorded once (originally left/right and bottom/top both added it).
     if s00 == 0 {
         add(Pt::Corner(i, j));
+    }
+    if s10 == 0 {
+        add(Pt::Corner(i + 1, j));
     }
     if s01 == 0 {
         add(Pt::Corner(i, j + 1));
     }
-    if s00 != 0 && s01 != 0 && s00 != s01 {
-        add(Pt::X(i, j));
-    }
-
-    // right edge
-    if s10 == 0 {
-        add(Pt::Corner(i + 1, j));
-    }
     if s11 == 0 {
         add(Pt::Corner(i + 1, j + 1));
+    }
+
+    // left / right / bottom / top interior crossings
+    if s00 != 0 && s01 != 0 && s00 != s01 {
+        add(Pt::X(i, j));
     }
     if s10 != 0 && s11 != 0 && s10 != s11 {
         add(Pt::X(i + 1, j));
     }
-
-    // bottom edge
-    if s00 == 0 {
-        add(Pt::Corner(i, j));
-    }
-    if s10 == 0 {
-        add(Pt::Corner(i + 1, j));
-    }
     if s00 != 0 && s10 != 0 && s00 != s10 {
         add(Pt::Y(j, i));
-    }
-
-    // top edge
-    if s01 == 0 {
-        add(Pt::Corner(i, j + 1));
-    }
-    if s11 == 0 {
-        add(Pt::Corner(i + 1, j + 1));
     }
     if s01 != 0 && s11 != 0 && s01 != s11 {
         add(Pt::Y(j + 1, i));
@@ -205,29 +191,31 @@ fn cell_segment(i: usize, j: usize, zx: &[f64], zy: &[f64], eps: f64) -> Option<
 
 #[inline]
 fn z_of(pt: Pt, zx: &[f64], zy: &[f64]) -> f64 {
-    match pt {
-        Pt::X(ix, _) => zx[ix],
-        Pt::Y(jy, _) => zy[jy],
-        Pt::Corner(ix, jy) => 0.5 * (zx[ix] + zy[jy]),
+    // SAFETY: points are vertices or edges of the critical grid built from zx/zy.
+    unsafe {
+        match pt {
+            Pt::X(ix, _) => *zx.get_unchecked(ix),
+            Pt::Y(jy, _) => *zy.get_unchecked(jy),
+            Pt::Corner(ix, jy) => 0.5 * (*zx.get_unchecked(ix) + *zy.get_unchecked(jy)),
+        }
     }
 }
 
+#[inline]
 fn next_cell_across_edge(cur: (usize, usize), boundary_pt: Pt) -> (usize, usize) {
     match boundary_pt {
         Pt::X(ix, jy) => {
-            let left = (ix.checked_sub(1).expect("invalid left cell"), jy);
-            if cur == left {
+            if cur.0 + 1 == ix && cur.1 == jy {
                 (ix, jy)
             } else {
-                left
+                (ix - 1, jy)
             }
         }
         Pt::Y(jy, ix) => {
-            let down = (ix, jy.checked_sub(1).expect("invalid down cell"));
-            if cur == down {
+            if cur.0 == ix && cur.1 + 1 == jy {
                 (ix, jy)
             } else {
-                down
+                (ix, jy - 1)
             }
         }
         Pt::Corner(_, _) => panic!("next_cell_across_edge called on corner"),
@@ -356,15 +344,24 @@ fn f_value(a: i32, b: i32, c: i32, d: i32) -> f64 {
 }
 
 fn g_value(m: usize, n: usize) -> f64 {
-    let ps: Vec<usize> = primes_up_to(n).into_iter().filter(|&p| p >= m).collect();
-    let mut total = 0.0_f64;
-    for i in 0..ps.len() {
+    let ps: Vec<i32> = primes_up_to(n)
+        .into_iter()
+        .filter(|&p| p >= m)
+        .map(|p| p as i32)
+        .collect();
+    let np = ps.len();
+    // Flatten pairs: outer i is ~70x uneven (C(k,2) vs 1), so rayon must steal per pair.
+    let mut pairs = Vec::with_capacity(np.saturating_mul(np.saturating_sub(1)) / 2);
+    for i in 0..np {
         let p = ps[i];
         for &q in &ps[i + 1..] {
-            total += f_value(p as i32, q as i32, p as i32, (2 * q - p) as i32);
+            pairs.push((p, q));
         }
     }
-    total
+    pairs
+        .into_par_iter()
+        .map(|(p, q)| f_value(p, q, p, 2 * q - p))
+        .sum()
 }
 
 fn main() {
