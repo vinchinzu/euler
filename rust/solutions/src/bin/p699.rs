@@ -1,123 +1,118 @@
 // Project Euler 699 - Triffle Numbers
-// Find sum of n <= N where denom of sigma(n)/n in lowest terms is a power of 3.
-// DFS from 3-smooth starting numbers, with HashSet deduplication to avoid
-// counting the same number multiple times via different DFS paths.
+// Sum n <= N whose reduced σ(n)/n denominator is a positive power of 3.
+//
+// Seeds are 2^a 3^b 5^c (b >= 1). New primes p > 5 are attached only when
+// p^e already divides the current numerator, so the reduced denominator stays
+// {2,3,5}-smooth and never grows. Distinct 2-3-5 kernels make seeds independent.
 
-use std::collections::HashSet;
+use euler_utils::factor;
+use fxhash::FxHashSet;
+use rayon::prelude::*;
 
-fn sigma_pe(p: i64, e: i32) -> i64 {
-    let mut result = 1i64;
-    let mut pw = 1i64;
-    for _ in 0..e {
-        pw *= p;
-        result += pw;
+const N: u64 = 100_000_000_000_000;
+
+#[inline(always)]
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
     }
-    result
-}
-
-fn gcd(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 { let t = b; b = a % b; a = t; }
     a
 }
 
-fn is_pow3(mut n: i64) -> bool {
-    if n <= 0 { return false; }
-    while n % 3 == 0 { n /= 3; }
-    n == 1
+/// den is always {2,3,5}-smooth, so it is 3^k (k>0) iff it has no 2 or 5.
+#[inline(always)]
+fn is_pow3_den(den: u64) -> bool {
+    den > 1 && (den & 1) != 0 && den % 5 != 0
 }
 
-struct Factor { p: i64 }
-
-fn factorize(mut n: i64) -> Vec<Factor> {
-    let mut factors = Vec::new();
-    if n <= 1 { return factors; }
-    let mut d = 2i64;
-    while d * d <= n {
-        if n % d == 0 {
-            while n % d == 0 { n /= d; }
-            factors.push(Factor { p: d });
-        }
-        d += 1;
+fn dfs(n: u64, num: u64, den: u64, seen: &mut FxHashSet<u64>) -> u64 {
+    if !seen.insert(n) {
+        return 0;
     }
-    if n > 1 { factors.push(Factor { p: n }); }
-    factors
+    let mut acc = if is_pow3_den(den) { n } else { 0 };
+    if den % 3 != 0 || num <= 1 {
+        return acc;
+    }
+    let facs = factor(num);
+    for &(p, exp) in &facs {
+        if p <= 5 || n % p == 0 {
+            continue;
+        }
+        let mut pp = 1u64;
+        let mut sig = 1u64;
+        for _ in 0..exp {
+            if pp > N / p {
+                break;
+            }
+            pp *= p;
+            sig = 1 + sig * p;
+            if n > N / pp {
+                break;
+            }
+            let mut new_num = (num / pp) * sig;
+            let mut new_den = den;
+            let g = gcd(new_num, new_den);
+            new_num /= g;
+            new_den /= g;
+            acc += dfs(n * pp, new_num, new_den, seen);
+        }
+    }
+    acc
 }
 
-const N_LIMIT: i64 = 100_000_000_000_000;
-
-fn dfs(
-    n: i64, num: i64, den: i64,
-    primes: &[i64], np: usize,
-    found: &mut HashSet<i64>,
-) {
-    if den > 1 && is_pow3(den) {
-        found.insert(n);
-    }
-
-    let nf = factorize(num);
-
-    for factor in &nf {
-        let p = factor.p;
-        // Check if p already divides n
-        let already = primes[..np].iter().any(|&pp| pp == p);
-        if already { continue; }
-
-        let mut pw = 1i64;
-        for e in 1.. {
-            if pw > N_LIMIT / p { break; }
-            pw *= p;
-            if n > N_LIMIT / pw { break; }
-            let new_n = n * pw;
-            let sp = sigma_pe(p, e);
-            let new_num_raw = num * sp;
-            let new_den_raw = den * pw;
-            let g = gcd(new_num_raw.abs(), new_den_raw.abs());
-            let new_num = new_num_raw / g;
-            let new_den = new_den_raw / g;
-
-            let mut new_primes = primes[..np].to_vec();
-            new_primes.push(p);
-            let new_np = np + 1;
-
-            dfs(new_n, new_num, new_den, &new_primes, new_np, found);
+fn seed_states() -> Vec<(u64, u64, u64)> {
+    let mut seeds = Vec::with_capacity(4096);
+    let mut p2 = 1u64;
+    loop {
+        let s2 = if p2 == 1 { 1 } else { p2 * 2 - 1 };
+        let mut p3 = 3u64;
+        loop {
+            if p2 > N / p3 {
+                break;
+            }
+            let base = p2 * p3;
+            let s3 = (p3 * 3 - 1) / 2;
+            let mut p5 = 1u64;
+            loop {
+                if p5 > N / base {
+                    break;
+                }
+                let n = base * p5;
+                let s5 = if p5 == 1 { 1 } else { (p5 * 5 - 1) / 4 };
+                let sig = s2 * s3 * s5;
+                let g = gcd(n, sig);
+                let den = n / g;
+                if den > 1 && den % 3 == 0 {
+                    seeds.push((n, sig / g, den));
+                }
+                if p5 > N / 5 {
+                    break;
+                }
+                p5 *= 5;
+            }
+            if p3 > N / 3 {
+                break;
+            }
+            p3 *= 3;
         }
+        if p2 > N / 2 {
+            break;
+        }
+        p2 *= 2;
     }
+    seeds
 }
 
 fn main() {
-    let mut found: HashSet<i64> = HashSet::new();
-
-    let mut pw2 = 1i64;
-    let mut a = 0;
-    while pw2 <= N_LIMIT {
-        let mut pw3 = 3i64;
-        let mut b = 1;
-        while pw2 <= N_LIMIT / pw3 {
-            let n = pw2 * pw3;
-            let s2 = sigma_pe(2, a);
-            let s3 = sigma_pe(3, b);
-            let num_raw = s2 * s3;
-            let den_raw = n;
-            let g = gcd(num_raw, den_raw);
-            let num = num_raw / g;
-            let den = den_raw / g;
-
-            let mut primes = Vec::new();
-            if a > 0 { primes.push(2); }
-            primes.push(3);
-            let np = primes.len();
-
-            dfs(n, num, den, &primes, np, &mut found);
-
-            if pw3 > N_LIMIT / 3 { break; }
-            pw3 *= 3;
-            b += 1;
-        }
-        if pw2 > N_LIMIT / 2 { break; }
-        pw2 *= 2;
-        a += 1;
-    }
-
-    let answer: i64 = found.iter().sum();
+    let seeds = seed_states();
+    let answer: u64 = seeds
+        .into_par_iter()
+        .map(|(n, num, den)| {
+            let mut seen = FxHashSet::with_capacity_and_hasher(64, Default::default());
+            dfs(n, num, den, &mut seen)
+        })
+        .sum();
     println!("{}", answer);
 }

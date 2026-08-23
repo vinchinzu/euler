@@ -1,25 +1,149 @@
 // Project Euler 362: Squarefree factors
 // Sum of Fsf(k) for k=1 to N=10^10.
-// Uses Mobius function, square-free counting, and iterative DFS.
+// Floor-indexed nsf arrays (no HashMap), blocked Möbius Q, rayon DFS.
 
-use std::collections::HashMap;
+use rayon::prelude::*;
 
 const N_VAL: i64 = 10_000_000_000;
+const PAR_REM: i64 = 2_000_000;
+
+#[inline(always)]
+fn isqrt(n: i64) -> i64 {
+    (n as u64).isqrt() as i64
+}
+
+struct Ctx {
+    n: i64,
+    l: i64,
+    square_frees: Vec<i64>,
+    sf_cumul: Vec<i64>,
+    large: Vec<i64>,
+}
+
+#[inline(always)]
+fn nsf_quot(ctx: &Ctx, prod: i64, x: i64) -> i64 {
+    if x <= ctx.l {
+        // SAFETY: 0 <= x <= l, sf_cumul.len() == l+1
+        unsafe { *ctx.sf_cumul.get_unchecked(x as usize) }
+    } else {
+        // SAFETY: x = n/prod > l ⇒ prod < l, large.len() == l+1
+        unsafe { *ctx.large.get_unchecked(prod as usize) }
+    }
+}
+
+fn count_square_free(x: i64, mu_pref: &[i64], s_max: i64) -> i64 {
+    if x < 1 {
+        return 0;
+    }
+    let s = isqrt(x).min(s_max);
+    let mut total = 0i64;
+    let mut d = 1i64;
+    while d <= s {
+        let v = x / (d * d);
+        let mut d2 = isqrt(x / v);
+        if d2 > s {
+            d2 = s;
+        }
+        // SAFETY: 0 <= d-1 < d <= d2 <= s <= l
+        let pref_hi = unsafe { *mu_pref.get_unchecked(d2 as usize) };
+        let pref_lo = unsafe { *mu_pref.get_unchecked((d - 1) as usize) };
+        total += (pref_hi - pref_lo) * v;
+        d = d2 + 1;
+    }
+    total
+}
+
+fn dfs_seq(ctx: &Ctx, prev_index: usize, prod: i64) -> i64 {
+    let x = ctx.n / prod;
+    let nsf = nsf_quot(ctx, prod, x);
+    let mut ans = nsf - prev_index as i64;
+    if x < 4 {
+        return ans;
+    }
+    let max_sf = isqrt(x);
+    if max_sf < 2 {
+        return ans;
+    }
+    // SAFETY: max_sf = isqrt(n/prod) <= l
+    let last_count = unsafe { *ctx.sf_cumul.get_unchecked(max_sf as usize) };
+    if last_count <= prev_index as i64 {
+        return ans;
+    }
+    let last = last_count as usize - 1;
+    for index in prev_index..=last {
+        // SAFETY: last < square_frees.len()
+        let sf = unsafe { *ctx.square_frees.get_unchecked(index) };
+        ans += dfs_seq(ctx, index, prod * sf);
+    }
+    ans
+}
+
+fn add_children(ctx: &Ctx, prod: i64, lo: usize, hi: usize) -> i64 {
+    let mut split = lo;
+    while split <= hi {
+        // SAFETY: lo..=hi are valid square_frees indices
+        let sf = unsafe { *ctx.square_frees.get_unchecked(split) };
+        if ctx.n / (prod * sf) < PAR_REM {
+            break;
+        }
+        split += 1;
+    }
+    let heavy = if split > lo {
+        (lo..split)
+            .into_par_iter()
+            .map(|index| {
+                // SAFETY: index in lo..split ⊆ lo..=hi
+                let sf = unsafe { *ctx.square_frees.get_unchecked(index) };
+                dfs_par(ctx, index, prod * sf)
+            })
+            .sum::<i64>()
+    } else {
+        0
+    };
+    let mut light = 0i64;
+    for index in split..=hi {
+        // SAFETY: index in split..=hi
+        let sf = unsafe { *ctx.square_frees.get_unchecked(index) };
+        light += dfs_seq(ctx, index, prod * sf);
+    }
+    heavy + light
+}
+
+fn dfs_par(ctx: &Ctx, prev_index: usize, prod: i64) -> i64 {
+    let x = ctx.n / prod;
+    if x < PAR_REM {
+        return dfs_seq(ctx, prev_index, prod);
+    }
+    let nsf = nsf_quot(ctx, prod, x);
+    let mut ans = nsf - prev_index as i64;
+    if x < 4 {
+        return ans;
+    }
+    let max_sf = isqrt(x);
+    if max_sf < 2 {
+        return ans;
+    }
+    // SAFETY: max_sf = isqrt(n/prod) <= l
+    let last_count = unsafe { *ctx.sf_cumul.get_unchecked(max_sf as usize) };
+    if last_count <= prev_index as i64 {
+        return ans;
+    }
+    let last = last_count as usize - 1;
+    ans += add_children(ctx, prod, prev_index, last);
+    ans
+}
 
 fn main() {
-    let l = (N_VAL as f64).sqrt() as usize;
+    let l = isqrt(N_VAL) as usize;
 
-    // Compute Mobius, is_prime, is_square_free, cumulative square-free count
     let mut mu = vec![1i8; l + 1];
+    mu[0] = 0;
     let mut is_prime_arr = vec![true; l + 1];
-    let mut is_square_free = vec![true; l + 1];
     is_prime_arr[0] = false;
     is_prime_arr[1] = false;
-    is_square_free[0] = false;
-    is_square_free[1] = false;
 
     {
-        let mut i = 2;
+        let mut i = 2usize;
         while i * i <= l {
             if is_prime_arr[i] {
                 let mut j = i * i;
@@ -31,7 +155,6 @@ fn main() {
                 let mut j = sq;
                 while j <= l {
                     mu[j] = 0;
-                    is_square_free[j] = false;
                     j += sq;
                 }
             }
@@ -40,7 +163,9 @@ fn main() {
     }
 
     for i in 2..=l {
-        if mu[i] == 0 { continue; }
+        if mu[i] == 0 {
+            continue;
+        }
         if is_prime_arr[i] {
             let mut j = i;
             while j <= l {
@@ -50,98 +175,51 @@ fn main() {
         }
     }
 
-    // Build square-free list and cumulative count
-    let mut sf_cumul = vec![0i64; l + 2];
-    let mut square_frees = Vec::new();
+    let mut mu_pref = vec![0i64; l + 1];
+    for i in 1..=l {
+        mu_pref[i] = mu_pref[i - 1] + mu[i] as i64;
+    }
+
+    let mut sf_cumul = vec![0i64; l + 1];
+    let mut square_frees = Vec::with_capacity(l * 2 / 3 + 8);
     for i in 2..=l {
-        sf_cumul[i] = sf_cumul[i - 1] + if is_square_free[i] { 1 } else { 0 };
-        if is_square_free[i] {
+        sf_cumul[i] = sf_cumul[i - 1] + i64::from(mu[i] != 0);
+        if mu[i] != 0 {
             square_frees.push(i as i64);
         }
     }
 
-    let count_square_free = |x: i64| -> i64 {
-        if x < 1 { return 0; }
-        let mut total = 0i64;
-        let mut d = 1i64;
-        while d * d <= x {
-            if (d as usize) <= l && mu[d as usize] != 0 {
-                total += mu[d as usize] as i64 * (x / (d * d));
+    let li = l as i64;
+    let mut large = vec![0i64; l + 1];
+    {
+        let mut i = 1i64;
+        while i <= li {
+            let q = N_VAL / i;
+            let last = li.min(N_VAL / q);
+            let val = if q <= li {
+                sf_cumul[q as usize]
+            } else {
+                count_square_free(q, &mu_pref, li) - 1
+            };
+            for k in i..=last {
+                large[k as usize] = val;
             }
-            d += 1;
-        }
-        total
-    };
-
-    let num_square_free_up_to = |x: i64| -> i64 {
-        if x < 2 { return 0; }
-        if x <= l as i64 { return sf_cumul[x as usize]; }
-        count_square_free(x) - 1 // exclude 1
-    };
-
-    // Hash map for quotient values
-    let mut qmap: HashMap<i64, i64> = HashMap::new();
-    for k in 1..=l as i64 {
-        let q = N_VAL / k;
-        qmap.entry(q).or_insert_with(|| num_square_free_up_to(q));
-    }
-
-    let get_num_sf = |x: i64, qmap: &HashMap<i64, i64>| -> i64 {
-        if x < 2 { return 0; }
-        if x <= l as i64 { return sf_cumul[x as usize]; }
-        if let Some(&v) = qmap.get(&x) { return v; }
-        num_square_free_up_to(x)
-    };
-
-    let num_sf = square_frees.len();
-
-    let find_last_index = |start_index: usize, limit: i64| -> Option<usize> {
-        if start_index >= num_sf { return None; }
-        if square_frees[start_index] > limit { return None; }
-        let mut lo = start_index;
-        let mut hi = num_sf - 1;
-        while lo < hi {
-            let mid = (lo + hi + 1) / 2;
-            if square_frees[mid] <= limit { lo = mid; } else { hi = mid - 1; }
-        }
-        Some(lo)
-    };
-
-    // Iterative DFS
-    struct StackEntry {
-        prev_index: usize,
-        prod: i64,
-    }
-
-    let mut stack: Vec<StackEntry> = Vec::with_capacity(10_000_000);
-    stack.push(StackEntry { prev_index: 0, prod: 1 });
-
-    let mut ans: i64 = 0;
-
-    while let Some(entry) = stack.pop() {
-        let prev_index = entry.prev_index;
-        let prod = entry.prod;
-
-        let max_last = N_VAL / prod;
-        let min_sf = if prev_index < num_sf { square_frees[prev_index] } else { 2 };
-
-        if max_last >= min_sf {
-            let contrib = get_num_sf(max_last, &qmap) - get_num_sf(min_sf - 1, &qmap);
-            ans += contrib;
-        }
-
-        let max_sf_for_next = ((N_VAL / prod) as f64).sqrt() as i64;
-        if max_sf_for_next < 2 { continue; }
-
-        if let Some(last_valid) = find_last_index(prev_index, max_sf_for_next) {
-            for index in (prev_index..=last_valid).rev() {
-                let sf = square_frees[index];
-                let new_prod = prod * sf;
-                if new_prod * sf > N_VAL { continue; }
-                stack.push(StackEntry { prev_index: index, prod: new_prod });
-            }
+            i = last + 1;
         }
     }
 
+    drop(mu);
+    drop(mu_pref);
+    drop(is_prime_arr);
+
+    let ctx = Ctx {
+        n: N_VAL,
+        l: li,
+        square_frees,
+        sf_cumul,
+        large,
+    };
+
+    let ans = dfs_par(&ctx, 0, 1);
     println!("{}", ans);
 }

@@ -8,12 +8,19 @@
 // 2. Stack-allocated factorization in best_divisor
 // 3. Custom open-addressing hash for cache (C-style with key=0 sentinel)
 // 4. HashMap for small pair interning table
+// 5. Rayon over n=2..31 and prime-prefix DFS (thread-local shape caches)
 
+use rayon::prelude::*;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const NN: usize = 31;
 const PRIMES: [u64; 11] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31];
 const NPRIMES: usize = 11;
+// Parallel-split while remaining Ω is large and the next prime can still be small.
+const SPLIT_K: i32 = 10;
+const SPLIT_PI: usize = 4;
 
 #[inline]
 fn isqrt_ull(n: u64) -> u64 {
@@ -199,8 +206,105 @@ impl ShapeSystem {
     }
 }
 
+thread_local! {
+    static SYS: RefCell<ShapeSystem> = RefCell::new(ShapeSystem::new());
+}
+
+fn search_seq(
+    k: i32,
+    min_pi: usize,
+    cur: u64,
+    target_shape: u32,
+    pows: &[[u64; 64]; NPRIMES],
+    best: &AtomicU64,
+    sys: &mut ShapeSystem,
+) {
+    if k == 0 {
+        let s = sys.shape_of(cur);
+        if s == target_shape {
+            best.fetch_min(cur, Ordering::Relaxed);
+        }
+        return;
+    }
+    for pi in min_pi..NPRIMES {
+        let bound = best.load(Ordering::Relaxed);
+        if (cur as u128) * (pows[pi][k as usize] as u128) > bound as u128 {
+            break;
+        }
+        search_seq(k - 1, pi, cur * PRIMES[pi], target_shape, pows, best, sys);
+    }
+}
+
+fn fork_pis(
+    pis: &[usize],
+    k: i32,
+    cur: u64,
+    ndf: u64,
+    pows: &[[u64; 64]; NPRIMES],
+    best: &AtomicU64,
+) {
+    match pis.len() {
+        0 => {}
+        1 => {
+            let pi = pis[0];
+            search_par(k - 1, pi, cur * PRIMES[pi], ndf, pows, best);
+        }
+        n => {
+            let mid = n / 2;
+            rayon::join(
+                || fork_pis(&pis[..mid], k, cur, ndf, pows, best),
+                || fork_pis(&pis[mid..], k, cur, ndf, pows, best),
+            );
+        }
+    }
+}
+
+fn search_par(
+    k: i32,
+    min_pi: usize,
+    cur: u64,
+    ndf: u64,
+    pows: &[[u64; 64]; NPRIMES],
+    best: &AtomicU64,
+) {
+    if k <= SPLIT_K || min_pi >= SPLIT_PI {
+        SYS.with(|cell| {
+            let mut sys = cell.borrow_mut();
+            let target = sys.shape_of(ndf);
+            search_seq(k, min_pi, cur, target, pows, best, &mut sys);
+        });
+        return;
+    }
+
+    let bound = best.load(Ordering::Relaxed);
+    let mut pis = [0usize; NPRIMES];
+    let mut npi = 0usize;
+    for pi in min_pi..NPRIMES {
+        if (cur as u128) * (pows[pi][k as usize] as u128) > bound as u128 {
+            break;
+        }
+        pis[npi] = pi;
+        npi += 1;
+    }
+    fork_pis(&pis[..npi], k, cur, ndf, pows, best);
+}
+
+fn m_of_n(n: usize, pows: &[[u64; 64]; NPRIMES]) -> u64 {
+    let mut ndf: u64 = 1;
+    let mut i = n as u64;
+    while i > 0 {
+        ndf = ndf.saturating_mul(i);
+        if i < 2 { break; }
+        i -= 2;
+    }
+
+    let k = count_prime_factors(ndf);
+    let best = AtomicU64::new(ndf);
+    search_par(k, 0, 1, ndf, pows, &best);
+    best.load(Ordering::Relaxed)
+}
+
 fn main() {
-    // Precompute prime powers
     let mut pows = [[0u64; 64]; NPRIMES];
     for i in 0..NPRIMES {
         pows[i][0] = 1;
@@ -210,43 +314,6 @@ fn main() {
         }
     }
 
-    let mut sys = ShapeSystem::new();
-    let mut ans: u64 = 0;
-
-    for n in 2..=NN {
-        // n!! (double factorial)
-        let mut ndf: u64 = 1;
-        let mut i = n as u64;
-        while i > 0 {
-            ndf = ndf.saturating_mul(i);
-            if i < 2 { break; }
-            i -= 2;
-        }
-
-        let k = count_prime_factors(ndf);
-        let target_shape = sys.shape_of(ndf);
-
-        let mut best_res = ndf;
-
-        fn search(k: i32, min_pi: usize, cur: u64, target_shape: u32,
-                  pows: &[[u64; 64]; NPRIMES], best_res: &mut u64,
-                  sys: &mut ShapeSystem) {
-            if k == 0 {
-                let s = sys.shape_of(cur);
-                if s == target_shape && cur < *best_res {
-                    *best_res = cur;
-                }
-                return;
-            }
-            for pi in min_pi..NPRIMES {
-                if cur as u128 * pows[pi][k as usize] as u128 > *best_res as u128 { break; }
-                search(k - 1, pi, cur * PRIMES[pi], target_shape, pows, best_res, sys);
-            }
-        }
-
-        search(k, 0, 1, target_shape, &pows, &mut best_res, &mut sys);
-        ans += best_res;
-    }
-
+    let ans: u64 = (2..NN + 1).into_par_iter().map(|n| m_of_n(n, &pows)).sum();
     println!("{}", ans);
 }

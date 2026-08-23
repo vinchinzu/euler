@@ -3,6 +3,8 @@
 // Two sticks dropped simultaneously. Transit time uniform integer in [n, m].
 // Retrieval takes K=5 seconds. Find S(100).
 
+use rayon::prelude::*;
+
 fn solve_linear(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
     let mut aug = vec![0.0f64; n * (n + 1)];
     for i in 0..n {
@@ -84,13 +86,16 @@ fn compute_e(m: i32, n: i32, k: i32) -> f64 {
 fn main() {
     let n_max = 100;
     let k = 5;
-    let mut ans = 0.0f64;
-
-    for m in 2..=n_max {
-        for n in 1..m {
-            ans += compute_e(m, n, k);
-        }
-    }
+    let ans: f64 = (2..=n_max)
+        .into_par_iter()
+        .map(|m| {
+            let mut s = 0.0f64;
+            for n in 1..m {
+                s += compute_e(m, n, k);
+            }
+            s
+        })
+        .sum();
 
     println!("{:.2}", ans);
 }

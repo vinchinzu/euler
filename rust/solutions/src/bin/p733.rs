@@ -1,11 +1,26 @@
 // Project Euler 733 - Ascending Subsequences
 //
-// BIT (Fenwick tree) with coordinate compression for K-term ascending subsequences.
+// 3-layer interleaved u32 Fenwick (k=1,2,3). k=4 is a scalar accumulator.
 
-const MOD: i64 = 1_000_000_007;
+const MOD: u32 = 1_000_000_007;
+const MOD64: u64 = 1_000_000_007;
+const N: usize = 1_000_000;
+const SEQ_MOD: u64 = 10_000_019;
+const SEQ_MOD_US: usize = 10_000_019;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Node {
+    c1: u32,
+    s1: u32,
+    c2: u32,
+    s2: u32,
+    c3: u32,
+    s3: u32,
+}
 
 #[inline(always)]
-fn add_mod(a: i64, b: i64) -> i64 {
+fn add_mod(a: u32, b: u32) -> u32 {
     let s = a + b;
     if s >= MOD {
         s - MOD
@@ -14,97 +29,110 @@ fn add_mod(a: i64, b: i64) -> i64 {
     }
 }
 
-#[inline]
-fn bit_add(tree: &mut [i64], mut i: usize, val: i64, n: usize) {
-    // SAFETY: fenwick indices stay in 1..=n; tree.len() = n+1
+#[inline(always)]
+fn madd(cnt: u32, val: u32, sm: u32) -> u32 {
+    ((cnt as u64 * val as u64 + sm as u64) % MOD64) as u32
+}
+
+#[inline(always)]
+unsafe fn bit_query(tree: *const Node, mut i: u32) -> Node {
+    let mut c1 = 0u64;
+    let mut s1 = 0u64;
+    let mut c2 = 0u64;
+    let mut s2 = 0u64;
+    let mut c3 = 0u64;
+    let mut s3 = 0u64;
+    while i > 0 {
+        // SAFETY: Fenwick index i is in 1..=m; tree has m+1 nodes
+        let e = unsafe { &*tree.add(i as usize) };
+        c1 += e.c1 as u64;
+        s1 += e.s1 as u64;
+        c2 += e.c2 as u64;
+        s2 += e.s2 as u64;
+        c3 += e.c3 as u64;
+        s3 += e.s3 as u64;
+        i -= i & i.wrapping_neg();
+    }
+    Node {
+        c1: (c1 % MOD64) as u32,
+        s1: (s1 % MOD64) as u32,
+        c2: (c2 % MOD64) as u32,
+        s2: (s2 % MOD64) as u32,
+        c3: (c3 % MOD64) as u32,
+        s3: (s3 % MOD64) as u32,
+    }
+}
+
+#[inline(always)]
+unsafe fn bit_update(tree: *mut Node, mut i: u32, n: u32, d: Node) {
     while i <= n {
-        unsafe {
-            let e = tree.get_unchecked_mut(i);
-            *e = add_mod(*e, val);
-        }
+        // SAFETY: Fenwick index i stays in 1..=n; tree has n+1 nodes
+        let e = unsafe { &mut *tree.add(i as usize) };
+        e.c1 = add_mod(e.c1, d.c1);
+        e.s1 = add_mod(e.s1, d.s1);
+        e.c2 = add_mod(e.c2, d.c2);
+        e.s2 = add_mod(e.s2, d.s2);
+        e.c3 = add_mod(e.c3, d.c3);
+        e.s3 = add_mod(e.s3, d.s3);
         i += i & i.wrapping_neg();
     }
 }
 
-#[inline]
-fn bit_sum(tree: &[i64], mut i: usize) -> i64 {
-    let mut s: i64 = 0;
-    while i > 0 {
-        unsafe {
-            s = add_mod(s, *tree.get_unchecked(i));
-        }
-        i -= i & i.wrapping_neg();
-    }
-    s
-}
-
 fn main() {
-    let n = 1_000_000usize;
-
-    let mut seq = vec![0i64; n];
-    let mut a: i64 = 153;
-    for i in 0..n {
-        seq[i] = a;
-        a = a * 153 % 10_000_019;
+    let mut seq = vec![0u32; N];
+    {
+        let mut x = 153u64;
+        for i in 0..N {
+            seq[i] = x as u32;
+            x = x * 153 % SEQ_MOD;
+        }
     }
 
-    // Values are in 0..10_000_019 — direct rank table beats binary_search
-    let mut order: Vec<i32> = seq.iter().map(|&x| x as i32).collect();
-    order.sort_unstable();
-    order.dedup();
-    let mut rank_of = vec![0u32; 10_000_019];
-    for (i, &v) in order.iter().enumerate() {
-        rank_of[v as usize] = (i + 1) as u32;
+    // Direct rank via bitset prefix — values live in 0..SEQ_MOD
+    let mut bits = vec![0u64; (SEQ_MOD_US + 63) / 64];
+    for &v in &seq {
+        bits[v as usize >> 6] |= 1u64 << (v & 63);
     }
-    let rank_map: Vec<usize> = seq.iter().map(|&x| rank_of[x as usize] as usize).collect();
+    let mut prefix = vec![0u32; bits.len() + 1];
+    for i in 0..bits.len() {
+        prefix[i + 1] = prefix[i] + bits[i].count_ones();
+    }
+    let m = prefix[bits.len()] as usize;
 
-    // K=4 fixed trees — no Vec-of-Vec indirection in the hot path
-    let mut c1 = vec![0i64; n + 1];
-    let mut c2 = vec![0i64; n + 1];
-    let mut c3 = vec![0i64; n + 1];
-    let mut c4 = vec![0i64; n + 1];
-    let mut s1 = vec![0i64; n + 1];
-    let mut s2 = vec![0i64; n + 1];
-    let mut s3 = vec![0i64; n + 1];
-    let mut s4 = vec![0i64; n + 1];
+    let mut ranks = vec![0u32; N];
+    for i in 0..N {
+        let v = seq[i] as usize;
+        let hi = v >> 6;
+        let lo = v & 63;
+        ranks[i] = prefix[hi] + (bits[hi] & ((1u64 << lo) - 1)).count_ones() + 1;
+    }
+    drop(bits);
+    drop(prefix);
 
-    for i in 0..n {
-        let r = rank_map[i];
-        let val = seq[i] % MOD;
+    let mut tree = vec![0u32; (m + 1) * 6];
+    let tp = tree.as_mut_ptr() as *mut Node;
+    let m32 = m as u32;
+    let mut ans = 0u32;
 
-        // k=4 from k=3
-        {
-            let cnt = bit_sum(&c3, r - 1);
-            let sm = bit_sum(&s3, r - 1);
-            if cnt != 0 || sm != 0 {
-                bit_add(&mut c4, r, cnt, n);
-                let prod = (cnt as i128 * val as i128 % MOD as i128) as i64;
-                bit_add(&mut s4, r, add_mod(prod, sm), n);
-            }
+    for i in 0..N {
+        let val = unsafe { *seq.get_unchecked(i) };
+        let r = unsafe { *ranks.get_unchecked(i) };
+        let q = unsafe { bit_query(tp, r - 1) };
+
+        ans = add_mod(ans, madd(q.c3, val, q.s3));
+
+        let d = Node {
+            c1: 1,
+            s1: val,
+            c2: q.c1,
+            s2: madd(q.c1, val, q.s1),
+            c3: q.c2,
+            s3: madd(q.c2, val, q.s2),
+        };
+        unsafe {
+            bit_update(tp, r, m32, d);
         }
-        // k=3 from k=2
-        {
-            let cnt = bit_sum(&c2, r - 1);
-            let sm = bit_sum(&s2, r - 1);
-            if cnt != 0 || sm != 0 {
-                bit_add(&mut c3, r, cnt, n);
-                let prod = (cnt as i128 * val as i128 % MOD as i128) as i64;
-                bit_add(&mut s3, r, add_mod(prod, sm), n);
-            }
-        }
-        // k=2 from k=1
-        {
-            let cnt = bit_sum(&c1, r - 1);
-            let sm = bit_sum(&s1, r - 1);
-            if cnt != 0 || sm != 0 {
-                bit_add(&mut c2, r, cnt, n);
-                let prod = (cnt as i128 * val as i128 % MOD as i128) as i64;
-                bit_add(&mut s2, r, add_mod(prod, sm), n);
-            }
-        }
-        bit_add(&mut c1, r, 1, n);
-        bit_add(&mut s1, r, val, n);
     }
 
-    println!("{}", bit_sum(&s4, n));
+    println!("{}", ans);
 }

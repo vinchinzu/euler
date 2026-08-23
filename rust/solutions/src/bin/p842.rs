@@ -1,123 +1,122 @@
 // Project Euler 842 - Irregular Star Polygons
 // T(n) = sum of I(S) over all n-star polygons S.
-// For odd n: all intersections have multiplicity 2.
-// For even n: compute multiplicities geometrically.
+// Odd n: every interior crossing has multiplicity 2.
+// Even n: group diagonal crossings geometrically, then weight by multiplicity.
 // Sum T(n) for n=3..60 mod 10^9+7.
+
+use rayon::prelude::*;
 
 const MOD: u64 = 1_000_000_007;
 
-fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    let mut r = 1u64;
-    base %= m;
-    while exp > 0 {
-        if exp & 1 == 1 { r = (r as u128 * base as u128 % m as u128) as u64; }
-        base = (base as u128 * base as u128 % m as u128) as u64;
-        exp >>= 1;
+fn contrib(m: usize, n: usize, fact: &[u64; 62]) -> u64 {
+    // sum_{k=2}^m (-1)^k (k-1) C(m,k) 2^{k-1} (n-k-1)!
+    let mut c = 0u64;
+    let mut binom = (m * (m - 1) / 2) as u64; // C(m, 2)
+    let mut pow2 = 2u64; // 2^{k-1}
+    for k in 2..=m {
+        let term = (k as u64 - 1) * binom * pow2 % MOD * fact[n - k - 1] % MOD;
+        if k & 1 == 0 {
+            c += term;
+        } else {
+            c += MOD - term;
+        }
+        if k < m {
+            binom = binom * (m - k) as u64 / (k as u64 + 1);
+            pow2 <<= 1;
+        }
     }
-    r
+    c % MOD
 }
 
-fn modinv(a: u64) -> u64 {
-    pow_mod(a, MOD - 2, MOD)
+fn t_even(n: usize, fact: &[u64; 62]) -> u64 {
+    let mut xs = [0f64; 60];
+    let mut ys = [0f64; 60];
+    let theta = std::f64::consts::TAU / n as f64;
+    for k in 0..n {
+        let a = k as f64 * theta;
+        xs[k] = a.cos();
+        ys[k] = a.sin();
+    }
+
+    let cap = n * (n - 1) / 2 * (n - 2) / 3 * (n - 3) / 4;
+    let mut pts = Vec::with_capacity(cap);
+    let xs = &xs[..n];
+    let ys = &ys[..n];
+
+    for a in 0..n - 3 {
+        let ax = unsafe { *xs.get_unchecked(a) };
+        let ay = unsafe { *ys.get_unchecked(a) };
+        for b in a + 1..n - 2 {
+            let bx = unsafe { *xs.get_unchecked(b) };
+            let by = unsafe { *ys.get_unchecked(b) };
+            let axbx = ax - bx;
+            let ayby = ay - by;
+            for c in b + 1..n - 1 {
+                let cx = unsafe { *xs.get_unchecked(c) };
+                let cy = unsafe { *ys.get_unchecked(c) };
+                let acx = ax - cx;
+                let acy = ay - cy;
+                for d in c + 1..n {
+                    let dx = unsafe { *xs.get_unchecked(d) };
+                    let dy = unsafe { *ys.get_unchecked(d) };
+                    let bdx = bx - dx;
+                    let bdy = by - dy;
+                    let denom = acx * bdy - acy * bdx;
+                    let t = (axbx * bdy - ayby * bdx) / denom;
+                    let px = ax - t * acx;
+                    let py = ay - t * acy;
+                    let kx = (px * 1e9).round() as i32 as u32 as u64;
+                    let ky = (py * 1e9).round() as i32 as u32 as u64;
+                    pts.push((kx << 32) | ky);
+                }
+            }
+        }
+    }
+
+    pts.sort_unstable();
+
+    let mut mcount = [0u32; 32];
+    let mut i = 0;
+    let len = pts.len();
+    while i < len {
+        let key = unsafe { *pts.get_unchecked(i) };
+        let mut j = i + 1;
+        while j < len && unsafe { *pts.get_unchecked(j) } == key {
+            j += 1;
+        }
+        let pairs = j - i;
+        let m = (1 + (1 + 8 * pairs).isqrt()) / 2;
+        mcount[m] += 1;
+        i = j;
+    }
+
+    let mut total = 0u64;
+    for m in 2..32 {
+        let cnt = mcount[m] as u64;
+        if cnt != 0 {
+            total += contrib(m, n, fact) * cnt;
+        }
+    }
+    total % MOD
 }
 
 fn main() {
-    // Precompute modular factorials up to 61
-    let mut fact_mod = [0u64; 62];
-    fact_mod[0] = 1;
-    for i in 1..=61usize {
-        fact_mod[i] = fact_mod[i - 1] * i as u64 % MOD;
+    let mut fact = [0u64; 62];
+    fact[0] = 1;
+    for i in 1..=61 {
+        fact[i] = fact[i - 1] * i as u64 % MOD;
     }
 
-    // Precompute inverse factorials
-    let mut inv_fact = [0u64; 62];
-    inv_fact[61] = modinv(fact_mod[61]);
-    for i in (0..61).rev() {
-        inv_fact[i] = inv_fact[i + 1] * (i + 1) as u64 % MOD;
-    }
+    let odd_sum = (5..61).step_by(2).map(|n| {
+        let bn4 = n * (n - 1) / 2 * (n - 2) / 3 * (n - 3) / 4;
+        bn4 as u64 * 2 % MOD * fact[n - 3] % MOD
+    }).sum::<u64>() % MOD;
 
-    let mod_binom = |n: usize, k: usize| -> u64 {
-        if k > n { return 0; }
-        fact_mod[n] % MOD * inv_fact[k] % MOD * inv_fact[n - k] % MOD
-    };
+    let even_sum = (2..31)
+        .into_par_iter()
+        .map(|k| t_even(2 * k, &fact))
+        .reduce(|| 0, |a, b| a + b)
+        % MOD;
 
-    let get_xy = |k: usize, n: usize| -> (f64, f64) {
-        let angle = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
-        (angle.cos(), angle.sin())
-    };
-
-    let get_intersection = |x1: f64, y1: f64, x2: f64, y2: f64,
-                            x3: f64, y3: f64, x4: f64, y4: f64| -> Option<(f64, f64)> {
-        let denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if denom.abs() < 1e-15 { return None; }
-        let t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
-        Some((x1 + t * (x2 - x1), y1 + t * (y2 - y1)))
-    };
-
-    let compute_t = |n: usize| -> u64 {
-        if n < 4 { return 0; }
-
-        if n % 2 == 1 {
-            // All intersections have multiplicity 2
-            // T(n) = C(n,4) * 2 * (n-3)!
-            let bn4 = mod_binom(n, 4);
-            return bn4 * 2 % MOD * fact_mod[n - 3] % MOD;
-        }
-
-        // Even n: find multiplicities via hash map
-        use std::collections::HashMap;
-        let mut point_counts: HashMap<(i64, i64), i32> = HashMap::new();
-
-        for a in 0..n {
-            let (ax, ay) = get_xy(a, n);
-            for b in (a + 1)..n {
-                let (bx, by) = get_xy(b, n);
-                for c in (b + 1)..n {
-                    let (cx, cy) = get_xy(c, n);
-                    for d in (c + 1)..n {
-                        let (dx, dy) = get_xy(d, n);
-                        if let Some((px, py)) = get_intersection(ax, ay, cx, cy, bx, by, dx, dy) {
-                            let kx = (px * 1e9).round() as i64;
-                            let ky = (py * 1e9).round() as i64;
-                            *point_counts.entry((kx, ky)).or_insert(0) += 1;
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut total_val: u64 = 0;
-        for (_, &pairs) in &point_counts {
-            let delta = 1 + 8 * pairs;
-            let sq = (delta as f64).sqrt().round() as i32;
-            let m = ((1 + sq) / 2) as usize;
-
-            // Contribution for one point of multiplicity m:
-            // c = sum_{k=2}^m (-1)^k * (k-1) * C(m,k) * 2^(k-1) * (n-k-1)!
-            let mut c: u64 = 0;
-            for k in 2..=m {
-                let bin_mk = mod_binom(m, k);
-                let pow2 = pow_mod(2, (k - 1) as u64, MOD);
-                let fact_rem = fact_mod[n - k - 1];
-                let term = (k as u64 - 1) % MOD * bin_mk % MOD * pow2 % MOD * fact_rem % MOD;
-                if k % 2 == 0 {
-                    c = (c + term) % MOD;
-                } else {
-                    c = (c + MOD - term) % MOD;
-                }
-            }
-
-            total_val = (total_val + c) % MOD;
-        }
-
-        total_val
-    };
-
-    let mut total_sum: u64 = 0;
-    for n in 3..=60 {
-        let tn = compute_t(n);
-        total_sum = (total_sum + tn) % MOD;
-    }
-
-    println!("{}", total_sum);
+    println!("{}", (odd_sum + even_sum) % MOD);
 }

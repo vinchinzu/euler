@@ -1,0 +1,998 @@
+problem,old_ms,new_ms,ratio,status,bucket,rayon,i128,u128,hashmap,pow_mod,already,next,confidence
+1,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+2,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+3,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+4,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+5,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+6,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+7,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+8,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+9,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+10,8,4,2.0,OK,fast_no_action,False,False,False,False,False,,,
+11,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+12,13,15,0.87,OK,fast_no_action,False,False,False,False,False,,,
+13,2,1,2.0,OK,fast_no_action,False,False,True,False,False,,,
+14,14,8,1.75,OK,fast_no_action,False,False,False,False,False,,,
+15,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+16,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+17,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+18,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+19,2,0,,OK,fast_no_action,False,False,False,False,False,,,
+20,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+21,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+22,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+23,8,5,1.6,OK,fast_no_action,False,False,False,False,False,,,
+24,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+25,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+26,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+27,13,5,2.6,OK,fast_no_action,False,False,False,False,False,,,
+28,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+29,3,2,1.5,OK,fast_no_action,False,False,False,False,False,,,
+30,3,2,1.5,OK,fast_no_action,False,False,False,False,False,,,
+31,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+32,3,6,0.5,OK,fast_no_action,False,False,False,False,False,,,
+33,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+34,17,12,1.42,OK,fast_no_action,False,False,False,False,False,,,
+35,5,3,1.67,OK,fast_no_action,False,False,False,False,False,,,
+36,24,11,2.18,OK,fast_no_action,False,False,False,False,False,,,
+37,42,22,1.91,OK,fast_no_action,False,False,False,False,False,,,
+38,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+39,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+40,5,2,2.5,OK,fast_no_action,False,False,False,False,False,,,
+41,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+42,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+43,15,10,1.5,OK,fast_no_action,False,False,False,False,False,,,
+44,39,20,1.95,OK,fast_no_action,False,False,False,False,False,,,
+45,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+46,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+47,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+48,2,1,2.0,OK,fast_no_action,False,False,False,False,True,,,
+49,5,3,1.67,OK,fast_no_action,False,False,False,False,False,,,
+50,8,4,2.0,OK,fast_no_action,False,False,False,False,False,,,
+51,5,2,2.5,OK,fast_no_action,False,False,False,False,False,,,
+52,16,8,2.0,OK,fast_no_action,False,False,False,False,False,,,
+53,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+54,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+55,16,8,2.0,OK,fast_no_action,False,False,False,False,False,,,
+56,7,3,2.33,OK,fast_no_action,False,False,False,False,False,,,
+57,6,2,3.0,OK,fast_no_action,False,False,False,False,False,,,
+58,63,34,1.85,OK,fast_no_action,False,False,False,False,False,,,
+59,7,5,1.4,OK,fast_no_action,False,False,False,False,False,,,
+60,132,62,2.13,OK,fast_no_action,False,False,False,False,False,,,
+61,9,0,,OK,fast_no_action,False,False,False,False,False,,,
+62,4,2,2.0,OK,fast_no_action,False,False,False,True,False,,,
+63,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+64,6,2,3.0,OK,fast_no_action,False,False,False,False,False,,,
+65,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+66,3,1,3.0,OK,fast_no_action,False,False,False,False,False,,,
+67,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+68,149,61,2.44,OK,fast_no_action,False,False,False,False,False,,,
+69,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+70,5,3,1.67,OK,fast_no_action,False,False,False,False,False,,,
+71,3,2,1.5,OK,fast_no_action,False,False,False,False,False,,,
+72,23,7,3.29,OK,fast_no_action,False,False,False,False,False,,,
+73,408,274,1.49,OK,fast_no_action,False,False,False,False,False,,,
+74,30,11,2.73,OK,fast_no_action,False,False,False,False,False,,,
+75,9,6,1.5,OK,fast_no_action,False,False,False,False,False,,,
+76,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+77,2,0,,OK,fast_no_action,False,False,False,False,False,,,
+78,17,15,1.13,OK,fast_no_action,False,False,False,False,False,,,
+79,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+80,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+81,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+82,1,2,0.5,OK,fast_no_action,False,False,False,False,False,,,
+83,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+84,65,50,1.3,OK,fast_no_action,False,False,False,False,False,,,
+85,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+86,10,7,1.43,OK,fast_no_action,False,False,False,False,False,,,
+87,43,12,3.58,OK,fast_no_action,False,False,False,False,False,,,
+88,4,2,2.0,OK,fast_no_action,False,False,False,False,False,,,
+89,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+90,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+91,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+92,63,50,1.26,OK,fast_no_action,False,False,False,False,False,,,
+93,25,19,1.32,OK,fast_no_action,False,False,False,False,False,,,
+94,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+95,126,81,1.56,OK,fast_no_action,False,False,False,False,False,,,
+96,87,39,2.23,OK,fast_no_action,False,False,False,False,False,,,
+97,1,1,1.0,OK,fast_no_action,False,False,True,False,True,,,
+98,44,25,1.76,OK,fast_no_action,False,False,False,True,False,,,
+99,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+100,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+101,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+102,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+103,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+104,0,5,,OK,fast_no_action,False,False,False,False,False,,,
+105,0,12,,OK,fast_no_action,False,False,False,False,False,,,
+106,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+107,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+108,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+109,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+110,0,1,,OK,fast_no_action,False,False,True,False,False,,,
+111,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+112,0,15,,OK,fast_no_action,False,False,False,False,False,,,
+113,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+114,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+115,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+116,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+117,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+118,0,86,,OK,fast_no_action,False,False,False,True,False,,,
+119,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+120,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+121,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+122,0,140,,OK,fast_no_action,False,False,False,False,False,,,
+123,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+124,0,6,,OK,fast_no_action,False,False,False,False,False,,,
+125,0,30,,OK,fast_no_action,False,False,False,False,False,,,
+126,0,3,,OK,fast_no_action,False,False,False,False,False,,,
+127,0,201,,OK,fast_no_action,False,False,False,False,False,,,
+128,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+129,0,6,,OK,fast_no_action,False,False,False,False,False,,,
+130,0,19,,OK,fast_no_action,False,False,False,False,False,,,
+131,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+132,0,3,,OK,fast_no_action,False,False,False,False,True,,,
+133,0,4,,OK,fast_no_action,False,False,False,False,True,,,
+134,0,7,,OK,fast_no_action,False,False,True,False,False,,,
+135,0,4,,OK,fast_no_action,False,False,False,False,False,,,
+136,0,449,,OK,fast_no_action,False,False,False,False,False,,,
+137,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+138,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+139,0,191,,OK,fast_no_action,False,False,False,False,False,,,
+140,0,1,,OK,fast_no_action,False,True,False,False,False,,,
+141,0,41,,OK,fast_no_action,False,False,False,False,False,,,
+142,0,60,,OK,fast_no_action,False,False,False,False,False,,,
+143,0,13,,OK,fast_no_action,False,False,False,False,False,,,
+144,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+145,0,100,,OK,fast_no_action,False,False,False,False,False,,,
+146,0,133,,OK,fast_no_action,False,False,True,False,True,,,
+147,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+148,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+149,0,34,,OK,fast_no_action,False,False,False,False,False,,,
+150,0,61,,OK,fast_no_action,False,False,False,False,False,,,
+151,0,1,,OK,fast_no_action,False,False,False,True,False,,,
+152,0,189,,OK,fast_no_action,False,True,False,True,False,,,
+153,0,1012,,OK,needs_refactor,False,False,False,False,False,,no rayon; scan for independent outer loops,
+154,0,3558,,OK,needs_refactor,False,False,False,False,False,,no rayon; scan for independent outer loops,
+155,0,1226,,OK,needs_refactor,False,False,False,False,False,,no rayon; scan for independent outer loops,
+156,0,4,,OK,fast_no_action,False,False,False,False,False,,,
+157,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+158,0,0,,OK,fast_no_action,False,False,False,False,False,,,
+159,0,14,,OK,fast_no_action,False,False,False,False,False,,,
+160,0,1,,OK,fast_no_action,False,False,False,False,True,,,
+161,0,33,,OK,fast_no_action,False,False,False,True,False,,,
+162,0,1,,OK,fast_no_action,False,False,True,False,False,,,
+163,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+164,0,0,,OK,fast_no_action,False,False,False,False,False,,,
+165,0,445,,OK,fast_no_action,False,False,False,False,False,,,
+166,0,97,,OK,fast_no_action,False,False,False,False,False,,,
+167,0,275,,OK,fast_no_action,False,False,False,True,False,,,
+168,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+169,0,1,,OK,fast_no_action,False,False,True,False,False,,,
+170,0,135,,OK,fast_no_action,False,False,False,False,False,,,
+171,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+172,0,13,,OK,fast_no_action,False,False,False,False,False,,,
+173,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+174,0,3,,OK,fast_no_action,False,False,False,False,False,,,
+175,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+176,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+177,0,132,,OK,fast_no_action,False,False,False,False,False,,,
+178,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+179,0,57,,OK,fast_no_action,False,False,False,False,False,,,
+180,0,78,,OK,fast_no_action,False,True,False,False,False,,,
+181,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+182,0,170,,OK,fast_no_action,False,False,False,False,False,,,
+183,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+184,0,3,,OK,fast_no_action,False,False,False,True,False,,,
+185,0,86,,OK,fast_no_action,False,False,False,False,False,,,
+186,0,50,,OK,fast_no_action,False,False,False,False,False,,,
+187,0,168,,OK,fast_no_action,False,False,False,False,False,,,
+188,0,1,,OK,fast_no_action,False,False,False,False,True,,,
+189,0,20,,OK,fast_no_action,False,False,False,False,False,,,
+190,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+191,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+192,0,17,,OK,fast_no_action,False,True,False,False,False,,,
+193,0,139,,OK,fast_no_action,False,False,False,False,False,,,
+194,0,3,,OK,fast_no_action,False,True,True,False,True,,,
+195,0,893,,OK,fast_no_action,False,False,False,False,False,,,
+196,0,160,,OK,fast_no_action,False,False,False,False,False,,,
+197,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+198,0,7,,OK,fast_no_action,False,False,False,False,False,,,
+199,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+200,0,5,,OK,fast_no_action,False,False,False,False,False,,,
+201,0,12,,OK,fast_no_action,False,False,False,False,False,,,
+202,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+203,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+204,0,31,,OK,fast_no_action,False,False,False,False,False,,,
+205,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+206,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+207,0,2,,OK,fast_no_action,False,False,False,False,False,,,
+208,0,28,,OK,fast_no_action,False,False,False,True,False,,,
+209,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+210,0,61,,OK,fast_no_action,False,False,False,False,False,,,
+211,0,1394,,OK,needs_refactor,False,False,False,False,False,,no rayon; scan for independent outer loops,
+212,0,204,,OK,fast_no_action,False,False,False,True,False,,,
+213,0,10,,OK,fast_no_action,False,False,False,False,False,,,
+214,0,658,,OK,fast_no_action,False,False,False,False,False,,,
+215,0,6,,OK,fast_no_action,False,False,False,False,False,,,
+216,0,1321,,OK,needs_refactor,False,False,True,False,True,,"no rayon; scan for independent outer loops; u128, pow_mod",
+217,0,10,,OK,fast_no_action,False,False,False,False,True,,,
+218,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+219,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+220,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+221,2643,320,8.26,OK,already_opt_fast,True,False,False,False,False,,Already par over a plus collect/sort; par_sort_unstable is the only leftover micro-opt.,high
+222,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+223,453,277,1.64,OK,fast_no_action,False,False,False,False,False,,,
+224,44,23,1.91,OK,fast_no_action,False,False,False,False,False,,,
+225,35,12,2.92,OK,fast_no_action,False,False,False,False,False,,,
+226,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+227,29,27,1.07,OK,fast_no_action,False,False,False,False,False,,,
+228,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+229,2484,510,4.87,OK,already_opt_fast,True,False,False,False,False,,already rayon; bitmap/sieve remaining is memory-bound,med
+230,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+231,922,346,2.66,OK,fast_no_action,False,False,False,False,False,,,
+232,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+233,225,107,2.1,OK,fast_no_action,False,False,False,False,False,,,
+234,23,6,3.83,OK,fast_no_action,False,False,False,False,False,,,
+235,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+236,99,54,1.83,OK,fast_no_action,False,False,False,False,False,,,
+237,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+238,8034,3936,2.04,OK,needs_refactor,False,False,False,False,False,,Arithmetic digit extract instead of format!; replace O(D^2) first_occs nest with a bitset/queue cover.,high
+239,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+240,12,6,2.0,OK,fast_no_action,False,False,False,False,False,,,
+241,25,10,2.5,OK,fast_no_action,False,False,False,False,False,,,
+242,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+243,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+244,14,10,1.4,OK,fast_no_action,False,False,False,True,False,,,
+245,3079,800,3.85,OK,fast_playbook_residual,False,False,True,False,False,,u128 in Tonelli/SPRP; check if outer prime loop is independent,low
+246,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+247,74,66,1.12,OK,fast_no_action,False,False,False,False,False,,,
+248,136,65,2.09,OK,fast_no_action,False,True,False,False,False,,,
+249,592,329,1.8,OK,fast_no_action,False,False,False,False,False,,,
+250,171,89,1.92,OK,fast_no_action,False,False,False,False,True,,,
+251,414,33,12.55,OK,fast_no_action,True,False,False,False,False,,,
+252,179,100,1.79,OK,fast_no_action,False,False,False,True,False,,,
+253,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+254,54,24,2.25,OK,fast_no_action,False,False,False,False,False,,,
+255,944,299,3.16,OK,fast_no_action,False,False,False,False,False,,,
+256,3804,1472,2.58,OK,sequential_hard,False,False,False,False,False,,shared counts[s] writes over 1e8; rayon needs atomics or huge thread locals (p410-like),med
+257,333,180,1.85,OK,fast_no_action,False,False,False,False,False,,,
+258,58,34,1.71,OK,fast_no_action,False,False,False,False,False,,,
+259,3753,1352,2.78,OK,sequential_hard,False,True,False,False,False,,concat DP over digit splits with HashSet/Frac; true deps,med
+260,389,210,1.85,OK,fast_no_action,False,False,False,False,False,,,
+261,70,32,2.19,OK,fast_no_action,False,True,False,False,False,,,
+262,141,105,1.34,OK,fast_no_action,False,False,False,False,False,,,
+263,2307,17,135.71,OK,already_opt_fast,True,False,False,False,True,A/B w3 accept,wave3 accepted (90ms cand); old cache still 2.3s,high
+264,86,44,1.95,OK,fast_no_action,False,False,False,False,False,,,
+265,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+266,870,515,1.69,OK,fast_no_action,False,False,True,False,False,,,
+267,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+268,293,80,3.66,OK,fast_no_action,False,False,False,False,False,,,
+269,36,18,2.0,OK,fast_no_action,False,False,False,True,False,,,
+270,6,4,1.5,OK,fast_no_action,False,False,False,True,False,,,
+271,3,1,3.0,OK,fast_no_action,False,True,False,False,False,,,
+272,391,87,4.49,OK,fast_no_action,False,True,False,False,False,,,
+273,331,194,1.71,OK,fast_no_action,False,True,False,False,False,,,
+274,100,23,4.35,OK,fast_no_action,False,False,False,False,False,,,
+275,2018,401,5.03,OK,already_opt_fast,True,False,False,True,False,,already rayon; HashMap grouping leftover,med
+276,354,113,3.13,OK,fast_no_action,False,False,False,False,False,,,
+277,10,1,10.0,OK,fast_no_action,False,True,False,False,False,,,
+278,2,1,2.0,OK,fast_no_action,False,True,False,False,False,,,
+279,1352,783,1.73,OK,fast_no_action,False,False,False,False,False,,,
+280,244,118,2.07,OK,fast_no_action,False,False,False,False,False,,,
+281,10,1,10.0,OK,fast_no_action,False,False,True,False,False,,,
+282,1,1,1.0,OK,fast_no_action,False,False,False,False,True,,,
+283,1530,285,5.37,OK,already_opt_fast,True,True,False,False,False,,already rayon; i128 only for isqrt overflow check,med
+284,769,635,1.21,OK,fast_no_action,False,False,False,False,False,,,
+285,12,2,6.0,OK,fast_no_action,False,False,False,False,False,,,
+286,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+287,683,462,1.48,OK,fast_no_action,False,False,False,False,False,,,
+288,45,31,1.45,OK,fast_no_action,False,True,False,False,False,,,
+289,7,4,1.75,OK,fast_no_action,False,False,False,True,False,,,
+290,20,11,1.82,OK,fast_no_action,False,False,False,False,False,,,
+291,3439,947,3.63,OK,fast_playbook_residual,False,False,True,False,True,,u128 mulmod + euler_utils::mod_pow in prime loop; p < 2^32 likely,med
+292,1414,565,2.5,OK,fast_no_action,False,False,False,True,False,,,
+293,98,44,2.23,OK,fast_no_action,False,False,False,False,False,,,
+294,15,12,1.25,OK,fast_no_action,False,False,False,False,True,,,
+295,99,70,1.41,OK,fast_no_action,False,False,False,True,False,,,
+296,1454,546,2.66,OK,fast_no_action,False,False,False,False,False,,,
+297,10,1,10.0,OK,fast_no_action,False,False,False,True,False,,,
+298,39,18,2.17,OK,fast_no_action,False,False,False,True,False,,,
+299,909,549,1.66,OK,fast_no_action,False,False,False,False,False,,,
+300,268,65,4.12,OK,fast_no_action,False,False,False,False,False,,,
+301,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+302,588,200,2.94,OK,fast_no_action,False,False,False,False,False,,,
+303,263,107,2.46,OK,fast_no_action,False,False,True,False,False,,,
+304,601,74,8.12,OK,fast_no_action,False,False,True,False,False,,,
+305,17,4,4.25,OK,fast_no_action,False,False,False,False,False,,,
+306,11,6,1.83,OK,fast_no_action,False,False,False,False,False,,,
+307,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+308,141,58,2.43,OK,fast_no_action,False,False,False,False,False,,,
+309,959,274,3.5,OK,fast_no_action,False,False,False,False,False,,,
+310,143,87,1.64,OK,fast_no_action,False,False,False,False,False,,,
+311,1608,641,2.51,OK,fast_playbook_residual,False,False,False,False,False,,"skim bicentric integer-sided; look for independent (m,n) loops",low
+312,0,1,,OK,fast_no_action,False,False,False,False,True,,,
+313,5,3,1.67,OK,fast_no_action,False,False,False,False,False,,,
+314,4746,3159,1.5,OK,needs_refactor,False,False,False,False,False,,Drop MAX_STEP 15→5 to match c/314.c (~9× fewer edges) and re-check the printed 8 decimals.,med
+315,109,62,1.76,OK,fast_no_action,False,False,False,False,False,,,
+316,111,55,2.02,OK,fast_no_action,False,False,True,False,False,,,
+317,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+318,3,1,3.0,OK,fast_no_action,False,False,False,False,False,,,
+319,1114,544,2.05,OK,fast_no_action,False,False,False,False,True,,,
+320,1794,445,4.03,OK,already_opt_fast,False,False,False,False,False,optimized=true,already marked optimized; factorial-exponent sum likely sequential,med
+321,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+322,1058,783,1.35,OK,fast_no_action,False,False,False,False,False,,,
+323,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+324,333,161,2.07,OK,fast_no_action,False,False,False,False,False,,,
+325,1,1,1.0,OK,fast_no_action,False,False,True,False,True,,,
+326,71,20,3.55,OK,fast_no_action,False,False,False,False,False,,,
+327,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+328,3,3,1.0,OK,fast_no_action,False,False,False,False,False,,,
+329,0,1,,OK,fast_no_action,False,True,True,False,False,,,
+330,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+331,2187,1726,1.27,OK,needs_refactor,False,False,False,False,False,,look at lattice cross-count closed form vs brute,low
+332,667,498,1.34,OK,fast_no_action,False,False,False,False,False,,,
+333,209,141,1.48,OK,fast_no_action,False,False,False,False,False,,,
+334,0,1,,OK,fast_no_action,False,True,False,False,False,,,
+335,0,1,,OK,fast_no_action,False,False,False,False,True,,,
+336,1149,687,1.67,OK,fast_no_action,False,False,False,False,False,,,
+337,4178,2148,1.95,OK,sequential_hard,False,False,False,False,False,,Fenwick DP over 2e7; loop-carried like p410,high
+338,2262,521,4.34,OK,already_opt_fast,True,True,False,False,False,optimized=true,rayon already 9.2s->2.3s; i128 only for MOD mul,high
+339,970,580,1.67,OK,fast_no_action,False,False,False,False,False,,,
+340,0,1,,OK,fast_no_action,False,True,False,False,False,,,
+341,54,16,3.38,OK,fast_no_action,False,False,False,False,False,,,
+342,4,2,2.0,OK,fast_no_action,False,False,False,False,False,,,
+343,402,88,4.57,OK,fast_no_action,False,True,False,False,False,,,
+344,853,267,3.19,OK,fast_no_action,False,True,False,False,True,,,
+345,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+346,59,36,1.64,OK,fast_no_action,False,False,False,False,False,,,
+347,66,22,3.0,OK,fast_no_action,False,False,False,False,False,,,
+348,243,152,1.6,OK,fast_no_action,False,False,False,True,False,,,
+349,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+350,79,29,2.72,OK,fast_no_action,False,False,True,False,True,,,
+351,3865,1297,2.98,OK,sequential_hard,False,False,False,False,False,,"phi sieve 1e8; memory-bound, rayon on inner j would regress",high
+352,284,166,1.71,OK,fast_no_action,False,False,False,False,False,,,
+353,514,321,1.6,OK,fast_no_action,False,True,False,True,False,,,
+354,1774,737,2.41,OK,fast_playbook_residual,False,False,False,False,False,,profiles memory-bound; check hex-lattice enumeration,low
+355,16,9,1.78,OK,fast_no_action,False,False,False,False,False,,,
+356,1,1,1.0,OK,fast_no_action,False,False,False,False,True,,,
+357,1012,220,4.6,OK,fast_no_action,True,False,False,False,False,,,
+358,0,1,,OK,fast_no_action,False,False,False,False,True,,,
+359,58,13,4.46,OK,fast_no_action,False,True,False,False,False,,,
+360,811,315,2.57,OK,fast_no_action,False,True,False,False,False,,,
+361,1,1,1.0,OK,fast_no_action,False,False,False,True,True,,,
+362,3390,1134,2.99,OK,needs_refactor,False,False,False,True,False,,HashMap qmap in squarefree-count recursion; Vec/index if bounded,med
+363,10,8,1.25,OK,fast_no_action,False,False,False,False,False,,,
+364,144,49,2.94,OK,fast_no_action,False,False,False,False,True,,,
+365,535,65,8.23,OK,fast_no_action,True,True,False,False,False,,,
+366,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+367,6,1,6.0,OK,fast_no_action,False,False,False,True,False,,,
+368,72,29,2.48,OK,fast_no_action,False,False,False,False,False,,,
+369,552,539,1.02,OK,fast_no_action,False,False,False,False,False,,,
+370,6739,1840,3.66,OK,already_opt_still_slow,True,False,False,False,False,,already parallel; stack factor list leftover only,med
+371,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+372,339,157,2.16,OK,fast_no_action,False,True,False,False,False,,,
+373,1248,722,1.73,OK,fast_no_action,False,True,False,True,False,,,
+374,700,364,1.92,OK,fast_no_action,False,True,False,False,False,,,
+375,477,330,1.45,OK,fast_no_action,False,True,False,False,False,,,
+376,26,18,1.44,OK,fast_no_action,False,False,False,True,False,,,
+377,30,10,3.0,OK,fast_no_action,False,True,False,False,False,,,
+378,10061,5367,1.87,OK,needs_refactor,False,False,False,False,False,,"Shrink right_arr to i32 (counts < 6e7), drop SPF after dt, keep Fenwick sequential; optional rayon over independent dt[i] given SPF.",high
+379,7827,3215,2.43,OK,needs_refactor,True,False,False,False,False,,Keep outer d par_iter; run t_func inner loop sequentially to drop nested-rayon contention.,high
+380,6,1,6.0,OK,fast_no_action,False,False,False,False,False,,,
+381,770,173,4.45,OK,fast_no_action,True,False,False,False,False,,,
+382,1,1,1.0,OK,fast_no_action,False,False,False,False,True,,,
+383,1,1,1.0,OK,fast_no_action,False,False,False,True,False,,,
+384,12,6,2.0,OK,fast_no_action,False,False,False,True,False,,,
+385,5,1,5.0,OK,fast_no_action,False,True,False,False,False,,,
+386,1551,873,1.78,OK,already_opt_fast,False,False,False,False,False,optimized=true,already optimized FxHashMap memo; little playbook left,med
+387,452,101,4.48,OK,fast_no_action,False,False,False,False,False,,,
+388,352,113,3.12,OK,fast_no_action,False,True,False,True,False,,,
+389,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+390,101,21,4.81,OK,already_opt_fast,True,False,True,False,False,optimized=true,,
+391,175,18,9.72,OK,already_opt_fast,True,False,False,False,False,optimized=true; wave2 partial C (unmerged),,
+392,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+393,25,18,1.39,OK,fast_no_action,False,False,False,False,False,,,
+394,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+395,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+396,5,2,2.5,OK,fast_no_action,False,True,False,False,True,,,
+397,3462,771,4.49,OK,fast_playbook_residual,False,False,False,False,False,,triangle-on-grid; look for independent k loops,low
+398,525,322,1.63,OK,fast_no_action,False,False,False,False,False,,,
+399,3344,1172,2.85,OK,sequential_hard,False,False,False,False,False,,profiles memory-bound Fibonacci/mod-p sieve style,low
+400,207,162,1.28,OK,fast_no_action,False,False,False,False,False,,,
+401,1279,72,17.76,OK,fast_no_action,True,True,False,False,False,,,
+402,134,46,2.91,OK,fast_no_action,False,True,False,False,False,,,
+403,81,39,2.08,OK,fast_no_action,False,True,False,False,False,,,
+404,2694,69,39.04,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 rayon accepted (470ms cand),high
+405,0,0,,OK,fast_no_action,False,False,True,False,True,,,
+406,120,71,1.69,OK,fast_no_action,False,False,False,False,False,,,
+407,923,114,8.1,OK,already_opt_fast,True,False,True,False,False,optimized=true,,
+408,933,574,1.63,OK,fast_no_action,False,False,False,False,True,,,
+409,46,41,1.12,OK,fast_no_action,False,False,False,False,True,,,
+410,2747,1006,2.73,OK,sequential_hard,False,False,False,False,False,A/B w3 reject,wave3 rayon over 1e8 cheap j rejected (2747->3132); cite p410,high
+411,2977,1482,2.01,OK,needs_refactor,False,False,True,False,True,,"order() via pow_mod peeling; LIS of 2^n,3^n points may parallelize poorly",med
+412,19,12,1.58,OK,fast_no_action,False,False,False,False,True,,,
+413,1108,631,1.76,OK,fast_no_action,True,False,False,False,False,,,
+414,3491,2619,1.33,OK,needs_refactor,False,False,False,False,False,,kaprekar/base-b; check independent bases,low
+415,7278,3215,2.26,OK,needs_refactor,False,False,False,False,True,wave2 partial C (unmerged),Incremental p2g=2^g in the g=1..L loop; fuse Lucy sm/lg passes where possible.,high
+416,5054,1327,3.81,OK,needs_refactor,False,False,False,False,False,,rayon::join independent M1/M2 mat_pow; deferred i128 reduce in 800^3 mul (m2^2 still tight).,med
+417,6755,988,6.84,OK,already_opt_fast,True,False,True,False,True,optimized=true,already parallel; leftover u128 pow_mod_big for p^2,med
+418,564,360,1.57,OK,fast_no_action,False,False,True,False,False,,,
+419,49,15,3.27,OK,fast_no_action,False,False,False,True,False,,,
+420,3633,1072,3.39,OK,needs_refactor,False,False,False,False,False,,independent outer t1 after divisor sieve; memory-bound num_divs though,med
+421,5862,469,12.5,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 rayon+u64 pow_mod accepted,high
+422,10,0,,OK,fast_no_action,False,True,False,False,True,,,
+423,1827,719,2.54,OK,fast_playbook_residual,False,False,False,False,False,,profiles memory-bound; consecutive-binomial sum,low
+424,590,95,6.21,OK,fast_no_action,True,False,False,False,False,,,
+425,266,109,2.44,OK,fast_no_action,False,False,False,False,False,,,
+426,234,119,1.97,OK,fast_no_action,False,False,False,False,False,,,
+427,8247,1958,4.21,OK,needs_refactor,False,False,False,False,True,wave2 partial C (unmerged),"Precompute all fk with rayon over k, then sequential prefix delta*k; leave fact/inv_fact serial.",high
+428,3732,2036,1.83,OK,sequential_hard,False,False,False,True,False,,Lucy pi_1 + HashMap Mertens caches; loop-carried,med
+429,452,167,2.71,OK,fast_no_action,False,False,True,False,True,,,
+430,156,86,1.81,OK,fast_no_action,False,False,False,False,False,,,
+431,21,8,2.62,OK,fast_no_action,False,False,False,False,False,,,
+432,1580,506,3.12,OK,sequential_hard,False,True,False,True,False,,recursive totient_sum HashMap; Dirichlet deps,med
+433,5426,1892,2.87,OK,needs_refactor,False,False,False,False,False,,"rayon over squarefree g; make extgcd iterative (hot inner a,b).",high
+434,662,169,3.92,OK,fast_no_action,False,False,True,False,False,,,
+435,14,2,7.0,OK,fast_no_action,False,True,False,False,False,,,
+436,1,0,,OK,fast_no_action,False,False,False,False,False,,,
+437,5792,2050,2.83,OK,needs_refactor,False,False,True,False,False,,rayon over primes; fib_pair u64 not u128 (p<1e8 so p^2 fits u64).,high
+438,378,122,3.1,OK,fast_no_action,False,False,False,False,False,,,
+439,3364,942,3.57,OK,already_opt_fast,True,False,False,False,False,optimized=true,sigma_sum already rayon-precomputed,med
+440,422,332,1.27,OK,fast_no_action,False,False,False,False,False,,,
+441,454,83,5.47,OK,fast_no_action,False,False,False,False,False,,,
+442,24,13,1.85,OK,fast_no_action,False,False,False,True,False,,,
+443,1265,235,5.38,OK,fast_no_action,False,False,False,False,False,,,
+444,9,1,9.0,OK,fast_no_action,False,False,False,False,False,,,
+445,6383,1428,4.47,OK,already_opt_still_slow,False,False,False,False,False,A/B w2 accept,wave2 power-cache + egcd inv accepted,high
+446,2797,710,3.94,OK,fast_playbook_residual,False,True,False,False,True,,i128 mod_pow/Tonelli with MOD=1e9+7,med
+447,3284,1154,2.85,OK,needs_refactor,False,True,False,False,False,,i128 Dirichlet sums; MOD likely 1e9-class,med
+448,9138,3563,2.56,OK,already_opt_still_slow,False,False,True,False,False,wave2 partial B (unmerged),"FxHashMap, no dyn Fn, u64 mod already in tree; leftover is sequential Dirichlet k_phi_sum cache.",high
+449,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+450,550,89,6.18,OK,fast_no_action,True,False,False,False,False,,,
+451,2960,994,2.98,OK,fast_playbook_residual,False,True,False,False,False,,modular inverse pairs sieve; i128 CRT combine,low
+452,3585,2004,1.79,OK,already_opt_still_slow,False,False,False,False,True,optimized=true,already i128->i64 (M=1234567891); remaining DP sequential,high
+453,100,11,9.09,OK,fast_no_action,False,False,True,False,True,,,
+454,1186,555,2.14,OK,fast_no_action,False,False,False,False,False,,,
+455,3029,38,79.71,OK,already_opt_fast,True,False,False,False,True,A/B w3 accept,wave3 rayon+u64 pow_mod accepted (468ms cand),high
+456,779,264,2.95,OK,fast_no_action,False,False,False,False,False,,,
+457,1011,322,3.14,OK,fast_no_action,False,True,False,False,True,,,
+458,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+459,5554,3352,1.66,OK,sequential_hard,False,False,False,False,False,,O(N sqrt N) mex DP is sequential; fuse loops would be a small memory-pass tweak.,med
+460,256,154,1.66,OK,fast_no_action,False,False,False,True,False,,,
+461,7872,4092,1.92,OK,needs_refactor,False,False,False,False,False,,par_sort_unstable on the 85M pairs (profile is stable sort); skip the third reconstruct pass.,high
+462,12,2,6.0,OK,fast_no_action,False,False,False,False,False,,,
+463,2,1,2.0,OK,fast_no_action,False,False,False,True,False,,,
+464,2995,4113,0.73,OK,needs_refactor,False,False,False,False,False,,Mertens/Möbius window; Lucy vs sieve,low
+465,4586,1497,3.06,OK,needs_refactor,False,False,True,False,True,,rayon::join the two Lucy totient prefixes (mod M and M-1); u64 mulmod (MOD^2<2^64) instead of u128.,high
+466,1150,353,3.26,OK,fast_no_action,False,False,False,False,False,,,
+467,450,198,2.27,OK,fast_no_action,False,False,False,False,False,,,
+468,6791,5044,1.35,OK,needs_refactor,False,True,False,False,False,optimized=true,already u32/no-i128; parallelize small-B phase,med
+469,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+470,1915,1053,1.82,OK,needs_refactor,False,False,False,False,False,,super-rps DP; check state independence,low
+471,3,1,3.0,OK,fast_no_action,False,False,False,False,False,,,
+472,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+473,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+474,7,3,2.33,OK,fast_no_action,False,False,False,False,False,,,
+475,696,176,3.95,OK,fast_no_action,False,False,True,False,True,,,
+476,4755,697,6.82,OK,already_opt_fast,True,False,False,False,False,optimized=true,already parallel brute; minor loop only,high
+477,1325,436,3.04,OK,fast_no_action,False,True,False,False,False,,,
+478,3672,2284,1.61,OK,already_opt_still_slow,False,False,False,False,True,optimized=true,already i128->i64; remaining recurrence serial,high
+479,150,123,1.22,OK,fast_no_action,False,False,False,False,False,,,
+480,55,15,3.67,OK,fast_no_action,False,True,False,False,False,,,
+481,70,45,1.56,OK,fast_no_action,False,False,False,False,False,,,
+482,5435,752,7.23,OK,already_opt_fast,True,True,False,False,False,optimized=true,already parallel; i128 only for one gcd mul,med
+483,3696,2518,1.47,OK,needs_refactor,False,False,False,True,False,,HashMap partition memo; cycle-index search,med
+484,2571,780,3.3,OK,fast_playbook_residual,False,True,False,False,False,,DFS over primes; i128 only for ans; top-level join possible,low
+485,2052,861,2.38,OK,already_opt_fast,False,False,False,False,False,optimized=true,already optimized sliding max/d(n),med
+486,2313,32,72.28,OK,already_opt_fast,False,False,True,False,True,A/B w3 accept,wave3 phi-order + incremental 2^k accepted (114ms cand),high
+487,522,171,3.05,OK,fast_no_action,False,False,True,False,True,,,
+488,9,1,9.0,OK,fast_no_action,False,False,True,True,False,,,
+489,296,102,2.9,OK,fast_no_action,False,True,False,False,False,,,
+490,197,108,1.82,OK,fast_no_action,False,True,False,False,False,,,
+491,11,2,5.5,OK,fast_no_action,False,False,False,False,False,,,
+492,518,48,10.79,OK,fast_no_action,True,False,True,False,False,,,
+493,10,1,10.0,OK,fast_no_action,False,False,False,False,False,,,
+494,1180,809,1.46,OK,fast_no_action,False,False,False,False,False,,,
+495,584,357,1.64,OK,fast_no_action,False,False,False,False,True,,,
+496,41,16,2.56,OK,fast_no_action,False,True,False,False,False,,,
+497,5,3,1.67,OK,fast_no_action,False,False,False,False,True,,,
+498,2,1,2.0,OK,fast_no_action,False,False,False,False,True,,,
+499,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+500,68,33,2.06,OK,fast_no_action,False,False,False,False,False,,,
+501,5175,1540,3.36,OK,needs_refactor,False,False,False,False,False,,rayon outer p in the p*q*r loops; pi_small as Vec<u32> (~400MB cut).,high
+502,1547,773,2.0,OK,fast_playbook_residual,False,False,False,False,False,,matrix/recurrence castle DP; likely sequential,low
+503,27,15,1.8,OK,fast_no_action,False,False,False,False,False,,,
+504,134,73,1.84,OK,fast_no_action,False,False,False,False,False,,,
+505,6874,4299,1.6,OK,sequential_hard,False,False,False,False,False,,Binary-tree recurrence is strictly sequential; C is the same helper.,high
+506,12,2,6.0,OK,fast_no_action,False,True,False,False,False,,,
+507,7398,928,7.97,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 stack-gauss + rayon accepted; still ~2.7s cand era,high
+508,16,6,2.67,OK,fast_no_action,False,False,False,True,False,,,
+509,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+510,56,23,2.43,OK,fast_no_action,False,False,False,False,False,,,
+511,731,177,4.13,OK,already_opt_fast,False,False,True,False,True,optimized=true,,
+512,213,61,3.49,OK,fast_no_action,False,False,False,True,False,,,
+513,9051,987,9.17,OK,fast_playbook_residual,True,False,False,False,False,optimized=true; wave2 partial B (unmerged),"Current rayon-over-u is still ~9s; port c/513.c Mobius / O(√N) (k,l) pair counts.",med
+514,89,57,1.56,OK,fast_no_action,False,False,False,False,False,,,
+515,156,78,2.0,OK,fast_no_action,False,False,False,False,False,,,
+516,115,31,3.71,OK,fast_no_action,False,False,False,False,False,,,
+517,261,108,2.42,OK,fast_no_action,False,False,False,False,True,,,
+518,2873,1312,2.19,OK,sequential_hard,False,False,False,False,False,A/B w3 reject,wave3 rayon over 25M k rejected (2873->3811); cite p518,high
+519,71,22,3.23,OK,fast_no_action,False,False,False,False,False,,,
+520,56,28,2.0,OK,fast_no_action,False,True,False,True,False,,,
+521,5756,1685,3.42,OK,sequential_hard,False,True,False,False,False,,Lucy SPF-sum O(N^{2/3}) is loop-carried; only inlining left.,high
+522,1063,798,1.33,OK,fast_no_action,False,False,False,False,False,,,
+523,9,1,9.0,OK,fast_no_action,False,False,False,False,False,,,
+524,3,1,3.0,OK,fast_no_action,False,False,False,False,False,,,
+525,165,106,1.56,OK,fast_no_action,False,False,False,False,False,,,
+526,2394,620,3.86,OK,fast_playbook_residual,False,False,False,False,False,,largest prime factor near 1e16; SPRP vs sieve window,low
+527,3,1,3.0,OK,fast_no_action,False,False,False,True,False,,,
+528,18,7,2.57,OK,fast_no_action,False,False,True,False,True,,,
+529,2838,844,3.36,OK,already_opt_fast,False,False,True,False,False,optimized=true,already optimized; u128 CRT combine leftover,med
+530,1459,277,5.27,OK,already_opt_fast,True,False,False,False,False,optimized=true,,
+531,2445,38,64.34,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 rayon+iterative egcd accepted (368ms cand),high
+532,13,7,1.86,OK,fast_no_action,False,False,False,False,False,,,
+533,1646,587,2.8,OK,already_opt_fast,True,False,False,False,False,,already rayon; Carmichael lambda remaining,med
+534,6556,912,7.19,OK,already_opt_fast,True,False,False,True,False,A/B w2 accept,wave2 rayon over k accepted,high
+535,231,81,2.85,OK,fast_no_action,False,True,False,False,False,,,
+536,8526,2570,3.32,OK,needs_refactor,False,False,False,False,False,wave2 partial C (unmerged),"rayon over root-level prime index in helper (independent subtrees, per-thread ans).",high
+537,524,192,2.73,OK,fast_no_action,False,True,False,False,False,,,
+538,3538,1610,2.2,OK,needs_refactor,False,False,False,False,False,,maximum quadrilaterals; look at hull loops,low
+539,3,1,3.0,OK,fast_no_action,False,False,False,True,False,,,
+540,6993,1311,5.33,OK,already_opt_still_slow,True,False,False,False,False,A/B w1 accept,wave1 rayon m-loop accepted (still ~5s cand),high
+541,204,60,3.4,OK,fast_no_action,False,True,False,True,True,,,
+542,1359,846,1.61,OK,fast_no_action,False,False,False,False,False,,,
+543,7368,2348,3.14,OK,needs_refactor,False,False,False,False,False,wave2 partial B (unmerged),"One prefix popcount of the bit sieve, then O(1) pi for all F_k; drop 42 full scans.",high
+544,2061,451,4.57,OK,already_opt_fast,False,False,False,False,False,A/B w3 accept,wave3 no-clone FxHashMap + i32 stack DP accepted,high
+545,1642,352,4.66,OK,already_opt_fast,True,False,False,False,False,optimized=true,rayon segmented sieve 8.5s->1.6s,high
+546,20,14,1.43,OK,fast_no_action,False,True,False,True,False,,,
+547,17,8,2.12,OK,fast_no_action,False,False,False,False,False,,,
+548,3949,574,6.88,OK,fast_playbook_residual,False,False,False,True,False,,HashMap g(n) over exponent signatures,med
+549,31,12,2.58,OK,fast_no_action,False,False,False,False,False,,,
+550,970,396,2.45,OK,fast_no_action,False,True,False,False,False,,,
+551,6,2,3.0,OK,fast_no_action,False,False,False,True,False,,,
+552,8468,2877,2.94,OK,sequential_hard,False,False,False,False,False,,O(L^2) Garner with loop-carried a/prod; C identical; no rayon/i128 play.,high
+553,836,640,1.31,OK,fast_no_action,False,False,False,False,False,,,
+554,1339,680,1.97,OK,fast_no_action,False,False,False,False,False,,,
+555,24,13,1.85,OK,fast_no_action,False,False,False,False,False,,,
+556,1087,465,2.34,OK,fast_no_action,False,False,False,True,False,,,
+557,5324,98,54.33,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 rayon over a accepted,high
+558,2357,266,8.86,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 accepted 7.5s->1.2s,high
+559,7090,5518,1.28,OK,needs_refactor,False,False,False,False,False,wave2 partial B (unmerged),rayon over independent k (each owns dp/parts); precompute pow_inv_fact once.,high
+560,748,245,3.05,OK,fast_no_action,False,True,False,False,False,,,
+561,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+562,372,225,1.65,OK,fast_no_action,False,False,False,False,False,,,
+563,3144,828,3.8,OK,already_opt_fast,True,False,False,False,False,optimized=true,par_sort_unstable 182M areas already,high
+564,564,224,2.52,OK,fast_no_action,True,False,False,False,False,,,
+565,997,241,4.14,OK,fast_no_action,False,True,False,False,False,,,
+566,376,113,3.33,OK,fast_no_action,True,True,False,False,False,,,
+567,517,305,1.7,OK,fast_no_action,False,False,False,False,False,,,
+568,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+569,887,328,2.7,OK,fast_no_action,False,False,False,False,False,,,
+570,1057,82,12.89,OK,fast_no_action,True,False,False,False,True,,,
+571,3362,887,3.79,OK,already_opt_fast,False,False,False,False,False,optimized=true,already optimized pandigital search,med
+572,343,161,2.13,OK,fast_no_action,False,False,False,False,False,,,
+573,56,65,0.86,OK,fast_no_action,False,False,False,False,False,,,
+574,67,33,2.03,OK,fast_no_action,False,False,True,False,False,,,
+575,6,2,3.0,OK,fast_no_action,False,False,False,False,False,,,
+576,1373,677,2.03,OK,fast_no_action,True,False,False,False,False,,,
+577,12,0,,OK,fast_no_action,False,True,False,False,False,,,
+578,4654,2491,1.87,OK,needs_refactor,False,False,False,True,False,,FxHashMap memos; rayon top-level prime branches with private maps then merge.,med
+579,165,64,2.58,OK,fast_no_action,False,False,False,False,False,,,
+580,3121,1153,2.71,OK,sequential_hard,False,False,False,False,False,,profiles memory-bound squarefree Hilbert; likely Lucy,low
+581,791,289,2.74,OK,fast_no_action,False,True,False,False,False,,,
+582,8,3,2.67,OK,fast_no_action,False,False,False,False,False,,,
+583,4922,853,5.77,OK,fast_playbook_residual,True,False,False,False,False,optimized=true,already rayon; C uses O(n) two-pointer vs O(n^2),high
+584,1706,357,4.78,OK,already_opt_fast,True,False,False,False,False,optimized=true,par_chunks_mut mat_mul 8.3s->1.7s,high
+585,6709,2248,2.98,OK,needs_refactor,False,False,False,False,False,,"rayon over g+h for the O(N log N) second sum; integer is_sq (no f64) in the s,t nest.",high
+586,2568,125,20.54,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 k=1/k=2 join + odd sieve accepted,high
+587,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+588,5,1,5.0,OK,fast_no_action,False,False,False,False,False,,,
+589,2464,137,17.99,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,"wave3 rayon (m,n) systems accepted",high
+590,382,118,3.24,OK,fast_no_action,False,False,False,False,True,,,
+591,81,35,2.31,OK,fast_no_action,False,True,False,False,False,,,
+592,5538,4141,1.34,OK,needs_refactor,False,False,True,False,False,,rayon the 27 independent f_vals blocks (each is 2^22 odd products).,high
+593,4031,1513,2.66,OK,sequential_hard,False,False,False,False,False,,Fenwick sliding median + 2e8 sieve,high
+594,53,24,2.21,OK,fast_no_action,False,False,False,False,False,,,
+595,5,1,5.0,OK,fast_no_action,False,False,False,False,False,,,
+596,3607,1090,3.31,OK,needs_refactor,False,False,False,False,False,,lattice points in hypersphere; Dirichlet hyperbola?,low
+597,133,73,1.82,OK,fast_no_action,False,False,False,False,False,,,
+598,69,29,2.38,OK,fast_no_action,False,False,False,True,False,,,
+599,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+600,12,6,2.0,OK,fast_no_action,False,True,True,False,False,,,
+601,4,1,4.0,OK,fast_no_action,False,False,True,False,False,,,
+602,1360,408,3.33,OK,fast_no_action,False,False,True,False,True,,,
+603,378,107,3.53,OK,fast_no_action,False,True,False,False,True,,,
+604,192,24,8.0,OK,fast_no_action,False,False,False,False,False,,,
+605,12,1,12.0,OK,fast_no_action,False,False,True,False,True,,,
+606,5232,1536,3.41,OK,sequential_hard,False,False,False,False,False,A/B w2 reject,already pure u64 Lucy; rayon rejected; cite p606,high
+607,12,1,12.0,OK,fast_no_action,False,False,False,False,False,,,
+608,5833,1687,3.46,OK,sequential_hard,False,True,False,False,False,optimized=true,Lucy+DFS 800MB; chunk sieve not compute-bound,high
+609,954,332,2.87,OK,fast_no_action,True,False,True,False,False,,,
+610,5,1,5.0,OK,fast_no_action,False,False,False,True,False,,,
+611,7122,1465,4.86,OK,needs_refactor,False,False,False,False,False,,Cache p%4 and avoid n_val/p/p in DFS; rayon top-level prime-power frames after Lucy.,med
+612,28,4,7.0,OK,fast_no_action,False,False,True,False,True,,,
+613,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+614,7281,9153,0.8,OK,needs_refactor,True,False,False,False,False,optimized=true,Phase-2 small offsets stay serial; transpose/accumulate thread_temps to cut merge traffic.,low
+615,2089,485,4.31,OK,fast_playbook_residual,False,False,False,False,False,,numbers with many 2s; prime-exp DFS?,low
+616,83,37,2.24,OK,fast_no_action,False,False,False,False,False,,,
+617,117,30,3.9,OK,fast_no_action,False,False,False,False,False,,,
+618,204,138,1.48,OK,fast_no_action,False,False,False,False,False,,,
+619,16,3,5.33,OK,fast_no_action,False,True,False,False,True,,,
+620,455,244,1.86,OK,fast_no_action,False,False,False,False,False,,,
+621,1569,312,5.03,OK,fast_playbook_residual,False,False,False,False,False,,Tonelli/pow_mod_local; memory-bound per profiles,low
+622,47,9,5.22,OK,fast_no_action,False,True,False,False,True,,,
+623,3321,2336,1.42,OK,needs_refactor,False,False,False,False,False,,lambda expressions / combinatorics DP,low
+624,12,1,12.0,OK,fast_no_action,False,True,False,False,True,,,
+625,2409,700,3.44,OK,sequential_hard,False,False,False,False,False,,sum gcd Dirichlet; typically Lucy/prefix,low
+626,3495,1039,3.36,OK,needs_refactor,False,True,False,False,True,,binary-matrix palindromes; bit DP?,low
+627,13,1,13.0,OK,fast_no_action,False,True,False,False,True,,,
+628,2192,287,7.64,OK,already_opt_fast,False,False,False,False,False,A/B w3 accept,wave3 i128->u64 factorial accepted,high
+629,77,43,1.79,OK,fast_no_action,False,False,False,False,False,,,
+630,1090,708,1.54,OK,fast_no_action,False,False,False,False,False,,,
+631,27,10,2.7,OK,fast_no_action,False,True,False,False,False,,,
+632,2277,514,4.43,OK,already_opt_fast,True,True,False,False,False,optimized=true,already optimized + rayon,med
+633,29,9,3.22,OK,fast_no_action,False,False,False,False,False,,,
+634,96,18,5.33,OK,fast_no_action,False,False,False,False,False,,,
+635,3183,1197,2.66,OK,already_opt_still_slow,True,False,False,False,True,optimized=true,already rayon; local u64 mod_pow,med
+636,3362,592,5.68,OK,already_opt_fast,True,True,False,False,False,,inner-use rayon already,med
+637,5285,1854,2.85,OK,needs_refactor,False,False,False,False,False,,rayon::join compute_f(10) and compute_f(3); par_iter the 10M i-loop inside each.,high
+638,633,189,3.35,OK,fast_no_action,False,True,False,False,True,,,
+639,4017,1363,2.95,OK,needs_refactor,False,True,False,False,True,,i128 powmod MOD=1e9+7; powerful-number iteration,med
+640,232,69,3.36,OK,fast_no_action,False,False,False,False,False,,,
+641,87,38,2.29,OK,fast_no_action,False,False,False,True,False,,,
+642,6313,810,7.79,OK,sequential_hard,False,False,False,False,False,,Lucy prime-sum then DFS; triage says top-level DFS rayon possible,med
+643,2496,704,3.55,OK,sequential_hard,False,True,False,False,False,,profiles memory-bound 2-smooth-ish gcd sums,low
+644,1447,596,2.43,OK,fast_no_action,False,False,False,True,False,,,
+645,12,1,12.0,OK,fast_no_action,False,False,False,False,False,,,
+646,879,365,2.41,OK,fast_no_action,False,False,False,False,True,,,
+647,752,311,2.42,OK,fast_no_action,False,False,False,False,False,,,
+648,438,352,1.24,OK,fast_no_action,False,False,False,False,False,,,
+649,15,1,15.0,OK,fast_no_action,False,False,False,False,False,,,
+650,4960,879,5.64,OK,already_opt_fast,False,False,False,False,False,A/B w2 accept,wave2 i128->u64 power/D(n) accepted,high
+651,89,25,3.56,OK,fast_no_action,False,True,False,False,False,,,
+652,45,14,3.21,OK,fast_no_action,False,True,False,False,False,,,
+653,34,18,1.89,OK,fast_no_action,False,False,False,False,False,,,
+654,4458,1314,3.39,OK,needs_refactor,False,False,True,False,False,optimized=true,NTT mulmod uses u128; P1/P2/P3 all <2^32 so u64 mulmod,med
+655,7057,2387,2.96,OK,needs_refactor,False,False,False,False,True,,Eliminate inner %k via split-index add; sparse nonzero-j list instead of scanning 10M zeros.,high
+656,16,2,8.0,OK,fast_no_action,False,False,False,False,False,,,
+657,6424,132,48.67,OK,already_opt_fast,True,False,False,False,False,A/B w2 accept,wave2 rayon 10M pow + u64 accepted,high
+658,1033,374,2.76,OK,fast_no_action,True,True,False,False,True,,,
+659,3204,678,4.73,OK,fast_playbook_residual,False,True,False,False,True,,Tonelli pow_mod i64; largest prime factor of n^2+1,low
+660,4366,1942,2.25,OK,already_opt_still_slow,True,False,False,False,False,,inner rayon already; leftover branchy search,med
+661,35,18,1.94,OK,fast_no_action,False,False,False,False,False,,,
+662,4632,1814,2.55,OK,sequential_hard,False,False,False,False,False,,Lattice DP with carried h_jumps; rayon on cheap x-adds likely regresses (playbook tiny-iter).,med
+663,1018,314,3.24,OK,fast_no_action,False,False,False,False,False,,,
+664,94,58,1.62,OK,fast_no_action,False,False,False,False,False,,,
+665,865,373,2.32,OK,fast_no_action,False,False,False,False,False,,,
+666,14,2,7.0,OK,fast_no_action,False,False,False,False,False,,,
+667,6,2,3.0,OK,fast_no_action,False,False,False,False,False,,,
+668,130,38,3.42,OK,fast_no_action,False,False,False,False,False,,,
+669,2,0,,OK,fast_no_action,False,False,True,False,False,,,
+670,7,1,7.0,OK,fast_no_action,False,True,False,False,False,,,
+671,525,74,7.09,OK,fast_no_action,False,True,False,False,False,,,
+672,2000,1,2000.0,OK,fast_playbook_residual,False,True,False,False,False,,totient/collatz-like; look at memo vs sieve,low
+673,4,1,4.0,OK,fast_no_action,False,True,False,False,True,,,
+674,340,61,5.57,OK,fast_no_action,True,False,False,False,False,,,
+675,1767,446,3.96,OK,already_opt_fast,False,False,False,False,False,A/B w3 accept,wave3 u64 S(i!) still serial 1.6s; loop-carried exponents,high
+676,57,7,8.14,OK,fast_no_action,False,True,False,True,False,,,
+677,1005,734,1.37,OK,already_opt_fast,False,False,False,False,False,optimized=true,,
+678,1436,305,4.71,OK,already_opt_fast,True,True,False,False,False,optimized=true,,
+679,14,2,7.0,OK,fast_no_action,False,False,False,False,False,,,
+680,6372,1870,3.41,OK,sequential_hard,False,True,False,False,False,optimized=true,implicit treap N=1e18 K=1e6; recursion/stack only,high
+681,16163,2681,6.03,OK,needs_refactor,True,False,False,False,False,wave2 partial C (unmerged),Work flattening exists but heavy highly-composite K still starve; split those K by divisor-pair chunks.,med
+682,18,4,4.5,OK,fast_no_action,False,True,False,False,False,,,
+683,16,6,2.67,OK,fast_no_action,False,False,False,False,False,,,
+684,5,1,5.0,OK,fast_no_action,False,True,False,False,False,,,
+685,24,7,3.43,OK,fast_no_action,False,True,False,False,False,,,
+686,689,139,4.96,OK,fast_no_action,False,False,False,False,False,,,
+687,45,18,2.5,OK,fast_no_action,False,False,False,True,False,,,
+688,2691,68,39.57,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 k-chunks + u64 mulmod accepted,high
+689,56,22,2.55,OK,fast_no_action,False,False,False,False,False,,,
+690,537,206,2.61,OK,fast_no_action,False,True,False,False,False,,,
+691,8100,1140,7.11,OK,needs_refactor,False,False,False,False,False,,Replace doubling SA with SA-IS O(n); keep LCP/UF sweep.,med
+692,12,1,12.0,OK,fast_no_action,False,False,False,False,False,,,
+693,7149,705,10.14,OK,already_opt_fast,False,False,False,False,False,A/B w1 accept,wave1 gen-counter vs 24MB zero; still ~5.3s cand,high
+694,180,31,5.81,OK,fast_no_action,False,False,False,False,False,,,
+695,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+696,90,40,2.25,OK,fast_no_action,False,True,False,True,False,,,
+697,132,44,3.0,OK,fast_no_action,False,False,False,False,False,,,
+698,5,1,5.0,OK,fast_no_action,False,False,False,False,False,,,
+699,2973,548,5.43,OK,fast_playbook_residual,False,False,False,False,False,,q-smooth-like; recursive enumeration?,low
+700,232,179,1.3,OK,fast_no_action,False,False,False,False,False,,,
+701,3787,1635,2.32,OK,needs_refactor,False,False,False,True,False,,HashMap State DP per row; encode to Vec,med
+702,15,1,15.0,OK,fast_no_action,False,False,False,False,False,,,
+703,196,116,1.69,OK,fast_no_action,False,False,False,False,False,,,
+704,15,1,15.0,OK,fast_no_action,False,False,False,False,False,,,
+705,3143,1429,2.2,OK,already_opt_still_slow,False,False,False,False,False,optimized=true,already u128->u64 MOD=1e9+7,high
+706,9,5,1.8,OK,fast_no_action,False,True,False,False,False,,,
+707,31,16,1.94,OK,fast_no_action,False,True,False,False,True,,,
+708,7611,1831,4.16,OK,needs_refactor,False,False,False,False,False,,Memoize sum_floor_quotients for q>l; rayon independent root prime subtrees.,med
+709,1348,862,1.56,OK,fast_no_action,False,False,False,False,False,,,
+710,101,66,1.53,OK,fast_no_action,False,False,False,False,True,,,
+711,178,84,2.12,OK,fast_no_action,False,True,False,False,True,,,
+712,4471,1019,4.39,OK,sequential_hard,False,False,False,False,False,,Lucy pi for large p dominates; small-prime double loop is cheap vs the sequential sieve.,med
+713,47,16,2.94,OK,fast_no_action,False,False,False,False,False,,,
+714,2556,591,4.32,OK,already_opt_fast,True,False,False,False,False,optimized=true,already rayon search,med
+715,9958,3747,2.66,OK,needs_refactor,False,True,False,False,False,wave2 partial B (unmerged),Store ff as Vec<u32> (halves ~800MB SPF) and linear-sieve mu_prime; big[i] Lucy fill stays sequential.,high
+716,33,14,2.36,OK,fast_no_action,False,True,False,False,False,,,
+717,1350,210,6.43,OK,fast_no_action,False,False,True,False,True,,,
+718,3407,295,11.55,OK,fast_playbook_residual,False,True,False,False,False,,profiles memory-bound; 3-cube sums?,low
+719,329,98,3.36,OK,fast_no_action,False,False,False,False,False,,,
+720,948,306,3.1,OK,fast_no_action,False,True,False,False,False,,,
+721,658,111,5.93,OK,already_opt_fast,True,False,False,False,False,optimized=true,,
+722,13,0,,OK,fast_no_action,False,False,False,False,False,,,
+723,34,12,2.83,OK,fast_no_action,False,False,False,False,False,,,
+724,207,185,1.12,OK,fast_no_action,False,False,False,False,False,,,
+725,12,1,12.0,OK,fast_no_action,False,False,True,False,False,,,
+726,692,278,2.49,OK,fast_no_action,False,True,False,False,True,,,
+727,16,2,8.0,OK,fast_no_action,False,False,False,False,False,,,
+728,865,323,2.68,OK,fast_no_action,False,True,False,False,True,,,
+729,2444,1830,1.34,OK,needs_refactor,False,False,False,False,False,,stalled/low IPC per profiles; range-min query?,low
+730,4301,524,8.21,OK,already_opt_fast,True,False,False,False,False,optimized=true,already rayon,med
+731,13,1,13.0,OK,fast_no_action,False,True,True,False,False,,,
+732,783,478,1.64,OK,fast_no_action,False,False,False,False,False,,,
+733,1177,647,1.82,OK,fast_no_action,False,True,False,False,False,,,
+734,374,128,2.92,OK,fast_no_action,False,True,False,False,True,,,
+735,10556,715,14.76,OK,already_opt_fast,True,False,False,False,False,wave2 partial D (unmerged),Chunked rayon + fused inner isqrt already present; leftover CHUNK tuning is noise-level.,med
+736,13,1,13.0,OK,fast_no_action,False,True,False,False,False,,,
+737,47,33,1.42,OK,already_opt_fast,False,False,False,False,False,optimized=true,,
+738,1716,809,2.12,OK,fast_playbook_residual,False,False,False,True,False,,"HashMap memo (n,k,m) prime-sum partitions",med
+739,4005,1563,2.56,OK,sequential_hard,False,True,False,False,False,,Lucas+inv table 1e8; loop-carried,med
+740,31,10,3.1,OK,fast_no_action,False,False,False,False,False,,,
+741,2803,614,4.57,OK,already_opt_fast,True,False,False,False,True,A/B w3 accept,wave3 u64 mulmod + join g(N1)/g(N2) accepted,high
+742,303,145,2.09,OK,fast_no_action,False,False,False,False,False,,,
+743,2305,737,3.13,OK,already_opt_fast,False,False,False,False,True,A/B w3 accept,wave3 u64 mulmod still serial 1.6s recurrence over k/2,high
+744,12,1,12.0,OK,fast_no_action,False,False,False,False,False,,,
+745,212,73,2.9,OK,fast_no_action,False,True,False,False,False,,,
+746,522,159,3.28,OK,fast_no_action,False,True,False,False,True,,,
+747,1553,456,3.41,OK,already_opt_fast,True,False,False,False,True,A/B w3 accept,wave3 rayon+u64 ncr still ~1.1s,high
+748,3196,1088,2.94,OK,needs_refactor,False,False,False,False,False,,stalled IPC; pentagonal-like search,low
+749,217,140,1.55,OK,fast_no_action,False,False,False,False,False,,,
+750,412,177,2.33,OK,fast_no_action,False,False,False,False,False,,,
+751,12,1,12.0,OK,fast_no_action,False,True,True,False,False,,,
+752,2744,37,74.16,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 i64 mat + SPF + rayon primes accepted,high
+753,59,18,3.28,OK,fast_no_action,False,False,False,False,False,,,
+754,3406,1033,3.3,OK,already_opt_still_slow,False,False,False,False,True,optimized=true,already optimized product-of-gcds,med
+755,2,1,2.0,OK,fast_no_action,False,False,False,True,False,,,
+756,1342,151,8.89,OK,fast_no_action,False,False,False,False,False,,,
+757,2639,451,5.85,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 par generate+sort still ~2.1s; stealthy numbers uniqueness,high
+758,476,148,3.22,OK,fast_no_action,False,True,False,False,True,,,
+759,17,1,17.0,OK,fast_no_action,False,False,False,True,False,,,
+760,4,1,4.0,OK,fast_no_action,False,True,False,True,False,,,
+761,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+762,5,3,1.67,OK,fast_no_action,False,False,False,True,False,,,
+763,4468,614,7.28,OK,fast_playbook_residual,False,False,False,False,False,,Flatten u_arr/v_arr Vec<Vec<u32>> to contiguous (CLAUDE.md #1); recurrence in m stays serial.,high
+764,17,4,4.25,OK,fast_no_action,False,True,False,False,False,,,
+765,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+766,1467,910,1.61,OK,fast_no_action,False,False,False,False,False,,,
+767,516,136,3.79,OK,fast_no_action,False,True,True,False,True,,,
+768,23,7,3.29,OK,fast_no_action,False,True,False,True,True,,,
+769,5831,3120,1.87,OK,needs_refactor,False,False,False,False,False,,rayon over independent g; integer isqrt instead of f64 sqrt in the inner n_idx loop.,high
+770,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+771,13,4,3.25,OK,fast_no_action,False,True,False,False,False,,,
+772,784,196,4.0,OK,fast_no_action,False,False,True,False,True,,,
+773,13,1,13.0,OK,fast_no_action,False,True,False,False,True,,,
+774,7386,3766,1.96,OK,already_opt_still_slow,False,False,False,False,True,A/B w2 accept,wave2 i32 MPS/GE accepted; remaining serial TT sweep,high
+775,796,265,3.0,OK,fast_no_action,False,True,False,False,True,,,
+776,14,2,7.0,OK,fast_no_action,False,False,False,True,False,,,
+777,125,48,2.6,OK,fast_no_action,False,True,False,False,False,,,
+778,13,1,13.0,OK,fast_no_action,False,True,False,False,False,,,
+779,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+780,2038,632,3.22,OK,fast_playbook_residual,False,True,True,True,False,,HashMap D(n) Dirichlet cache,med
+781,1198,934,1.28,OK,fast_no_action,False,False,False,False,True,,,
+782,14227,1356,10.49,OK,already_opt_still_slow,True,False,False,False,False,A/B w1 reject; optimized=true,"A/B 18761→18055ms (1.039×, within noise); non-atomic bitset already in tree.",high
+783,21,6,3.5,OK,fast_no_action,False,False,False,False,False,,,
+784,2807,68,41.28,OK,already_opt_fast,True,False,False,False,False,A/B w3 accept,wave3 rayon over p + Vec SPF accepted,high
+785,6963,84,82.89,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 rayon m-loop accepted,high
+786,4548,1457,3.12,OK,already_opt_still_slow,True,True,False,False,False,,inner rayon already,med
+787,199,71,2.8,OK,fast_no_action,False,True,False,True,False,,,
+788,122,68,1.79,OK,fast_no_action,False,False,False,False,True,,,
+789,1527,331,4.61,OK,fast_playbook_residual,False,False,True,True,True,,HashMap prime-product DFS intern,med
+790,571,301,1.9,OK,fast_no_action,False,False,False,False,False,,,
+791,342,262,1.31,OK,fast_no_action,False,False,False,False,True,,,
+792,703,242,2.9,OK,fast_no_action,False,False,False,False,False,,,
+793,366,197,1.86,OK,fast_no_action,False,False,False,False,False,,,
+794,67,24,2.79,OK,fast_no_action,False,False,False,False,False,,,
+795,553,174,3.18,OK,fast_no_action,False,False,False,False,False,,,
+796,283,186,1.52,OK,fast_no_action,False,False,False,False,False,,,
+797,7001,2845,2.46,OK,needs_refactor,False,False,False,False,True,,Incremental 2^i for F[i]; linear-sieve inverses instead of N Fermat inv; optional rayon on final sum.,high
+798,965,415,2.33,OK,fast_no_action,True,False,False,False,True,,,
+799,4521,1240,3.65,OK,needs_refactor,False,True,False,False,False,,rayon over representation candidates; keep i128 only for Gaussian products that can exceed u64.,med
+800,257,54,4.76,OK,fast_no_action,False,False,False,False,False,,,
+801,939,294,3.19,OK,fast_no_action,True,False,False,False,True,,,
+802,352,94,3.74,OK,fast_no_action,False,True,False,False,True,,,
+803,366,237,1.54,OK,fast_no_action,False,False,False,False,False,,,
+804,249,113,2.2,OK,fast_no_action,False,False,False,False,False,,,
+805,686,283,2.42,OK,fast_no_action,False,True,False,False,True,,,
+806,209,86,2.43,OK,fast_no_action,False,False,False,True,True,,,
+807,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+808,705,194,3.63,OK,fast_no_action,False,False,False,False,False,,,
+809,12,1,12.0,OK,fast_no_action,False,True,False,False,True,,,
+810,2459,1001,2.46,OK,needs_refactor,False,False,False,False,False,,xor-primes sieve analog; bitset memory,low
+811,12,1,12.0,OK,fast_no_action,False,True,False,False,True,,,
+812,53,44,1.2,OK,fast_no_action,False,False,False,False,True,,,
+813,5,1,5.0,OK,fast_no_action,False,True,False,False,True,,,
+814,652,329,1.98,OK,fast_no_action,False,False,False,False,False,,,
+815,1400,973,1.44,OK,fast_no_action,False,False,False,True,False,,,
+816,146,67,2.18,OK,fast_no_action,False,False,False,False,False,,,
+817,202,60,3.37,OK,fast_no_action,False,True,False,False,False,,,
+818,1604,776,2.07,OK,fast_playbook_residual,False,False,False,False,False,,set-partition / stirling-like,low
+819,4,2,2.0,OK,fast_no_action,False,False,False,False,False,,,
+820,354,38,9.32,OK,fast_no_action,True,False,False,False,True,,,
+821,12,1,12.0,OK,fast_no_action,False,False,False,False,False,,,
+822,83,45,1.84,OK,fast_no_action,False,True,False,False,True,,,
+823,1536,775,1.98,OK,fast_playbook_residual,False,True,False,False,False,,prime-factor factorial exponent game,low
+824,2487,433,5.74,OK,sequential_hard,False,False,True,False,False,,profiles memory-bound chess-king DP?,low
+825,131,40,3.27,OK,fast_no_action,False,False,False,False,False,,,
+826,7,4,1.75,OK,fast_no_action,False,False,False,False,False,,,
+827,2626,434,6.05,OK,already_opt_fast,False,True,False,True,True,optimized=true,already optimized; HashMap leftover,med
+828,195,37,5.27,OK,fast_no_action,True,False,False,True,True,,,
+829,11685,7407,1.58,OK,needs_refactor,False,False,True,True,False,A/B w1 reject; optimized=true,A/B rejected one DFS prune; still sequential n=2..31 + prime DFS; parallelize top-level n/primes,high
+830,72,18,4.0,OK,fast_no_action,False,True,False,False,True,,,
+831,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+832,0,1,,OK,fast_no_action,False,False,False,False,False,,,
+833,112,32,3.5,OK,fast_no_action,False,True,False,False,False,,,
+834,268,24,11.17,OK,already_opt_fast,True,False,False,False,False,optimized=true,,
+835,12,1,12.0,OK,fast_no_action,False,True,False,False,True,,,
+836,5,1,5.0,OK,fast_no_action,False,False,False,False,False,,,
+837,2638,1322,2.0,OK,already_opt_still_slow,True,False,False,False,True,optimized=true,already rayon join on factorials,med
+838,12,7,1.71,OK,fast_no_action,False,False,False,False,False,,,
+839,458,163,2.81,OK,fast_no_action,False,False,False,False,False,,,
+840,1195,333,3.59,OK,already_opt_fast,False,True,True,False,False,optimized=true,,
+841,319,78,4.09,OK,fast_no_action,False,False,False,False,False,,,
+842,937,311,3.01,OK,fast_no_action,False,False,True,True,True,,,
+843,43,19,2.26,OK,fast_no_action,False,False,True,False,False,,,
+844,97,24,4.04,OK,fast_no_action,False,True,False,False,True,,,
+845,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+846,22859,7394,3.09,OK,already_opt_still_slow,True,False,False,False,True,wave2 partial D (unmerged),Already seed-level rayon DFS; remaining load-balance is low-confidence (batch D no-diff).,med
+847,8220,4236,1.94,OK,needs_refactor,False,False,False,False,True,A/B w1 reject,A/B noise-reject; FxHashMap digit-DP vs C open-addressing,high
+848,12,1,12.0,OK,fast_no_action,False,True,False,False,False,,,
+849,996,191,5.21,OK,fast_no_action,False,False,False,False,False,,,
+850,2837,1151,2.46,OK,needs_refactor,False,False,False,False,False,,coprime-pair product; Möbius hyperbola?,low
+851,383,162,2.36,OK,fast_no_action,False,False,False,False,True,,,
+852,3975,1941,2.05,OK,sequential_hard,False,False,False,False,False,,backward-induction coin DP; state deps,med
+853,16,2,8.0,OK,fast_no_action,False,True,False,False,False,,,
+854,1342,412,3.26,OK,fast_no_action,False,False,False,True,True,,,
+855,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+856,4,1,4.0,OK,fast_no_action,False,False,False,False,False,,,
+857,428,302,1.42,OK,fast_no_action,False,False,False,False,True,,,
+858,87,34,2.56,OK,fast_no_action,False,False,False,True,True,,,
+859,173,83,2.08,OK,fast_no_action,False,False,False,False,False,,,
+860,133,44,3.02,OK,fast_no_action,False,True,False,False,False,,,
+861,3781,1040,3.64,OK,already_opt_still_slow,True,False,False,False,False,,already rayon,med
+862,17,3,5.67,OK,fast_no_action,False,False,False,False,False,,,
+863,68,22,3.09,OK,fast_no_action,False,False,False,False,False,,,
+864,6379,1801,3.54,OK,needs_refactor,False,True,False,False,False,,rayon::join the two Part B DFS roots; squarefree sieve instead of trial division in Pell counts.,med
+865,68,34,2.0,OK,already_opt_fast,False,False,False,False,False,optimized=true,,
+866,13,1,13.0,OK,fast_no_action,False,True,False,False,False,,,
+867,5354,3071,1.74,OK,needs_refactor,False,False,False,False,True,,Precompute independent hex/trap tilings (rayon over size/window); mask DP inner can par over prev.,med
+868,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+869,2415,871,2.77,OK,fast_playbook_residual,False,False,False,False,False,,prime-gap expected value; sieve then serial,low
+870,3619,1806,2.0,OK,sequential_hard,False,False,True,False,False,,recurrence P_{k+1}=P_k+P_m(k); true deps; u128 only in scratch tools,med
+871,364,174,2.09,OK,fast_no_action,False,False,False,False,False,,,
+872,4,1,4.0,OK,fast_no_action,False,False,True,False,False,,,
+873,5756,637,9.04,OK,already_opt_fast,False,False,False,False,False,A/B w2 accept,wave2 inverse table + u64 mul accepted,high
+874,22,8,2.75,OK,fast_no_action,False,False,False,False,False,,,
+875,403,171,2.36,OK,fast_no_action,False,True,False,False,False,,,
+876,72,17,4.24,OK,fast_no_action,False,True,False,True,False,,,
+877,3,1,3.0,OK,fast_no_action,False,False,False,False,False,,,
+878,2762,1287,2.15,OK,needs_refactor,False,False,False,True,False,,HashMap in hot path,med
+879,45,22,2.05,OK,fast_no_action,False,False,False,False,False,,,
+880,1070,377,2.84,OK,fast_no_action,False,True,False,False,False,,,
+881,33,10,3.3,OK,fast_no_action,False,False,False,False,False,,,
+882,16,6,2.67,OK,fast_no_action,False,False,False,False,False,,,
+883,3589,1486,2.42,OK,needs_refactor,False,False,False,False,False,,look at lattice/triangle enumeration loops,low
+884,179,122,1.47,OK,fast_no_action,False,False,False,False,False,,,
+885,193,137,1.41,OK,fast_no_action,False,False,False,False,False,,,
+886,7967,3069,2.6,OK,already_opt_still_slow,False,False,False,False,False,optimized=true,Already unchecked memo + stack Ctx (validated optimized); C globals will not move the needle.,high
+887,13,1,13.0,OK,fast_no_action,False,False,False,False,False,,,
+888,477,229,2.08,OK,fast_no_action,False,False,False,False,False,,,
+889,1,1,1.0,OK,fast_no_action,False,False,True,False,True,,,
+890,3005,1868,1.61,OK,needs_refactor,False,True,True,False,False,,binomial/mod factorial table?,low
+891,1011,318,3.18,OK,fast_no_action,False,False,False,False,False,,,
+892,204,67,3.04,OK,fast_no_action,False,False,False,False,False,,,
+893,2040,1504,1.36,OK,needs_refactor,False,False,False,False,False,,look at digit-equation search,low
+894,2,2,1.0,OK,fast_no_action,False,False,False,False,False,,,
+895,188,112,1.68,OK,fast_no_action,False,False,False,False,False,,,
+896,41,20,2.05,OK,fast_no_action,False,True,False,False,False,,,
+897,33,15,2.2,OK,fast_no_action,False,False,False,False,False,,,
+898,273,146,1.87,OK,fast_no_action,False,False,False,False,False,,,
+899,1,1,1.0,OK,fast_no_action,False,False,True,False,False,,,
+900,1,1,1.0,OK,fast_no_action,False,True,False,False,False,,,
+901,5,1,5.0,OK,fast_no_action,False,False,False,False,False,,,
+902,576,86,6.7,OK,fast_no_action,False,False,True,True,False,,,
+903,178,36,4.94,OK,fast_no_action,False,False,True,False,True,,,
+904,325,150,2.17,OK,fast_no_action,False,True,False,False,False,,,
+905,4,1,4.0,OK,fast_no_action,False,True,False,False,False,,,
+906,234,23,10.17,OK,fast_no_action,True,False,False,False,False,,,
+907,112,94,1.19,OK,fast_no_action,False,False,False,False,False,,,
+908,1173,867,1.35,OK,fast_no_action,False,False,False,False,False,,,
+909,2,1,2.0,OK,fast_no_action,False,False,True,False,False,,,
+910,6864,1227,5.59,OK,already_opt_still_slow,True,True,True,False,True,A/B w1 accept; optimized=true,wave1 3.5x still ~7s; streaming tables+rayon already vs C 45-line phi,med
+911,76,44,1.73,OK,fast_no_action,False,False,False,False,False,,,
+912,2,1,2.0,OK,fast_no_action,False,False,False,False,False,,,
+913,77,26,2.96,OK,fast_no_action,False,True,False,False,False,,,
+914,402,144,2.79,OK,fast_no_action,False,False,False,False,False,,,
+915,34,12,2.83,OK,fast_no_action,False,True,False,True,False,,,
+916,618,490,1.26,OK,fast_no_action,False,False,False,False,False,,,
+917,626,178,3.52,OK,fast_no_action,False,True,True,False,False,,,
+918,10,6,1.67,OK,fast_no_action,False,False,False,True,False,,,
+919,3672,1247,2.94,OK,needs_refactor,False,False,False,False,False,,profiles memory-bound; two-player DP?,low
+920,54,33,1.64,OK,fast_no_action,False,False,True,True,False,,,
+921,3294,704,4.68,OK,fast_playbook_residual,False,False,True,False,True,,look at coprime-pair / Farey loops,low
+922,113,22,5.14,OK,fast_no_action,False,False,True,False,False,,,
+923,139,97,1.43,OK,fast_no_action,False,False,False,True,True,,,
+924,464,111,4.18,OK,fast_no_action,False,False,True,True,False,,,
+925,8132,3292,2.47,OK,needs_refactor,False,True,True,False,True,,rayon over digit lengths 1..=16 (or MSD start digits) of the independent DFS stacks.,med
+926,299,115,2.6,OK,fast_no_action,False,False,False,False,False,,,
+927,2447,537,4.56,OK,already_opt_fast,True,False,True,False,False,,already rayon,med
+928,5430,926,5.86,OK,already_opt_fast,True,False,False,False,False,,already 125 parallel tasks; tighten pruning,med
+929,4224,1049,4.03,OK,sequential_hard,False,True,False,False,False,,NTT poly inverse 3-mod CRT; inherently serial NTT stages,med
+930,1099,176,6.24,OK,fast_no_action,False,False,False,True,False,,,
+931,8091,2092,3.87,OK,sequential_hard,False,False,False,False,False,,Lucy prime-sum DP is loop-carried O(N^{2/3}); two-array get_idx is a small cache tweak only.,med
+932,124,10,12.4,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,,
+933,2468,686,3.6,OK,already_opt_fast,True,False,False,False,False,,already rayon via raw-ptr share,med
+934,187,65,2.88,OK,fast_no_action,False,True,False,False,True,,,
+935,17,7,2.43,OK,fast_no_action,False,False,False,True,False,,,
+936,542,215,2.52,OK,fast_no_action,False,False,False,False,False,,,
+937,4186,919,4.55,OK,already_opt_fast,False,False,False,False,False,A/B w1 accept,wave1 3.3x; leftover vs C k%3 formula if still unused,med
+938,2641,2306,1.15,OK,needs_refactor,False,False,False,False,False,,expected-value DP / coins,low
+939,1607,428,3.75,OK,fast_playbook_residual,False,False,False,False,True,,look at independent residue classes,low
+940,9,3,3.0,OK,fast_no_action,False,True,False,False,False,,,
+941,4810,533,9.02,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 thread_local RankScratch + rayon accepted,high
+942,987,335,2.95,OK,fast_no_action,False,False,True,False,True,,,
+943,1589,484,3.28,OK,already_opt_fast,True,False,False,True,False,,already rayon,med
+944,1595,175,9.11,OK,already_opt_fast,True,True,False,False,False,,inner rayon already,med
+945,2576,537,4.8,OK,already_opt_fast,True,False,False,False,False,,already rayon,med
+946,8902,823,10.82,OK,already_opt_fast,False,True,False,False,False,A/B w2 accept,wave2 i128->i32 CF still 4.3s cand; 1e8 sequential steps,high
+947,5823,1584,3.68,OK,needs_refactor,False,False,True,True,True,,"Vec period cache (p,e bounded) not HashMap; u64 Mat2 mul (pe<=1e6); then rayon over m.",high
+948,9,1,9.0,OK,fast_no_action,False,False,False,False,False,,,
+949,923,261,3.54,OK,already_opt_fast,False,False,False,True,False,optimized=true,,
+950,23,3,7.67,OK,fast_no_action,False,False,True,False,False,,,
+951,3,2,1.5,OK,fast_no_action,False,False,True,False,False,,,
+952,1755,379,4.63,OK,fast_playbook_residual,False,False,True,False,True,,profiles memory-bound,low
+953,9103,1820,5.0,OK,already_opt_still_slow,True,True,False,False,False,,"No i128, rayon DFS, unchecked already; only DFS load-balance remains (triage 1.2–1.5× low).",med
+954,4959,3027,1.64,OK,already_opt_still_slow,True,False,False,False,False,,"already rayon (l,tr); leftover FxHashMap vs C DFS",med
+955,31,6,5.17,OK,fast_no_action,False,False,True,False,False,,,
+956,135,35,3.86,OK,fast_no_action,False,False,True,False,True,,,
+957,0,1,,OK,fast_no_action,False,True,False,False,False,,,
+958,3011,397,7.58,OK,already_opt_fast,True,True,False,False,False,wave2 partial D (unmerged),source already has top-level rayon + deepening; batch-D WIP vs current,med
+959,119,36,3.31,OK,fast_no_action,False,False,False,False,False,,,
+960,13,1,13.0,OK,fast_no_action,False,False,True,False,False,,,
+961,752,352,2.14,OK,fast_no_action,False,False,True,True,False,,,
+962,7008,410,17.09,OK,already_opt_fast,True,False,False,False,False,A/B w1 accept,wave1 1.24x; thread_local factor scratch leftover,high
+963,3707,1307,2.84,OK,needs_refactor,False,False,True,True,False,,look at palindromic-path / graph search,low
+964,2,1,2.0,OK,fast_no_action,False,False,False,True,False,,,
+965,264,88,3.0,OK,fast_no_action,False,False,False,False,False,,,
+966,3324,2101,1.58,OK,needs_refactor,False,False,False,False,False,,circle-lattice; independent radii?,low
+967,1216,438,2.78,OK,fast_no_action,False,True,False,False,False,,,
+968,76,2,38.0,WRONG,wrong,False,False,True,False,True,,,
+969,13,1,13.0,OK,fast_no_action,False,False,True,False,True,,,
+970,1,1,1.0,OK,fast_no_action,False,False,False,False,False,,,
+971,1918,230,8.34,OK,already_opt_fast,True,False,True,False,True,A/B w1 accept,wave1 u64 pow_mod + rayon primes accepted,high
+972,5895,1795,3.28,OK,needs_refactor,True,False,False,True,False,optimized=true,Split diameter keys (tag 0) from circle GeoKey; pack key to cut 32-byte hash traffic.,med
+973,157,106,1.48,OK,fast_no_action,False,True,False,False,True,,,
+974,2,2,1.0,OK,fast_no_action,False,False,True,False,False,,,
+975,4252,2524,1.68,OK,needs_refactor,False,False,False,False,False,,ported from python; winding-path geometry vs C,low
+976,807,239,3.38,OK,fast_no_action,False,False,True,False,False,,,
+977,3406,878,3.88,OK,fast_playbook_residual,False,False,True,False,True,,look at modular recurrence / matrix,low
+978,0,1,,OK,fast_no_action,False,True,False,False,False,,,
+979,31,12,2.58,OK,fast_no_action,False,False,True,False,False,,,
+980,171,138,1.24,OK,fast_no_action,False,False,True,False,False,,,
+981,31,16,1.94,OK,fast_no_action,False,False,True,False,True,,,
+982,6,4,1.5,OK,fast_no_action,False,False,False,True,False,,,
+983,3665,275,13.33,OK,already_opt_fast,True,False,False,False,False,,already gen-counter + rayon,med
+984,2779,1264,2.2,OK,needs_refactor,False,True,False,False,True,,look at digit/automaton DP,low
+985,73,51,1.43,OK,fast_no_action,False,False,False,False,False,,,
+986,340,122,2.79,OK,fast_no_action,True,False,False,True,False,,,
+987,71,41,1.73,OK,fast_no_action,False,True,True,False,False,,,
+988,1,1,1.0,OK,fast_no_action,False,False,False,True,False,,,
+989,3061,2310,1.33,OK,already_opt_still_slow,True,False,False,False,True,,hybrid rayon small-g + sequential large-g,med
+990,221,155,1.43,OK,fast_no_action,False,False,False,True,False,,,
+991,37,14,2.64,OK,fast_no_action,False,False,False,False,False,,,
+992,23,8,2.88,OK,fast_no_action,False,False,False,False,False,,,
+993,6,5,1.2,OK,fast_no_action,False,False,False,False,False,,,
+994,6410,2951,2.17,OK,needs_refactor,True,False,True,False,False,,Drop par over tiny Du Jiao floor-blocks (playbook tiny-iter); raise sieve so fewer HashMap big[] fills.,med
+995,2678,71,37.72,OK,already_opt_fast,True,False,True,True,True,,already rayon; HashMap leftover,med
+996,458,117,3.91,OK,fast_no_action,False,True,False,False,False,,,
+997,0,1,,OK,fast_no_action,False,False,False,False,False,,,

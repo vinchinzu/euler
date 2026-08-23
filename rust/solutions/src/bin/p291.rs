@@ -1,101 +1,245 @@
 // Project Euler 291: Panaitopol Primes
 //
 // Count primes p < 5*10^15 of the form 2y^2 + 2y + 1.
-// Sieve approach: for each prime q ≡ 1 (mod 4), find roots of f(y) ≡ 0 (mod q).
+// Parallel segmented sieve of q ≡ 1 (mod 4), sqrt(-1) via a^{(q-1)/4},
+// then hybrid y-sieve (seq small q, atomic large q).
 
-use euler_utils::mod_pow;
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicU8, Ordering};
 
-const N: i64 = 5_000_000_000_000_000;
+const N: u64 = 5_000_000_000_000_000;
 const LIMIT: usize = 50_000_000;
+/// Sequential mark threshold: tiny p dominate write volume / imbalance.
+const SEQ_P: u32 = 4096;
 
-fn main() {
-    // Step 1: Sieve primes up to sqrt(N) ~ 70.7M
-    let sqrt_n = (N as f64).sqrt() as usize + 2;
-    let mut sieve_small = vec![true; sqrt_n + 1];
-    sieve_small[0] = false;
-    sieve_small[1] = false;
-    {
-        let mut i = 2;
-        while i * i <= sqrt_n {
-            if sieve_small[i] {
-                let mut j = i * i;
-                while j <= sqrt_n {
-                    sieve_small[j] = false;
-                    j += i;
+#[inline(always)]
+fn mul_mod(a: u64, b: u64, m: u64) -> u64 {
+    // p <= sqrt(N) < 2^27, so a*b fits in u64.
+    a.wrapping_mul(b) % m
+}
+
+#[inline(always)]
+fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut result = 1u64;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = mul_mod(result, base, m);
+        }
+        base = mul_mod(base, base, m);
+        exp >>= 1;
+    }
+    result
+}
+
+/// Jacobi symbol (a/n) for odd n > 0.
+#[inline(always)]
+fn jacobi(mut a: u64, mut n: u64) -> i32 {
+    let mut t = 1i32;
+    a %= n;
+    while a != 0 {
+        while a & 1 == 0 {
+            a >>= 1;
+            let r = n & 7;
+            if r == 3 || r == 5 {
+                t = -t;
+            }
+        }
+        std::mem::swap(&mut a, &mut n);
+        if (a & 3) == 3 && (n & 3) == 3 {
+            t = -t;
+        }
+        a %= n;
+    }
+    if n == 1 { t } else { 0 }
+}
+
+/// sqrt(-1) mod p for p ≡ 1 (mod 4): a^{(p-1)/4} with (a/p) = -1.
+#[inline(always)]
+fn sqrt_neg1(p: u64) -> u64 {
+    let exp = (p - 1) >> 2;
+    // p ≡ 5 (mod 8) => 2 is a non-residue, so 2^exp ≡ sqrt(-1).
+    if p & 7 == 5 {
+        return pow_mod(2, exp, p);
+    }
+    let mut z = 3u64;
+    while jacobi(z, p) != -1 {
+        z += 2;
+    }
+    pow_mod(z, exp, p)
+}
+
+fn primes_upto(limit: usize) -> Vec<u32> {
+    if limit < 2 {
+        return Vec::new();
+    }
+    let mut comp = vec![0u8; limit + 1];
+    let mut ps = Vec::with_capacity(limit / 10);
+    let mut i = 2usize;
+    while i * i <= limit {
+        if comp[i] == 0 {
+            ps.push(i as u32);
+            let mut j = i * i;
+            while j <= limit {
+                comp[j] = 1;
+                j += i;
+            }
+        }
+        i += 1;
+    }
+    while i <= limit {
+        if comp[i] == 0 {
+            ps.push(i as u32);
+        }
+        i += 1;
+    }
+    ps
+}
+
+/// First unmarked y ≡ yr (mod p), skipping y=0 and the generator f(y)=p.
+#[inline(always)]
+fn start_from_root(yr: u64, p: u64) -> u32 {
+    if yr == 0 {
+        p as u32
+    } else if 2 * yr * yr + 2 * yr + 1 == p {
+        (yr + p) as u32
+    } else {
+        yr as u32
+    }
+}
+
+fn compute_residues(limit: usize) -> Vec<(u32, u32, u32)> {
+    let sqrt_l = limit.isqrt() + 1;
+    let small_odd: Vec<u32> = primes_upto(sqrt_l)
+        .into_iter()
+        .filter(|&p| p > 2)
+        .collect();
+
+    const SEG: usize = 1 << 16;
+    let n_seg = limit.div_ceil(SEG);
+
+    let parts: Vec<Vec<(u32, u32, u32)>> = (0..n_seg)
+        .into_par_iter()
+        .map(|si| {
+            let lo = si * SEG;
+            let hi = (lo + SEG).min(limit + 1);
+            let len = hi - lo;
+            let mut comp = vec![0u8; len];
+            if lo == 0 {
+                if len > 0 {
+                    comp[0] = 1;
+                }
+                if len > 1 {
+                    comp[1] = 1;
                 }
             }
-            i += 1;
-        }
-    }
-
-    // Step 2: is_prime_arr[y] means f(y) = 2y^2+2y+1 is prime
-    let mut is_prime_arr = vec![true; LIMIT];
-    is_prime_arr[0] = false; // f(0) = 1
-
-    let candidates: &[u64] = &[
-        2, 3, 5, 6, 7, 10, 11, 13, 14, 15, 17, 19, 21, 22, 23,
-        26, 29, 31, 33, 34, 37, 38, 41, 42, 43, 46, 47, 51, 53,
-    ];
-
-    let mut p = 5usize;
-    while p <= sqrt_n {
-        if sieve_small[p] {
-            let pu = p as u64;
-            let exp = (pu - 1) >> 2;
-            let mut r: u64 = 0;
-
-            for &a in candidates {
-                if a >= pu {
-                    continue;
-                }
-                let t = mod_pow(a, exp, pu);
-                if (t as u128 * t as u128) % pu as u128 == (pu - 1) as u128 {
-                    r = t;
+            for &p in &small_odd {
+                let p = p as usize;
+                let p2 = p * p;
+                if p2 >= hi {
                     break;
                 }
-            }
-            if r == 0 {
-                let mut a = 54u64;
-                while a < pu {
-                    let t = mod_pow(a, exp, pu);
-                    if (t as u128 * t as u128) % pu as u128 == (pu - 1) as u128 {
-                        r = t;
-                        break;
+                let mut j = if p2 > lo {
+                    p2
+                } else {
+                    lo.div_ceil(p) * p
+                };
+                if j & 1 == 0 {
+                    j += p;
+                }
+                while j < hi {
+                    // SAFETY: j in [lo, hi)
+                    unsafe {
+                        *comp.get_unchecked_mut(j - lo) = 1;
                     }
-                    a += 1;
+                    j += p << 1;
                 }
             }
 
-            if r != 0 {
-                let inv2 = (pu + 1) >> 1;
-                let y1 = ((r as u128 + pu as u128 - 1) * inv2 as u128 % pu as u128) as u64;
-                let y2 = ((pu as u128 * 2 - r as u128 - 1) * inv2 as u128 % pu as u128) as u64;
-
-                let roots = if y1 != y2 { vec![y1, y2] } else { vec![y1] };
-
-                for yr in roots {
-                    let mut start = yr as usize;
-                    if start == 0 {
-                        start = p;
-                    } else if start < LIMIT {
-                        let fval = 2 * (start as i64) * (start as i64) + 2 * (start as i64) + 1;
-                        if fval == p as i64 {
-                            start += p;
-                        }
-                    }
-                    if start < LIMIT {
-                        let mut i = start;
-                        while i < LIMIT {
-                            is_prime_arr[i] = false;
-                            i += p;
-                        }
-                    }
-                }
+            let mut out = Vec::with_capacity(len / 16);
+            // First n >= max(lo, 5) with n ≡ 1 (mod 4).
+            let mut n = lo.max(5);
+            let r4 = n & 3;
+            if r4 != 1 {
+                n += (5 - r4) & 3;
             }
+            while n < hi {
+                // SAFETY: n in [lo, hi)
+                if unsafe { *comp.get_unchecked(n - lo) } == 0 {
+                    let p = n as u64;
+                    let r = sqrt_neg1(p);
+                    let inv2 = (p + 1) >> 1;
+                    let y1 = ((r + p - 1) * inv2) % p;
+                    let y2 = ((p * 2 - r - 1) * inv2) % p;
+                    out.push((p as u32, start_from_root(y1, p), start_from_root(y2, p)));
+                }
+                n += 4;
+            }
+            out
+        })
+        .collect();
+
+    let mut out = Vec::with_capacity(limit / 16);
+    for mut part in parts {
+        out.append(&mut part);
+    }
+    out
+}
+
+#[inline(always)]
+fn mark_plain(sieve: &mut [u8], mut i: usize, p: usize) {
+    let n = sieve.len();
+    while i < n {
+        // SAFETY: i < len
+        unsafe {
+            *sieve.get_unchecked_mut(i) = 0;
         }
-        p += 4;
+        i += p;
+    }
+}
+
+#[inline(always)]
+fn mark_atomic(sieve: &[AtomicU8], mut i: usize, p: usize) {
+    let n = sieve.len();
+    while i < n {
+        // SAFETY: i < len
+        unsafe {
+            sieve.get_unchecked(i).store(0, Ordering::Relaxed);
+        }
+        i += p;
+    }
+}
+
+fn vec_u8_to_atomic(v: Vec<u8>) -> Vec<AtomicU8> {
+    let mut v = std::mem::ManuallyDrop::new(v);
+    unsafe { Vec::from_raw_parts(v.as_mut_ptr() as *mut AtomicU8, v.len(), v.capacity()) }
+}
+
+fn main() {
+    let sqrt_n = (N as f64).sqrt() as usize + 2;
+
+    let residues = compute_residues(sqrt_n);
+    let (small, mut large): (Vec<_>, Vec<_>) =
+        residues.into_iter().partition(|&(p, _, _)| p < SEQ_P);
+    // Largest p first so rayon's range splits give light work to the
+    // left; stealers take the heavy small-p tail.
+    large.reverse();
+
+    let mut sieve = vec![1u8; LIMIT];
+    sieve[0] = 0;
+
+    for &(p, r1, r2) in &small {
+        let p = p as usize;
+        mark_plain(&mut sieve, r1 as usize, p);
+        mark_plain(&mut sieve, r2 as usize, p);
     }
 
-    let count: i64 = is_prime_arr.iter().filter(|&&x| x).count() as i64;
-    println!("{}", count);
+    let sieve = vec_u8_to_atomic(sieve);
+    large.par_iter().for_each(|&(p, r1, r2)| {
+        let p = p as usize;
+        mark_atomic(&sieve, r1 as usize, p);
+        mark_atomic(&sieve, r2 as usize, p);
+    });
+
+    let ans: u32 = sieve.iter().map(|x| x.load(Ordering::Relaxed) as u32).sum();
+    println!("{}", ans);
 }

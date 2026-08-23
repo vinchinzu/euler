@@ -1,10 +1,9 @@
 // Project Euler 815 - Grouping Cards
 // K=4 copies of N=60 values, find expected max distinct values present
 
-use std::collections::HashMap;
-
 const N: usize = 60;
 const K: usize = 4;
+const MAX_VAL: usize = N + 1;
 
 fn ncr(n: usize, r: usize, table: &[[i64; K + 2]]) -> i64 {
     if r > n || r > K + 1 { return 0; }
@@ -37,20 +36,19 @@ fn main() {
 
     // Max index = C(64, 4) = 635376
     const MAX_INDEX: usize = 635376;
-    const MAX_VAL: usize = N + 1;
 
-    let mut cache: Vec<Vec<f64>> = vec![vec![f64::NAN; MAX_VAL]; MAX_INDEX];
+    let mut cache = vec![f64::NAN; MAX_INDEX * MAX_VAL];
 
-    // Iterative DFS to avoid stack overflow
     fn solve(
         c: &mut [usize; K + 1],
         max_val: usize,
-        cache: &mut Vec<Vec<f64>>,
+        cache: &mut [f64],
         ncr_table: &[[i64; K + 2]],
     ) -> f64 {
         let idx = index_from_counts(c, ncr_table);
-        if !cache[idx][max_val].is_nan() {
-            return cache[idx][max_val];
+        let slot = idx * MAX_VAL + max_val;
+        if !cache[slot].is_nan() {
+            return cache[slot];
         }
 
         let mut remaining = 0usize;
@@ -58,7 +56,7 @@ fn main() {
             remaining += (K - i) * c[i];
         }
         if remaining == 0 {
-            cache[idx][max_val] = max_val as f64;
+            cache[slot] = max_val as f64;
             return max_val as f64;
         }
 
@@ -76,8 +74,8 @@ fn main() {
             }
         }
 
-        cache[idx][max_val] = result / remaining as f64;
-        cache[idx][max_val]
+        cache[slot] = result / remaining as f64;
+        cache[slot]
     }
 
     let mut c = [0usize; K + 1];

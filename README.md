@@ -92,13 +92,15 @@ Rust wall-clock tuning uses a static triage + A/B gate (accept only if median is
 
 | File | Purpose |
 |------|---------|
-| `optimization_applied_summary.md` | **Current status**: accepted speedups, rejects, and **partials** to resume |
+| `optimization_status.md` / `.csv` | **Current status** (2026-08-22 5900XT re-time): already-optimized vs needs-refactor |
+| `optimization_applied_summary.md` | Historical A/B waves: accepted speedups, rejects, and **partials** |
 | `optimization_ab_results.csv` / `.json` | Per-problem A/B timings and decisions |
-| `optimization_triage.csv` / `.json` | Ranked optimization opportunity estimates |
+| `optimization_triage.csv` / `.json` | Ranked opportunity estimates (static; pre-wave-2) |
 | `rust/CLAUDE.md` | Performance rules learned from C→Rust ports |
 | `rust/profiles/SUMMARY.md` | Profiling classes for solutions >1s |
+| `.grok/skills/euler-rust-speed/SKILL.md` | 2s→<1s playbook (target scan, rayon/`u64` rules, A/B gate) |
 
-**Partials:** wave-2 batches B/C/D were stopped mid-run. Unvalidated candidates may still live under `~/.grok/worktrees/euler-project-euler/subagent-*`. **Do not merge them without re-running the A/B gate** (≥5% faster median + correct answer). See the Partials section in `optimization_applied_summary.md` for the worktree map, WIP tables, and resume recipe.
+**2026-08-22 re-time** on Ryzen 9 5900XT (16c/32t): 997 binaries, sum **1101s → 386s** (2.85×). See `optimization_status.md` (pre-wave-4 snapshot). After waves 4–6 (overlay, not a full re-validate): **~264s**. **Wave 6** (22 leftovers + first sub-500ms, all ≥2×). **Wave 5** squeezed the 500ms–1s band: 22 one-run+answer (all ≥2.2×). **Wave 4** merged 52 candidates (12 A/B, 40 one-run+answer), including a **p968** correctness fix. **Wave 3** dropped thirteen ~2s binaries under 1s on the old 4c/8t box. A/B gate unchanged (≥5% faster median + correct answer). Remaining: 83 ≥1s, 65 in 500ms–1s, ~314 in 50–500ms (cursory pass in progress).
 
 ## Key Files
 
@@ -111,3 +113,4 @@ Rust wall-clock tuning uses a static triage + A/B gate (accept only if median is
 | `rust/CLAUDE.md` | Rust performance guide |
 | `c/validate.sh` | C-only validation (used by bench.sh) |
 | `optimization_applied_summary.md` | Optimization accepts / rejects / partials |
+| `optimization_status.md` / `.csv` | 5900XT re-time + already-optimized vs needs-refactor |

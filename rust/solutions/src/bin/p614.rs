@@ -9,8 +9,8 @@
 // Single blocked recurrence: F(n) = B(n) + sum_{t>=1} s_t * F(n - T_t)
 // where T_t = t(t+1)/2, s_t = (-1)^floor((t-1)/2)
 //
-// Phase 1 (large offsets) parallelized with rayon.
-// Accumulates in i64 to skip per-term modular reduction.
+// Phase 1 (large offsets) is dest-chunk parallel: each worker owns a slice of
+// `temp` so there is no per-thread merge. Phase 2 stays sequential.
 
 use rayon::prelude::*;
 
@@ -24,7 +24,9 @@ fn triangular_terms(max_val: usize) -> Vec<(usize, i64)> {
     let mut t: usize = 1;
     loop {
         let tri = t * (t + 1) / 2;
-        if tri > max_val { break; }
+        if tri > max_val {
+            break;
+        }
         // s_t = (-1)^floor((t-1)/2): +,+,-,-,+,+,-,-,...
         let sign: i64 = if ((t - 1) / 2) % 2 == 0 { 1 } else { -1 };
         terms.push((tri, sign));
@@ -34,98 +36,215 @@ fn triangular_terms(max_val: usize) -> Vec<(usize, i64)> {
 }
 
 #[inline(always)]
-fn reduce_mod(x: i64) -> u64 {
-    ((x % MODI) + MODI) as u64 % MOD
+fn reduce_mod(x: i64) -> u32 {
+    let r = x % MODI;
+    if r < 0 { (r + MODI) as u32 } else { r as u32 }
+}
+
+/// Accumulate large-offset contributions into a destination chunk of `temp`.
+///
+/// `tchunk` covers dest indices [d0, d0 + tchunk.len()) within the block.
+/// Large triangular offsets are >= BLOCK, so every source lies in a previous
+/// block and workers only read `f` (no races).
+///
+/// Signs on `large_tri` are grouped ++--; the 4-way inner loop uses that.
+fn accum_chunk(tchunk: &mut [i64], d0: usize, f: &[u32], bstart: usize, large_tri: &[(usize, i64)]) {
+    let len = tchunk.len();
+    if len == 0 {
+        return;
+    }
+    tchunk.fill(0);
+
+    let n0 = bstart + d0;
+    let n1 = n0 + len;
+
+    // Terms with w >= n1 cannot contribute to this chunk.
+    let end = large_tri.partition_point(|&(w, _)| w < n1);
+    if end == 0 {
+        return;
+    }
+    let terms = &large_tri[..end];
+    // w <= n0: every dest in the chunk is valid (full-length vector add)
+    let full_end = terms.partition_point(|&(w, _)| w <= n0);
+
+    unsafe {
+        let dst = tchunk.as_mut_ptr();
+        let fp = f.as_ptr();
+        let full = &terms[..full_end];
+
+        let mut k = 0;
+        while k + 4 <= full.len() {
+            // SAFETY: k+3 < full.len(); w <= n0 so n0 - w >= 0; last source
+            // index n1 - 1 - w < n1 <= N + 1, and f has length N + 1.
+            let (w0, _) = *full.get_unchecked(k);
+            let (w1, _) = *full.get_unchecked(k + 1);
+            let (w2, _) = *full.get_unchecked(k + 2);
+            let (w3, _) = *full.get_unchecked(k + 3);
+            let p0 = fp.add(n0 - w0);
+            let p1 = fp.add(n0 - w1);
+            let p2 = fp.add(n0 - w2);
+            let p3 = fp.add(n0 - w3);
+            for j in 0..len {
+                let a = *p0.add(j) as i64;
+                let b = *p1.add(j) as i64;
+                let c = *p2.add(j) as i64;
+                let d = *p3.add(j) as i64;
+                *dst.add(j) += a + b - c - d;
+            }
+            k += 4;
+        }
+        while k < full.len() {
+            let (w, sign) = *full.get_unchecked(k);
+            let src = fp.add(n0 - w);
+            if sign > 0 {
+                for j in 0..len {
+                    *dst.add(j) += *src.add(j) as i64;
+                }
+            } else {
+                for j in 0..len {
+                    *dst.add(j) -= *src.add(j) as i64;
+                }
+            }
+            k += 1;
+        }
+
+        // Partial terms: n0 < w < n1. Dest starts at w, source at 0.
+        for idx in full_end..terms.len() {
+            let (w, sign) = *terms.get_unchecked(idx);
+            let dst_off = w - n0;
+            let slen = len - dst_off;
+            let dp = dst.add(dst_off);
+            if sign > 0 {
+                for j in 0..slen {
+                    *dp.add(j) += *fp.add(j) as i64;
+                }
+            } else {
+                for j in 0..slen {
+                    *dp.add(j) -= *fp.add(j) as i64;
+                }
+            }
+        }
+    }
+}
+
+fn worker_count(work: u64) -> usize {
+    if work < 2_000_000 {
+        return 1;
+    }
+    let cap = rayon::current_num_threads().clamp(1, 16);
+    let want = (work / 2_000_000) as usize;
+    want.clamp(2, cap)
 }
 
 fn main() {
     let tri_terms = triangular_terms(N);
-    let split = tri_terms.iter().position(|&(w, _)| w >= BLOCK).unwrap_or(tri_terms.len());
+    let split = tri_terms
+        .iter()
+        .position(|&(w, _)| w >= BLOCK)
+        .unwrap_or(tri_terms.len());
     let small_tri = &tri_terms[..split];
     let large_tri = &tri_terms[split..];
 
-    // Precompute base case B[n]: nonzero only at pronic numbers m(m+1)
+    // Sparse B[n]: nonzero only at pronic numbers m(m+1).
     // Sign: (-1)^floor((m+1)/2)
-    let mut base = vec![0i64; N + 1];
+    let mut pronics: Vec<(usize, i64)> = Vec::new();
     {
         let mut m: usize = 0;
         loop {
             let p = m * (m + 1);
-            if p > N { break; }
-            base[p] = if ((m + 1) / 2) % 2 == 0 { 1 } else { -1 };
+            if p > N {
+                break;
+            }
+            let sign: i64 = if ((m + 1) / 2) % 2 == 0 { 1 } else { -1 };
+            pronics.push((p, sign));
             m += 1;
         }
     }
 
-    let mut f = vec![0u64; N + 1];
-    let num_blocks = (N + BLOCK) / BLOCK;
-
-    // Pre-allocate thread-local temp buffers
-    let nthreads = rayon::current_num_threads();
-    let chunk_size = std::cmp::max(1, (large_tri.len() + nthreads - 1) / nthreads);
-    let mut thread_temps: Vec<Vec<i64>> = (0..nthreads).map(|_| vec![0i64; BLOCK]).collect();
+    // u32: values fit in 0..MOD and the 40MB array fits in L3.
+    let mut f = vec![0u32; N + 1];
     let mut temp = vec![0i64; BLOCK];
+    let num_blocks = (N + BLOCK) / BLOCK;
+    let mut pr_idx = 0usize;
 
     for b in 0..num_blocks {
         let bstart = b * BLOCK;
         let bend = std::cmp::min(bstart + BLOCK, N + 1);
         let blen = bend - bstart;
 
-        // Phase 1: Parallel accumulation of large-offset contributions
-        let f_ref: &[u64] = &f;
-        thread_temps.par_iter_mut().enumerate().for_each(|(tid, ptmp)| {
-            let chunk_start = tid * chunk_size;
-            let chunk_end = std::cmp::min(chunk_start + chunk_size, large_tri.len());
-            // SAFETY: ptmp has length BLOCK >= blen
-            for i in 0..blen {
-                unsafe { *ptmp.get_unchecked_mut(i) = 0; }
+        // Phase 1: dest-chunk parallel accumulation of large-offset contribs
+        let n_terms = large_tri.partition_point(|&(w, _)| w < bend);
+        let work = n_terms as u64 * blen as u64;
+        let n_workers = worker_count(work);
+        if n_workers == 1 {
+            accum_chunk(&mut temp[..blen], 0, &f, bstart, large_tri);
+        } else {
+            let mut chunk_len = (blen + n_workers - 1) / n_workers;
+            chunk_len = (chunk_len + 15) & !15;
+            if chunk_len == 0 {
+                chunk_len = 1;
             }
-            for idx in chunk_start..chunk_end {
-                let (w, sign) = unsafe { *large_tri.get_unchecked(idx) };
-                let n_lo = bstart.max(w);
-                if n_lo >= bend { break; }
-                let src_base = n_lo - w;
-                let dst_base = n_lo - bstart;
-                let len = bend - n_lo;
-                for j in 0..len {
-                    unsafe {
-                        let prev = *f_ref.get_unchecked(src_base + j) as i64;
-                        *ptmp.get_unchecked_mut(dst_base + j) += sign * prev;
-                    }
-                }
-            }
-        });
-
-        // Merge: sum all thread temps into temp
-        for i in 0..blen {
-            let mut s = 0i64;
-            for ptmp in &thread_temps {
-                s += unsafe { *ptmp.get_unchecked(i) };
-            }
-            unsafe { *temp.get_unchecked_mut(i) = s; }
+            let f_ref: &[u32] = &f;
+            temp[..blen]
+                .par_chunks_mut(chunk_len)
+                .enumerate()
+                .for_each(|(cid, tchunk)| {
+                    accum_chunk(tchunk, cid * chunk_len, f_ref, bstart, large_tri);
+                });
         }
 
-        // Phase 2: Forward sweep within block (sequential)
+        // Phase 2: forward sweep within the block (loop-carried via T_1 = 1)
         for i in 0..blen {
             let n = bstart + i;
-            let mut acc = unsafe { *base.get_unchecked(n) }
-                        + unsafe { *temp.get_unchecked(i) };
-
-            for &(w, sign) in small_tri {
-                if w > n { break; }
-                let prev = unsafe { *f.get_unchecked(n - w) } as i64;
-                acc += sign * prev;
+            let mut acc = unsafe { *temp.get_unchecked(i) };
+            if pr_idx < pronics.len() {
+                let (p, s) = unsafe { *pronics.get_unchecked(pr_idx) };
+                if p == n {
+                    acc += s;
+                    pr_idx += 1;
+                }
             }
 
-            unsafe { *f.get_unchecked_mut(n) = reduce_mod(acc); }
+            let mut k = 0;
+            while k + 4 <= small_tri.len() {
+                let (w3, _) = unsafe { *small_tri.get_unchecked(k + 3) };
+                if w3 > n {
+                    break;
+                }
+                // SAFETY: w3 <= n and the four ++-- weights are increasing,
+                // so n - w >= 0; f has length N + 1 and n <= N.
+                unsafe {
+                    let (w0, _) = *small_tri.get_unchecked(k);
+                    let (w1, _) = *small_tri.get_unchecked(k + 1);
+                    let (w2, _) = *small_tri.get_unchecked(k + 2);
+                    acc += *f.get_unchecked(n - w0) as i64
+                        + *f.get_unchecked(n - w1) as i64
+                        - *f.get_unchecked(n - w2) as i64
+                        - *f.get_unchecked(n - w3) as i64;
+                }
+                k += 4;
+            }
+            while k < small_tri.len() {
+                let (w, sign) = unsafe { *small_tri.get_unchecked(k) };
+                if w > n {
+                    break;
+                }
+                acc += sign * unsafe { *f.get_unchecked(n - w) } as i64;
+                k += 1;
+            }
+
+            unsafe {
+                *f.get_unchecked_mut(n) = reduce_mod(acc);
+            }
         }
     }
 
-    // Sum f[1..=N]
     let mut ans = 0u64;
     for i in 1..=N {
-        ans += unsafe { *f.get_unchecked(i) };
-        if ans >= MOD { ans -= MOD; }
+        ans += unsafe { *f.get_unchecked(i) } as u64;
+        if ans >= MOD {
+            ans -= MOD;
+        }
     }
 
     println!("{}", ans);

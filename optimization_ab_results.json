@@ -470,5 +470,974 @@
     "decision": "ACCEPT",
     "reason": "i32 cores+mat; extended-euclid modinv; ptr GE; mat reuse",
     "wave": 2
+  },
+  {
+    "problem": 455,
+    "baseline_median_ms": 3029.0,
+    "candidate_median_ms": 468.0,
+    "speedup": 6.47,
+    "correct": true,
+    "baseline_times": [
+      3029.0
+    ],
+    "candidate_times": [
+      429.0,
+      466.0,
+      468.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over n=2..1e6; u64 pow_mod",
+    "wave": 3
+  },
+  {
+    "problem": 531,
+    "baseline_median_ms": 2445.0,
+    "candidate_median_ms": 368.0,
+    "speedup": 6.64,
+    "correct": true,
+    "baseline_times": [
+      2445.0
+    ],
+    "candidate_times": [
+      350.0,
+      368.0,
+      365.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over n; iterative ext_gcd; drop i128",
+    "wave": 3
+  },
+  {
+    "problem": 404,
+    "baseline_median_ms": 2694.0,
+    "candidate_median_ms": 470.0,
+    "speedup": 5.73,
+    "correct": true,
+    "baseline_times": [
+      2694.0
+    ],
+    "candidate_times": [
+      458.0,
+      467.0,
+      470.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over both nn cases",
+    "wave": 3
+  },
+  {
+    "problem": 628,
+    "baseline_median_ms": 2192.0,
+    "candidate_median_ms": 415.0,
+    "speedup": 5.28,
+    "correct": true,
+    "baseline_times": [
+      2192.0
+    ],
+    "candidate_times": [
+      366.0,
+      415.0,
+      365.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "i128->u64 factorial pass",
+    "wave": 3
+  },
+  {
+    "problem": 784,
+    "baseline_median_ms": 2807.0,
+    "candidate_median_ms": 567.0,
+    "speedup": 4.95,
+    "correct": true,
+    "baseline_times": [
+      2807.0
+    ],
+    "candidate_times": [
+      512.0,
+      517.0,
+      567.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over p; Vec SPF",
+    "wave": 3
+  },
+  {
+    "problem": 589,
+    "baseline_median_ms": 2464.0,
+    "candidate_median_ms": 617.0,
+    "speedup": 4.0,
+    "correct": true,
+    "baseline_times": [
+      2464.0
+    ],
+    "candidate_times": [
+      603.0,
+      616.0,
+      617.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over (m,n) linear systems",
+    "wave": 3
+  },
+  {
+    "problem": 741,
+    "baseline_median_ms": 2803.0,
+    "candidate_median_ms": 716.0,
+    "speedup": 3.92,
+    "correct": true,
+    "baseline_times": [
+      2803.0
+    ],
+    "candidate_times": [
+      690.0,
+      716.0,
+      716.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "u64 mulmod + rayon::join g(N1)/g(N2)",
+    "wave": 3
+  },
+  {
+    "problem": 486,
+    "baseline_median_ms": 2313.0,
+    "candidate_median_ms": 114.0,
+    "speedup": 20.29,
+    "correct": true,
+    "baseline_times": [
+      2313.0
+    ],
+    "candidate_times": [
+      99.0,
+      114.0,
+      114.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "phi-order + incremental 2^k",
+    "wave": 3
+  },
+  {
+    "problem": 743,
+    "baseline_median_ms": 2305.0,
+    "candidate_median_ms": 1619.0,
+    "speedup": 1.42,
+    "correct": true,
+    "baseline_times": [
+      2305.0
+    ],
+    "candidate_times": [
+      1657.0,
+      1619.0,
+      1618.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "u64 mulmod serial recurrence",
+    "wave": 3
+  },
+  {
+    "problem": 747,
+    "baseline_median_ms": 1553.0,
+    "candidate_median_ms": 1119.0,
+    "speedup": 1.39,
+    "correct": true,
+    "baseline_times": [
+      1553.0
+    ],
+    "candidate_times": [
+      1089.0,
+      1117.0,
+      1119.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon over a + u64 ncr",
+    "wave": 3
+  },
+  {
+    "problem": 757,
+    "baseline_median_ms": 2639.0,
+    "candidate_median_ms": 2075.0,
+    "speedup": 1.27,
+    "correct": true,
+    "baseline_times": [
+      2639.0
+    ],
+    "candidate_times": [
+      2015.0,
+      2075.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "par generate + par_sort",
+    "wave": 3
+  },
+  {
+    "problem": 675,
+    "baseline_median_ms": 1767.0,
+    "candidate_median_ms": 1620.0,
+    "speedup": 1.09,
+    "correct": true,
+    "baseline_times": [
+      1767.0
+    ],
+    "candidate_times": [
+      1511.0,
+      1619.0,
+      1620.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "i128->u64 in S(i!)",
+    "wave": 3
+  },
+  {
+    "problem": 518,
+    "baseline_median_ms": 2873.0,
+    "candidate_median_ms": 3811.0,
+    "speedup": 0.754,
+    "correct": true,
+    "baseline_times": [
+      2873.0
+    ],
+    "candidate_times": [
+      3811.0
+    ],
+    "decision": "REJECT",
+    "reason": "rayon 25M tiny-k regression",
+    "wave": 3
+  },
+  {
+    "problem": 410,
+    "baseline_median_ms": 2747.0,
+    "candidate_median_ms": 3132.0,
+    "speedup": 0.877,
+    "correct": true,
+    "baseline_times": [
+      2747.0
+    ],
+    "candidate_times": [
+      3132.0
+    ],
+    "decision": "REJECT",
+    "reason": "rayon 1e8 cheap-j regression",
+    "wave": 3
+  },
+  {
+    "problem": 752,
+    "baseline_median_ms": 2744.0,
+    "candidate_median_ms": 237.0,
+    "speedup": 11.58,
+    "correct": true,
+    "baseline_times": [
+      2744.0
+    ],
+    "candidate_times": [
+      237.0,
+      224.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "i64 mat_mul; SPF factor p^2-1; rayon primes",
+    "wave": 3
+  },
+  {
+    "problem": 263,
+    "baseline_median_ms": 2307.0,
+    "candidate_median_ms": 90.0,
+    "speedup": 25.63,
+    "correct": true,
+    "baseline_times": [
+      2307.0
+    ],
+    "candidate_times": [
+      89.0,
+      90.0
+    ],
+    "decision": "ACCEPT",
+    "reason": "local SPRP 2/7/61; wheel; rayon chunks",
+    "wave": 3
+  },
+  {
+    "problem": 688,
+    "baseline_median_ms": 2595.2,
+    "candidate_median_ms": 432.6,
+    "speedup": 5.999,
+    "correct": true,
+    "baseline_times": [
+      2622.6,
+      2591.3,
+      2595.2
+    ],
+    "candidate_times": [
+      450.6,
+      432.6,
+      426.6
+    ],
+    "decision": "ACCEPT",
+    "reason": "rayon k-chunks + u64 mulmod",
+    "wave": 3
+  },
+  {
+    "problem": 586,
+    "baseline_median_ms": 2457.6,
+    "candidate_median_ms": 316.1,
+    "speedup": 7.776,
+    "correct": true,
+    "baseline_times": [
+      2457.6,
+      2614.3,
+      2389.6
+    ],
+    "candidate_times": [
+      339.6,
+      316.1,
+      308.1
+    ],
+    "decision": "ACCEPT",
+    "reason": "k=1/k=2 leaf counts + odd sieve + join",
+    "wave": 3
+  },
+  {
+    "problem": 544,
+    "baseline_median_ms": 1975.4,
+    "candidate_median_ms": 728.3,
+    "speedup": 2.712,
+    "correct": true,
+    "baseline_times": [
+      1975.4,
+      2052.5,
+      1935.8
+    ],
+    "candidate_times": [
+      732.6,
+      711.9,
+      728.3
+    ],
+    "decision": "ACCEPT",
+    "reason": "no HashMap clone; i32 stack DP; FxHashMap",
+    "wave": 3
+  },
+  {
+    "problem": 468,
+    "baseline_median_ms": 5144.2,
+    "candidate_median_ms": 4579.1,
+    "speedup": 1.123,
+    "correct": true,
+    "baseline_times": [
+      5166.4,
+      5144.2,
+      5140.3
+    ],
+    "candidate_times": [
+      4564.0,
+      4582.4,
+      4579.1
+    ],
+    "notes": "wave4 small-B deferred sum + const-generic primes",
+    "accepted": true
+  },
+  {
+    "problem": 611,
+    "baseline_median_ms": 1459.9,
+    "candidate_median_ms": 543.3,
+    "speedup": 2.687,
+    "correct": true,
+    "baseline_times": [
+      1459.9,
+      1460.0,
+      1445.6
+    ],
+    "candidate_times": [
+      543.3,
+      534.0,
+      544.1
+    ],
+    "notes": "wave4 Lucy i_max split + rayon DFS frames",
+    "accepted": true
+  },
+  {
+    "problem": 433,
+    "baseline_median_ms": 1874.4,
+    "candidate_median_ms": 1697.5,
+    "speedup": 1.104,
+    "correct": true,
+    "baseline_times": [
+      1874.0,
+      1874.4,
+      1875.7
+    ],
+    "candidate_times": [
+      1702.3,
+      1697.5,
+      1697.5
+    ],
+    "notes": "wave4 iterative extgcd + rayon squarefree g",
+    "accepted": true
+  },
+  {
+    "problem": 654,
+    "baseline_median_ms": 1318.8,
+    "candidate_median_ms": 1129.3,
+    "speedup": 1.168,
+    "correct": true,
+    "baseline_times": [
+      1313.2,
+      1320.3,
+      1318.8
+    ],
+    "candidate_times": [
+      1132.0,
+      1127.2,
+      1129.3
+    ],
+    "notes": "wave4 u64 NTT mulmod (P1/P2/P3<2^32)",
+    "accepted": true
+  },
+  {
+    "problem": 738,
+    "baseline_median_ms": 813.3,
+    "candidate_median_ms": 658.5,
+    "speedup": 1.235,
+    "correct": true,
+    "baseline_times": [
+      802.5,
+      815.6,
+      813.3
+    ],
+    "candidate_times": [
+      658.5,
+      658.6,
+      657.3
+    ],
+    "notes": "wave4 FxHashMap memo",
+    "accepted": true
+  },
+  {
+    "problem": 972,
+    "baseline_median_ms": 1781.5,
+    "candidate_median_ms": 1367.4,
+    "speedup": 1.303,
+    "correct": true,
+    "baseline_times": [
+      1810.4,
+      1780.2,
+      1781.5
+    ],
+    "candidate_times": [
+      1367.4,
+      1364.2,
+      1377.6
+    ],
+    "notes": "wave4 packed circle keys + diameter Vec",
+    "accepted": true
+  },
+  {
+    "problem": 815,
+    "baseline_median_ms": 945.1,
+    "candidate_median_ms": 592.9,
+    "speedup": 1.594,
+    "correct": true,
+    "baseline_times": [
+      926.2,
+      945.1,
+      945.7
+    ],
+    "candidate_times": [
+      640.8,
+      592.9,
+      585.1
+    ],
+    "notes": "wave4 flat f64 cache not Vec<Vec>",
+    "accepted": true
+  },
+  {
+    "problem": 797,
+    "baseline_median_ms": 2865.5,
+    "candidate_median_ms": 2045.5,
+    "speedup": 1.401,
+    "correct": true,
+    "baseline_times": [
+      2890.7,
+      2853.3,
+      2865.5
+    ],
+    "candidate_times": [
+      2066.5,
+      2031.8,
+      2045.5
+    ],
+    "notes": "wave4 incremental 2^i + egcd inv",
+    "accepted": true
+  },
+  {
+    "problem": 655,
+    "baseline_median_ms": 2332.3,
+    "candidate_median_ms": 1841.4,
+    "speedup": 1.267,
+    "correct": true,
+    "baseline_times": [
+      2371.9,
+      2328.2,
+      2332.3
+    ],
+    "candidate_times": [
+      1836.0,
+      1841.4,
+      1844.6
+    ],
+    "notes": "wave4 split-index palindrome DP + incremental 10^i",
+    "accepted": true
+  },
+  {
+    "problem": 637,
+    "baseline_median_ms": 1833.9,
+    "candidate_median_ms": 1364.2,
+    "speedup": 1.344,
+    "correct": true,
+    "baseline_times": [
+      1837.1,
+      1833.9,
+      1826.4
+    ],
+    "candidate_times": [
+      1364.2,
+      1360.9,
+      1368.2
+    ],
+    "notes": "wave4 rayon::join compute_f(10)/compute_f(3)",
+    "accepted": true
+  },
+  {
+    "problem": 465,
+    "baseline_median_ms": 1498.5,
+    "candidate_median_ms": 960.1,
+    "speedup": 1.561,
+    "correct": true,
+    "baseline_times": [
+      1500.3,
+      1498.5,
+      1496.4
+    ],
+    "candidate_times": [
+      957.2,
+      968.4,
+      960.1
+    ],
+    "notes": "wave4 u64 mulmod + join Lucy prefixes",
+    "accepted": true
+  },
+  {
+    "problem": 977,
+    "baseline_median_ms": 872.4,
+    "candidate_median_ms": 575.9,
+    "speedup": 1.515,
+    "correct": true,
+    "baseline_times": [
+      872.1,
+      875.9,
+      872.4
+    ],
+    "candidate_times": [
+      574.3,
+      575.9,
+      576.3
+    ],
+    "notes": "wave4 u64 mulmod (drop u128)",
+    "accepted": true
+  },
+  {
+    "problem": 968,
+    "baseline_median_ms": 2.0,
+    "candidate_median_ms": 69.0,
+    "speedup": 0.029,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; CORRECTNESS: digit-DP carry; was WRONG 294683487",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 314,
+    "baseline_median_ms": 3159.0,
+    "candidate_median_ms": 13.0,
+    "speedup": 243.0,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; DAG DP + Dinkelbach; MAX_STEP 15->11",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 592,
+    "baseline_median_ms": 4141.0,
+    "candidate_median_ms": 182.0,
+    "speedup": 22.753,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon 27 f_vals + wrapping_mul",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 427,
+    "baseline_median_ms": 1958.0,
+    "candidate_median_ms": 367.0,
+    "speedup": 5.335,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon fk + u64 mulmod",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 461,
+    "baseline_median_ms": 4092.0,
+    "candidate_median_ms": 1016.0,
+    "speedup": 4.028,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; par_sort_unstable 85M pairs",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 379,
+    "baseline_median_ms": 3215.0,
+    "candidate_median_ms": 1138.0,
+    "speedup": 2.825,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; drop nested rayon; D prefix",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 543,
+    "baseline_median_ms": 2348.0,
+    "candidate_median_ms": 1248.0,
+    "speedup": 1.881,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; one prefix pi of bit sieve",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 614,
+    "baseline_median_ms": 9153.0,
+    "candidate_median_ms": 975.0,
+    "speedup": 9.388,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; dest-chunk rayon; drop thread_temps merge",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 559,
+    "baseline_median_ms": 5518.0,
+    "candidate_median_ms": 876.0,
+    "speedup": 6.299,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon k + NTT inverse",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 238,
+    "baseline_median_ms": 3936.0,
+    "candidate_median_ms": 123.0,
+    "speedup": 32.0,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; arithmetic digits + bitset cover",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 378,
+    "baseline_median_ms": 5367.0,
+    "candidate_median_ms": 726.0,
+    "speedup": 7.393,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; i32 Fenwick; drop SPF",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 536,
+    "baseline_median_ms": 2570.0,
+    "candidate_median_ms": 266.0,
+    "speedup": 9.662,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon CRT leaf scans",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 925,
+    "baseline_median_ms": 3292.0,
+    "candidate_median_ms": 265.0,
+    "speedup": 12.423,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon digit DFS; u64 suffix",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 769,
+    "baseline_median_ms": 3120.0,
+    "candidate_median_ms": 713.0,
+    "speedup": 4.376,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon g + integer isqrt",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 715,
+    "baseline_median_ms": 3747.0,
+    "candidate_median_ms": 1108.0,
+    "speedup": 3.382,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; Vec<u32> SPF + linear-sieve mu",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 415,
+    "baseline_median_ms": 3215.0,
+    "candidate_median_ms": 1450.0,
+    "speedup": 2.217,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; incremental 2^g; fused Lucy",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 437,
+    "baseline_median_ms": 2050.0,
+    "candidate_median_ms": 426.0,
+    "speedup": 4.812,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; u64 fib_pair + rayon primes",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 154,
+    "baseline_median_ms": 3558.0,
+    "candidate_median_ms": 79.0,
+    "speedup": 45.038,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon a-stripes + AVX2 pair checks",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 867,
+    "baseline_median_ms": 3071.0,
+    "candidate_median_ms": 35.0,
+    "speedup": 87.743,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; conflict bitmask DP + rayon tilings",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 416,
+    "baseline_median_ms": 1327.0,
+    "candidate_median_ms": 114.0,
+    "speedup": 11.64,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; join M1/M2 mat_pow; i32 mats",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 947,
+    "baseline_median_ms": 1584.0,
+    "candidate_median_ms": 62.0,
+    "speedup": 25.548,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; Vec period cache; u64 Fib doubling",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 451,
+    "baseline_median_ms": 994.0,
+    "candidate_median_ms": 196.0,
+    "speedup": 5.071,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; drop i128 CRT; rayon inverse pairs",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 829,
+    "baseline_median_ms": 7407.0,
+    "candidate_median_ms": 596.0,
+    "speedup": 12.428,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; rayon n=2..31 (not rejected prune)",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 681,
+    "baseline_median_ms": 2681.0,
+    "candidate_median_ms": 927.0,
+    "speedup": 2.892,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; flatten heavy K divisor chunks",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 578,
+    "baseline_median_ms": 2491.0,
+    "candidate_median_ms": 1180.0,
+    "speedup": 2.111,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; FxHashMap + rayon prime branches",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 994,
+    "baseline_median_ms": 2951.0,
+    "candidate_median_ms": 2181.0,
+    "speedup": 1.353,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; drop tiny Du Jiao par; Lucy arrays",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 639,
+    "baseline_median_ms": 1363.0,
+    "candidate_median_ms": 395.0,
+    "speedup": 3.451,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; u64 mulmod + rayon k=1..50",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 447,
+    "baseline_median_ms": 1154.0,
+    "candidate_median_ms": 516.0,
+    "speedup": 2.236,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; u64 hyperbola sigma; drop i128",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 691,
+    "baseline_median_ms": 1140.0,
+    "candidate_median_ms": 495.0,
+    "speedup": 2.303,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; SA-IS + Phi-LCP",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 538,
+    "baseline_median_ms": 1610.0,
+    "candidate_median_ms": 61.0,
+    "speedup": 26.393,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; coord compression Brahmagupta",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 414,
+    "baseline_median_ms": 2619.0,
+    "candidate_median_ms": 132.0,
+    "speedup": 19.841,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; closed-form Kaprekar + rayon bases",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 799,
+    "baseline_median_ms": 1240.0,
+    "candidate_median_ms": 87.0,
+    "speedup": 14.253,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; AP sieve R + rayon candidates",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 708,
+    "baseline_median_ms": 1831.0,
+    "candidate_median_ms": 191.0,
+    "speedup": 9.586,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; memo floor quotients + rayon DFS",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 864,
+    "baseline_median_ms": 1801.0,
+    "candidate_median_ms": 229.0,
+    "speedup": 7.865,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; join Part A/B; squarefree sieve",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 890,
+    "baseline_median_ms": 1868.0,
+    "candidate_median_ms": 578.0,
+    "speedup": 3.232,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; parity convolution; u64 mul",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 701,
+    "baseline_median_ms": 1635.0,
+    "candidate_median_ms": 187.0,
+    "speedup": 8.743,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; packed u64 DP; sharded tables",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 216,
+    "baseline_median_ms": 1321.0,
+    "candidate_median_ms": 204.0,
+    "speedup": 6.475,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; u64 Tonelli; segmented sieve",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 362,
+    "baseline_median_ms": 1134.0,
+    "candidate_median_ms": 367.0,
+    "speedup": 3.09,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; drop HashMap qmap; nsf arrays",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 411,
+    "baseline_median_ms": 1482.0,
+    "candidate_median_ms": 950.0,
+    "speedup": 1.56,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; u64 mulmod + rayon k LIS",
+    "accepted": true,
+    "method": "one-run+answer"
+  },
+  {
+    "problem": 483,
+    "baseline_median_ms": 2518.0,
+    "candidate_median_ms": 658.0,
+    "speedup": 3.827,
+    "correct": true,
+    "notes": "wave4 one-run parent verify; packed OA cache; canonicalize keys",
+    "accepted": true,
+    "method": "one-run+answer"
   }
 ]

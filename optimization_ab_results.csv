@@ -23,3 +23,74 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 873,5428.0,2472.1,54.46,True,True,precompute inv table via linear sieve (~1.11e8); i128->u64 mul speedup=2.196x
 946,10516.8,4311.6,59.00,True,True,i128->i32 (max_abs=79); specialize coeff=1; positive floor_div speedup=2.439x
 774,15887.1,11351.1,28.55,True,True,i32 cores+mat; extended-euclid modinv; ptr GE; mat reuse speedup=1.4x
+455,3029.0,468.0,84.55,True,True,wave3 rayon n=2..1e6 + u64 pow_mod speedup=6.47x
+531,2445.0,368.0,84.95,True,True,wave3 rayon n + iterative ext_gcd speedup=6.64x
+404,2694.0,470.0,82.55,True,True,wave3 rayon both nn cases speedup=5.73x
+628,2192.0,415.0,81.07,True,True,wave3 i128->u64 factorial pass speedup=5.28x
+784,2807.0,567.0,79.80,True,True,wave3 rayon over p; Vec SPF speedup=4.95x
+589,2464.0,617.0,74.96,True,True,wave3 rayon (m,n) systems speedup=4.00x
+741,2803.0,716.0,74.46,True,True,wave3 u64 mulmod + join g(N1)/g(N2) speedup=3.92x
+486,2313.0,114.0,95.07,True,True,wave3 phi-order + incremental 2^k speedup=20.29x
+743,2305.0,1619.0,29.76,True,True,wave3 u64 mulmod serial recurrence speedup=1.42x
+747,1553.0,1119.0,27.95,True,True,wave3 rayon a + u64 ncr speedup=1.39x
+757,2639.0,2075.0,21.37,True,True,wave3 par generate + par_sort speedup=1.27x
+675,1767.0,1620.0,8.32,True,True,wave3 i128->u64 S(i!) speedup=1.09x
+518,2873.0,3811.0,-32.65,False,True,wave3 rayon 25M tiny-k regression
+410,2747.0,3132.0,-14.02,False,True,wave3 rayon 1e8 cheap-j regression
+752,2744.0,237.0,91.36,True,True,wave3 i64 mat_mul + SPF p^2-1 + rayon primes speedup=11.58x
+263,2307.0,90.0,96.10,True,True,wave3 local SPRP + wheel + rayon chunks speedup=25.63x
+688,2595.2,432.6,83.33,True,True,wave3 rayon k-chunks + u64 mulmod speedup=5.999x
+586,2457.6,316.1,87.14,True,True,wave3 k=1/k=2 leaf counts + odd sieve + join speedup=7.776x
+544,1975.4,728.3,63.13,True,True,wave3 no HashMap clone; i32 stack DP; FxHashMap speedup=2.712x
+468,5144.2,4579.1,10.99,True,True,wave4 small-B deferred sum + const-generic primes speedup=1.123x
+611,1459.9,543.3,62.79,True,True,wave4 Lucy i_max split + rayon DFS frames speedup=2.687x
+433,1874.4,1697.5,9.44,True,True,wave4 iterative extgcd + rayon squarefree g speedup=1.104x
+654,1318.8,1129.3,14.37,True,True,wave4 u64 NTT mulmod (P1/P2/P3<2^32) speedup=1.168x
+738,813.3,658.5,19.03,True,True,wave4 FxHashMap memo speedup=1.235x
+972,1781.5,1367.4,23.24,True,True,wave4 packed circle keys + diameter Vec speedup=1.303x
+815,945.1,592.9,37.27,True,True,wave4 flat f64 cache not Vec<Vec> speedup=1.594x
+797,2865.5,2045.5,28.62,True,True,wave4 incremental 2^i + egcd inv speedup=1.401x
+655,2332.3,1841.4,21.05,True,True,wave4 split-index palindrome DP + incremental 10^i speedup=1.267x
+637,1833.9,1364.2,25.61,True,True,wave4 rayon::join compute_f(10)/compute_f(3) speedup=1.344x
+465,1498.5,960.1,35.93,True,True,wave4 u64 mulmod + join Lucy prefixes speedup=1.561x
+977,872.4,575.9,33.99,True,True,wave4 u64 mulmod (drop u128) speedup=1.515x
+968,2,69,-3350.00,True,True,wave4 one-run parent verify CORRECTNESS: digit-DP carry; was WRONG 294683487 speedup=0.029x
+314,3159,13,99.59,True,True,wave4 one-run parent verify DAG DP + Dinkelbach; MAX_STEP 15->11 speedup=243.000x
+592,4141,182,95.60,True,True,wave4 one-run parent verify rayon 27 f_vals + wrapping_mul speedup=22.753x
+427,1958,367,81.26,True,True,wave4 one-run parent verify rayon fk + u64 mulmod speedup=5.335x
+461,4092,1016,75.17,True,True,wave4 one-run parent verify par_sort_unstable 85M pairs speedup=4.028x
+379,3215,1138,64.60,True,True,wave4 one-run parent verify drop nested rayon; D prefix speedup=2.825x
+543,2348,1248,46.85,True,True,wave4 one-run parent verify one prefix pi of bit sieve speedup=1.881x
+614,9153,975,89.35,True,True,wave4 one-run parent verify dest-chunk rayon; drop thread_temps merge speedup=9.388x
+559,5518,876,84.12,True,True,wave4 one-run parent verify rayon k + NTT inverse speedup=6.299x
+238,3936,123,96.88,True,True,wave4 one-run parent verify arithmetic digits + bitset cover speedup=32.000x
+378,5367,726,86.47,True,True,wave4 one-run parent verify i32 Fenwick; drop SPF speedup=7.393x
+536,2570,266,89.65,True,True,wave4 one-run parent verify rayon CRT leaf scans speedup=9.662x
+925,3292,265,91.95,True,True,wave4 one-run parent verify rayon digit DFS; u64 suffix speedup=12.423x
+769,3120,713,77.15,True,True,wave4 one-run parent verify rayon g + integer isqrt speedup=4.376x
+715,3747,1108,70.43,True,True,wave4 one-run parent verify Vec<u32> SPF + linear-sieve mu speedup=3.382x
+415,3215,1450,54.90,True,True,wave4 one-run parent verify incremental 2^g; fused Lucy speedup=2.217x
+437,2050,426,79.22,True,True,wave4 one-run parent verify u64 fib_pair + rayon primes speedup=4.812x
+154,3558,79,97.78,True,True,wave4 one-run parent verify rayon a-stripes + AVX2 pair checks speedup=45.038x
+867,3071,35,98.86,True,True,wave4 one-run parent verify conflict bitmask DP + rayon tilings speedup=87.743x
+416,1327,114,91.41,True,True,wave4 one-run parent verify join M1/M2 mat_pow; i32 mats speedup=11.640x
+947,1584,62,96.09,True,True,wave4 one-run parent verify Vec period cache; u64 Fib doubling speedup=25.548x
+451,994,196,80.28,True,True,wave4 one-run parent verify drop i128 CRT; rayon inverse pairs speedup=5.071x
+829,7407,596,91.95,True,True,wave4 one-run parent verify rayon n=2..31 (not rejected prune) speedup=12.428x
+681,2681,927,65.42,True,True,wave4 one-run parent verify flatten heavy K divisor chunks speedup=2.892x
+578,2491,1180,52.63,True,True,wave4 one-run parent verify FxHashMap + rayon prime branches speedup=2.111x
+994,2951,2181,26.09,True,True,wave4 one-run parent verify drop tiny Du Jiao par; Lucy arrays speedup=1.353x
+639,1363,395,71.02,True,True,wave4 one-run parent verify u64 mulmod + rayon k=1..50 speedup=3.451x
+447,1154,516,55.29,True,True,wave4 one-run parent verify u64 hyperbola sigma; drop i128 speedup=2.236x
+691,1140,495,56.58,True,True,wave4 one-run parent verify SA-IS + Phi-LCP speedup=2.303x
+538,1610,61,96.21,True,True,wave4 one-run parent verify coord compression Brahmagupta speedup=26.393x
+414,2619,132,94.96,True,True,wave4 one-run parent verify closed-form Kaprekar + rayon bases speedup=19.841x
+799,1240,87,92.98,True,True,wave4 one-run parent verify AP sieve R + rayon candidates speedup=14.253x
+708,1831,191,89.57,True,True,wave4 one-run parent verify memo floor quotients + rayon DFS speedup=9.586x
+864,1801,229,87.28,True,True,wave4 one-run parent verify join Part A/B; squarefree sieve speedup=7.865x
+890,1868,578,69.06,True,True,wave4 one-run parent verify parity convolution; u64 mul speedup=3.232x
+701,1635,187,88.56,True,True,wave4 one-run parent verify packed u64 DP; sharded tables speedup=8.743x
+216,1321,204,84.56,True,True,wave4 one-run parent verify u64 Tonelli; segmented sieve speedup=6.475x
+362,1134,367,67.64,True,True,wave4 one-run parent verify drop HashMap qmap; nsf arrays speedup=3.090x
+411,1482,950,35.90,True,True,wave4 one-run parent verify u64 mulmod + rayon k LIS speedup=1.560x
+483,2518,658,73.87,True,True,wave4 one-run parent verify packed OA cache; canonicalize keys speedup=3.827x

@@ -1,6 +1,8 @@
 // Project Euler 433 - Steps in Euclid's Algorithm
 // S(N) = sum of E(x,y) for 1 <= x,y <= N, N = 5*10^6.
 
+use rayon::prelude::*;
+
 const N: usize = 5_000_000;
 
 fn gcd_fn(mut a: i64, mut b: i64) -> i64 {
@@ -49,12 +51,21 @@ fn floor_sum(n: i64, a: i64, b: i64) -> i64 {
     ans + m * n - floor_sum(m, b, a) + (m * g) / a
 }
 
-fn extgcd(a: i64, b: i64) -> (i64, i64, i64) {
-    if b == 0 {
-        return (a, 1, 0);
+fn extgcd(mut a: i64, mut b: i64) -> (i64, i64, i64) {
+    let (mut x, mut y, mut x1, mut y1) = (1i64, 0i64, 0i64, 1i64);
+    while b != 0 {
+        let q = a / b;
+        let t = b;
+        b = a % b;
+        a = t;
+        let t = x1;
+        x1 = x - q * x1;
+        x = t;
+        let t = y1;
+        y1 = y - q * y1;
+        y = t;
     }
-    let (g, x1, y1) = extgcd(b, a % b);
-    (g, y1, x1 - (a / b) * y1)
+    (a, x, y)
 }
 
 fn main() {
@@ -99,46 +110,50 @@ fn main() {
         ans += (N / sum) as i64 * (phi[sum] as i64 / 2);
     }
 
-    for g in 1..=N {
-        if mobius[g] == 0 {
-            continue;
-        }
-
-        let c = (N / g) as i64;
-        let sqrt_c = isqrt(c);
-        let mut res = 0i64;
-
-        let mut b = 1i64;
-        while b * b <= c {
-            for a in 1..b {
-                let (_gcd, _x_coef, y_coef) = extgcd(b, a);
-                let scale = c / _gcd;
-                let temp = y_coef * scale;
-                let y_mod = temp % b;
-                let y = y_mod - b;
-                let x = (c - a * y) / b;
-
-                let x1 = c / (a + b);
-                let x2 = c / b;
-
-                if sqrt_c > x1 {
-                    res += ncr2(x1);
-                    let pts1 = floor_sum(x - x1 - 1, b, a);
-                    let pts2 = floor_sum(x - sqrt_c - 1, b, a);
-                    let pts3 = floor_sum(x - x2 - 1, b, a);
-                    res += pts1 + pts2 - 2 * pts3;
-                    res += (2 * x2 - x1 - sqrt_c) * y;
-                } else {
-                    let pts1 = floor_sum(x - x1 - 1, b, a);
-                    let pts3 = floor_sum(x - x2 - 1, b, a);
-                    res += 2 * (ncr2(x1) + pts1 - pts3 + (x2 - x1) * y);
-                    res -= ncr2(sqrt_c);
-                }
+    let extra: i64 = (1..=N)
+        .into_par_iter()
+        .map(|g| {
+            if mobius[g] == 0 {
+                return 0;
             }
-            b += 1;
-        }
-        ans += mobius[g] as i64 * res;
-    }
+
+            let c = (N / g) as i64;
+            let sqrt_c = isqrt(c);
+            let mut res = 0i64;
+
+            let mut b = 1i64;
+            while b * b <= c {
+                for a in 1..b {
+                    let (_gcd, _x_coef, y_coef) = extgcd(b, a);
+                    let scale = c / _gcd;
+                    let temp = y_coef * scale;
+                    let y_mod = temp % b;
+                    let y = y_mod - b;
+                    let x = (c - a * y) / b;
+
+                    let x1 = c / (a + b);
+                    let x2 = c / b;
+
+                    if sqrt_c > x1 {
+                        res += ncr2(x1);
+                        let pts1 = floor_sum(x - x1 - 1, b, a);
+                        let pts2 = floor_sum(x - sqrt_c - 1, b, a);
+                        let pts3 = floor_sum(x - x2 - 1, b, a);
+                        res += pts1 + pts2 - 2 * pts3;
+                        res += (2 * x2 - x1 - sqrt_c) * y;
+                    } else {
+                        let pts1 = floor_sum(x - x1 - 1, b, a);
+                        let pts3 = floor_sum(x - x2 - 1, b, a);
+                        res += 2 * (ncr2(x1) + pts1 - pts3 + (x2 - x1) * y);
+                        res -= ncr2(sqrt_c);
+                    }
+                }
+                b += 1;
+            }
+            mobius[g] as i64 * res
+        })
+        .sum();
+    ans += extra;
 
     ans *= 4;
     ans += N as i64 * N as i64 + N as i64 / 2;

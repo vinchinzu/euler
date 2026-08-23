@@ -1,6 +1,8 @@
 // Project Euler 752 - Powers of 1+sqrt(7)
 // Find order of matrix [[1,7],[1,1]] mod p for each prime p, then sum g(x) for x=2..N.
 
+use rayon::prelude::*;
+
 fn main() {
     const MAXN: usize = 1_000_001;
     let mut spf = vec![0u32; MAXN];
@@ -19,21 +21,22 @@ fn main() {
         }
     }
 
-    // 2x2 matrix mod m using i128
+    // 2x2 matrix mod m. Entries stay in [0, m); products fit in i64 for m <= 1e6.
     type Mat = [i64; 4]; // [a, b, c, d]
 
+    #[inline(always)]
     fn mat_mul(a: &Mat, b: &Mat, m: i64) -> Mat {
         [
-            ((a[0] as i128 * b[0] as i128 + a[1] as i128 * b[2] as i128) % m as i128) as i64,
-            ((a[0] as i128 * b[1] as i128 + a[1] as i128 * b[3] as i128) % m as i128) as i64,
-            ((a[2] as i128 * b[0] as i128 + a[3] as i128 * b[2] as i128) % m as i128) as i64,
-            ((a[2] as i128 * b[1] as i128 + a[3] as i128 * b[3] as i128) % m as i128) as i64,
+            (a[0] * b[0] + a[1] * b[2]) % m,
+            (a[0] * b[1] + a[1] * b[3]) % m,
+            (a[2] * b[0] + a[3] * b[2]) % m,
+            (a[2] * b[1] + a[3] * b[3]) % m,
         ]
     }
 
-    fn mat_pow(a: &Mat, mut e: i64, m: i64) -> Mat {
+    fn mat_pow(mut e: i64, m: i64) -> Mat {
         let mut result: Mat = [1, 0, 0, 1];
-        let mut base = [a[0] % m, a[1] % m, a[2] % m, a[3] % m];
+        let mut base: Mat = [1, 7, 1, 1];
         while e > 0 {
             if e & 1 == 1 {
                 result = mat_mul(&result, &base, m);
@@ -44,37 +47,52 @@ fn main() {
         result
     }
 
-    fn is_identity(m: &Mat, modulus: i64) -> bool {
-        m[0] % modulus == 1 && m[1] % modulus == 0 && m[2] % modulus == 0 && m[3] % modulus == 1
+    #[inline(always)]
+    fn is_identity(m: &Mat) -> bool {
+        m[0] == 1 && m[1] == 0 && m[2] == 0 && m[3] == 1
     }
 
-    fn mat_order(p: i64) -> i64 {
-        let a: Mat = [1, 7, 1, 1];
-        let n = (p - 1) * (p + 1);
-
-        // Factorize n
-        let mut temp = n;
-        let mut primes = Vec::new();
-        let mut d = 2i64;
-        while d * d <= temp {
-            if temp % d == 0 {
-                primes.push(d);
-                while temp % d == 0 {
-                    temp /= d;
-                }
+    // Distinct prime factors of (p-1)(p+1) via SPF of p-1 and p+1.
+    fn factor_p2m1(p: i64, spf: &[u32], out: &mut [i64; 16]) -> usize {
+        let mut np = 0usize;
+        let mut x = (p - 1) as usize;
+        while x > 1 {
+            let pr = spf[x] as i64;
+            out[np] = pr;
+            np += 1;
+            let pu = pr as usize;
+            while x % pu == 0 {
+                x /= pu;
             }
-            d += 1;
         }
-        if temp > 1 {
-            primes.push(temp);
+        // gcd(p-1, p+1) = 2 for odd p; 2 is already recorded.
+        let mut x = (p + 1) as usize;
+        while x & 1 == 0 {
+            x >>= 1;
         }
+        while x > 1 {
+            let pr = spf[x] as i64;
+            out[np] = pr;
+            np += 1;
+            let pu = pr as usize;
+            while x % pu == 0 {
+                x /= pu;
+            }
+        }
+        np
+    }
+
+    fn mat_order(p: i64, spf: &[u32]) -> i64 {
+        let n = (p - 1) * (p + 1);
+        let mut primes = [0i64; 16];
+        let np = factor_p2m1(p, spf, &mut primes);
 
         let mut order = n;
-        for &pr in &primes {
+        for i in 0..np {
+            let pr = primes[i];
             while order % pr == 0 {
                 let trial = order / pr;
-                let m = mat_pow(&a, trial, p);
-                if is_identity(&m, p) {
+                if is_identity(&mat_pow(trial, p)) {
                     order = trial;
                 } else {
                     break;
@@ -94,22 +112,36 @@ fn main() {
     }
 
     fn lcm(a: i64, b: i64) -> i64 {
-        if a == 0 || b == 0 { return 0; }
+        if a == 0 || b == 0 {
+            return 0;
+        }
         a / gcd(a, b) * b
     }
 
     let n = 1_000_000usize;
-    let mut g_val = vec![0i64; MAXN];
-
+    let mut prime_list = Vec::with_capacity(80_000);
     for p in 2..=n {
-        if spf[p] != p as u32 { continue; }
-        if p == 2 || p == 3 {
-            g_val[p] = 0;
-        } else if p == 7 {
-            g_val[p] = 7;
-        } else {
-            g_val[p] = mat_order(p as i64);
+        if spf[p] == p as u32 {
+            prime_list.push(p);
         }
+    }
+
+    let orders: Vec<i64> = prime_list
+        .par_iter()
+        .map(|&p| {
+            if p == 2 || p == 3 {
+                0
+            } else if p == 7 {
+                7
+            } else {
+                mat_order(p as i64, &spf)
+            }
+        })
+        .collect();
+
+    let mut g_val = vec![0i64; MAXN];
+    for (&p, &g) in prime_list.iter().zip(orders.iter()) {
+        g_val[p] = g;
     }
 
     let mut ans: i64 = 0;

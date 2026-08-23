@@ -1,107 +1,160 @@
 // Project Euler 378 - Triangle Triples
 
+use rayon::prelude::*;
+
 const N: usize = 60_000_000;
+const M: usize = N + 1; // d[1..=N+1] needed for T(n) = n(n+1)/2
 const MOD: i64 = 1_000_000_000_000_000_000;
+const CHUNK: usize = 1 << 18; // 512 KiB of u16, one L2 per core
+
+#[inline(always)]
+fn bit_add(bit: &mut [i32], mut pos: usize, n: usize) {
+    pos += 1;
+    while pos <= n {
+        // SAFETY: pos in 1..=n and bit.len() >= n + 1
+        unsafe {
+            *bit.get_unchecked_mut(pos) += 1;
+        }
+        pos += pos & pos.wrapping_neg();
+    }
+}
+
+#[inline(always)]
+fn bit_query(bit: &[i32], mut pos: usize) -> i32 {
+    pos += 1;
+    let mut s = 0i32;
+    while pos > 0 {
+        // SAFETY: pos starts at the 1-based index and strictly decreases
+        unsafe {
+            s += *bit.get_unchecked(pos);
+        }
+        pos -= pos & pos.wrapping_neg();
+    }
+    s
+}
+
+fn isqrt(n: usize) -> usize {
+    let mut s = (n as f64).sqrt() as usize;
+    while s * s > n {
+        s -= 1;
+    }
+    while s + 1 <= n / (s + 1) {
+        s += 1;
+    }
+    s
+}
+
+fn fill_right(dt: &[u16], right: &mut [i32], nbit: usize) {
+    let mut bit = vec![0i32; nbit + 1];
+    for j in (1..=N).rev() {
+        // SAFETY: j in 1..=N; dt and right have length N+1
+        let v = unsafe { *dt.get_unchecked(j) } as usize;
+        unsafe {
+            *right.get_unchecked_mut(j) = bit_query(&bit, v - 1);
+        }
+        bit_add(&mut bit, v, nbit);
+    }
+}
+
+fn fill_left(dt: &[u16], left: &mut [i32], nbit: usize) {
+    let mut bit = vec![0i32; nbit + 1];
+    for j in 1..=N {
+        // SAFETY: j in 1..=N; dt and left have length N+1
+        let v = unsafe { *dt.get_unchecked(j) } as usize;
+        unsafe {
+            *left.get_unchecked_mut(j) = j as i32 - 1 - bit_query(&bit, v);
+        }
+        bit_add(&mut bit, v, nbit);
+    }
+}
 
 fn main() {
-    // Sieve smallest prime factor
-    let mut spf = vec![0u32; N + 2];
-    for i in 2..=N + 1 {
-        if spf[i] == 0 {
-            let mut j = i;
-            while j <= N + 1 {
-                if spf[j] == 0 {
-                    spf[j] = i as u32;
+    let sq = isqrt(M);
+    let mut d = vec![0u16; M + 1];
+
+    // Segmented pair-divisor sieve: d[x] += 1 for squares, += 2 for i*j (i < j).
+    d.par_chunks_mut(CHUNK).enumerate().for_each(|(ci, chunk)| {
+        let lo = ci * CHUNK;
+        let hi = lo + chunk.len();
+        let start = lo.max(1);
+        for i in 1..=sq {
+            let sqi = i * i;
+            if sqi >= start && sqi < hi {
+                // SAFETY: start <= sqi < hi maps into this chunk
+                unsafe {
+                    *chunk.get_unchecked_mut(sqi - lo) += 1;
                 }
-                j += i;
+            }
+            let j_lo = (i + 1).max(start.div_ceil(i));
+            let j_hi = (hi - 1) / i;
+            if j_lo <= j_hi {
+                let mut v = i * j_lo;
+                let last = i * j_hi;
+                while v <= last {
+                    // SAFETY: start <= v < hi
+                    unsafe {
+                        *chunk.get_unchecked_mut(v - lo) += 2;
+                    }
+                    v += i;
+                }
             }
         }
-    }
-
-    let count_divisors = |mut n: u32| -> u32 {
-        if n <= 1 {
-            return 1;
-        }
-        let mut result = 1u32;
-        while n > 1 {
-            let p = spf[n as usize];
-            let mut e = 0u32;
-            while n % p == 0 {
-                e += 1;
-                n /= p;
-            }
-            result *= e + 1;
-        }
-        result
-    };
-
-    let dt_func = |n: u32| -> u32 {
-        let (mut a, mut b) = (n, n + 1);
-        if a % 2 == 0 {
-            a /= 2;
-        } else {
-            b /= 2;
-        }
-        count_divisors(a) * count_divisors(b)
-    };
+    });
 
     let mut dt = vec![0u16; N + 1];
-    let mut max_dt: usize = 0;
-    for i in 1..=N {
-        let d = dt_func(i as u32) as u16;
-        dt[i] = d;
-        if d as usize > max_dt {
-            max_dt = d as usize;
-        }
+    let max_dt = dt[1..]
+        .par_chunks_mut(CHUNK)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let base = 1 + ci * CHUNK;
+            let mut local_max = 0u16;
+            for (o, slot) in chunk.iter_mut().enumerate() {
+                let i = base + o;
+                let (a, b) = if i & 1 == 0 {
+                    (i >> 1, i + 1)
+                } else {
+                    (i, (i + 1) >> 1)
+                };
+                // SAFETY: 1 <= a,b <= N+1; d.len() = N+2
+                let val = unsafe {
+                    *d.get_unchecked(a) as u32 * *d.get_unchecked(b) as u32
+                } as u16;
+                *slot = val;
+                if val > local_max {
+                    local_max = val;
+                }
+            }
+            local_max
+        })
+        .max()
+        .unwrap_or(0) as usize;
+    drop(d);
+
+    let nbit = max_dt + 1;
+    let mut right_arr = vec![0i32; N + 1];
+    let mut left_arr = vec![0i32; N + 1];
+    {
+        let dt_s = dt.as_slice();
+        let right_s = right_arr.as_mut_slice();
+        let left_s = left_arr.as_mut_slice();
+        // Two independent sequential Fenwick passes (loop-carried within each).
+        rayon::join(
+            || fill_right(dt_s, right_s, nbit),
+            || fill_left(dt_s, left_s, nbit),
+        );
     }
+    drop(dt);
 
-    // First pass: compute right_arr using Fenwick tree
-    let tree_size = max_dt + 2;
-    let mut bit = vec![0i64; tree_size + 1];
-
-    let bit_add = |bit: &mut Vec<i64>, mut pos: usize, val: i64| {
-        pos += 1;
-        while pos <= tree_size {
-            bit[pos] = (bit[pos] + val) % MOD;
-            pos += pos & pos.wrapping_neg();
-        }
-    };
-
-    let bit_query = |bit: &Vec<i64>, mut pos: usize| -> i64 {
-        pos += 1;
-        let mut s = 0i64;
-        while pos > 0 {
-            s += bit[pos];
-            pos -= pos & pos.wrapping_neg();
-        }
-        s % MOD
-    };
-
-    let mut right_arr = vec![0i64; N + 1];
-
-    for j in (1..=N).rev() {
-        right_arr[j] = if dt[j] > 0 {
-            bit_query(&bit, dt[j] as usize - 1)
-        } else {
-            0
-        };
-        bit_add(&mut bit, dt[j] as usize, 1);
-    }
-
-    // Second pass: compute answer
-    bit.iter_mut().for_each(|x| *x = 0);
-    let mut answer: i64 = 0;
-
+    let mut answer = 0i64;
     for j in 1..=N {
-        let left_j = if (dt[j] as usize) < max_dt {
-            let total = bit_query(&bit, max_dt);
-            let at_or_below = bit_query(&bit, dt[j] as usize);
-            (total - at_or_below + MOD) % MOD
-        } else {
-            0
+        // SAFETY: left_arr and right_arr have length N+1; counts fit in i32
+        let prod = unsafe {
+            *left_arr.get_unchecked(j) as i64 * *right_arr.get_unchecked(j) as i64
         };
-        answer = (answer + left_j * right_arr[j]) % MOD;
-        bit_add(&mut bit, dt[j] as usize, 1);
+        answer += prod;
+        if answer >= MOD {
+            answer -= MOD;
+        }
     }
 
     println!("{}", answer);

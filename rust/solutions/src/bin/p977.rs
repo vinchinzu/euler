@@ -3,9 +3,9 @@
 
 const MOD: u64 = 1_000_000_007;
 
-#[inline]
+#[inline(always)]
 fn mod_mul(a: u64, b: u64) -> u64 {
-    ((a as u128 * b as u128) % MOD as u128) as u64
+    (a * b) % MOD
 }
 
 fn mod_pow(mut base: u64, mut exp: usize) -> u64 {

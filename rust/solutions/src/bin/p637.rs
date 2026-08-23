@@ -1,6 +1,8 @@
 // Project Euler 637 - Flexible Digit Sum
 // f(n,B) = min steps to reduce to single digit; sum n where f(n,10)==f(n,3)
 
+use rayon::prelude::*;
+
 const N_VAL: usize = 10_000_000;
 
 fn sum_digits_b(mut n: usize, base: usize) -> usize {
@@ -33,8 +35,11 @@ fn compute_f(n: usize, b: usize) -> Vec<u8> {
 }
 
 fn main() {
-    let f1 = compute_f(N_VAL, 10);
-    let f2 = compute_f(N_VAL, 3);
-    let ans: i64 = (1..=N_VAL).filter(|&i| f1[i] == f2[i]).map(|i| i as i64).sum();
+    let (f1, f2) = rayon::join(|| compute_f(N_VAL, 10), || compute_f(N_VAL, 3));
+    let ans: i64 = (1..=N_VAL)
+        .into_par_iter()
+        .filter(|&i| f1[i] == f2[i])
+        .map(|i| i as i64)
+        .sum();
     println!("{}", ans);
 }

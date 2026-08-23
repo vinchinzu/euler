@@ -10,7 +10,8 @@ const P3: u64 = 754_974_721;
 
 #[inline(always)]
 fn mulmod(a: u64, b: u64, m: u64) -> u64 {
-    (a as u128 * b as u128 % m as u128) as u64
+    // P1/P2/P3 and MOD all < 2^32, so a*b fits u64 when 0 ≤ a,b < m.
+    a * b % m
 }
 
 fn pw(mut base: u64, mut exp: u64, m: u64) -> u64 {

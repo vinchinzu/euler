@@ -3,23 +3,34 @@
 // g(n) = number of gozinta chains for n. Find the sum of all n <= 10^16 such that g(n) = n.
 // Enumerate exponent signatures, compute g, and check if g matches n.
 
-use std::collections::HashMap;
+use euler_utils::number::factor;
+use fxhash::FxHashMap;
+use rayon::prelude::*;
 
 const MAX_PRIMES: usize = 20;
-const PRIMES: [i64; MAX_PRIMES] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71];
-const N_LIMIT: i64 = 10_000_000_000_000_000; // 10^16
+const PRIMES: [u64; MAX_PRIMES] = [
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+];
+const N_LIMIT: u64 = 10_000_000_000_000_000; // 10^16
 
-fn encode_exps(es: &[i32]) -> i64 {
-    let mut key = es.len() as i64;
+#[inline(always)]
+fn encode_exps(es: &[i32]) -> u128 {
+    let mut key = es.len() as u128;
     for &e in es {
-        key = key * 60 + e as i64;
+        key = (key << 6) | (e as u128);
     }
     key
 }
 
-fn g_func(es: &[i32], cache: &mut HashMap<i64, i64>) -> i64 {
+fn g_func(es: &[i32], cache: &mut FxHashMap<u128, i64>) -> i64 {
     let n = es.len();
-    if n == 0 { return 1; }
+    if n == 0 {
+        return 1;
+    }
+    // g(p^e) = 2^{e-1}
+    if n == 1 {
+        return 1i64 << (es[0] - 1);
+    }
 
     let key = encode_exps(es);
     if let Some(&v) = cache.get(&key) {
@@ -30,20 +41,29 @@ fn g_func(es: &[i32], cache: &mut HashMap<i64, i64>) -> i64 {
     let n_subsets = 1usize << n;
 
     for subset in 1..n_subsets {
-        let mut fs = Vec::new();
+        let mut fs = [0i32; MAX_PRIMES];
+        let mut fn_ = 0usize;
         for i in 0..n {
-            let e = es[i] - ((subset >> i) & 1) as i32;
-            if e > 0 { fs.push(e); }
+            // SAFETY: i < es.len(); fn_ < n <= MAX_PRIMES
+            let e = unsafe { *es.get_unchecked(i) } - ((subset >> i) & 1) as i32;
+            if e > 0 {
+                unsafe {
+                    *fs.get_unchecked_mut(fn_) = e;
+                }
+                fn_ += 1;
+            }
         }
-        fs.sort_unstable_by(|a, b| b.cmp(a));
+        fs[..fn_].sort_unstable_by(|a, b| b.cmp(a));
 
-        let bit_count = subset.count_ones() as i32;
-        let parity = if bit_count % 2 == 0 { 1i64 } else { -1 };
-
-        if fs.is_empty() {
-            result -= parity;
+        let term = if fn_ == 0 {
+            1
         } else {
-            result -= parity * 2 * g_func(&fs, cache);
+            2 * g_func(&fs[..fn_], cache)
+        };
+        if subset.count_ones() & 1 == 0 {
+            result -= term;
+        } else {
+            result += term;
         }
     }
 
@@ -51,87 +71,81 @@ fn g_func(es: &[i32], cache: &mut HashMap<i64, i64>) -> i64 {
     result
 }
 
-fn has_exponents(mut n: i64, es: &[i32]) -> bool {
-    let mut es_copy: Vec<i32> = es.to_vec();
-
-    let mut factor: i64 = 2;
-    while factor * factor <= n && !es_copy.is_empty() {
-        let mut e = 0;
-        while n % factor == 0 {
-            n /= factor;
-            e += 1;
-        }
-        if e > 0 {
-            if let Some(pos) = es_copy.iter().position(|&x| x == e) {
-                es_copy.swap_remove(pos);
-            } else {
-                return false;
-            }
-        }
-        factor += 1;
+fn has_exponents(n: u64, es: &[i32]) -> bool {
+    let fac = factor(n);
+    if fac.len() != es.len() {
+        return false;
     }
-    if n > 1 {
-        if let Some(pos) = es_copy.iter().position(|&x| x == 1) {
-            es_copy.swap_remove(pos);
-        } else {
-            return false;
-        }
+    let k = fac.len();
+    let mut exp = [0i32; MAX_PRIMES];
+    for i in 0..k {
+        exp[i] = fac[i].1 as i32;
     }
-    es_copy.is_empty()
+    exp[..k].sort_unstable_by(|a, b| b.cmp(a));
+    exp[..k] == es[..]
 }
 
-fn ipow(base: i64, exp: i32) -> i64 {
-    let mut result: i64 = 1;
-    for _ in 0..exp {
-        if result > 1_000_000_000_000_000_00 / (base + 1) {
-            return 1_000_000_000_000_000_00; // overflow guard
-        }
-        result *= base;
-    }
-    result
-}
-
-fn ilog2(mut n: i64) -> i32 {
-    let mut r = 0;
-    while n > 1 { n >>= 1; r += 1; }
-    r
+#[inline(always)]
+fn ilog2(n: u64) -> i32 {
+    63 - n.leading_zeros() as i32
 }
 
 fn helper(
-    es: &mut Vec<i32>,
-    n: i64,
-    ans: &mut i64,
-    g_cache: &mut HashMap<i64, i64>,
+    es: &mut [i32],
+    ne: usize,
+    n: u64,
+    g_cache: &mut FxHashMap<u128, i64>,
+    candidates: &mut Vec<(u64, [i32; MAX_PRIMES], u8)>,
 ) {
-    let ne = es.len();
     if ne > 0 {
-        let mut sorted: Vec<i32> = es.clone();
-        sorted.sort_unstable_by(|a, b| b.cmp(a));
-
-        let g_val = g_func(&sorted, g_cache);
-        if g_val > 0 && g_val <= N_LIMIT && has_exponents(g_val, &sorted) {
-            *ans += g_val;
+        let g_val = g_func(&es[..ne], g_cache);
+        if g_val > 0 && (g_val as u64) <= N_LIMIT {
+            let mut packed = [0i32; MAX_PRIMES];
+            packed[..ne].copy_from_slice(&es[..ne]);
+            candidates.push((g_val as u64, packed, ne as u8));
         }
     }
 
+    if ne >= MAX_PRIMES {
+        return;
+    }
     let max_c = if ne > 0 { es[ne - 1] } else { ilog2(N_LIMIT) };
-    if ne >= MAX_PRIMES { return; }
-
+    let p = PRIMES[ne];
+    let mut p_pow = 1u64;
     for c in 1..=max_c {
-        let new_n = n * ipow(PRIMES[ne], c);
-        if new_n > N_LIMIT { break; }
-        es.push(c);
-        helper(es, new_n, ans, g_cache);
-        es.pop();
+        p_pow = match p_pow.checked_mul(p) {
+            Some(v) => v,
+            None => break,
+        };
+        let new_n = match n.checked_mul(p_pow) {
+            Some(v) => v,
+            None => break,
+        };
+        if new_n > N_LIMIT {
+            break;
+        }
+        es[ne] = c;
+        helper(es, ne + 1, new_n, g_cache, candidates);
     }
 }
 
 fn main() {
-    let mut ans: i64 = 1; // n=1: g(1)=1
-    let mut g_cache: HashMap<i64, i64> = HashMap::new();
-    let mut es: Vec<i32> = Vec::new();
+    let mut g_cache = FxHashMap::with_capacity_and_hasher(1 << 16, Default::default());
+    let mut es = [0i32; MAX_PRIMES];
+    let mut candidates = Vec::with_capacity(5_000);
 
-    helper(&mut es, 1, &mut ans, &mut g_cache);
+    helper(&mut es, 0, 1, &mut g_cache, &mut candidates);
 
-    println!("{ans}");
+    let rest: u64 = candidates
+        .par_iter()
+        .map(|&(g, ref packed, ne)| {
+            if has_exponents(g, &packed[..ne as usize]) {
+                g
+            } else {
+                0
+            }
+        })
+        .sum();
+
+    println!("{}", rest + 1);
 }

@@ -1,138 +1,140 @@
 // Project Euler 501 - Eight Divisors
 // Count integers <= N with exactly 8 divisors.
 // Forms: p*q*r (3 distinct primes), p^3*q (p!=q), p^7.
-// Uses Lucy_Hedgehog prime counting for large values.
+// Lucy_Hedgehog prime counting (sequential); p*q*r / p^3*q over p in rayon.
+
+use rayon::prelude::*;
+
+const N: i64 = 1_000_000_000_000;
+
+#[inline(always)]
+fn isqrt(n: i64) -> i64 {
+    let mut s = (n as f64).sqrt() as i64;
+    while s * s > n {
+        s -= 1;
+    }
+    while {
+        let t = s + 1;
+        t <= 3_037_000_499 && t * t <= n
+    } {
+        s += 1;
+    }
+    s
+}
+
+/// π(N/d) from completed Lucy tables.
+#[inline(always)]
+fn pi_div(n: i64, sqrt_n: usize, s_small: &[i32], s_large: &[i64], d: i64) -> i64 {
+    if d <= sqrt_n as i64 {
+        // SAFETY: 1 <= d <= sqrt_n
+        unsafe { *s_large.get_unchecked(d as usize) }
+    } else {
+        // SAFETY: d > sqrt_n ⇒ N/d < sqrt_n
+        unsafe { *s_small.get_unchecked((n / d) as usize) as i64 }
+    }
+}
 
 fn main() {
-    let n: i64 = 1_000_000_000_000;
-    let sqrt_n = {
-        let mut s = (n as f64).sqrt() as i64;
-        while s * s > n { s -= 1; }
-        while (s + 1) * (s + 1) <= n { s += 1; }
-        s as usize
-    };
+    let n = N;
+    let sqrt_n = isqrt(n) as usize;
 
-    // Lucy DP: S_small[v] = pi(v) for v <= sqrt_n, S_large[k] = pi(n/k) for k >= 1
-    let mut s_small = vec![0i64; sqrt_n + 2];
+    // Lucy DP: S_small[v] = π(v) for v <= sqrt_n, S_large[k] = π(n/k).
+    // Loop-carried in p — do not rayon.
+    let mut s_small = vec![0i32; sqrt_n + 2];
     let mut s_large = vec![0i64; sqrt_n + 2];
-
     for i in 0..=sqrt_n {
-        s_small[i] = i as i64 - 1;
+        s_small[i] = i as i32 - 1;
     }
     for k in 1..=sqrt_n {
         s_large[k] = n / (k as i64) - 1;
     }
 
-    let mut is_prime_flag = vec![true; sqrt_n + 1];
-    is_prime_flag[0] = false;
-    if sqrt_n >= 1 { is_prime_flag[1] = false; }
-
     for p in 2..=sqrt_n {
-        if !is_prime_flag[p] { continue; }
-        let p2 = (p as i64) * (p as i64);
-
-        // Update S_large
-        for k in 1..=sqrt_n {
-            if n / (k as i64) < p2 { break; }
-            let v = n / (k as i64);
-            let v_over_p = v / (p as i64);
-            let sub = if v_over_p <= sqrt_n as i64 {
-                s_small[v_over_p as usize]
-            } else {
-                s_large[(n / v_over_p) as usize]
-            };
-            s_large[k] -= sub - s_small[p - 1];
+        if s_small[p] == s_small[p - 1] {
+            continue;
         }
-
-        // Update S_small
-        for v in (p2 as usize..=sqrt_n).rev() {
-            s_small[v] -= s_small[v / p] - s_small[p - 1];
-        }
-
-        // Mark composites
-        let mut j = p * p;
-        while j <= sqrt_n {
-            is_prime_flag[j] = false;
-            j += p;
-        }
-    }
-
-    let pi = |v: i64| -> i64 {
-        if v <= 0 { return 0; }
-        if v <= sqrt_n as i64 { return s_small[v as usize]; }
-        s_large[(n / v) as usize]
-    };
-
-    // Sieve small primes
-    let limit = (n as f64).powf(2.0 / 3.0) as usize + 100;
-    let sieve = euler_utils::sieve(limit);
-    let small_primes: Vec<usize> = (2..=limit).filter(|&i| sieve[i]).collect();
-
-    // Build pi_small for direct lookup
-    let mut pi_small = vec![0i64; limit + 1];
-    {
-        let mut cnt = 0i64;
-        let mut pidx = 0;
-        for i in 1..=limit {
-            if pidx < small_primes.len() && small_primes[pidx] == i {
-                cnt += 1;
-                pidx += 1;
+        let p64 = p as i64;
+        let p2 = p64 * p64;
+        let sp = s_small[p - 1] as i64;
+        let max_k = (n / p2).min(sqrt_n as i64) as usize;
+        // k*p <= sqrt_n ⇔ k <= sqrt_n/p; then π((n/k)/p) = S_large[k*p]
+        let split = (sqrt_n / p).min(max_k);
+        for k in 1..=split {
+            // SAFETY: k*p <= sqrt_n, k <= max_k <= sqrt_n
+            unsafe {
+                let sub = *s_large.get_unchecked(k * p);
+                *s_large.get_unchecked_mut(k) -= sub - sp;
             }
-            pi_small[i] = cnt;
+        }
+        for k in split + 1..=max_k {
+            // SAFETY: k*p > sqrt_n ⇒ n/(k*p) < sqrt_n; k <= sqrt_n
+            unsafe {
+                let d = k as i64 * p64;
+                let sub = *s_small.get_unchecked((n / d) as usize) as i64;
+                *s_large.get_unchecked_mut(k) -= sub - sp;
+            }
+        }
+        if p2 <= sqrt_n as i64 {
+            let sp32 = s_small[p - 1];
+            for v in (p2 as usize..=sqrt_n).rev() {
+                // SAFETY: v <= sqrt_n, v/p < v
+                unsafe {
+                    *s_small.get_unchecked_mut(v) -= *s_small.get_unchecked(v / p) - sp32;
+                }
+            }
         }
     }
 
-    let mut ans: i64 = 0;
-
-    // Count p*q*r with p < q < r, all primes
-    for pi_idx in 0..small_primes.len() {
-        let p = small_primes[pi_idx] as i64;
-        if p * p * p > n { break; }
-        for qi_idx in (pi_idx + 1)..small_primes.len() {
-            let q = small_primes[qi_idx] as i64;
-            if p * q * q > n { break; }
-            let lim = n / (p * q);
-            let pi_limit = pi(lim);
-            ans += pi_limit - pi_small[q as usize];
+    // Primes <= sqrt_n from finished π table. q <= isqrt(n/2) < sqrt_n.
+    let mut primes: Vec<u32> = Vec::with_capacity(80_000);
+    for i in 2..=sqrt_n {
+        if s_small[i] != s_small[i - 1] {
+            primes.push(i as u32);
         }
     }
 
-    // Count p^3 * q
-    for pi_idx in 0..small_primes.len() {
-        let p = small_primes[pi_idx] as i64;
-        if p * p * p > n { break; }
-        let lim = n / (p * p * p);
-        let pi_limit = pi(lim);
-        ans += pi_limit;
-        // Subtract q == p case
-        if p * p * p * p <= n {
-            ans -= 1;
-        }
-    }
+    // p^3 <= n; i128 so a rayon pass over all primes cannot wrap i64 cubes.
+    let n128 = n as i128;
+    let p_end = primes.partition_point(|&p| {
+        let p = p as i128;
+        p * p * p <= n128
+    });
 
-    // Count p^7
-    let mut max_p7 = (n as f64).powf(1.0 / 7.0) as usize;
-    loop {
-        let mut test = 1.0f64;
-        let mut ok = true;
-        for _ in 0..7 {
-            test *= (max_p7 + 1) as f64;
-            if test > n as f64 { ok = false; break; }
+    let ans_main: i64 = (0..p_end)
+        .into_par_iter()
+        .with_min_len(1)
+        .map(|pi_idx| {
+            let p = unsafe { *primes.get_unchecked(pi_idx) } as i64;
+            let mut local = 0i64;
+
+            // p^3 * q, q != p
+            let p3 = (p as i128) * (p as i128) * (p as i128);
+            local += pi_div(n, sqrt_n, &s_small, &s_large, p3 as i64);
+            if p3 * (p as i128) <= n128 {
+                local -= 1;
+            }
+
+            // p < q < r, p*q*r <= n
+            let q_lim = isqrt(n / p);
+            let q_end = primes.partition_point(|&q| q as i64 <= q_lim);
+            for qi_idx in pi_idx + 1..q_end {
+                let q = unsafe { *primes.get_unchecked(qi_idx) } as i64;
+                let pq = p * q;
+                local += pi_div(n, sqrt_n, &s_small, &s_large, pq) - (qi_idx as i64 + 1);
+            }
+            local
+        })
+        .sum();
+
+    // p^7 <= n
+    let mut ans = ans_main;
+    for &p in &primes {
+        let p = p as i128;
+        if p.pow(7) > n128 {
+            break;
         }
-        if !ok { break; }
-        max_p7 += 1;
+        ans += 1;
     }
-    while max_p7 > 0 {
-        let mut test = 1.0f64;
-        let mut ok = true;
-        for _ in 0..7 {
-            test *= max_p7 as f64;
-            if test > n as f64 { ok = false; break; }
-        }
-        if ok { break; }
-        max_p7 -= 1;
-    }
-    ans += pi_small[max_p7];
 
     println!("{}", ans);
 }

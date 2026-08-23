@@ -1,222 +1,286 @@
 // Project Euler 502 - Counting Castles
-// Berlekamp-Massey + Kitamasa to extrapolate linear recurrences mod 10^9+7.
+// Column DP (even block-count) + Berlekamp-Massey + Kitamasa.
+// u64 mulmod (MOD^2 fits u64); no per-column vec zeroing.
 
-const MOD: i64 = 1_000_000_007;
+use rayon::prelude::*;
 
-fn modd(x: i64) -> i64 {
-    ((x % MOD) + MOD) % MOD
+const MOD: u64 = 1_000_000_007;
+const MOD2: u64 = 2 * MOD;
+const SEQ_LEN: usize = 500;
+
+#[inline(always)]
+fn addmod(a: u64, b: u64) -> u64 {
+    let s = a + b;
+    if s >= MOD { s - MOD } else { s }
 }
 
-fn power(mut base: i64, mut exp: i64) -> i64 {
-    let mut result = 1i64;
-    base = modd(base);
+#[inline(always)]
+fn submod(a: u64, b: u64) -> u64 {
+    if a >= b { a - b } else { a + MOD - b }
+}
+
+#[inline(always)]
+fn mulmod(a: u64, b: u64) -> u64 {
+    a * b % MOD
+}
+
+/// Reduce v ∈ [0, 4·MOD) → [0, MOD). Written for cmov.
+#[inline(always)]
+fn red4(v: u64) -> u64 {
+    let v = if v >= MOD2 { v - MOD2 } else { v };
+    if v >= MOD { v - MOD } else { v }
+}
+
+#[inline(always)]
+fn madd3_sub(a: u64, b: u64, c: u64, sub: u64) -> u64 {
+    red4(a + b + c + (MOD - sub))
+}
+
+fn powmod(mut base: u64, mut exp: u64) -> u64 {
+    let mut r = 1u64;
     while exp > 0 {
-        if exp & 1 == 1 { result = modd(result * base); }
-        base = modd(base * base);
+        if exp & 1 == 1 { r = mulmod(r, base); }
+        base = mulmod(base, base);
         exp >>= 1;
     }
-    result
+    r
 }
 
-fn inv(x: i64) -> i64 {
-    power(modd(x), MOD - 2)
+#[inline(always)]
+fn modinv(x: u64) -> u64 {
+    powmod(x, MOD - 2)
 }
 
-fn num_castles(w: usize, h: usize) -> i64 {
-    if h == 0 { return 0; }
-    let mut dp_prev0 = vec![0i64; h + 1];
-    let mut dp_prev1 = vec![0i64; h + 1];
-    let mut dp_curr0 = vec![0i64; h + 1];
-    let mut dp_curr1 = vec![0i64; h + 1];
+/// Even-block castles of width `w`, height at most `h`.
+/// After each column, `out[x]` is set if `out` is non-empty.
+fn castle_dp(w: usize, h: usize, out: &mut [u64]) -> u64 {
+    if h == 0 || w == 0 {
+        return 0;
+    }
+    let n = h + 1;
+    let mut prev0 = vec![0u64; n];
+    let mut prev1 = vec![0u64; n];
+    let mut curr0 = vec![0u64; n];
+    let mut curr1 = vec![0u64; n];
 
-    for y in (0..=h).step_by(2) {
-        dp_prev0[y] = 1;
+    for y in (0..n).step_by(2) {
+        prev0[y] = 1;
     }
 
-    for _x in 1..=w {
-        dp_curr0.iter_mut().for_each(|v| *v = 0);
-        dp_curr1.iter_mut().for_each(|v| *v = 0);
+    let record = !out.is_empty();
+    let mut last = 0u64;
+    for x in 0..w {
+        // SAFETY: indices stay in 0..=h; all four arrays have length h+1.
+        unsafe {
+            let p0 = prev0.as_ptr();
+            let p1 = prev1.as_ptr();
+            let c0 = curr0.as_mut_ptr();
+            let c1 = curr1.as_mut_ptr();
 
-        for y in 1..=h {
-            let mut val0 = dp_prev0[h] + dp_prev0[h - 1] - dp_prev0[y - 1] + dp_prev1[y - 1];
-            if y >= 2 { val0 += dp_curr0[y - 2]; }
-            dp_curr0[y] = modd(val0);
+            *c0 = 0;
+            *c1 = 0;
 
-            let mut val1 = dp_prev1[h] + dp_prev1[h - 1] - dp_prev1[y - 1] + dp_prev0[y - 1];
-            if y >= 2 { val1 += dp_curr1[y - 2]; }
-            dp_curr1[y] = modd(val1);
+            let s0 = addmod(*p0.add(h), *p0.add(h - 1));
+            let s1 = addmod(*p1.add(h), *p1.add(h - 1));
+
+            *c0.add(1) = madd3_sub(s0, *p1, 0, *p0);
+            *c1.add(1) = madd3_sub(s1, *p0, 0, *p1);
+
+            if h >= 2 {
+                *c0.add(2) = madd3_sub(s0, *p1.add(1), 0, *p0.add(1));
+                *c1.add(2) = madd3_sub(s1, *p0.add(1), 0, *p1.add(1));
+            }
+
+            // Four independent chains: (even/odd) × (parity 0/1).
+            let mut y = 3usize;
+            while y + 1 <= h {
+                *c0.add(y) = madd3_sub(s0, *p1.add(y - 1), *c0.add(y - 2), *p0.add(y - 1));
+                *c1.add(y) = madd3_sub(s1, *p0.add(y - 1), *c1.add(y - 2), *p1.add(y - 1));
+                *c0.add(y + 1) = madd3_sub(s0, *p1.add(y), *c0.add(y - 1), *p0.add(y));
+                *c1.add(y + 1) = madd3_sub(s1, *p0.add(y), *c1.add(y - 1), *p1.add(y));
+                y += 2;
+            }
+            if y <= h {
+                *c0.add(y) = madd3_sub(s0, *p1.add(y - 1), *c0.add(y - 2), *p0.add(y - 1));
+                *c1.add(y) = madd3_sub(s1, *p0.add(y - 1), *c1.add(y - 2), *p1.add(y - 1));
+            }
         }
 
-        std::mem::swap(&mut dp_prev0, &mut dp_curr0);
-        std::mem::swap(&mut dp_prev1, &mut dp_curr1);
+        std::mem::swap(&mut prev0, &mut curr0);
+        std::mem::swap(&mut prev1, &mut curr1);
+        last = addmod(prev0[h], prev0[h - 1]);
+        if record {
+            out[x] = last;
+        }
     }
-
-    modd(dp_prev0[h] + dp_prev0[h - 1])
+    last
 }
 
-fn berlekamp_massey(s: &[i64]) -> Vec<i64> {
+#[inline]
+fn num_castles(w: usize, h: usize) -> u64 {
+    castle_dp(w, h, &mut [])
+}
+
+#[inline]
+fn dp_width_seq(w: usize, h: usize) -> Vec<u64> {
+    let mut out = vec![0u64; w];
+    castle_dp(w, h, &mut out);
+    out
+}
+
+fn berlekamp_massey(s: &[u64]) -> Vec<u64> {
     let n = s.len();
-    let mut c = vec![0i64; n + 2];
-    let mut b = vec![0i64; n + 2];
-    c[0] = 1; b[0] = 1;
+    let mut c = vec![0u64; n + 2];
+    let mut b = vec![0u64; n + 2];
+    c[0] = 1;
+    b[0] = 1;
     let mut rec_len = 0usize;
     let mut m = 1usize;
-    let mut bv = 1i64;
+    let mut bv = 1u64;
 
     for i in 0..n {
         let mut d = s[i];
         for j in 1..=rec_len {
-            d = modd(d + c[j] * s[i - j]);
+            d = addmod(d, mulmod(c[j], s[i - j]));
         }
-
         if d == 0 {
             m += 1;
         } else if 2 * rec_len <= i {
             let t = c.clone();
-            let coef = modd(d * inv(bv));
+            let coef = mulmod(d, modinv(bv));
             for j in m..=n {
-                c[j] = modd(c[j] - coef * b[j - m]);
+                c[j] = submod(c[j], mulmod(coef, b[j - m]));
             }
             b = t;
             rec_len = i + 1 - rec_len;
             bv = d;
             m = 1;
         } else {
-            let coef = modd(d * inv(bv));
+            let coef = mulmod(d, modinv(bv));
             for j in m..=n {
-                c[j] = modd(c[j] - coef * b[j - m]);
+                c[j] = submod(c[j], mulmod(coef, b[j - m]));
             }
             m += 1;
         }
     }
 
-    // Return coefficients: c[1..=rec_len] negated
-    let mut coeffs = vec![0i64; rec_len + 1];
+    let mut coeffs = vec![0u64; rec_len + 1];
     for i in 1..=rec_len {
-        coeffs[i] = modd(-c[i]);
+        coeffs[i] = submod(0, c[i]);
     }
     coeffs
 }
 
-fn linear_recurrence(coeffs: &[i64], a: &[i64], n: i64) -> i64 {
+fn poly_mul_mod(out: &mut [u64], x: &[u64], y: &[u64], coeffs: &[u64], tmp: &mut [u64]) {
+    let k = out.len();
+    tmp[..2 * k].fill(0);
+    for i in 0..k {
+        let xi = x[i];
+        if xi == 0 { continue; }
+        for j in 0..k {
+            tmp[i + j] = addmod(tmp[i + j], mulmod(xi, y[j]));
+        }
+    }
+    if k >= 2 {
+        for i in (k..=2 * k - 2).rev() {
+            let t = tmp[i];
+            if t == 0 { continue; }
+            for j in 1..=k {
+                tmp[i - j] = addmod(tmp[i - j], mulmod(t, coeffs[j]));
+            }
+        }
+    }
+    out.copy_from_slice(&tmp[..k]);
+}
+
+fn linear_recurrence(coeffs: &[u64], a: &[u64], n: u64) -> u64 {
     let rec_len = coeffs.len() - 1;
-    if (n as usize) < rec_len { return a[n as usize]; }
-    if rec_len == 0 { return 0; }
+    if (n as usize) < rec_len {
+        return a[n as usize];
+    }
+    if rec_len == 0 {
+        return 0;
+    }
 
-    let mut q = vec![0i64; rec_len];
-    let mut r = vec![0i64; rec_len];
+    let mut q = vec![0u64; rec_len];
+    let mut r = vec![0u64; rec_len];
+    let mut tmp = vec![0u64; 2 * rec_len + 2];
+    let mut buf = vec![0u64; rec_len];
     q[0] = 1;
-    if rec_len > 1 { r[1] = 1; } else { r[0] = coeffs[1] % MOD; }
-
-    let poly_mult = |a: &[i64], b: &[i64], coeffs: &[i64]| -> Vec<i64> {
-        let len = rec_len;
-        let mut tmp = vec![0i64; 2 * len + 2];
-        for i in 0..len {
-            for j in 0..len {
-                tmp[i + j] = modd(tmp[i + j] + a[i] * b[j]);
-            }
-        }
-        for i in (len..=(2 * len - 2)).rev() {
-            for j in 1..=len {
-                tmp[i - j] = modd(tmp[i - j] + tmp[i] * coeffs[j]);
-            }
-            tmp[i] = 0;
-        }
-        tmp[..len].to_vec()
-    };
+    if rec_len > 1 {
+        r[1] = 1;
+    } else {
+        r[0] = coeffs[1] % MOD;
+    }
 
     let mut exp = n;
     while exp > 0 {
         if exp & 1 == 1 {
-            q = poly_mult(&q, &r, coeffs);
+            poly_mul_mod(&mut buf, &q, &r, coeffs, &mut tmp);
+            std::mem::swap(&mut q, &mut buf);
         }
-        r = poly_mult(&r, &r, coeffs);
+        poly_mul_mod(&mut buf, &r, &r, coeffs, &mut tmp);
+        std::mem::swap(&mut r, &mut buf);
         exp >>= 1;
     }
 
-    let mut result = 0i64;
+    let mut result = 0u64;
     for i in 0..rec_len {
-        result = modd(result + q[i] * a[i]);
+        result = addmod(result, mulmod(q[i], a[i]));
     }
     result
 }
 
-fn extrapolate(values: &[i64], x: i64) -> i64 {
-    let n = values.len();
-    if x <= n as i64 { return values[(x - 1) as usize]; }
-
-    let coeffs = berlekamp_massey(values);
-    let rec_len = coeffs.len() - 1;
-
-    // coeffs already has the recurrence coefficients
-    // linear_recurrence expects coeffs[1..] as the recurrence: a[n] = sum coeffs[i]*a[n-i]
-    let mut c2 = vec![0i64; rec_len + 1];
-    for i in 1..=rec_len {
-        c2[i] = modd(-coeffs[i]); // Wait, BM gives us negated already...
+fn extrapolate(values: &[u64], x: u64) -> u64 {
+    let n = values.len() as u64;
+    if x <= n {
+        return values[(x - 1) as usize];
     }
-
-    // Actually, berlekamp_massey returns coeffs with coeffs[i] = -C[i].
-    // The recurrence is: s[n] = sum_{j=1}^{L} coeffs[j] * s[n-j]
-    // linear_recurrence expects C[j] where the reduction uses C[j].
-    // In the C code, after BM, C[i] is negated before calling linear_recurrence.
-    // So linear_recurrence expects the same sign as the recurrence coefficients.
-    // Let's just match the C code exactly.
-
-    // In the C extrapolate: C[i] = -C[i] (i.e., negate)
-    // But berlekamp_massey here already returns -C[i] as coeffs[i].
-    // Wait no - let me re-read. In the C code's berlekamp_massey, it returns C as the BM poly.
-    // Then extrapolate does C[i] = mod(-C[i]), then calls linear_recurrence(C, recLen, values, x-1).
-    // Our berlekamp_massey returns coeffs[i] = -C[i] already.
-    // So we need to negate them again for linear_recurrence... which would give us back C[i].
-    // Actually wait: let me just be careful.
-
-    // In C's BM: fills C such that C[0]=1, s[i] + sum_{j=1}^{L} C[j]*s[i-j] = 0
-    // In C's extrapolate: for(i=1..L) C[i] = mod(-C[i]) => makes C[i] positive: s[i] = sum C[j]*s[i-j]
-    // In C's linear_recurrence: uses C[j] for reduction (adding C[j] * coeff)
-    // So linear_recurrence wants the positive coefficients.
-
-    // Our BM returns coeffs[i] = mod(-C_bm[i]) = the positive coefficients.
-    // Wait, no. Let me re-read our BM:
-    // coeffs[i] = modd(-c[i])  where c is the BM polynomial.
-    // So coeffs[i] is the positive recurrence coefficient. Good.
-
-    // But linear_recurrence in C uses C[j] where s[n] = sum C[j]*s[n-j],
-    // and for reduction: tmp[i-j] += tmp[i] * C[j].
-    // Our linear_recurrence does the same.
-
+    let coeffs = berlekamp_massey(values);
     linear_recurrence(&coeffs, values, x - 1)
 }
 
-fn num_castles_big(w: i64, h: i64) -> i64 {
-    let l = 500;
-    if w <= 100 {
-        let values: Vec<i64> = (1..=l).map(|hh| num_castles(w as usize, hh)).collect();
-        return extrapolate(&values, h);
+fn extrapolate_two(values: &[u64], x1: u64, x2: u64) -> (u64, u64) {
+    let n = values.len() as u64;
+    if x1 <= n && x2 <= n {
+        return (values[(x1 - 1) as usize], values[(x2 - 1) as usize]);
     }
-    if h <= 100 {
-        let values: Vec<i64> = (1..=l).map(|ww| num_castles(ww, h as usize)).collect();
-        return extrapolate(&values, w);
-    }
-    num_castles(w as usize, h as usize)
+    let coeffs = berlekamp_massey(values);
+    (
+        if x1 <= n { values[(x1 - 1) as usize] } else { linear_recurrence(&coeffs, values, x1 - 1) },
+        if x2 <= n { values[(x2 - 1) as usize] } else { linear_recurrence(&coeffs, values, x2 - 1) },
+    )
+}
+
+fn f_small_w(w: usize, h: u64) -> u64 {
+    let values: Vec<u64> = (1..SEQ_LEN + 1)
+        .into_par_iter()
+        .map(|hh| num_castles(w, hh))
+        .collect();
+    let (c_h, c_hm1) = extrapolate_two(&values, h, h - 1);
+    submod(c_h, c_hm1)
+}
+
+fn f_small_h(w: u64, h: usize) -> u64 {
+    let (seq_h, seq_hm1) = rayon::join(
+        || dp_width_seq(SEQ_LEN, h),
+        || dp_width_seq(SEQ_LEN, h - 1),
+    );
+    submod(extrapolate(&seq_h, w), extrapolate(&seq_hm1, w))
 }
 
 fn main() {
-    let mut ans = 0i64;
-
-    // Case 1: W=10^12, H=100
-    let w = 1_000_000_000_000i64;
-    let h = 100i64;
-    ans = modd(ans + num_castles_big(w, h) - num_castles_big(w, h - 1));
-
-    // Case 2: W=10000, H=10000
-    let w = 10000i64;
-    let h = 10000i64;
-    ans = modd(ans + num_castles_big(w, h) - num_castles_big(w, h - 1));
-
-    // Case 3: W=100, H=10^12
-    let w = 100i64;
-    let h = 1_000_000_000_000i64;
-    ans = modd(ans + num_castles_big(w, h) - num_castles_big(w, h - 1));
-
-    println!("{}", ans);
+    // Two independent 10k column DPs are the wall-time bottleneck.
+    let ((c10k, c9999), (a, c)) = rayon::join(
+        || rayon::join(
+            || num_castles(10_000, 10_000),
+            || num_castles(10_000, 9_999),
+        ),
+        || rayon::join(
+            || f_small_h(1_000_000_000_000, 100),
+            || f_small_w(100, 1_000_000_000_000),
+        ),
+    );
+    let b = submod(c10k, c9999);
+    println!("{}", addmod(addmod(a, b), c));
 }

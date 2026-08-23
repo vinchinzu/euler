@@ -15,9 +15,15 @@
 // 4. C(N) = sum_{p=1..N} A[p].
 
 use euler_utils::primes::primes_up_to;
+use rayon::prelude::*;
 
 const MOD: u64 = 1_111_211_113;
 const N: usize = 10_000;
+
+#[inline(always)]
+fn mul_mod(a: u64, b: u64) -> u64 {
+    a * b % MOD
+}
 
 /// Compute Mobius function for 0..=n via linear sieve.
 fn mobius_upto(n: usize) -> Vec<i8> {
@@ -46,8 +52,8 @@ fn mobius_upto(n: usize) -> Vec<i8> {
     mu
 }
 
-/// Generate all pairs (m, k(m)) with k(m) <= max_k, where k is multiplicative.
-fn generate_moduli(max_k: usize) -> Vec<(u64, usize)> {
+/// Generate all pairs (n, k) = (m - k(m), k(m)) with k(m) <= max_k.
+fn generate_moduli(max_k: usize) -> Vec<(u32, u32)> {
     let primes = primes_up_to(2 * max_k);
 
     // For each prime, precompute list of (p^e, k(p^e)) for e>=1 with k <= max_k
@@ -82,18 +88,18 @@ fn generate_moduli(max_k: usize) -> Vec<(u64, usize)> {
         options.push(opts);
     }
 
-    let mut pairs: Vec<(u64, usize)> = Vec::new();
+    let mut pairs: Vec<(u32, u32)> = Vec::with_capacity(50_000);
 
-    // DFS to enumerate all squarefree-extended products
     fn dfs(
         start_idx: usize,
         m_cur: u64,
         k_cur: usize,
         max_k: usize,
         options: &[Vec<(u64, usize)>],
-        pairs: &mut Vec<(u64, usize)>,
+        pairs: &mut Vec<(u32, u32)>,
     ) {
-        pairs.push((m_cur, k_cur));
+        debug_assert!(m_cur >= k_cur as u64);
+        pairs.push(((m_cur - k_cur as u64) as u32, k_cur as u32));
         for j in start_idx..options.len() {
             let opts = &options[j];
             if opts.is_empty() {
@@ -117,70 +123,79 @@ fn generate_moduli(max_k: usize) -> Vec<(u64, usize)> {
     pairs
 }
 
-/// Compute modular inverses inv[1..n] where inv[i] = i^{-1} mod m.
-fn prepare_inverses(n: usize, m: u64) -> Vec<u64> {
+/// Compute modular inverses inv[1..n] where inv[i] = i^{-1} mod MOD.
+fn prepare_inverses(n: usize) -> Vec<u64> {
     let mut inv = vec![0u64; n + 1];
     inv[1] = 1;
     for i in 2..=n {
-        // inv[i] = -(m / i) * inv[m % i] mod m
-        let qi = m / (i as u64);
-        let ri = (m % (i as u64)) as usize;
-        inv[i] = (m - qi % m * inv[ri] % m) % m;
+        let qi = MOD / (i as u64);
+        let ri = (MOD % (i as u64)) as usize;
+        inv[i] = (MOD - qi % MOD * inv[ri] % MOD) % MOD;
     }
     inv
 }
 
-/// Compute B[p] = number of clock sequences with period p (not necessarily minimal).
-fn compute_b(max_period: usize, modulus: u64) -> Vec<u64> {
-    let moduli = generate_moduli(max_period);
-    let inv = prepare_inverses(max_period, modulus);
+/// Add binomial row C(n, r) into b[k + r] for r = 0..=rmax (no reduction).
+fn add_binomial_row(b: &mut [u64], n: u32, k: u32, max_period: usize, inv: &[u64]) {
+    let k = k as usize;
+    let rmax = (max_period - k).min(n as usize);
 
-    let mut b = vec![0u64; max_period + 1];
-
-    for &(m, k) in &moduli {
-        if k > max_period {
-            continue;
-        }
-        let mu = m as usize;
-        if mu < k {
-            continue;
-        }
-        let n = mu - k; // n = m - k
-        let mut rmax = max_period - k;
-        if n < rmax {
-            rmax = n;
-        }
-
-        // r = 0: C(n, 0) = 1
-        let idx0 = k;
-        let mut v = b[idx0] + 1;
-        if v >= modulus {
-            v -= modulus;
-        }
-        b[idx0] = v;
-
-        // r = 1..rmax: C(n, r) computed iteratively
+    // SAFETY: k <= max_period, rmax <= max_period - k, so k + r <= max_period.
+    // inv has length max_period + 1 and r in 1..=rmax.
+    unsafe {
+        *b.get_unchecked_mut(k) += 1;
         let mut c = 1u64;
-        for r in 1..=rmax {
-            // c = c * (n - r + 1) / r mod modulus
-            let nr = (n - r + 1) as u64;
-            c = c % modulus * (nr % modulus) % modulus;
-            c = c * inv[r] % modulus;
-            let idx = idx0 + r;
-            let mut val = b[idx] + c;
-            if val >= modulus {
-                val -= modulus;
-            }
-            b[idx] = val;
+        let mut numer = n as u64;
+        let mut idx = k;
+        let mut inv_ptr = inv.as_ptr().add(1);
+        for _ in 0..rmax {
+            c = mul_mod(c, numer);
+            c = mul_mod(c, *inv_ptr);
+            inv_ptr = inv_ptr.add(1);
+            numer -= 1;
+            idx += 1;
+            *b.get_unchecked_mut(idx) += c;
         }
     }
+}
 
+/// Compute B[p] = number of clock sequences with period p (not necessarily minimal).
+fn compute_b(max_period: usize) -> Vec<u64> {
+    let moduli = generate_moduli(max_period);
+    let inv = prepare_inverses(max_period);
+
+    // Thread-local B arrays: inner-loop writes would race on a shared buffer.
+    // Each pair contributes at most one add per index and |pairs| * MOD fits in u64,
+    // so we defer % MOD until after the merge.
+    let mut b = moduli
+        .par_iter()
+        .with_min_len(16)
+        .fold(
+            || vec![0u64; max_period + 1],
+            |mut local, &(n, k)| {
+                add_binomial_row(&mut local, n, k, max_period, &inv);
+                local
+            },
+        )
+        .reduce(
+            || vec![0u64; max_period + 1],
+            |mut a, b| {
+                for (x, y) in a.iter_mut().zip(&b) {
+                    *x += *y;
+                }
+                a
+            },
+        );
+
+    for x in &mut b {
+        *x %= MOD;
+    }
     b
 }
 
 /// A[p] = number of clock sequences with minimal period exactly p.
 /// A[p] = sum_{d|p} mu(d) * B[p/d]
-fn compute_a_from_b(b: &[u64], mu: &[i8], modulus: u64) -> Vec<u64> {
+fn compute_a_from_b(b: &[u64], mu: &[i8]) -> Vec<u64> {
     let n = b.len() - 1;
     let mut a = vec![0u64; n + 1];
 
@@ -193,8 +208,8 @@ fn compute_a_from_b(b: &[u64], mu: &[i8], modulus: u64) -> Vec<u64> {
             for q in 1..=(n / d) {
                 let p = d * q;
                 let mut v = a[p] + b[q];
-                if v >= modulus {
-                    v -= modulus;
+                if v >= MOD {
+                    v -= MOD;
                 }
                 a[p] = v;
             }
@@ -205,7 +220,7 @@ fn compute_a_from_b(b: &[u64], mu: &[i8], modulus: u64) -> Vec<u64> {
                 let v = if a[p] >= b[q] {
                     a[p] - b[q]
                 } else {
-                    a[p] + modulus - b[q]
+                    a[p] + MOD - b[q]
                 };
                 a[p] = v;
             }
@@ -216,9 +231,9 @@ fn compute_a_from_b(b: &[u64], mu: &[i8], modulus: u64) -> Vec<u64> {
 }
 
 fn main() {
-    let b = compute_b(N, MOD);
+    let b = compute_b(N);
     let mu = mobius_upto(N);
-    let a = compute_a_from_b(&b, &mu, MOD);
+    let a = compute_a_from_b(&b, &mu);
 
     // C(N) = sum A[1..N]
     let mut s = 0u64;

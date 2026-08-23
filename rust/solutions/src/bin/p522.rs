@@ -2,22 +2,28 @@
 //
 // Combinatorial counting with modular arithmetic.
 // Compute factorials and inverse factorials mod MOD, then sum terms.
+// The per-l term is an independent ~24-mul mod_pow; parallelize over l.
+
+use rayon::prelude::*;
 
 const NN: u64 = 12_344_321;
 const MOD: u64 = 135_707_531;
+const CHUNK: usize = 4096;
 
 #[inline(always)]
 fn mod_pow_local(mut base: u64, mut exp: u64) -> u64 {
+    // NN-l-1 < MOD, so no initial reduction.
     let mut result = 1u64;
-    base %= MOD;
-    while exp > 0 {
+    loop {
         if exp & 1 == 1 {
             result = result * base % MOD;
         }
-        base = base * base % MOD;
         exp >>= 1;
+        if exp == 0 {
+            return result;
+        }
+        base = base * base % MOD;
     }
-    result
 }
 
 fn main() {
@@ -38,14 +44,32 @@ fn main() {
     let mut ans = NN * (NN - 1) % MOD;
     ans = ans * mod_pow_local(NN - 2, NN - 1) % MOD;
 
-    for l in 2..NN {
-        let lu = l as usize;
-        let ncr = fact[nn] * inv_fact[lu] % MOD * inv_fact[nn - lu] % MOD;
-        let term = ncr * fact[lu - 1] % MOD
-            * mod_pow_local(NN - l - 1, NN - l) % MOD;
-        ans += term;
-        if ans >= MOD { ans -= MOD; }
-    }
+    let fact = fact.as_slice();
+    let inv_fact = inv_fact.as_slice();
+    let fnn = fact[nn];
+    let n_chunks = (nn - 2).div_ceil(CHUNK);
 
-    println!("{}", ans % MOD);
+    // Each term < MOD; ~12.3M terms fit in u64 before a final reduction.
+    let loop_sum: u64 = (0..n_chunks)
+        .into_par_iter()
+        .map(|ci| {
+            let l0 = 2 + ci * CHUNK;
+            let l1 = (l0 + CHUNK).min(nn);
+            let mut local = 0u64;
+            for lu in l0..l1 {
+                let l = lu as u64;
+                // SAFETY: lu in 2..nn, arrays have length nn+1
+                unsafe {
+                    let ncr = fnn * *inv_fact.get_unchecked(lu) % MOD
+                        * *inv_fact.get_unchecked(nn - lu) % MOD;
+                    local += ncr * *fact.get_unchecked(lu - 1) % MOD
+                        * mod_pow_local(NN - l - 1, NN - l)
+                        % MOD;
+                }
+            }
+            local
+        })
+        .sum();
+
+    println!("{}", (ans + loop_sum) % MOD);
 }

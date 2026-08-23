@@ -1,144 +1,216 @@
 // Project Euler 354: Honeycomb distance distribution
 //
-// Recursive template-based enumeration of numbers with specific prime structure.
+// B(L)=450 iff R(n)=75 for n=L^2/3, R multiplicative via primes ≡ 1 (mod 3).
+// Patterns from 75: (24,2), (14,4), (4,4,2). Remainder 3^a * b^2 with
+// primes of b all ≡ 2 (mod 3). Heavy r-sum uses Dirichlet groups on C/r^2.
 
-const N_VAL: f64 = 500_000_000_000.0;
-const K_VAL: i32 = 450;
+use rayon::prelude::*;
 
-static mut ANS: i64 = 0;
+const LMAX: u128 = 500_000_000_000;
 
-fn is_prime_large(n: i64) -> bool {
-    if n < 2 { return false; }
-    if n == 2 || n == 3 { return true; }
-    if n % 2 == 0 || n % 3 == 0 { return false; }
-    let mut i = 5i64;
-    while i * i <= n {
-        if n % i == 0 || n % (i + 2) == 0 { return false; }
-        i += 6;
+fn sieve_primes(limit: usize) -> Vec<u32> {
+    if limit < 2 {
+        return Vec::new();
     }
-    true
-}
-
-fn is_prime(p: i64, spf: &[i32], l2: usize) -> bool {
-    if p <= 1 { return false; }
-    if p as usize <= l2 { return spf[p as usize] == p as i32; }
-    is_prime_large(p)
-}
-
-fn find_nums_for_template(
-    index: usize, prod_primes: i64, min_prime: i64,
-    limit: f64, tmpl: &[i32], spf: &[i32], num_2mod3s: &[i32], l2: usize,
-) {
-    if index == tmpl.len() {
-        let mut remaining = limit;
-        while remaining > 1.0 {
-            let idx = (remaining.sqrt() as usize).min(l2);
-            unsafe { ANS += num_2mod3s[idx] as i64; }
-            remaining /= 3.0;
-        }
-        return;
-    }
-
-    let e = tmpl[index];
-    let mut p = if min_prime > 1 { min_prime } else { 1 };
-    // Advance to p = 1 mod 3
-    match p % 3 {
-        0 => p += 1,
-        2 => p += 2,
-        _ => {}
-    }
-
+    // index i -> odd number 2*i+1
+    let sz = (limit + 1) / 2;
+    let mut comp = vec![0u8; sz];
+    comp[0] = 1;
+    let mut i = 1usize;
     loop {
-        let mut pe = 1.0;
-        let mut ok = true;
-        for _ in 0..e {
-            pe *= p as f64;
-            if pe > limit {
-                ok = false;
-                break;
+        let p = 2 * i + 1;
+        if p * p > limit {
+            break;
+        }
+        // SAFETY: i < sz by construction of the odd-index loop.
+        if unsafe { *comp.get_unchecked(i) } == 0 {
+            let mut j = (p * p) / 2;
+            while j < sz {
+                // SAFETY: j < sz from the loop bound.
+                unsafe { *comp.get_unchecked_mut(j) = 1 };
+                j += p;
             }
         }
-        if !ok { break; }
-
-        if prod_primes % p != 0 && is_prime(p, spf, l2) {
-            let next_min = if index + 1 < tmpl.len() && tmpl[index] == tmpl[index + 1] {
-                p + 3
-            } else {
-                1
-            };
-
-            find_nums_for_template(
-                index + 1, prod_primes * p, next_min,
-                limit / pe, tmpl, spf, num_2mod3s, l2,
-            );
-        }
-        p += 3;
+        i += 1;
     }
+    let mut primes = Vec::with_capacity(sz / 5 + 8);
+    primes.push(2);
+    for i in 1..sz {
+        // SAFETY: i in 1..sz.
+        if unsafe { *comp.get_unchecked(i) } == 0 {
+            let p = 2 * i + 1;
+            if p > limit {
+                break;
+            }
+            primes.push(p as u32);
+        }
+    }
+    primes
 }
 
-fn find_all_templates(
-    n: i32, max_d: i32, tmpl: &mut Vec<i32>,
-    spf: &[i32], num_2mod3s: &[i32], l2: usize,
-) {
-    if n == 1 {
-        let l1 = N_VAL / 3.0f64.sqrt();
-        let l1_sq = l1 * l1;
-        find_nums_for_template(0, 1, 1, l1_sq, tmpl, spf, num_2mod3s, l2);
-        return;
+#[inline(always)]
+fn count_primes1(primes1: &[u32], lo: u32, hi: u32) -> i32 {
+    let r = primes1.partition_point(|&p| p <= hi);
+    let l = primes1.partition_point(|&p| p < lo);
+    (r - l) as i32
+}
+
+/// #{ b <= sqrt(m / 3^a) : primes of b are all ≡ 2 (mod 3) }, summed over a >= 0.
+#[inline(always)]
+fn g(mut m: u64, prefix: &[i32]) -> i64 {
+    let bmax = prefix.len() - 1;
+    let bmax2 = bmax as u64 * bmax as u64;
+    let mut total = 0i64;
+    while m > bmax2 {
+        // SAFETY: bmax = prefix.len() - 1.
+        total += unsafe { *prefix.get_unchecked(bmax) } as i64;
+        m /= 3;
     }
-    for d in 2..=max_d {
-        if n % d == 0 {
-            tmpl.push(d - 1);
-            find_all_templates(n / d, d, tmpl, spf, num_2mod3s, l2);
-            tmpl.pop();
+    while m != 0 {
+        let s = m.isqrt() as usize;
+        // SAFETY: m <= bmax^2 so s <= bmax.
+        total += unsafe { *prefix.get_unchecked(s) } as i64;
+        m /= 3;
+    }
+    total
+}
+
+/// Sum_r G(C / r^2) over primes r ≡ 1 (mod 3), r != excl1, excl2.
+fn sum_over_r(c: u64, excl1: u32, excl2: u32, primes1: &[u32], prefix: &[i32]) -> i64 {
+    let rmax = c.isqrt();
+    if rmax < 7 {
+        return 0;
+    }
+    let last = *primes1.last().unwrap() as u64;
+    let rmax = rmax.min(last);
+    let mut r_low = 7u64;
+    let mut total = 0i64;
+    while r_low <= rmax {
+        let t = c / (r_low * r_low);
+        if t == 0 {
+            break;
         }
+        let mut r_high = (c / t).isqrt();
+        if r_high > rmax {
+            r_high = rmax;
+        }
+        if r_high < r_low {
+            break;
+        }
+        let mut cnt = count_primes1(primes1, r_low as u32, r_high as u32);
+        if r_low <= excl1 as u64 && (excl1 as u64) <= r_high {
+            cnt -= 1;
+        }
+        if excl2 != excl1 && r_low <= excl2 as u64 && (excl2 as u64) <= r_high {
+            cnt -= 1;
+        }
+        if cnt > 0 {
+            total += cnt as i64 * g(t, prefix);
+        }
+        r_low = r_high + 1;
     }
+    total
 }
 
 fn main() {
-    let l1 = N_VAL / 3.0f64.sqrt();
-    let l1_sq = l1 * l1;
-    let l2 = (l1_sq / (7.0f64.powi(4) * 13.0f64.powi(4))).sqrt() as usize;
+    let n: u128 = LMAX * LMAX / 3;
 
-    let mut spf = vec![0i32; l2 + 1];
-    for i in 0..=l2 {
-        spf[i] = i as i32;
-    }
-    {
-        let mut i = 2;
-        while i * i <= l2 {
-            if spf[i] == i as i32 {
-                let mut j = i * i;
-                while j <= l2 {
-                    if spf[j] == j as i32 {
-                        spf[j] = i as i32;
-                    }
-                    j += i;
-                }
+    let p7_4 = 7u128.pow(4);
+    let p13_4 = 13u128.pow(4);
+    let p19_2 = 19u128.pow(2);
+    let max_r = (n / (p7_4 * p13_4)).isqrt() as usize;
+    let bmax = (n / (p7_4 * p13_4 * p19_2)).isqrt() as usize;
+
+    let primes = sieve_primes(max_r);
+    let primes1: Vec<u32> = primes.iter().copied().filter(|&p| p % 3 == 1).collect();
+
+    // prefix[x] = #{ b <= x : every prime factor of b is ≡ 2 (mod 3) } (includes 1).
+    let mut good = vec![1u8; bmax + 1];
+    good[0] = 0;
+    for &p in &primes {
+        let pu = p as usize;
+        if pu > bmax {
+            break;
+        }
+        if pu == 3 || p % 3 == 1 {
+            let mut j = pu;
+            while j <= bmax {
+                // SAFETY: j <= bmax = good.len() - 1.
+                unsafe { *good.get_unchecked_mut(j) = 0 };
+                j += pu;
             }
-            i += 1;
+        }
+    }
+    let mut prefix = vec![0i32; bmax + 1];
+    let mut acc = 0i32;
+    for i in 1..=bmax {
+        // SAFETY: i in 1..=bmax, both arrays have length bmax+1.
+        acc += unsafe { *good.get_unchecked(i) } as i32;
+        unsafe { *prefix.get_unchecked_mut(i) = acc };
+    }
+
+    let mut ans = 0i64;
+
+    // Pattern (24, 2): 7^24 * q^2, q ≡ 1 (mod 3), q != 7.
+    {
+        let p24 = 7u128.pow(24);
+        if p24 <= n {
+            let max_q2 = n / p24;
+            for &q in &primes1 {
+                if q == 7 {
+                    continue;
+                }
+                let q2 = q as u128 * q as u128;
+                if q2 > max_q2 {
+                    break;
+                }
+                ans += g((n / (p24 * q2)) as u64, &prefix);
+            }
         }
     }
 
-    let mut num_2mod3s = vec![0i32; l2 + 1];
-    for n in 1..=l2 {
-        let mut ok = true;
-        let mut temp = n;
-        while temp > 1 {
-            let p = spf[temp] as usize;
-            if p % 3 != 2 {
-                ok = false;
+    // Pattern (14, 4): p^14 * q^4, p != q.
+    for &p in &primes1 {
+        let Some(p14) = (p as u128).checked_pow(14) else { break };
+        if p14 > n {
+            break;
+        }
+        let max_q4 = n / p14;
+        for &q in &primes1 {
+            if q == p {
+                continue;
+            }
+            let q4 = (q as u128).pow(4);
+            if q4 > max_q4 {
                 break;
             }
-            while temp % p == 0 {
-                temp /= p;
-            }
+            ans += g((n / p14 / q4) as u64, &prefix);
         }
-        num_2mod3s[n] = num_2mod3s[n - 1] + if ok { 1 } else { 0 };
     }
 
-    let mut tmpl = Vec::new();
-    find_all_templates(K_VAL / 6, K_VAL / 6, &mut tmpl, &spf, &num_2mod3s, l2);
+    // Pattern (4, 4, 2): p^4 * q^4 * r^2 with p < q, r distinct.
+    let mut pairs: Vec<(u32, u32, u64)> = Vec::new();
+    for (i, &p) in primes1.iter().enumerate() {
+        let p4 = (p as u128).pow(4);
+        let mut any = false;
+        for &q in &primes1[i + 1..] {
+            let q4 = (q as u128).pow(4);
+            let Some(base) = p4.checked_mul(q4) else { break };
+            if base > n {
+                break;
+            }
+            pairs.push((p, q, (n / base) as u64));
+            any = true;
+        }
+        if !any {
+            break;
+        }
+    }
 
-    println!("{}", unsafe { ANS });
+    ans += pairs
+        .par_iter()
+        .map(|&(p, q, c)| sum_over_r(c, p, q, &primes1, &prefix))
+        .sum::<i64>();
+
+    println!("{ans}");
 }

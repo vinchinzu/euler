@@ -140,6 +140,9 @@ for step in 0..steps {
 ### When It Doesn't Work
 - Per-iteration work is tiny (array lookups, simple arithmetic) -- overhead exceeds benefit
 - P417 was reverted because the summation loop was only ~3s sequential with lightweight iterations
+- P410: `par_iter` over 1e8 cheap iterations + a memory-bound sieve — regression
+- P518: `par_iter` over 25M outer `k` (most nearly empty) — regression
+- `RangeInclusive<usize>` is not `IndexedParallelIterator`; use `2..n+1` if you need `with_min_len`
 
 ### Patterns
 
@@ -217,3 +220,7 @@ Features:
 1. **Type casting chains** (`as u32 as u64 as usize`): Pick one integer type and stick with it. Mixed types cause implicit widening/narrowing in hot paths.
 2. **Closure vs loop `return`**: When converting rayon `.map(|x| { ... return val; })` back to a for loop, replace `return val` with `total += val; continue;` -- `return` inside a block returns from the enclosing function.
 3. **u128 in mod_pow**: The generic `mod_pow(u64, u64, u64)` uses u128 intermediates. When modulus < 2^32, pure u64 arithmetic is 3-4x faster.
+4. **`pow_mod` in a loop over the exponent**: `for i in 0..ord { pow_mod(2, i, k) }` is N binary exps. Keep a running `acc = acc * 2 % k` (p486: 2.3s → 0.11s).
+5. **Naive multiplicative order**: do not multiply until 1. Compute `φ(m)`, factor it, peel primes. Same for `order(2, k)` style loops.
+
+Wave-3 2s→<1s playbook (also `.grok/skills/euler-rust-speed/SKILL.md`): pick 1.5–3s binaries from `validated.json`, scan for no-rayon + `i128` / `pow_mod` loops, A/B with `python3 ab_bench.py NNN`.

@@ -2,7 +2,7 @@
 //
 // Memoized recursion: num_products(min_val, count, n_val).
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 const MOD: i64 = 1_000_000_007;
 
@@ -10,7 +10,7 @@ fn num_products(
     min_val: i64,
     count: i32,
     n_val: i64,
-    memo: &mut HashMap<(i64, i32, i64), i64>,
+    memo: &mut FxHashMap<(i64, i32, i64), i64>,
 ) -> i64 {
     if count == 1 {
         let v = n_val - min_val + 1;
@@ -56,7 +56,7 @@ fn num_products(
 fn main() {
     let n: i64 = 10_000_000_000; // 10^10
 
-    let mut memo = HashMap::new();
+    let mut memo = FxHashMap::default();
 
     let mut ans = n % MOD;
     let mut k = 1;

@@ -2,6 +2,8 @@
 //
 // Count integer triangles on y=x^2 with specific properties.
 
+use rayon::prelude::*;
+
 const K_MAX: i64 = 1_000_000;
 const N_VAL: i64 = 1_000_000_000;
 const SIEVE_MAX: usize = 2_000_001;
@@ -20,79 +22,86 @@ fn main() {
         }
     }
 
+    // RangeInclusive / Range<i64> are not IndexedParallelIterator; use usize.
+    let ans: i64 = (1..K_MAX as usize + 1)
+        .into_par_iter()
+        .with_min_len(256)
+        .map(|k| contrib(k as i64, &smallest_prime))
+        .sum();
+
+    println!("{}", ans);
+}
+
+fn contrib(k: i64, smallest_prime: &[u32]) -> i64 {
     let mut ans: i64 = 0;
+    let prod = 2 * k * k;
+    let divs = gen_divisors(prod, (2 * k) as u32, smallest_prime);
 
-    for k in 1..=K_MAX {
-        let prod = 2 * k * k;
-        let divs = gen_divisors(prod, (2 * k) as u32, &smallest_prime);
+    for &d in &divs {
+        // Case 1
+        {
+            let apb = -(k + d);
+            let bpc = prod / d + k;
+            let mut lo = (apb + 1) / 2;
+            let mut hi = (bpc - 1) / 2;
+            let lo2 = bpc - N_VAL;
+            let hi2 = apb + N_VAL;
+            if lo2 > lo { lo = lo2; }
+            if hi2 < hi { hi = hi2; }
+            if lo <= hi {
+                ans += hi - lo + 1;
+            }
 
-        for &d in &divs {
-            // Case 1
-            {
-                let apb = -(k + d);
-                let bpc = prod / d + k;
-                let mut lo = (apb + 1) / 2;
-                let mut hi = (bpc - 1) / 2;
-                let lo2 = bpc - N_VAL;
-                let hi2 = apb + N_VAL;
-                if lo2 > lo { lo = lo2; }
-                if hi2 < hi { hi = hi2; }
-                if lo <= hi {
-                    ans += hi - lo + 1;
-                }
-
-                let den = d + 2 * k;
-                if prod % den == 0 {
-                    let apc = prod / den - k;
-                    let s = apb + bpc + apc;
-                    if s % 2 == 0 {
-                        let a = s / 2 - bpc;
-                        let c = s / 2 - apb;
-                        if a >= -N_VAL && c <= N_VAL {
-                            ans -= 2;
-                        }
+            let den = d + 2 * k;
+            if prod % den == 0 {
+                let apc = prod / den - k;
+                let s = apb + bpc + apc;
+                if s % 2 == 0 {
+                    let a = s / 2 - bpc;
+                    let c = s / 2 - apb;
+                    if a >= -N_VAL && c <= N_VAL {
+                        ans -= 2;
                     }
                 }
             }
+        }
 
-            // Case 2
-            {
-                let apb = k - d;
-                let bpc = prod / d - k;
-                let mut lo = if bpc >= 0 {
-                    bpc / 2 + 1
-                } else {
-                    (bpc - 1) / 2 + 1
-                };
-                let lo2 = bpc - N_VAL;
-                if lo2 > lo { lo = lo2; }
-                let mut hi = apb + N_VAL;
-                if N_VAL < hi { hi = N_VAL; }
-                if lo <= hi {
-                    ans += 2 * (hi - lo + 1);
-                }
+        // Case 2
+        {
+            let apb = k - d;
+            let bpc = prod / d - k;
+            let mut lo = if bpc >= 0 {
+                bpc / 2 + 1
+            } else {
+                (bpc - 1) / 2 + 1
+            };
+            let lo2 = bpc - N_VAL;
+            if lo2 > lo { lo = lo2; }
+            let mut hi = apb + N_VAL;
+            if N_VAL < hi { hi = N_VAL; }
+            if lo <= hi {
+                ans += 2 * (hi - lo + 1);
+            }
 
-                if d != 2 * k {
-                    let den = 2 * k - d;
-                    let check = if den > 0 { prod % den == 0 } else { prod % (-den) == 0 };
-                    if check {
-                        let apc = k - prod / den;
-                        let s = apb + bpc + apc;
-                        if s % 2 == 0 {
-                            let a = s / 2 - bpc;
-                            let b_val = s / 2 - apc;
-                            let c = s / 2 - apb;
-                            if a >= -N_VAL && c < b_val && b_val <= N_VAL {
-                                ans -= 1;
-                            }
+            if d != 2 * k {
+                let den = 2 * k - d;
+                let check = if den > 0 { prod % den == 0 } else { prod % (-den) == 0 };
+                if check {
+                    let apc = k - prod / den;
+                    let s = apb + bpc + apc;
+                    if s % 2 == 0 {
+                        let a = s / 2 - bpc;
+                        let b_val = s / 2 - apc;
+                        let c = s / 2 - apb;
+                        if a >= -N_VAL && c < b_val && b_val <= N_VAL {
+                            ans -= 1;
                         }
                     }
                 }
             }
         }
     }
-
-    println!("{}", ans);
+    ans
 }
 
 fn gen_divisors(n: i64, val: u32, smallest_prime: &[u32]) -> Vec<i64> {

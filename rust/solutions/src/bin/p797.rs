@@ -5,20 +5,30 @@
 const N: usize = 10_000_000;
 const MOD: i64 = 1_000_000_007;
 
-fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut result = 1i64;
-    base %= m;
-    if base < 0 { base += m; }
-    while exp > 0 {
-        if exp & 1 == 1 { result = result * base % m; }
-        base = base * base % m;
-        exp >>= 1;
-    }
-    result
-}
-
 fn mod_inv(a: i64, m: i64) -> i64 {
-    pow_mod(a, m - 2, m)
+    // Iterative egcd (faster than Fermat for a single inverse).
+    let (mut t, mut newt) = (0i64, 1i64);
+    let (mut r, mut newr) = (m, a % m);
+    if r < 0 {
+        r += m;
+    }
+    if newr < 0 {
+        newr += m;
+    }
+    while newr != 0 {
+        let q = r / newr;
+        let tmp = newt;
+        newt = t - q * newt;
+        t = tmp;
+        let tmp = newr;
+        newr = r - q * newr;
+        r = tmp;
+    }
+    if t < 0 {
+        t + m
+    } else {
+        t
+    }
 }
 
 fn main() {
@@ -49,8 +59,12 @@ fn main() {
 
     // F[n] = cyclotomic polynomial at 2, computed by sieve division
     let mut f = vec![0i64; N + 1];
-    for i in 0..=N {
-        f[i] = (pow_mod(2, i as i64, MOD) - 1 + MOD) % MOD;
+    {
+        let mut p2 = 1i64;
+        for i in 0..=N {
+            f[i] = p2 - 1;
+            p2 = p2 * 2 % MOD;
+        }
     }
     for i in 1..=N {
         let inv = mod_inv(f[i], MOD);

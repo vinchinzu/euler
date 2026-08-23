@@ -25,9 +25,9 @@ fn main() {
             let p = ff[ii] as usize;
             let mut e = 0u32;
             while ii % p == 0 { ii /= p; e += 1; }
-            s = (s as i128 * invs[(1 + 2 * exponents[p] as usize)] as i128 % MOD as i128) as i64;
+            s = ((s as u64 * invs[1 + 2 * exponents[p] as usize] as u64) % MOD as u64) as i64;
             exponents[p] += e;
-            s = (s as i128 * (1 + 2 * exponents[p] as i64) as i128 % MOD as i128) as i64;
+            s = ((s as u64 * (1 + 2 * exponents[p] as u64)) % MOD as u64) as i64;
         }
         ans = (ans + s) % MOD;
     }

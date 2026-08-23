@@ -1,14 +1,23 @@
 // Project Euler 465 - Polar polygons
 // Lucy DP for summatory Euler totient, modular arithmetic.
 
+
+
 const MOD: u64 = 1_000_000_007;
+
+#[inline(always)]
+fn mulmod(a: u64, b: u64, m: u64) -> u64 {
+    (a * b) % m
+}
 
 fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
     let mut result = 1u64;
     base %= m;
     while exp > 0 {
-        if exp & 1 == 1 { result = (result as u128 * base as u128 % m as u128) as u64; }
-        base = (base as u128 * base as u128 % m as u128) as u64;
+        if exp & 1 == 1 {
+            result = mulmod(result, base, m);
+        }
+        base = mulmod(base, base, m);
         exp >>= 1;
     }
     result
@@ -115,38 +124,40 @@ fn main() {
     }
 
     let m1 = MOD - 1;
-    let (small1, large1) = compute_sum_phi(n, l, slimit, &prefix_phi, m1);
-    let (small2, large2) = compute_sum_phi(n, l, slimit, &prefix_phi, MOD);
+    let ((small1, large1), (small2, large2)) = rayon::join(
+        || compute_sum_phi(n, l, slimit, &prefix_phi, m1),
+        || compute_sum_phi(n, l, slimit, &prefix_phi, MOD),
+    );
 
     let ndiv_l = (n / l) as usize;
 
     let mut big_t = 1u64;
     for x in 1..=ndiv_l {
-        big_t = (big_t as u128 * pow_mod(n / x as u64 + 1, phi_arr[x], MOD) as u128 % MOD as u128) as u64;
+        big_t = mulmod(big_t, pow_mod(n / x as u64 + 1, phi_arr[x], MOD), MOD);
     }
     for q in 1..l as usize {
         let spq = get_sp(n, l, &small1, &large1, n / q as u64);
         let spq1 = get_sp(n, l, &small1, &large1, n / (q as u64 + 1));
         let diff = (spq + m1 - spq1) % m1;
-        big_t = (big_t as u128 * pow_mod(q as u64 + 1, diff, MOD) as u128 % MOD as u128) as u64;
+        big_t = mulmod(big_t, pow_mod(q as u64 + 1, diff, MOD), MOD);
     }
 
     let sq_2n1 = {
         let v = (2 * (n % MOD) + 1) % MOD;
-        (v as u128 * v as u128 % MOD as u128) as u64
+        mulmod(v, v, MOD)
     };
 
     let t8 = pow_mod(big_t, 8, MOD);
     let t4 = pow_mod(big_t, 4, MOD);
 
     let mut ans = (t8 + MOD - 1) % MOD;
-    let sub = ((sq_2n1 + MOD - 1) as u128 * t4 as u128 % MOD as u128) as u64;
+    let sub = mulmod((sq_2n1 + MOD - 1) % MOD, t4, MOD);
     ans = (ans + MOD - sub) % MOD;
 
     for x in 1..=ndiv_l {
         let sq = (n / x as u64) % MOD;
-        let sq2 = (sq as u128 * sq as u128 % MOD as u128) as u64;
-        let term = (4u128 * (phi_arr[x] % MOD) as u128 % MOD as u128 * sq2 as u128 % MOD as u128) as u64;
+        let sq2 = mulmod(sq, sq, MOD);
+        let term = mulmod(mulmod(4, phi_arr[x] % MOD, MOD), sq2, MOD);
         ans = (ans + term) % MOD;
     }
     for q in 1..l as usize {
@@ -154,7 +165,7 @@ fn main() {
         let spq1 = get_sp(n, l, &small2, &large2, n / (q as u64 + 1));
         let diff = (spq + MOD - spq1) % MOD;
         let sq = (q as u64 * q as u64) % MOD;
-        let term = (4u128 * diff as u128 % MOD as u128 * sq as u128 % MOD as u128) as u64;
+        let term = mulmod(mulmod(4, diff, MOD), sq, MOD);
         ans = (ans + term) % MOD;
     }
 

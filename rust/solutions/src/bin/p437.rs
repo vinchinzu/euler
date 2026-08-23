@@ -2,20 +2,23 @@
 //
 // Sum of primes p <= 10^8 that have a Fibonacci primitive root.
 
+use rayon::prelude::*;
+
 const N: usize = 100_000_000;
 
+// p < 1e8 so products fit in u64 (p^2 < 2^64).
 fn fib_pair(n: u64, m: u64) -> (u64, u64) {
     if n == 0 {
         return (0, 1);
     }
     let (a, b) = fib_pair(n >> 1, m);
     let two_b = (b << 1) % m;
-    let c = a as u128 * ((two_b + m - a) % m) as u128 % m as u128;
-    let d = (a as u128 * a as u128 + b as u128 * b as u128) % m as u128;
+    let c = a * ((two_b + m - a) % m) % m;
+    let d = (a * a % m + b * b % m) % m;
     if n & 1 == 1 {
-        (d as u64, (c + d) as u64 % m)
+        (d, (c + d) % m)
     } else {
-        (c as u64, d as u64)
+        (c, d)
     }
 }
 
@@ -38,35 +41,32 @@ fn main() {
         }
     }
 
-    let mut sum: u64 = 0;
-    for &p in &primes {
-        let p64 = p as u64;
-        if p == 5 {
-            sum += 5;
-            continue;
-        }
-        let mod10 = p % 10;
-        if mod10 != 1 && mod10 != 9 {
-            continue;
-        }
+    let sum: u64 = primes
+        .par_iter()
+        .map(|&p| {
+            let p64 = p as u64;
+            if p == 5 {
+                return 5;
+            }
+            let mod10 = p % 10;
+            if mod10 != 1 && mod10 != 9 {
+                return 0;
+            }
 
-        let mut n = p - 1;
-        let mut good = true;
-        while n > 1 {
-            let q = spf[n as usize];
-            while n % q == 0 {
-                n /= q;
+            let mut n = p - 1;
+            while n > 1 {
+                let q = spf[n as usize];
+                while n % q == 0 {
+                    n /= q;
+                }
+                let (f, g) = fib_pair((p64 - 1) / q as u64, p64);
+                if f == 0 && g == 1 {
+                    return 0;
+                }
             }
-            let (f, g) = fib_pair((p64 - 1) / q as u64, p64);
-            if f == 0 && g == 1 {
-                good = false;
-                break;
-            }
-        }
-        if good {
-            sum += p64;
-        }
-    }
+            p64
+        })
+        .sum();
 
     println!("{}", sum);
 }
