@@ -30,21 +30,44 @@ fn icbrt(n: u64) -> u64 {
 }
 
 fn make_d_prefix(lim: usize) -> Vec<u32> {
-    let mut d = vec![0u32; lim];
-    for i in 1..lim {
-        let mut j = i;
-        while j < lim {
-            // SAFETY: j < lim by loop bound
-            unsafe {
-                *d.get_unchecked_mut(j) += 1;
+    // Linear sieve for tau(n), replacing the harmonic-series divisor sieve.
+    let mut least_prime = vec![0u32; lim];
+    let mut exponent = vec![0u8; lim];
+    let mut tau = vec![0u16; lim];
+    let mut primes = Vec::with_capacity(lim / 10);
+    tau[1] = 1;
+    for i in 2..lim {
+        if least_prime[i] == 0 {
+            least_prime[i] = i as u32;
+            exponent[i] = 1;
+            tau[i] = 2;
+            primes.push(i as u32);
+        }
+        for &p in &primes {
+            let x = i * p as usize;
+            if x >= lim {
+                break;
             }
-            j += i;
+            least_prime[x] = p;
+            if p == least_prime[i] {
+                let old_factor = exponent[i] as u16 + 1;
+                exponent[x] = exponent[i] + 1;
+                tau[x] = tau[i] / old_factor * (old_factor + 1);
+                break;
+            }
+            exponent[x] = 1;
+            tau[x] = tau[i] * 2;
         }
     }
+    drop(least_prime);
+    drop(exponent);
+    drop(primes);
+
+    let mut d = vec![0u32; lim];
     let mut acc = 0u32;
-    for x in d.iter_mut() {
-        acc += *x;
-        *x = acc;
+    for i in 1..lim {
+        acc += tau[i] as u32;
+        d[i] = acc;
     }
     d
 }

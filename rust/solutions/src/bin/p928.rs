@@ -51,7 +51,6 @@ fn extend_gf(gf: &Gf, value: usize, count: usize) -> Gf {
 
 fn recurse(
     idx: usize,
-    counts: &mut [usize; NRANKS],
     hs: i64,   // hand_score accumulated
     ps: i64,   // pairs_score accumulated
     ra: i64,   // runs_score accumulated (finalized runs only)
@@ -59,6 +58,7 @@ fn recurse(
     rp: i64,   // current open-run product of counts
     gf: &Gf,
     has_any: bool,
+    nh: i64,   // product of BINOM[4][c] for assigned ranks
     total: &mut i64,
     max_rem: &[i64; NRANKS + 1],
 ) {
@@ -73,10 +73,6 @@ fn recurse(
         }
         let need = gf[TARGET_SUM];
         if need * 2 == deficit {
-            let mut nh = 1i64;
-            for i in 0..NRANKS {
-                nh *= BINOM[4][counts[i]];
-            }
             *total += nh;
         }
         return;
@@ -106,21 +102,20 @@ fn recurse(
             continue;
         }
 
-        counts[idx] = c;
+        let new_nh = nh * BINOM[4][c];
         if c == 0 {
             recurse(
-                idx + 1, counts, new_hs, new_ps, new_ra, new_rl, new_rp, gf, has_any,
+                idx + 1, new_hs, new_ps, new_ra, new_rl, new_rp, gf, has_any, new_nh,
                 total, max_rem,
             );
         } else {
             let new_gf = extend_gf(gf, RANK_VAL[idx], c);
             recurse(
-                idx + 1, counts, new_hs, new_ps, new_ra, new_rl, new_rp, &new_gf, true,
+                idx + 1, new_hs, new_ps, new_ra, new_rl, new_rp, &new_gf, true, new_nh,
                 total, max_rem,
             );
         }
     }
-    counts[idx] = 0;
 }
 
 fn main() {
@@ -144,20 +139,20 @@ fn main() {
     let total: i64 = tasks
         .par_iter()
         .map(|cs| {
-            let mut counts = [0usize; NRANKS];
             let mut hs = 0i64;
             let mut ps = 0i64;
             let mut ra = 0i64;
             let mut rl = 0usize;
             let mut rp = 0i64;
             let mut has_any = false;
+            let mut nh = 1i64;
 
             let mut gf: Gf = [0; TARGET_SUM + 1];
             gf[0] = 1;
 
             for i in 0..SPLIT {
                 let c = cs[i];
-                counts[i] = c;
+                nh *= BINOM[4][c];
                 hs += c as i64 * RANK_VAL[i] as i64;
                 if c >= 2 {
                     ps += (c * (c - 1) / 2) as i64 * 2;
@@ -189,7 +184,6 @@ fn main() {
             let mut local_total = 0i64;
             recurse(
                 SPLIT,
-                &mut counts,
                 hs,
                 ps,
                 ra,
@@ -197,6 +191,7 @@ fn main() {
                 rp,
                 &gf,
                 has_any,
+                nh,
                 &mut local_total,
                 &max_rem,
             );

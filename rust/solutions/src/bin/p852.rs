@@ -1,82 +1,130 @@
-// Project Euler 852 - Coins in a Box (DP with backward induction)
+// Project Euler 852 - Coins in a Box
+// V(f,u) = G(p) + p V(f-1,u) + (1-p) V(f,u-1); G is one-coin optimal stopping.
+// Posterior odds depend only on the reduced prior (f:u) and 3^h / 2^n.
 
-const REWARD: f64 = 20.0;
-const PENALTY: f64 = -50.0;
-const COST_PER_TOSS: f64 = 1.0;
+use rayon::prelude::*;
+
+const N: usize = 50;
 const MAX_TOSS: usize = 300;
+const REWARD: f64 = 20.0;
+const COST: f64 = 1.0;
 
-fn compute_posterior(fair: usize, unfair: usize, heads: usize, tails: usize) -> f64 {
-    let total_coins = fair + unfair;
-    if total_coins == 0 { return 0.0; }
-    let total_tosses = heads + tails;
-    if total_tosses == 0 { return fair as f64 / total_coins as f64; }
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
 
-    let prior_fair = fair as f64 / total_coins as f64;
-    let log_like_fair = total_tosses as f64 * 0.5f64.ln();
-    let log_like_unfair = heads as f64 * 0.75f64.ln() + tails as f64 * 0.25f64.ln();
+// 2^{-n} exactly (n <= 1022).
+#[inline(always)]
+fn pow_half(n: usize) -> f64 {
+    f64::from_bits(((1023 - n) as u64) << 52)
+}
 
-    let log_num = log_like_fair + prior_fair.ln();
-    let log_den_term2 = log_like_unfair + (1.0 - prior_fair).ln();
+fn expected_gain(fair: usize, unfair: usize, prev: &mut Vec<f64>, curr: &mut Vec<f64>) -> f64 {
+    if fair == 0 || unfair == 0 {
+        return REWARD;
+    }
 
-    let max_log = log_num.max(log_den_term2);
-    let log_den = max_log + ((log_num - max_log).exp() + (log_den_term2 - max_log).exp()).ln();
+    let fair_f = fair as f64;
+    let unfair_f = unfair as f64;
 
-    (log_num - log_den).exp()
+    let mut l = pow_half(MAX_TOSS);
+    for h in 0..=MAX_TOSS {
+        let pf = fair_f / (fair_f + unfair_f * l);
+        let m = if pf > 0.5 { pf } else { 1.0 - pf };
+        // SAFETY: h <= MAX_TOSS, prev.len() == MAX_TOSS + 2
+        unsafe {
+            *prev.get_unchecked_mut(h) = 70.0 * m - 50.0;
+        }
+        l *= 3.0;
+    }
+
+    for total in (0..MAX_TOSS).rev() {
+        let mut l = pow_half(total);
+        for h in 0..=total {
+            let pf = fair_f / (fair_f + unfair_f * l);
+            let m = if pf > 0.5 { pf } else { 1.0 - pf };
+            let best_guess = 70.0 * m - 50.0;
+            let p_heads = 0.75 - 0.25 * pf;
+            // SAFETY: h <= total < MAX_TOSS => h + 1 <= MAX_TOSS; buffers length MAX_TOSS + 2
+            unsafe {
+                let val_h = *prev.get_unchecked(h + 1);
+                let val_t = *prev.get_unchecked(h);
+                let ev_toss = p_heads.mul_add(val_h - val_t, val_t) - COST;
+                *curr.get_unchecked_mut(h) = if best_guess > ev_toss {
+                    best_guess
+                } else {
+                    ev_toss
+                };
+            }
+            l *= 3.0;
+        }
+        std::mem::swap(prev, curr);
+    }
+    prev[0]
 }
 
 fn main() {
-    let n = 50usize;
-    let mut global_memo = vec![vec![0.0f64; n + 2]; n + 2];
-    let mut global_memo_set = vec![vec![false; n + 2]; n + 2];
-    global_memo[0][0] = 0.0;
-    global_memo_set[0][0] = true;
+    let stride = N + 1;
 
-    for total_coins in 1..=(2 * n) {
-        let start_fair = if total_coins > n { total_coins - n } else { 0 };
-        let end_fair = total_coins.min(n);
-
-        for fair in start_fair..=end_fair {
-            let unfair = total_coins - fair;
-
-            let future_fair = if fair > 0 && global_memo_set[fair - 1][unfair] {
-                global_memo[fair - 1][unfair]
-            } else { 0.0 };
-            let future_unfair = if unfair > 0 && global_memo_set[fair][unfair - 1] {
-                global_memo[fair][unfair - 1]
-            } else { 0.0 };
-
-            let mut prev = vec![0.0f64; MAX_TOSS + 2];
-            let mut curr = vec![0.0f64; MAX_TOSS + 2];
-
-            // Initialize for total_tosses = MAX_TOSS
-            for h in 0..=MAX_TOSS {
-                let t = MAX_TOSS - h;
-                let pf = compute_posterior(fair, unfair, h, t);
-                let ev_fair = pf * (REWARD + future_fair) + (1.0 - pf) * (PENALTY + future_unfair);
-                let ev_unfair = (1.0 - pf) * (REWARD + future_unfair) + pf * (PENALTY + future_fair);
-                prev[h] = ev_fair.max(ev_unfair);
+    let mut keys = Vec::with_capacity(stride * stride);
+    let mut seen = vec![false; stride * stride];
+    for f in 0..=N {
+        for u in 0..=N {
+            if f == 0 && u == 0 {
+                continue;
             }
-
-            for total in (0..MAX_TOSS).rev() {
-                for h in 0..=total {
-                    let t = total - h;
-                    let pf = compute_posterior(fair, unfair, h, t);
-                    let ev_fair = pf * (REWARD + future_fair) + (1.0 - pf) * (PENALTY + future_unfair);
-                    let ev_unfair = (1.0 - pf) * (REWARD + future_unfair) + pf * (PENALTY + future_fair);
-                    let best_guess = ev_fair.max(ev_unfair);
-
-                    let p_heads = pf * 0.5 + (1.0 - pf) * 0.75;
-                    let ev_toss = p_heads * prev[h + 1] + (1.0 - p_heads) * prev[h] - COST_PER_TOSS;
-
-                    curr[h] = best_guess.max(ev_toss);
-                }
-                std::mem::swap(&mut prev, &mut curr);
+            let g = gcd(f, u);
+            let rf = f / g;
+            let ru = u / g;
+            let idx = rf * stride + ru;
+            if !seen[idx] {
+                seen[idx] = true;
+                keys.push((rf, ru));
             }
-
-            global_memo[fair][unfair] = prev[0];
-            global_memo_set[fair][unfair] = true;
         }
     }
 
-    println!("{:.6}", global_memo[n][n]);
+    let gains: Vec<((usize, usize), f64)> = keys
+        .into_par_iter()
+        .map_with(
+            (vec![0.0f64; MAX_TOSS + 2], vec![0.0f64; MAX_TOSS + 2]),
+            |bufs, (fair, unfair)| {
+                let g = expected_gain(fair, unfair, &mut bufs.0, &mut bufs.1);
+                ((fair, unfair), g)
+            },
+        )
+        .collect();
+
+    let mut g_table = vec![0.0f64; stride * stride];
+    for ((fair, unfair), g) in gains {
+        g_table[fair * stride + unfair] = g;
+    }
+
+    let mut v = vec![0.0f64; stride * stride];
+    for total in 1..=2 * N {
+        let start_fair = total.saturating_sub(N);
+        let end_fair = total.min(N);
+        for fair in start_fair..=end_fair {
+            let unfair = total - fair;
+            let d = gcd(fair, unfair);
+            let g = g_table[(fair / d) * stride + unfair / d];
+            let pf = fair as f64 / total as f64;
+            let fut_f = if fair > 0 {
+                v[(fair - 1) * stride + unfair]
+            } else {
+                0.0
+            };
+            let fut_u = if unfair > 0 {
+                v[fair * stride + unfair - 1]
+            } else {
+                0.0
+            };
+            v[fair * stride + unfair] = g + pf * fut_f + (1.0 - pf) * fut_u;
+        }
+    }
+
+    println!("{:.6}", v[N * stride + N]);
 }

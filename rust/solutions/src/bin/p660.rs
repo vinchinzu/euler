@@ -5,17 +5,20 @@ use euler_utils::gcd;
 use std::collections::HashSet;
 
 fn is_pandigital(a: i64, b: i64, c: i64, base: i64) -> bool {
-    let mut used = vec![false; base as usize];
+    let mut mask: u32 = 0;
     let mut count = 0;
     for mut x in [a, b, c] {
         if x == 0 {
-            if used[0] { return false; }
-            used[0] = true; count += 1;
+            if mask & 1 != 0 { return false; }
+            mask |= 1;
+            count += 1;
         }
         while x > 0 {
-            let d = (x % base) as usize;
-            if used[d] { return false; }
-            used[d] = true; count += 1;
+            let d = (x % base) as u32;
+            let bit = 1u32 << d;
+            if mask & bit != 0 { return false; }
+            mask |= bit;
+            count += 1;
             x /= base;
         }
     }

@@ -1,195 +1,240 @@
 // Project Euler Problem 936 - Peerless Trees
 // P(n) = number of peerless trees on n unlabelled vertices.
 // S(N) = sum P(n) for n=3..N.
-// Uses polynomial (2D generating function) approach.
-// MAX_N = 50.
+// 2D generating functions with incremental correction polynomials.
 
 const MAX_N: usize = 50;
+const DIM: usize = MAX_N + 1;
 
-fn binom(n: i64, k: i64) -> i64 {
-    if k < 0 || k > n {
-        return 0;
+type Poly = [[i64; DIM]; DIM];
+
+#[inline(always)]
+fn mul_inv(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
+    if count == 0 || s > xmax {
+        return;
     }
-    if k == 0 || k == n {
-        return 1;
+    let mut max_j = xmax / s;
+    if max_j > ymax {
+        max_j = ymax;
     }
-    let k = k.min(n - k);
-    let mut res: i64 = 1;
-    for i in 0..k {
-        res = res * (n - i) / (i + 1);
+    if max_j == 0 {
+        return;
     }
-    res
-}
 
-// 2D polynomial: coeffs[x][y], x=0..MAX_N, y=0..MAX_N
-type Poly = Box<[[i64; MAX_N + 1]; MAX_N + 1]>;
+    // (1 - x^s y)^{-1}: one forward unbounded-knapsack pass.
+    if count == 1 {
+        for x in s..=xmax {
+            let y_hi = ymax.min(x);
+            for y in 1..=y_hi {
+                p[x][y] += p[x - s][y - 1];
+            }
+        }
+        return;
+    }
 
-fn poly_new() -> Poly {
-    let mut p: Poly = Box::new([[0i64; MAX_N + 1]; MAX_N + 1]);
-    p[0][0] = 1;
-    p
-}
-
-fn poly_zero() -> Poly {
-    Box::new([[0i64; MAX_N + 1]; MAX_N + 1])
-}
-
-// Multiply by (1 - x^s * y)^(-count)
-fn poly_multiply_by_inv_factor(p: &mut Poly, s: usize, count: i64) {
-    let max_j = MAX_N / s;
-
-    for x in (0..=MAX_N).rev() {
-        for y in (0..=MAX_N).rev() {
-            let mut term: i64 = 0;
-            for j in 1..=max_j {
-                if x < j * s || y < j {
-                    break;
+    // Small multiplicity: repeat the count==1 recurrence.
+    if count > 0 && count <= 8 {
+        for _ in 0..count {
+            for x in s..=xmax {
+                let y_hi = ymax.min(x);
+                for y in 1..=y_hi {
+                    p[x][y] += p[x - s][y - 1];
                 }
-                let px = x - j * s;
-                let py = y - j;
-                let c = binom(count + j as i64 - 1, j as i64);
-                term += p[px][py] * c;
+            }
+        }
+        return;
+    }
+
+    if max_j == 1 {
+        for x in (s..=xmax).rev() {
+            let y_hi = ymax.min(x);
+            for y in (1..=y_hi).rev() {
+                p[x][y] += count * p[x - s][y - 1];
+            }
+        }
+        return;
+    }
+
+    // cs[j] = C(count + j - 1, j)
+    let mut cs = [0i64; DIM];
+    let mut bin = count;
+    cs[1] = bin;
+    for j in 2..=max_j {
+        bin = bin * (count + j as i64 - 1) / j as i64;
+        cs[j] = bin;
+    }
+
+    for x in (s..=xmax).rev() {
+        let mjx = (x / s).min(max_j);
+        let y_hi = ymax.min(x);
+        for y in (1..=y_hi).rev() {
+            let mj = mjx.min(y);
+            let mut term = 0i64;
+            for j in 1..=mj {
+                term += p[x - j * s][y - j] * cs[j];
             }
             p[x][y] += term;
         }
     }
 }
 
-// Multiply by (1 - x^s * y)^count
-fn poly_multiply_by_factor(p: &mut Poly, s: usize, count: i64) {
-    let mut max_j = MAX_N / s;
-    if max_j > count as usize {
+#[inline(always)]
+fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
+    if count == 0 || s > xmax {
+        return;
+    }
+    let mut max_j = xmax / s;
+    if max_j > ymax {
+        max_j = ymax;
+    }
+    if (count as usize) < max_j {
         max_j = count as usize;
     }
+    if max_j == 0 {
+        return;
+    }
 
-    for x in (0..=MAX_N).rev() {
-        for y in (0..=MAX_N).rev() {
-            let mut term: i64 = 0;
-            for j in 1..=max_j {
-                if x < j * s || y < j {
-                    break;
+    // (1 - x^s y): reverse subtract of the shifted poly.
+    if count == 1 {
+        for x in (s..=xmax).rev() {
+            let y_hi = ymax.min(x);
+            for y in (1..=y_hi).rev() {
+                p[x][y] -= p[x - s][y - 1];
+            }
+        }
+        return;
+    }
+
+    if max_j == 1 {
+        for x in (s..=xmax).rev() {
+            let y_hi = ymax.min(x);
+            for y in (1..=y_hi).rev() {
+                p[x][y] -= count * p[x - s][y - 1];
+            }
+        }
+        return;
+    }
+
+    if count > 0 && count <= 8 {
+        for _ in 0..count {
+            for x in (s..=xmax).rev() {
+                let y_hi = ymax.min(x);
+                for y in (1..=y_hi).rev() {
+                    p[x][y] -= p[x - s][y - 1];
                 }
-                let px = x - j * s;
-                let py = y - j;
-                let c = binom(count, j as i64);
-                if j % 2 == 1 {
-                    term -= p[px][py] * c;
-                } else {
-                    term += p[px][py] * c;
-                }
+            }
+        }
+        return;
+    }
+
+    // cs[j] = (-1)^j * C(count, j)
+    let mut cs = [0i64; DIM];
+    let mut bin = count;
+    cs[1] = -bin;
+    for j in 2..=max_j {
+        bin = bin * (count - j as i64 + 1) / j as i64;
+        cs[j] = if j & 1 == 1 { -bin } else { bin };
+    }
+
+    for x in (s..=xmax).rev() {
+        let mjx = (x / s).min(max_j);
+        let y_hi = ymax.min(x);
+        for y in (1..=y_hi).rev() {
+            let mj = mjx.min(y);
+            let mut term = 0i64;
+            for j in 1..=mj {
+                term += p[x - j * s][y - j] * cs[j];
             }
             p[x][y] += term;
         }
     }
+}
+
+#[inline(always)]
+fn conv_at(g: &Poly, f: &Poly, x: usize, y: usize) -> i64 {
+    let mut acc = 0i64;
+    for i in 0..=x {
+        let fi = &f[i];
+        let gi = &g[x - i];
+        for j in 0..=y {
+            acc += fi[j] * gi[y - j];
+        }
+    }
+    acc
 }
 
 fn main() {
-    let mut a = [[0i64; MAX_N + 1]; MAX_N + 1]; // A[n][k] = rooted trees of size n, root degree k
-    let mut g_total = poly_new();
+    let mut a = [[0i64; DIM]; DIM];
+    let mut g_total = [[0i64; DIM]; DIM];
+    g_total[0][0] = 1;
+
+    // F[k] = prod_{s already processed} (1 - x^s y)^{A[s][k]}
+    // A[n][K] = [x^{n-1} y^K] G_total * F[K]
+    let mut f = vec![[[0i64; DIM]; DIM]; DIM];
+    for k in 0..DIM {
+        f[k][0][0] = 1;
+    }
+
+    let mut g_small = [[0i64; DIM]; DIM];
+    g_small[0][0] = 1;
+    let mut f_small = vec![[[0i64; DIM]; DIM]; DIM];
+    for k in 0..DIM {
+        f_small[k][0][0] = 1;
+    }
+    let mut small_lim = 0usize;
 
     let mut s_total: i64 = 0;
 
     for n in 1..=MAX_N {
-        // Step 1: Compute A[n][K] for all K
         for big_k in 0..n {
-            // Find forbidden items: trees of size s < n with root degree K
-            let mut forb_s: Vec<usize> = Vec::new();
-            let mut forb_count: Vec<i64> = Vec::new();
+            a[n][big_k] = conv_at(&g_total, &f[big_k], n - 1, big_k);
+        }
 
-            for s in 1..n {
-                if a[s][big_k] > 0 {
-                    forb_s.push(s);
-                    forb_count.push(a[s][big_k]);
-                }
-            }
-
-            if forb_s.is_empty() {
-                a[n][big_k] = g_total[n - 1][big_k];
-            } else {
-                let mut temp = poly_zero();
-                for x in 0..=MAX_N {
-                    for y in 0..=MAX_N {
-                        temp[x][y] = g_total[x][y];
-                    }
-                }
-                for i in 0..forb_s.len() {
-                    poly_multiply_by_factor(&mut temp, forb_s[i], forb_count[i]);
-                }
-                a[n][big_k] = temp[n - 1][big_k];
+        for big_k in 0..n {
+            let c = a[n][big_k];
+            if c > 0 {
+                mul_factor(&mut f[big_k], n, c, MAX_N, big_k);
+                mul_inv(&mut g_total, n, c, MAX_N, MAX_N);
             }
         }
 
-        // Step 2: Add newly computed A[n][K] trees to G_total
-        for big_k in 0..n {
-            if a[n][big_k] > 0 {
-                poly_multiply_by_inv_factor(&mut g_total, n, a[n][big_k]);
-            }
-        }
-
-        // Step 3: Compute P(n)
         if n < 3 {
             continue;
         }
 
-        let mut p_n: i64 = 0;
-
-        // Case 1: Single Centroid
         let limit_s = (n - 1) / 2;
-        let mut g_small = poly_new();
-
-        for s in 1..=limit_s {
+        while small_lim < limit_s {
+            small_lim += 1;
+            let s = small_lim;
             for k in 0..s {
-                if a[s][k] > 0 {
-                    poly_multiply_by_inv_factor(&mut g_small, s, a[s][k]);
+                let c = a[s][k];
+                if c > 0 {
+                    mul_inv(&mut g_small, s, c, MAX_N, MAX_N);
+                    // P(n) convolves F_small[k] at y = k+1
+                    mul_factor(&mut f_small[k], s, c, MAX_N, k + 1);
                 }
             }
         }
 
+        let mut p_n: i64 = 0;
+        let xmax = n - 1;
         for big_d in 0..n {
-            let forbidden_k: i64 = big_d as i64 - 1;
-            let mut f2_s: Vec<usize> = Vec::new();
-            let mut f2_count: Vec<i64> = Vec::new();
-
-            if forbidden_k >= 0 {
-                let fk = forbidden_k as usize;
-                for s in 1..=limit_s {
-                    if a[s][fk] > 0 {
-                        f2_s.push(s);
-                        f2_count.push(a[s][fk]);
-                    }
-                }
-            }
-
-            let val: i64;
-            if f2_s.is_empty() {
-                val = g_small[n - 1][big_d];
+            if big_d == 0 {
+                p_n += g_small[xmax][0];
             } else {
-                let mut temp2 = poly_zero();
-                for x in 0..=MAX_N {
-                    for y in 0..=MAX_N {
-                        temp2[x][y] = g_small[x][y];
-                    }
-                }
-                for i in 0..f2_s.len() {
-                    poly_multiply_by_factor(&mut temp2, f2_s[i], f2_count[i]);
-                }
-                val = temp2[n - 1][big_d];
+                p_n += conv_at(&g_small, &f_small[big_d - 1], xmax, big_d);
             }
-            p_n += val;
         }
 
-        // Case 2: Bicentroid (only if n is even)
         if n % 2 == 0 {
             let half = n / 2;
-            for k1 in 0..=MAX_N {
-                if a[half][k1] == 0 {
+            for k1 in 0..half {
+                let a1 = a[half][k1];
+                if a1 == 0 {
                     continue;
                 }
-                for k2 in (k1 + 1)..=MAX_N {
-                    if a[half][k2] == 0 {
-                        continue;
-                    }
-                    p_n += a[half][k1] * a[half][k2];
+                for k2 in (k1 + 1)..half {
+                    p_n += a1 * a[half][k2];
                 }
             }
         }

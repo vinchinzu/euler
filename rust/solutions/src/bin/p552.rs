@@ -5,11 +5,13 @@
 
 use euler_utils::primes_up_to;
 
-fn power(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    let mut result: i64 = 1;
+fn power(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
+    let mut result: u64 = 1;
     base %= modulus;
     while exp > 0 {
-        if exp & 1 == 1 { result = result * base % modulus; }
+        if exp & 1 == 1 {
+            result = result * base % modulus;
+        }
         base = base * base % modulus;
         exp >>= 1;
     }
@@ -18,30 +20,34 @@ fn power(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
 
 fn main() {
     let n = 300_000;
-    let primes_list: Vec<i64> = primes_up_to(n).into_iter().map(|p| p as i64).collect();
+    let primes_list: Vec<u64> = primes_up_to(n).into_iter().map(|p| p as u64).collect();
     let l = primes_list.len();
 
-    let mut garner = vec![0i64; l];
-    let mut ans: i64 = 0;
+    let mut garner = vec![0u64; l];
+    let mut ans: u64 = 0;
 
     for i in 0..l {
         let p = primes_list[i];
-        let mut prod: i64 = 1;
-        let mut a: i64 = 0;
+        // prod and a stay in [0, p). Products prod * garner[j] and
+        // prod * primes_list[j] are < 300_000^2, so they fit in u64.
+        let mut prod: u64 = 1;
+        let mut a: u64 = 0;
         let mut good = false;
 
         for j in 0..i {
-            a = (a + prod % p * (garner[j] % p)) % p;
-            prod = prod % p * (primes_list[j] % p) % p;
+            // j < i => primes_list[j] < p and garner[j] < primes_list[j] < p,
+            // so `% p` on those values is the identity.
+            a = (a + prod * garner[j]) % p;
+            prod = prod * primes_list[j] % p;
             if a == 0 && j > 0 {
                 good = true;
             }
         }
 
         // Compute garner[i]
-        if prod % p != 0 {
-            let need = ((i as i64 + 1 - a) % p + p) % p;
-            let inv = power(prod % p, p - 2, p);
+        if prod != 0 {
+            let need = (i as u64 + 1 + p - a) % p;
+            let inv = power(prod, p - 2, p);
             garner[i] = need * inv % p;
         } else {
             garner[i] = 0;

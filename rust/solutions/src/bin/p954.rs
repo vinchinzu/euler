@@ -243,12 +243,6 @@ fn solve_single(t: &Tables, l: usize, tr: usize) -> i64 {
 }
 
 fn main() {
-    // Use 6 threads: matches the 6 tr values per l, reduces memory contention
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(4)
-        .build_global()
-        .unwrap();
-
     let t = build_tables();
 
     let work: Vec<(usize, usize)> = (1..=13usize)

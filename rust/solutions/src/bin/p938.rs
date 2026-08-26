@@ -1,52 +1,70 @@
-// Project Euler 938 - Card Game Probability
-// DP: P(r,b) = (prob_rr * P(r-2,b) + prob_mixed * P(r,b-1)) / (1 - prob_bb)
-// Using O(B) space with 3 rows, rotating buffers.
+// Project Euler 938 - Exhausting a Colour
+//
+// Red cards are discarded in pairs, so odd R cannot reach all-black (P=0).
+// For even R=2a the DP
+//   F(a,b) = ((2a-1) F(a-1,b) + 2b F(a,b-1)) / ((2a-1)+2b)
+// transforms (via C(a,b) = Γ(a+b+1/2)/(Γ(a+1/2) Γ(b+1))) into a Pascal
+// recurrence whose solution is
+//   F(a,b) = U(a,b) / C(a,b),
+//   U(a,b) = sum_{k=1}^b (C(2k,k)/4^k) * C(a+b-k-1, a-1).
+// Terms decay geometrically; evaluate the sum by successive ratios and
+// the prefactor in log-space.
+
+unsafe extern "C" {
+    fn lgamma(x: f64) -> f64;
+}
+
+fn ln_gamma(x: f64) -> f64 {
+    // SAFETY: libm lgamma is a pure math function (signgam unused).
+    unsafe { lgamma(x) }
+}
+
+fn p_black(r: usize, b: usize) -> f64 {
+    if b == 0 {
+        return 0.0;
+    }
+    if r == 0 {
+        return 1.0;
+    }
+    if r & 1 == 1 {
+        return 0.0;
+    }
+    let a = r / 2;
+    if a == 0 {
+        return 1.0;
+    }
+
+    let af = a as f64;
+    let bf = b as f64;
+
+    // S = sum_k term(k)/term(1); term(k+1)/term(k) = (2k+1)/(2k+2)*(b-k)/(a+b-k-1)
+    let mut s = 1.0;
+    let mut t = 1.0;
+    for k in 1..b {
+        let kf = k as f64;
+        t *= (2.0 * kf + 1.0) / (2.0 * (kf + 1.0)) * (bf - kf) / (af + bf - kf - 1.0);
+        s += t;
+        if t < 1e-20 {
+            break;
+        }
+    }
+
+    // 0.5 * C(a+b-2, a-1) / C(a,b) = 0.5 * b * Γ(a+b-1) Γ(a+1/2) / (Γ(a) Γ(a+b+1/2))
+    let log_pref = (0.5_f64).ln()
+        + bf.ln()
+        + ln_gamma(af + bf - 1.0)
+        - ln_gamma(af)
+        + ln_gamma(af + 0.5)
+        - ln_gamma(af + bf + 0.5);
+    log_pref.exp() * s
+}
 
 fn main() {
+    debug_assert!((p_black(2, 2) - 0.4666666667).abs() < 1e-10);
+    debug_assert!((p_black(10, 9) - 0.4118903397).abs() < 1e-10);
+    debug_assert!((p_black(34, 25) - 0.3665688069).abs() < 1e-10);
+
     const R: usize = 24690;
     const B: usize = 12345;
-
-    let mut dp_prev2 = vec![0.0f64; B + 1]; // P(r-2, b), initially P(0, b)
-    let mut dp_prev = vec![0.0f64; B + 1];  // P(r-1, b), initially P(1, b)
-    let mut dp_curr = vec![0.0f64; B + 1];
-
-    // Base: P(0, b) = 1 for b >= 1, P(0,0) = 0
-    for i in 1..=B {
-        dp_prev2[i] = 1.0;
-    }
-
-    // P(1, b): prob_rr=0, just mixed
-    for b in 1..=B {
-        let total = 1.0 + b as f64;
-        let prob_bb = (b as f64 * (b as f64 - 1.0)) / (total * (total - 1.0));
-        let prob_mixed = (2.0 * 1.0 * b as f64) / (total * (total - 1.0));
-        let p_mixed = dp_prev2[b - 1];
-        let temp = prob_mixed * p_mixed;
-        dp_prev[b] = temp / (1.0 - prob_bb);
-    }
-
-    // Compute for r from 2 to R
-    for r in 2..=R {
-        for b in 0..=B {
-            dp_curr[b] = 0.0;
-        }
-        for b in 1..=B {
-            let rf = r as f64;
-            let bf = b as f64;
-            let total = rf + bf;
-            let prob_rr = (rf * (rf - 1.0)) / (total * (total - 1.0));
-            let prob_bb = (bf * (bf - 1.0)) / (total * (total - 1.0));
-            let prob_mixed = (2.0 * rf * bf) / (total * (total - 1.0));
-
-            let p_rr = dp_prev2[b];
-            let p_mixed = dp_curr[b - 1];
-            let temp = prob_rr * p_rr + prob_mixed * p_mixed;
-            dp_curr[b] = temp / (1.0 - prob_bb);
-        }
-        // Rotate arrays
-        std::mem::swap(&mut dp_prev2, &mut dp_prev);
-        std::mem::swap(&mut dp_prev, &mut dp_curr);
-    }
-
-    println!("{:.10}", dp_prev[B]);
+    println!("{:.10}", p_black(R, B));
 }

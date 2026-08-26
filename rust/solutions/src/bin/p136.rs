@@ -1,45 +1,46 @@
-// Project Euler Problem 136: Singleton difference.
-//
-// Count n < 50,000,000 with exactly 1 solution to x^2 - y^2 - z^2 = n.
-// x = a+d, y = a, z = a-d => n = a(4d-a) = u*m where u=a, m=4d-a.
-// Constraints: (u+m)%4==0, m>=1, m<=3u-4, u*m<LIMIT.
+// Project Euler 136: Singleton difference.
+// n = a(4d-a) has exactly one solution iff n is 4, 16, an odd prime p ≡ 3
+// (mod 4), 4p for an odd prime p, or 16p for an odd prime p.
 
 const LIMIT: usize = 50_000_000;
 
 fn main() {
-    let mut counts = vec![0u8; LIMIT];
+    // Odd-only bit sieve: bit i corresponds to 2*i+1. 1 = composite.
+    let n_odd = LIMIT / 2;
+    let mut is_comp = vec![0u64; (n_odd + 63) / 64];
+    is_comp[0] |= 1; // 1 is not prime
 
-    for u in 1..LIMIT {
-        let max_m_div = (LIMIT - 1) / u;
-        let max_m_cond = 3 * u as i64 - 4;
-        if max_m_cond < 1 {
-            continue;
-        }
-        let max_m_cond = max_m_cond as usize;
-        let max_m = max_m_div.min(max_m_cond);
-        if max_m < 1 {
-            continue;
-        }
-
-        let rem = u % 4;
-        let mut first_m = (4 - rem) % 4;
-        if first_m == 0 {
-            first_m = 4;
-        }
-
-        let mut m = first_m;
-        while m <= max_m {
-            let n = u * m;
-            if n >= LIMIT {
-                break;
+    let mut p = 3usize;
+    while p * p < LIMIT {
+        let i = p >> 1;
+        if (is_comp[i >> 6] >> (i & 63)) & 1 == 0 {
+            let mut q = p * p;
+            let step = p * 2;
+            while q < LIMIT {
+                let j = q >> 1;
+                is_comp[j >> 6] |= 1u64 << (j & 63);
+                q += step;
             }
-            if counts[n] < 2 {
-                counts[n] += 1;
-            }
-            m += 4;
         }
+        p += 2;
     }
 
-    let result = counts[1..].iter().filter(|&&c| c == 1).count();
-    println!("{}", result);
+    let mut ans: u64 = 2; // n = 4 and n = 16
+    let mut n = 3usize;
+    while n < LIMIT {
+        let i = n >> 1;
+        if (is_comp[i >> 6] >> (i & 63)) & 1 == 0 {
+            if n % 4 == 3 {
+                ans += 1;
+            }
+            if n < LIMIT / 4 {
+                ans += 1;
+            }
+            if n < LIMIT / 16 {
+                ans += 1;
+            }
+        }
+        n += 2;
+    }
+    println!("{}", ans);
 }

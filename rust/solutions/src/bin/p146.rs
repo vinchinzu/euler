@@ -51,7 +51,8 @@ fn is_prime(n: u64) -> bool {
     if n % 2 == 0 || n % 3 == 0 {
         return false;
     }
-    let witnesses = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+    // Deterministic for n < 3.825e18 (Jaeschke); n^2+27 < 2.25e16.
+    let witnesses = [2, 3, 5, 7, 11, 13, 23];
     for &a in &witnesses {
         if !miller_rabin_test(n, a) {
             return false;

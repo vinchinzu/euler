@@ -106,16 +106,17 @@ fn main() {
 
     let mut ans = pow_mod(2, total, P_MOD);
 
+    let half = (total - 1 + PHI_MOD) % PHI_MOD;
+    let half = if half % 2 == 0 {
+        half / 2
+    } else {
+        (half + PHI_MOD) / 2
+    };
+    let term1 = pow_mod(2, half, P_MOD);
+
     for b in 1..=n {
         let m_val = (6i64 * phi_arr[b] as i64) % P_MOD;
         let f_val = f(b, n);
-        let half = (total - 1 + PHI_MOD) % PHI_MOD;
-        let half = if half % 2 == 0 {
-            half / 2
-        } else {
-            (half + PHI_MOD) / 2
-        };
-        let term1 = pow_mod(2, half, P_MOD);
         let term2 = pow_mod(2, (half - f_val + PHI_MOD) % PHI_MOD, P_MOD);
         let diff = (term1 - term2 + P_MOD) % P_MOD;
         ans = (ans - m_val * diff % P_MOD + P_MOD) % P_MOD;

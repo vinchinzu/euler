@@ -1,6 +1,9 @@
 // Project Euler 732 - Standing on the Shoulders of Trolls
 //
-// Knapsack DP with left/right splitting.
+// For each arm-troll i, min IQ of a subset of the others with height
+// >= D - h_i - l_i. Prefix/suffix knapsacks, flat layers, no clones.
+
+use rayon::prelude::*;
 
 const NTROLLS: usize = 1000;
 const MOD_VAL: i64 = 1_000_000_007;
@@ -31,6 +34,88 @@ fn generate_trolls() -> Vec<Troll> {
     trolls
 }
 
+/// layers[k * cols + j] = min IQ to reach height >= j using the first k items.
+/// Sequential 0-1 knapsack; writes each new row from the previous (no clone).
+fn build_layers(items: &[(i32, i32)], d: usize) -> Vec<i32> {
+    let cols = d + 1;
+    let n_layers = items.len() + 1;
+    let mut dp = Vec::with_capacity(n_layers * cols);
+    unsafe {
+        dp.set_len(n_layers * cols);
+        let p = dp.as_mut_ptr();
+        *p = 0;
+        for j in 1..cols {
+            *p.add(j) = INF;
+        }
+        for k in 0..items.len() {
+            let h = items[k].0 as usize;
+            let q = items[k].1;
+            let src = p.add(k * cols);
+            let dst = p.add((k + 1) * cols);
+            // SAFETY: src/dst are adjacent non-overlapping rows of length `cols`.
+            // Row 0 is initialized; each later row is fully written before it is read.
+            std::ptr::copy_nonoverlapping(src, dst, h);
+            let mut j = h;
+            while j + 8 <= cols {
+                for t in 0..8 {
+                    let v = *src.add(j + t);
+                    let u = *src.add(j + t - h) + q;
+                    *dst.add(j + t) = if u < v { u } else { v };
+                }
+                j += 8;
+            }
+            while j < cols {
+                let v = *src.add(j);
+                let u = *src.add(j - h) + q;
+                *dst.add(j) = if u < v { u } else { v };
+                j += 1;
+            }
+            let mut m = *dst.add(cols - 1);
+            let mut i = cols - 1;
+            while i > 0 {
+                i -= 1;
+                let x = *dst.add(i);
+                if m < x {
+                    *dst.add(i) = m;
+                } else {
+                    m = x;
+                }
+            }
+        }
+    }
+    dp
+}
+
+/// min_j left[j] + right[dist - j]
+#[inline(always)]
+fn min_pair_sum(left: &[i32], right: &[i32], dist: usize) -> i32 {
+    unsafe {
+        let lp = left.as_ptr();
+        let mut rp = right.as_ptr().add(dist);
+        let mut best = INF;
+        let mut j = 0usize;
+        while j + 8 <= dist + 1 {
+            for t in 0..8 {
+                let s = *lp.add(j + t) + *rp.sub(t);
+                if s < best {
+                    best = s;
+                }
+            }
+            j += 8;
+            rp = rp.sub(8);
+        }
+        while j <= dist {
+            let s = *lp.add(j) + *rp;
+            if s < best {
+                best = s;
+            }
+            j += 1;
+            rp = rp.sub(1);
+        }
+        best
+    }
+}
+
 fn main() {
     let trolls = generate_trolls();
 
@@ -41,69 +126,43 @@ fn main() {
         total_iq += t.q;
     }
     let d = (total_h as f64 / std::f64::consts::SQRT_2).ceil() as usize;
+    let cols = d + 1;
 
-    // Right DP: right_all[k][j] = min IQ to reach distance >= j using trolls[NTROLLS-k..NTROLLS-1]
-    let mut right_all = vec![vec![INF; d + 1]; NTROLLS];
-    right_all[0][0] = 0;
-
-    for k in 1..NTROLLS {
-        right_all[k] = right_all[k - 1].clone();
-        let t = &trolls[NTROLLS - k];
-        let h = t.h as usize;
-        let q = t.q;
-
-        for j in (h..=d).rev() {
-            let val = right_all[k][j - h];
-            if val < INF && val + q < right_all[k][j] {
-                right_all[k][j] = val + q;
-            }
-        }
-        // Suffix minimum
-        for j in (0..d).rev() {
-            if right_all[k][j + 1] < right_all[k][j] {
-                right_all[k][j] = right_all[k][j + 1];
-            }
-        }
+    let mut left_items = Vec::with_capacity(NTROLLS - 1);
+    for t in trolls.iter().take(NTROLLS - 1) {
+        left_items.push((t.h, t.q));
+    }
+    let mut right_items = Vec::with_capacity(NTROLLS - 1);
+    for t in trolls.iter().skip(1).rev() {
+        right_items.push((t.h, t.q));
     }
 
-    // Left DP
-    let mut ldp = vec![INF; d + 1];
-    ldp[0] = 0;
+    let (left, right) = rayon::join(
+        || build_layers(&left_items, d),
+        || build_layers(&right_items, d),
+    );
 
-    let mut ans: i32 = 0;
-
-    for i in 0..NTROLLS {
-        let dist_raw = d as i32 - trolls[i].h - trolls[i].l;
-        if dist_raw >= 0 {
+    let ans = (0..NTROLLS)
+        .into_par_iter()
+        .with_min_len(8)
+        .map(|i| {
+            let dist_raw = d as i32 - trolls[i].h - trolls[i].l;
+            if dist_raw < 0 {
+                return 0;
+            }
             let dist = dist_raw as usize;
-            let rrow = &right_all[NTROLLS - 1 - i];
-            for j in 0..=dist {
-                let lv = ldp[j];
-                let rv = rrow[dist - j];
-                if lv < INF && rv < INF {
-                    let iq_used = lv + rv;
-                    let remaining = total_iq - iq_used;
-                    if remaining > ans {
-                        ans = remaining;
-                    }
-                }
+            let lrow = &left[i * cols..i * cols + cols];
+            let rk = NTROLLS - 1 - i;
+            let rrow = &right[rk * cols..rk * cols + cols];
+            let used = min_pair_sum(lrow, rrow, dist);
+            if used >= INF {
+                0
+            } else {
+                total_iq - used
             }
-        }
-
-        let h = trolls[i].h as usize;
-        let q = trolls[i].q;
-        for j in (h..=d).rev() {
-            let val = ldp[j - h];
-            if val < INF && val + q < ldp[j] {
-                ldp[j] = val + q;
-            }
-        }
-        for j in (0..d).rev() {
-            if ldp[j + 1] < ldp[j] {
-                ldp[j] = ldp[j + 1];
-            }
-        }
-    }
+        })
+        .max()
+        .unwrap_or(0);
 
     println!("{}", ans);
 }

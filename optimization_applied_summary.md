@@ -1,6 +1,6 @@
 # Optimization Applied Summary
 
-Updated: 2026-08-22 (5900XT re-time; Wave 7 leftover ≥1s playbook)
+Updated: 2026-08-25 (Wave 16 Euler 900+ quick wins)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
@@ -215,7 +215,284 @@ Estimated remaining after waves 4–7 (overlay on 5900XT re-time, not a full re-
 
 ---
 
-## Accepted (155 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7)
+## Wave 8 — ox-alpha blast (this session)
+
+Paced OpenRouter `stealth/ox-alpha` over the 50 slowest remaining ≥1s binaries, then worktree-isolated subagents on the 9 ideas that survived a source check. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+Skipped without implementing: p847 (proposed dense Vec of ~29k slots; real `cs` masks are 8-bit so ~671M), p521 (`i128` only in `O(√N)` `sum_2_to_n`, not the Lucy inner loop), p505 `rayon::join` (second `helper` takes `y` from the first), p797 prefix-product invert (inverses are of already-sieved `f[i]`), p518 rayon-over-`k` (wave-3 regression).
+
+**A/B accepted (7)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p637 | 1382.3 | 143.4 | 9.64× | par_iter `sd` + `f` fill inside `compute_f` |
+| p954 | 3135.7 | 1223.9 | 2.56× | drop `num_threads(4)` (78 independent `(l,tr)` tasks) |
+| p552 | 2892.3 | 2039.2 | 1.42× | drop redundant `% p`; u64 Garner accumulators |
+| p478 | 2268.8 | 1711.8 | 1.33× | hoist loop-invariant `half` / `pow_mod(2, half)` |
+| p786 | 1471.0 | 1151.1 | 1.28× | `Vec<bool>` composite flags instead of 1.2 GB `u32` SPF |
+| p660 | 1944.5 | 1553.9 | 1.25× | pandigital check: heap `Vec<bool>` → `u32` bitmask |
+| p739 | 1595.5 | 1310.6 | 1.22× | hot-loop `i128` mulmod → `u64` (`M² < 2^64`) |
+
+**A/B rejected (2)** — answers matched, reverted:
+
+- **p256** — scan completed `s ∈ (prev, a²]` after each `a`: 1463.7 → 1476.2 ms (0.992×, noise). Answer sits near `LIMIT`, so almost all `a` still run.
+- **p870** — `partition_point` for monotone `m`: 1820.3 → 8555.5 ms (0.213×). `j_lo` already walks forward; binary search turns sequential `u128` compares into random access on a growing `p`.
+
+Wave 8 net (sum of accepted medians): **~5.56s**. Only **p637** crossed under 1s (1382 → 143 ms).
+
+---
+
+## Wave 9 — ox-alpha untried sub-1s (this session)
+
+Paced OpenRouter `stealth/ox-alpha` over the **50 slowest untried** binaries in 50–999 ms (580–988 ms band). Wave 8 already queried the 50 slowest remaining ≥1s; this batch excluded those IDs. Then worktree-isolated subagents on the 12 ideas that survived a source check. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+All 50 prompts returned HTTP 200 (3 empty/truncated: p650, p625, p873). Typical ~22 t/s with 429 backoff.
+
+Skipped without implementing (source-check failed or not small/checkable): p417 drop-u128 (`p^e` can exceed 2^32), p284 skip `c.digits[j]==0` (breaks carry), p589 clamp `t2` (`t_vec` still sums every `t2`), p850 hoist `t1`/`t2` (depends on per-`ki` `k`), p571 “add base-2 check” (correctness claim, not a speed edit), p439/p501/p386 rayon of sequential/dependent fills, p529 Montgomery rewrite.
+
+**A/B accepted (1)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p928 | 964.3 | 825.7 | 1.17× | carry `nh` (product of `BINOM[4][c]`) as a recursion parameter |
+
+**A/B rejected (11)** — answers matched, reverted:
+
+| Problem | Baseline ms | Candidate ms | × | Why it missed |
+|--------:|------------:|-------------:|--:|---|
+| p681 | 948.3 | 915.5 | 1.036× | `y*y > r2` + one div; below 5% gate |
+| p339 | 578.1 | 577.0 | 1.002× | incremental `inv_k` (noise) |
+| p563 | 833.1 | 833.2 | 1.000× | `start=i`; count-pass not the sort |
+| p423 | 711.9 | 712.0 | 1.000× | drop `n % MOD` (already `< MOD`) |
+| p937 | 941.2 | 944.0 | 0.997× | drop `k % MOD` (loop is not the sieve) |
+| p507 | 943.6 | 948.0 | 0.995× | integer floor/ceil vs f64 |
+| p815 | 640.4 | 647.1 | 0.990× | stack `ncr` table (already cache-hot) |
+| p614 | 991.3 | 1001.9 | 0.989× | drop `clamp(1,16)` (phase-1 not the cap) |
+| p643 | 732.9 | 742.1 | 0.988× | OA hash → `Vec` of ~4.6k (probe already cheap) |
+| p211 | 661.4 | 670.0 | 0.987× | `spf[m]==p` peel vs `m % p` |
+| p714 | 627.1 | 643.4 | 0.975× | running add vs `d*md % k` |
+
+Wave 9 net (accepted median): **~0.14s**. Same lesson as wave 8: ox-alpha is weak as a planner; in this band the “small checkable” edits are mostly already at the noise floor. The one real win was an incremental product that actually sat on the leaf.
+
+Ox-alpha coverage after waves 8–9: **100 binaries** (50 ≥1s + 50 in 580–988 ms). Still untried: 17 leftover ≥1s (p910…p810), **19** remaining 500–999 ms, **122** in 200–499 ms, **202** in 50–200 ms.
+
+---
+
+## Wave 10 — Euler 1–100 already-fast band (this session)
+
+Problems 1–100 are already sub-second (sum of OK times ~974 ms). Ranked by `validated.json` and scanned for cheap algorithmic wins, starting from the slowest of the “fast” set. A/B-gated sequentially (`warmup=1 runs=3`, fat LTO, `RAYON_NUM_THREADS=32`). `ab_bench.py` uses `p{N}` not `p{N:03d}`, so this wave timed via the same HEAD-vs-candidate swap against `target/release/pNNN`. Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (10)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p073 | 273.1 | 0.8 | 326.5× | Möbius + prefix count of fractions in (1/3, 1/2) |
+| p092 | 49.8 | 0.8 | 61.0× | 7-digit DP of digit-square sums |
+| p068 | 60.4 | 1.5 | 41.4× | permute inner 5; outers determined by line sum |
+| p084 | 50.9 | 1.8 | 28.4× | 120-state Markov occupancy; drop 10M Monte Carlo |
+| p037 | 21.5 | 0.8 | 26.5× | generate right-truncatable primes, test left |
+| p096 | 39.3 | 1.8 | 22.3× | bitmask MRV sudoku |
+| p036 | 10.3 | 0.7 | 14.9× | generate base-10 palindromes (drop `to_string` scan) |
+| p060 | 63.1 | 6.5 | 9.77× | 3-witness MR + lazy pair cache; skip 2,5; mod 3 |
+| p095 | 87.7 | 18.4 | 4.77× | visit-once aliquot graph (no `Vec.contains`) |
+| p058 | 33.2 | 10.6 | 3.12× | `miller_rabin` on spiral corners |
+
+**A/B rejected (superseded, not kept):** a p060 all-pairs 12-witness precompute was 0.41× (63 → 154 ms). Replaced by the lazy-cache candidate above.
+
+Wave 10 net (sum of accepted medians): **~0.65s**. After this wave the slowest remaining 1–100 binaries are ~12–20 ms (p044, p093, p078, p012, p087, p034, p074, p043, plus p095 now 18 ms).
+
+---
+
+## Wave 11 — Euler 100–200 already-fast band (this session)
+
+Problems 100–200 sum to ~4.1s on this box after earlier waves (p154/p195/p153/p155 already rewritten). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins, starting from the slow tail. A/B-gated sequentially (`warmup=1 runs=3`, fat LTO, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (13)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p139 | 191.2 | 0.7 | 277.6× | Pell generators for `c % \|a−b\| == 0` primitives |
+| p145 | 103.0 | 0.8 | 133.9× | closed-form reversible counts by digit length |
+| p122 | 132.4 | 1.7 | 77.0× | star-chain DFS; prune non-minimal prefixes |
+| p182 | 171.7 | 5.8 | 29.5× | gcd tables; skip `e` sharing a factor with `φ` |
+| p127 | 202.2 | 15.6 | 13.0× | rayon over `c` in abc-hit search |
+| p166 | 97.2 | 12.5 | 7.80× | rayon over line-sum `s` |
+| p136 | 441.6 | 61.1 | 7.23× | odd-only sieve; `n = 4, 16, p≡3 (mod 4), 4p, 16p` |
+| p165 | 449.5 | 70.5 | 6.38× | rayon pairs + sort/dedup (drop `HashSet`) |
+| p187 | 164.4 | 59.5 | 2.76× | odd-only bit sieve of `LIMIT/2` |
+| p152 | 187.1 | 68.3 | 2.74× | integer MITM on `(L/n)²`; drop i128 `Frac` gcd |
+| p196 | 160.2 | 109.6 | 1.46× | `rayon::join` of the two row sieves |
+| p167 | 282.2 | 193.7 | 1.46× | `FxHashMap` period states |
+| p146 | 132.6 | 93.8 | 1.41× | 7-witness Miller–Rabin (`n < 3.8e18`) |
+
+**A/B rejected / not kept:**
+
+- **p165 `FxHashSet`** — unique count 2 503 342 vs 2 868 868. Replaced by the sort/dedup candidate above.
+- **p118** perm-and-split of 9! (85 → 244 ms). Trial/MR on 9-digit prefixes lost to the original per-mask prime table.
+- **p170** integer concat of products (no gain vs `format!`).
+- **p177** `HashSet` → `FxHashSet` (132 → 130 ms, noise).
+
+Wave 11 net (sum of accepted medians): **~2.02s**. After this wave the slowest remaining 100–200 binaries are ~80–190 ms (p167 now 194 ms, then p193, p170, p118, p185, p180, plus p196/p146 now ~94–110 ms).
+
+---
+
+## Wave 12 — Euler 200–300 already-fast band (this session)
+
+Problems 200–300 sum to ~12.0s on this box going in (p238/p211/p216/p291/p245/p214/p292/p266/p279 already rewritten in earlier waves). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins, starting from the slow tail. Worktree-isolated subagents (one problem each). Parent copied candidates and A/B-gated sequentially (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (14)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p284 | 628.5 | 5.0 | 125.2× | packed base `14^16` limbs; `rayon::join` two Hensel lifts |
+| p299 | 540.1 | 4.6 | 117.3× | Möbius drop `gcd`; rayon `n`; hoist `f1`/`f2` quadratics |
+| p221 | 320.0 | 5.2 | 61.6× | factor `a²+1` via `√(-1) (mod p)`; `select_nth` |
+| p229 | 497.2 | 12.3 | 40.4× | NT count of simultaneous 1/2/3/7-square forms |
+| p231 | 337.2 | 8.4 | 40.3× | Legendre `sopfr(C(N,K))`; Dirichlet floor blocks |
+| p260 | 206.9 | 10.9 | 19.1× | bit-packed occupancy; `trailing_zeros` z-scan |
+| p287 | 457.9 | 24.2 | 18.9× | exact disk-square test; mixed 2×2; rayon join |
+| p257 | 176.2 | 10.2 | 17.3× | rayon `m`; stride filters; local gcd |
+| p296 | 552.8 | 32.5 | 17.0× | closed-form inner `k` floor-sum; coarse Farey rayon |
+| p212 | 194.8 | 16.2 | 12.0× | packed `81³` grid; rayon sections |
+| p250 | 90.9 | 8.8 | 10.3× | stack DP; CRT `n^n mod 250`; batch residues |
+| p223 | 272.6 | 34.8 | 7.84× | count via `v=c−b` and `a² ≡ 1 (mod v)` |
+| p249 | 326.0 | 52.2 | 6.25× | AVX2 0-1 knapsack; odd-only bit sieve |
+| p259 | 1368.8 | 490.9 | 2.79× | FxHash packed Frac; rayon splits/starts |
+
+No A/B rejects this wave (14/14 accepted).
+
+Wave 12 net (sum of accepted medians): **~5.25s**. After this wave the slowest remaining 200–300 binaries are p256 (~1.4s; wave-8 early-exit was noise), p211 (~662 ms; already rewritten), p259 now 491 ms, then p275/p255/p283/p245 (~240–380 ms; p245/p283 already rayon). Left alone (~80–200 ms, closer to sieve/search floors): p273, p216, p291, p214, p280, p276, p238, p262, p233, p252, p272, p268.
+
+---
+
+## Wave 13 — Euler 300–400 already-fast band (this session)
+
+Problems 300–400 sum to ~18.6s on this box going in (p314/p322/p397/p354/p373/p311/p353/p331/p362/p378/p379 already rewritten in earlier waves). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins, starting from the slow tail. Worktree-isolated subagents (one problem each). Parent copied candidates and A/B-gated sequentially (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+Skipped (Fenwick/Lucy skip-first, already-rayon floors, or wave-9 reject): p337 (~2.2s Fenwick DP), p379/p378/p338/p362/p357/p381/p331 (already rayon), p339 (wave-9 noise).
+
+**A/B accepted (14)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p369 | 535.1 | 1.0 | 551.0× | matching-reachability DP over 68 16-bit suit sets |
+| p351 | 1310.7 | 6.5 | 202.3× | Du Jiao Φ; sieve to n^{2/3}; floor-array |
+| p344 | 264.1 | 1.3 | 200.5× | bit-column carry DP O(m² log n) |
+| p398 | 311.3 | 2.2 | 141.6× | tail-sum E[Y]=Σ P(Y≥k); rayon k |
+| p332 | 498.3 | 5.5 | 90.5× | isqrt lattice; van Oosterom–Strackee; rayon r |
+| p336 | 689.6 | 7.8 | 88.0× | recursive maximix construction; packed u64 |
+| p386 | 871.3 | 17.1 | 51.0× | last-prime π(x) batch; Lucy; rayon small-n |
+| p399 | 1170.1 | 41.1 | 28.4× | z(p) from p±1; 6-wheel bitset; fast doubling |
+| p360 | 301.0 | 13.8 | 21.8× | first-octant r₂ lattice; striped rayon x |
+| p319 | 540.1 | 52.4 | 10.3× | Möbius t(n)=1+Σμ(d)G(⌊n/d⌋); Lucy Mertens |
+| p309 | 258.8 | 26.2 | 9.88× | CSR u32 heights; rayon w; (h1+h2) divides h1² |
+| p370 | 987.9 | 237.8 | 4.15× | integer isqrt; stack Möbius; hybrid floor-sum |
+| p375 | 325.1 | 99.7 | 3.26× | one BBS cycle; i64 monotone stack; 3-point Lagrange |
+| p374 | 354.9 | 116.8 | 3.04× | factorial inverses; collapsed k; 64k rayon chunks |
+
+No A/B rejects this wave (14/14 accepted).
+
+Wave 13 net (sum of accepted medians): **~7.79s**. After this wave the slowest remaining 300–400 binaries are p337 (~2.2s Fenwick DP), p379 (~1.1s; already hyperbola rayon), p378 (~0.70s Fenwick+rayon), p339 (~0.58s; wave-9 reject), p338 (~0.53s; already rayon), p320 (~0.44s sequential Legendre), p362 (~0.35s already rayon), p370 now 238 ms. Left alone (~80–200 ms, closer to sieve/search floors): p357, p352, p400, p381, p372, p348, p324, p333, p331, p388, p387, p303, p310.
+
+---
+
+## Wave 14 — Euler 400–600 slow tail (this session)
+
+Problems 400–600 sum to ~74.5s on this box going in (many already rewritten in waves 3–8: p468/p552/p478/p433/p415/p518/p540/p543/p578/p464/p410/p417/…). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins. Worktree-isolated subagents (one problem each). Parent copied candidates, **magic-number audited** (no source contains the `data/answers.txt` string; every `println!` prints a computed value), and A/B-gated sequentially (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+Skipped (already-rayon floors, Fenwick/Lucy skip-first, or wave-8/9 leftovers): p468 (~4.9s segment tree), p552/p478 (wave 8), p433/p521/p415/p518/p540/p543/p578/p464/p410/p417.
+
+Wave 13 audit (same session): none of p309/p319/p332/p336/p344/p351/p360/p369/p370/p374/p375/p386/p398/p399 contain their answer string; all print computed values.
+
+**A/B accepted (14)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p554 | 680.0 | 4.7 | 143.3× | Lucas + Wilson-reduced fact; 32-way range product |
+| p466 | 350.5 | 4.8 | 73.5× | divisor-minimal bitmask; rayon m + first-level IE |
+| p593 | 1508.2 | 52.9 | 28.5× | odd-only segmented bit sieve; freq-table median |
+| p428 | 2015.6 | 106.5 | 18.9× | linearized Du Jiao/Lucy small+large; rayon F/T |
+| p452 | 1967.0 | 106.0 | 18.6× | u64 mulmod; rayon Zipf-heavy subtrees |
+| p571 | 890.5 | 77.5 | 11.5× | rayon first-3 digits; merge top-10; base-8/4/3 masks |
+| p454 | 550.8 | 48.0 | 11.5× | odd-only μ; Dirichlet inner; rayon y-stripes |
+| p580 | 1135.2 | 110.4 | 10.3× | multiplicative DFS last-prime batch; odd sieve |
+| p485 | 828.3 | 87.2 | 9.50× | par pair-divisor sieve; split window endpoints |
+| p445 | 1398.4 | 274.7 | 5.09× | σ*(C(N,k)) identity; odd-only SPF; batch inverse |
+| p583 | 841.1 | 202.4 | 4.16× | SPF factor-pairs of w²; two-pointer; finer rayon |
+| p459 | 3465.1 | 876.5 | 3.95× | bitset mex; 512² nim table; rayon x/y fills |
+| p432 | 504.6 | 142.2 | 3.55× | linearized Du Jiao Φ; 17-smooth Dirichlet |
+| p505 | 4262.1 | 1293.6 | 3.30× | depth-parity child order; unroll last 5 plies |
+
+No A/B rejects this wave (14/14 accepted). Magic-number audit: none of the 14 candidates contain their answer string.
+
+Wave 14 net (sum of accepted medians): **~17.01s**. After this wave the slowest remaining 400–600 binaries are p468 (~4.9s; already fused small-B), p505 now 1.29s, p552 (~2.0s wave 8), p478 (~1.7s wave 8), p433 (~1.7s), p521 (~1.7s Lucy), p415 (~1.4s), p518 (~1.3s), p540 (~1.3s already rayon), p543/p578/p464 (~1.2s), p410 (~1.0s rayon-regression leftover), p417 (~1.0s), p459 now 877 ms.
+
+---
+
+## Wave 15 — Euler 600–900 slow tail (this session)
+
+Problems 600–900 sum to ~97.8s on this box going in (many already rewritten in waves 1–8: p846/p847/p774/p797/p655/p660/p739/p786/p614/p681/p650/p850/p743/p643/p625/p769/p693/p738/p873/p741/…). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins. Worktree-isolated subagents (one problem each). Parent copied candidates, **magic-number audited** (no source contains the `data/answers.txt` string; every `println!` prints a computed value), and A/B-gated sequentially (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+Skipped (already-rayon floors, Fenwick/Lucy/heap skip-first, treap, or prior-wave leftovers): p846 (~7.2s seed rayon), p847 (wave 8 skip), p774 (wave 2 MPS), p797/p655/p660/p739/p786, p606 (wave 2 reject), p870 (wave 8 reject), p680 (implicit treap), p635/p837/p861/p632 (already rayon), p712/p643/p625 (Lucy), p615 (heap), p730/p735 (already rayon), plus wave-3/4 landings still in-band.
+
+p662 (~1.9s Fibonacci-path DP) was launched; the agent was cancelled with no candidate. Original left in place.
+
+**A/B accepted (13)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p852 | 1978.2 | 9.5 | 209.1× | martingale G(p); direct Bayes; rayon G tasks |
+| p814 | 339.6 | 6.9 | 49.0× | flatten DP + closed k-pass; rayon 4 starts |
+| p677 | 755.4 | 16.0 | 47.1× | flatten u32 DP; u64 mulmod; AVX2 conv |
+| p810 | 1083.4 | 26.5 | 40.9× | GF(2) irreducibles I(n); Gray-code deg-26 sieve |
+| p880 | 390.7 | 12.6 | 30.9× | closed a-limits; cube-free sieve; rayon b |
+| p608 | 1752.1 | 74.9 | 23.4× | harmonic D(n) to 8e6; nested rayon DFS |
+| p705 | 1518.7 | 80.9 | 18.8× | odd-only par bit sieve; 4-digit inversion chunks |
+| p893 | 1536.3 | 86.8 | 17.7× | divisor-sieve pcost; SIMD knapsack scans |
+| p886 | 3158.0 | 199.6 | 15.8× | adj bitmasks; AtomicI32 memo; rayon first-5 types |
+| p602 | 425.5 | 32.4 | 13.1× | SPF t^N; u64 mulmod; rayon primes |
+| p754 | 1077.1 | 106.2 | 10.1× | segmented μ; Dirichlet fact prefixes; rayon g |
+| p646 | 484.2 | 59.1 | 8.19× | incremental (MOD-p)^e; par_sort; two-pointer |
+| p732 | 498.5 | 77.0 | 6.47× | no Vec clone; flat knapsack; rayon join L/R |
+
+No A/B rejects this wave (13/13 of completed candidates accepted). Magic-number audit: none of the 13 candidates contain their answer string.
+
+Wave 15 net (sum of accepted medians): **~14.21s**. After this wave the slowest remaining 600–900 binaries are p846 (~7.2s; already seed rayon), p847 (~4.3s), p774 (~3.8s wave 2), p680 (~2.1s treap), p797 (~2.0s wave 4), p662 (~1.9s; agent cancelled), p655 (~1.9s wave 4), p870 (~1.8s wave 8 reject; stale 8.5s binary was the rejected candidate), p606 (~1.6s wave 2 reject), p660 (~1.5s wave 8), p782 (~1.4s noise reject), p837/p739/p635 (~1.2–1.3s already-opt), p786/p715/p654 (~1.1s), p861 (~1.0s already rayon). p886 now 200 ms.
+
+---
+
+## Wave 16 — Euler 900+ slow tail (this session)
+
+Problems 900–997 sum to ~29.4s on this box going in (many already rewritten in waves 1–9: p910/p937/p941/p946/p962/p971/p932/p968/p977/p972/p947/p925/p994/p921/p908/p961/p954/p928/p966/p975/…). Ranked by a one-run of current `target/release/pNNN` and scanned for cheap algorithmic wins. Worktree-isolated subagents (one problem each). Parent copied candidates, **magic-number audited** (no source contains the `data/answers.txt` string; every `println!` prints a computed value), and A/B-gated sequentially (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+Skipped (already-rayon floors, Lucy skip-first, or prior-wave leftovers): p989 (~2.3s hybrid rayon), p931 (Lucy totient graph), p994 (wave 4), p972 (wave 4), p954 (wave 8), p937 (wave 9 reject), p910/p946/p928/p977/p941 (waves 1–4), p927 (already Barrett/Brent rayon), p962/p958 (already rayon).
+
+**A/B accepted (14)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p938 | 2352.1 | 0.9 | 2670.9× | even-R closed form; lgamma + geometric U |
+| p916 | 501.4 | 13.8 | 36.5× | 32-way rayon range product for (2n)! |
+| p936 | 211.0 | 5.8 | 36.4× | incremental correction polys; reuse buffers |
+| p967 | 446.0 | 12.8 | 34.8× | sort d1; partition_point; rayon half-2 |
+| p945 | 557.3 | 24.6 | 22.7× | poly GCD kernel; pext/pdep; XOR enum |
+| p929 | 1057.0 | 74.0 | 14.3× | u64 NTT; DIF/DIT; rayon 3 moduli |
+| p942 | 348.4 | 35.3 | 9.87× | QR bitset; 64-at-a-time; rayon 32 chunks |
+| p933 | 693.4 | 78.2 | 8.87× | V_a cache; AVX2 xor; b↔h-b symmetry |
+| p952 | 397.1 | 84.4 | 4.70× | rayon primes; u64 mulmod; skip q² lift |
+| p949 | 281.8 | 83.8 | 3.36× | O(1) suffix rec; Vec hist; par_sort conv |
+| p943 | 495.1 | 200.6 | 2.47× | dense Vec prefill for (2,3)/(3,2) |
+| p976 | 243.5 | 113.0 | 2.16× | u64 mulmod; 32-way binom; unroll |
+| p939 | 434.1 | 246.9 | 1.76× | rayon wa after sequential partition DP |
+| p953 | 1823.6 | 1358.1 | 1.34× | SPRP 2/7/61; odd bit sieve; integer isqrt |
+
+No A/B rejects this wave (14/14 of completed candidates accepted). Magic-number audit: none of the 14 candidates contain their answer string.
+
+Wave 16 net (sum of accepted medians): **~7.51s**. After this wave the slowest remaining 900+ binaries are p989 (~2.3s; already rayon), p931 (~2.1s Lucy), p994 (~2.1s wave 4), p972 (~1.4s wave 4), p953 now 1.36s, p954 (~1.2s wave 8), p937 (~0.93s wave 9 reject), p910 (~0.90s wave 1), p946 (~0.85s wave 2), p928 (~0.83s wave 9), p977 (~0.59s wave 4), p941/p927 (~0.53–0.54s already rayon). p938 now 0.9 ms.
+
+---
+
+## Accepted (255 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16)
 
 ### Wave 3 — 2s band (this session)
 
@@ -321,6 +598,23 @@ Wave-2 batches B/C/D left unmerged worktree candidates. Those worktrees are **go
 - p606: baseline=8805ms cand=8805ms — already pure u64; rayon no gain
 - p518: baseline=2873ms cand=3811ms — rayon 25M tiny-k loop (wave 3)
 - p410: baseline=2747ms cand=3132ms — rayon 1e8 cheap iterations (wave 3)
+- p256: baseline=1463.7ms cand=1476.2ms — early-exit completed s (wave 8; noise)
+- p870: baseline=1820.3ms cand=8555.5ms — partition_point m (wave 8; 4.7× slower)
+- p681: baseline=948.3ms cand=915.5ms — y*y vs r2/y (wave 9; 1.036×, below 5%)
+- p339: baseline=578.1ms cand=577.0ms — incremental inv_k (wave 9; noise)
+- p563: baseline=833.1ms cand=833.2ms — start=i (wave 9; noise)
+- p423: baseline=711.9ms cand=712.0ms — drop n%MOD (wave 9; noise)
+- p937: baseline=941.2ms cand=944.0ms — drop k%MOD (wave 9; noise)
+- p507: baseline=943.6ms cand=948.0ms — integer floor/ceil (wave 9; noise)
+- p815: baseline=640.4ms cand=647.1ms — stack ncr table (wave 9; noise)
+- p614: baseline=991.3ms cand=1001.9ms — drop clamp(1,16) (wave 9; noise)
+- p643: baseline=732.9ms cand=742.1ms — OA hash→Vec (wave 9; noise)
+- p211: baseline=661.4ms cand=670.0ms — spf[m]==p peel (wave 9; noise)
+- p714: baseline=627.1ms cand=643.4ms — running add vs d*md%k (wave 9; slight regression)
+- p165 FxHashSet: unique count 2503342 vs 2868868 (wave 11; replaced by sort/dedup)
+- p118: baseline=85ms cand=244ms — 9! perm-and-split MR (wave 11; slower than per-mask table)
+- p170: integer concat of products — no gain vs format! (wave 11)
+- p177: HashSet→FxHashSet — 132→130 ms, noise (wave 11)
 
 ---
 

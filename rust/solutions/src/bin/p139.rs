@@ -1,27 +1,22 @@
-use euler_utils::gcd;
+// Project Euler 139: Pythagorean tiles.
+// Primitive triples with c % |a-b| == 0 are consecutive Pell pairs
+// (m, n) = (2, 1), (5, 2), (12, 5), ... with perimeter p0 = 2m(m+n).
+// Count multiples d*p0 < 100_000_000.
 
 fn main() {
-    const PERIMETER_LIMIT: i64 = 100_000_000;
-    let mut total: i64 = 0;
-    let m_limit = ((PERIMETER_LIMIT as f64 / 2.0).sqrt() as i64) + 1;
-
-    for m in 2..=m_limit {
-        for k in 1..m {
-            if (m - k) % 2 == 0 { continue; }
-            if gcd(m as u64, k as u64) != 1 { continue; }
-
-            let a0 = m * m - k * k;
-            let b0 = 2 * m * k;
-            let c0 = m * m + k * k;
-            let p0 = a0 + b0 + c0;
-
-            if p0 >= PERIMETER_LIMIT { break; }
-
-            let diff = (a0 - b0).unsigned_abs() as i64;
-            if diff > 0 && c0 % diff == 0 {
-                total += (PERIMETER_LIMIT - 1) / p0;
-            }
+    const LIMIT: i64 = 100_000_000;
+    let mut total = 0i64;
+    let mut n = 1i64;
+    let mut m = 2i64;
+    loop {
+        let p0 = 2 * m * (m + n);
+        if p0 >= LIMIT {
+            break;
         }
+        total += (LIMIT - 1) / p0;
+        let next_m = 2 * m + n;
+        n = m;
+        m = next_m;
     }
     println!("{}", total);
 }

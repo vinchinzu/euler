@@ -1670,5 +1670,2265 @@
     "notes": "wave7 one-run parent verify; rayon boards; bit-parallel flood",
     "accepted": true,
     "method": "one-run+answer"
+  },
+  {
+    "problem": 954,
+    "baseline_median_ms": 3135.7,
+    "candidate_median_ms": 1223.9,
+    "speedup": 2.562,
+    "correct": true,
+    "baseline_times": [
+      3241.9,
+      3135.7,
+      2902.6
+    ],
+    "candidate_times": [
+      1215.1,
+      1223.9,
+      1232.7
+    ],
+    "notes": "wave8 ox-alpha A/B; drop rayon num_threads(4)",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 478,
+    "baseline_median_ms": 2268.8,
+    "candidate_median_ms": 1711.8,
+    "speedup": 1.325,
+    "correct": true,
+    "baseline_times": [
+      2268.8,
+      2261.7,
+      2285.9
+    ],
+    "candidate_times": [
+      1711.2,
+      1713.2,
+      1711.8
+    ],
+    "notes": "wave8 ox-alpha A/B; hoist invariant half/term1 pow_mod",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 739,
+    "baseline_median_ms": 1595.5,
+    "candidate_median_ms": 1310.6,
+    "speedup": 1.217,
+    "correct": true,
+    "baseline_times": [
+      1595.5,
+      1605.3,
+      1586.0
+    ],
+    "candidate_times": [
+      1310.4,
+      1310.6,
+      1311.9
+    ],
+    "notes": "wave8 ox-alpha A/B; i128->u64 mulmod",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 660,
+    "baseline_median_ms": 1944.5,
+    "candidate_median_ms": 1553.9,
+    "speedup": 1.251,
+    "correct": true,
+    "baseline_times": [
+      1934.0,
+      1944.5,
+      1944.6
+    ],
+    "candidate_times": [
+      1554.1,
+      1552.0,
+      1553.9
+    ],
+    "notes": "wave8 ox-alpha A/B; bitmask pandigital",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 552,
+    "baseline_median_ms": 2892.3,
+    "candidate_median_ms": 2039.2,
+    "speedup": 1.418,
+    "correct": true,
+    "baseline_times": [
+      2907.8,
+      2875.8,
+      2892.3
+    ],
+    "candidate_times": [
+      2039.2,
+      2029.8,
+      2043.9
+    ],
+    "notes": "wave8 ox-alpha A/B; drop redundant %p; u64 Garner",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 786,
+    "baseline_median_ms": 1471.0,
+    "candidate_median_ms": 1151.1,
+    "speedup": 1.278,
+    "correct": true,
+    "baseline_times": [
+      1471.0,
+      1459.8,
+      1520.8
+    ],
+    "candidate_times": [
+      1147.3,
+      1159.1,
+      1151.1
+    ],
+    "notes": "wave8 ox-alpha A/B; Vec<bool> is_composite vs u32 SPF",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 637,
+    "baseline_median_ms": 1382.3,
+    "candidate_median_ms": 143.4,
+    "speedup": 9.641,
+    "correct": true,
+    "baseline_times": [
+      1380.0,
+      1382.3,
+      1389.8
+    ],
+    "candidate_times": [
+      144.4,
+      141.9,
+      143.4
+    ],
+    "notes": "wave8 ox-alpha A/B; par_iter compute_f",
+    "accepted": true,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 256,
+    "baseline_median_ms": 1463.7,
+    "candidate_median_ms": 1476.2,
+    "speedup": 0.992,
+    "correct": true,
+    "baseline_times": [
+      1472.6,
+      1459.3,
+      1463.7
+    ],
+    "candidate_times": [
+      1475.8,
+      1505.8,
+      1476.2
+    ],
+    "notes": "wave8 ox-alpha A/B reject; early-exit completed s (noise)",
+    "accepted": false,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 870,
+    "baseline_median_ms": 1820.3,
+    "candidate_median_ms": 8555.5,
+    "speedup": 0.213,
+    "correct": true,
+    "baseline_times": [
+      1820.3,
+      1815.3,
+      1825.3
+    ],
+    "candidate_times": [
+      8555.5,
+      8555.8,
+      8535.2
+    ],
+    "notes": "wave8 ox-alpha A/B reject; partition_point m (4.7x slower)",
+    "accepted": false,
+    "method": "ab_bench warmup=1 runs=3"
+  },
+  {
+    "problem": 614,
+    "baseline_median_ms": 991.3,
+    "candidate_median_ms": 1001.9,
+    "speedup": 0.989,
+    "correct": true,
+    "baseline_times": [
+      991.0,
+      1037.3,
+      991.3
+    ],
+    "candidate_times": [
+      993.8,
+      1007.7,
+      1001.9
+    ],
+    "notes": "wave9 ox-alpha A/B; drop clamp(1,16)",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 937,
+    "baseline_median_ms": 941.2,
+    "candidate_median_ms": 944.0,
+    "speedup": 0.997,
+    "correct": true,
+    "baseline_times": [
+      980.4,
+      941.2,
+      939.0
+    ],
+    "candidate_times": [
+      951.0,
+      944.0,
+      943.4
+    ],
+    "notes": "wave9 ox-alpha A/B; drop redundant k%MOD",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 643,
+    "baseline_median_ms": 732.9,
+    "candidate_median_ms": 742.1,
+    "speedup": 0.988,
+    "correct": true,
+    "baseline_times": [
+      730.9,
+      735.2,
+      732.9
+    ],
+    "candidate_times": [
+      737.6,
+      748.8,
+      742.1
+    ],
+    "notes": "wave9 ox-alpha A/B; OA hash -> Vec index",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 681,
+    "baseline_median_ms": 948.3,
+    "candidate_median_ms": 915.5,
+    "speedup": 1.036,
+    "correct": true,
+    "baseline_times": [
+      958.0,
+      948.3,
+      935.8
+    ],
+    "candidate_times": [
+      915.5,
+      910.2,
+      926.0
+    ],
+    "notes": "wave9 ox-alpha A/B; y*y vs r2/y; one div",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 507,
+    "baseline_median_ms": 943.6,
+    "candidate_median_ms": 948.0,
+    "speedup": 0.995,
+    "correct": true,
+    "baseline_times": [
+      943.9,
+      943.6,
+      942.1
+    ],
+    "candidate_times": [
+      943.6,
+      948.5,
+      948.0
+    ],
+    "notes": "wave9 ox-alpha A/B; integer floor/ceil",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 714,
+    "baseline_median_ms": 627.1,
+    "candidate_median_ms": 643.4,
+    "speedup": 0.975,
+    "correct": true,
+    "baseline_times": [
+      616.5,
+      627.1,
+      629.4
+    ],
+    "candidate_times": [
+      622.1,
+      643.4,
+      651.3
+    ],
+    "notes": "wave9 ox-alpha A/B; running add vs d*md%k",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 928,
+    "baseline_median_ms": 964.3,
+    "candidate_median_ms": 825.7,
+    "speedup": 1.168,
+    "correct": true,
+    "baseline_times": [
+      945.5,
+      969.3,
+      964.3
+    ],
+    "candidate_times": [
+      835.0,
+      825.7,
+      822.8
+    ],
+    "notes": "wave9 ox-alpha A/B; incremental nh product",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 563,
+    "baseline_median_ms": 833.1,
+    "candidate_median_ms": 833.2,
+    "speedup": 1.0,
+    "correct": true,
+    "baseline_times": [
+      834.8,
+      833.1,
+      831.6
+    ],
+    "candidate_times": [
+      838.1,
+      833.2,
+      831.7
+    ],
+    "notes": "wave9 ox-alpha A/B; start=i; drop count pass",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 211,
+    "baseline_median_ms": 661.4,
+    "candidate_median_ms": 670.0,
+    "speedup": 0.987,
+    "correct": true,
+    "baseline_times": [
+      657.3,
+      665.5,
+      661.4
+    ],
+    "candidate_times": [
+      668.7,
+      671.0,
+      670.0
+    ],
+    "notes": "wave9 ox-alpha A/B; spf[m]==p peel",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 423,
+    "baseline_median_ms": 711.9,
+    "candidate_median_ms": 712.0,
+    "speedup": 1.0,
+    "correct": true,
+    "baseline_times": [
+      716.5,
+      711.9,
+      710.8
+    ],
+    "candidate_times": [
+      712.0,
+      712.7,
+      711.9
+    ],
+    "notes": "wave9 ox-alpha A/B; drop redundant n%MOD",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 339,
+    "baseline_median_ms": 578.1,
+    "candidate_median_ms": 577.0,
+    "speedup": 1.002,
+    "correct": true,
+    "baseline_times": [
+      578.3,
+      578.1,
+      577.5
+    ],
+    "candidate_times": [
+      575.7,
+      577.9,
+      577.0
+    ],
+    "notes": "wave9 ox-alpha A/B; incremental inv_k",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 815,
+    "baseline_median_ms": 640.4,
+    "candidate_median_ms": 647.1,
+    "speedup": 0.99,
+    "correct": true,
+    "baseline_times": [
+      620.1,
+      640.4,
+      672.7
+    ],
+    "candidate_times": [
+      656.1,
+      647.1,
+      634.5
+    ],
+    "notes": "wave9 ox-alpha A/B; stack ncr table",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 73,
+    "baseline_median_ms": 273.1,
+    "candidate_median_ms": 0.8,
+    "speedup": 326.509,
+    "correct": true,
+    "baseline_times": [
+      272.0,
+      273.1,
+      274.8
+    ],
+    "candidate_times": [
+      0.9,
+      0.8,
+      0.8
+    ],
+    "notes": "wave10 1-100; M\u00f6bius + prefix count of (1/3,1/2) fractions",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 95,
+    "baseline_median_ms": 87.7,
+    "candidate_median_ms": 18.4,
+    "speedup": 4.773,
+    "correct": true,
+    "baseline_times": [
+      87.1,
+      87.7,
+      90.7
+    ],
+    "candidate_times": [
+      18.1,
+      18.4,
+      19.9
+    ],
+    "notes": "wave10 1-100; visit-once aliquot graph, no Vec.contains",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 68,
+    "baseline_median_ms": 60.4,
+    "candidate_median_ms": 1.5,
+    "speedup": 41.444,
+    "correct": true,
+    "baseline_times": [
+      60.8,
+      60.4,
+      59.5
+    ],
+    "candidate_times": [
+      1.7,
+      1.3,
+      1.5
+    ],
+    "notes": "wave10 1-100; inner perm, outer determined by line sum",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 92,
+    "baseline_median_ms": 49.8,
+    "candidate_median_ms": 0.8,
+    "speedup": 61.019,
+    "correct": true,
+    "baseline_times": [
+      48.6,
+      49.8,
+      49.9
+    ],
+    "candidate_times": [
+      0.9,
+      0.8,
+      0.7
+    ],
+    "notes": "wave10 1-100; 7-digit DP of digit-square sums",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 84,
+    "baseline_median_ms": 50.9,
+    "candidate_median_ms": 1.8,
+    "speedup": 28.362,
+    "correct": true,
+    "baseline_times": [
+      50.9,
+      52.3,
+      50.7
+    ],
+    "candidate_times": [
+      1.6,
+      1.9,
+      1.8
+    ],
+    "notes": "wave10 1-100; Markov 120-state occupancy, drop 10M Monte Carlo",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 96,
+    "baseline_median_ms": 39.3,
+    "candidate_median_ms": 1.8,
+    "speedup": 22.305,
+    "correct": true,
+    "baseline_times": [
+      39.3,
+      39.3,
+      40.3
+    ],
+    "candidate_times": [
+      1.7,
+      1.8,
+      1.8
+    ],
+    "notes": "wave10 1-100; bitmask MRV sudoku",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 58,
+    "baseline_median_ms": 33.2,
+    "candidate_median_ms": 10.6,
+    "speedup": 3.123,
+    "correct": true,
+    "baseline_times": [
+      33.9,
+      33.2,
+      33.1
+    ],
+    "candidate_times": [
+      10.8,
+      10.6,
+      10.6
+    ],
+    "notes": "wave10 1-100; miller_rabin on spiral corners (drop trial division)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 60,
+    "baseline_median_ms": 63.1,
+    "candidate_median_ms": 6.5,
+    "speedup": 9.774,
+    "correct": true,
+    "baseline_times": [
+      63.1,
+      63.0,
+      63.3
+    ],
+    "candidate_times": [
+      5.9,
+      6.5,
+      6.6
+    ],
+    "notes": "wave10 1-100; 3-witness MR + lazy pair cache; skip 2,5; mod3 filter",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 37,
+    "baseline_median_ms": 21.5,
+    "candidate_median_ms": 0.8,
+    "speedup": 26.545,
+    "correct": true,
+    "baseline_times": [
+      21.5,
+      21.3,
+      22.0
+    ],
+    "candidate_times": [
+      0.8,
+      0.8,
+      0.7
+    ],
+    "notes": "wave10 1-100; generate right-truncatable primes, test left",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 36,
+    "baseline_median_ms": 10.3,
+    "candidate_median_ms": 0.7,
+    "speedup": 14.853,
+    "correct": true,
+    "baseline_times": [
+      10.3,
+      10.5,
+      10.3
+    ],
+    "candidate_times": [
+      0.9,
+      0.7,
+      0.7
+    ],
+    "notes": "wave10 1-100; generate base-10 palindromes (drop to_string scan)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 139,
+    "baseline_median_ms": 191.2,
+    "candidate_median_ms": 0.7,
+    "speedup": 277.636,
+    "correct": true,
+    "baseline_times": [
+      191.9,
+      189.7,
+      191.2
+    ],
+    "candidate_times": [
+      0.8,
+      0.7,
+      0.7
+    ],
+    "notes": "wave11 100-200; Pell generators for c%|a-b|==0 primitives",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 145,
+    "baseline_median_ms": 103.0,
+    "candidate_median_ms": 0.8,
+    "speedup": 133.921,
+    "correct": true,
+    "baseline_times": [
+      103.7,
+      103.0,
+      102.1
+    ],
+    "candidate_times": [
+      0.8,
+      0.8,
+      0.8
+    ],
+    "notes": "wave11 100-200; closed-form reversible counts by digit length",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 122,
+    "baseline_median_ms": 132.4,
+    "candidate_median_ms": 1.7,
+    "speedup": 76.996,
+    "correct": true,
+    "baseline_times": [
+      134.7,
+      130.8,
+      132.4
+    ],
+    "candidate_times": [
+      1.7,
+      1.7,
+      1.5
+    ],
+    "notes": "wave11 100-200; star-chain DFS, prune non-minimal prefixes",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 182,
+    "baseline_median_ms": 171.7,
+    "candidate_median_ms": 5.8,
+    "speedup": 29.486,
+    "correct": true,
+    "baseline_times": [
+      171.7,
+      170.8,
+      172.3
+    ],
+    "candidate_times": [
+      6.0,
+      5.8,
+      5.8
+    ],
+    "notes": "wave11 100-200; gcd tables + skip e sharing a factor with phi",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 127,
+    "baseline_median_ms": 202.2,
+    "candidate_median_ms": 15.6,
+    "speedup": 12.985,
+    "correct": true,
+    "baseline_times": [
+      200.2,
+      202.9,
+      202.2
+    ],
+    "candidate_times": [
+      15.3,
+      15.7,
+      15.6
+    ],
+    "notes": "wave11 100-200; rayon over c in abc-hit search",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 166,
+    "baseline_median_ms": 97.2,
+    "candidate_median_ms": 12.5,
+    "speedup": 7.795,
+    "correct": true,
+    "baseline_times": [
+      96.1,
+      97.2,
+      97.4
+    ],
+    "candidate_times": [
+      12.5,
+      13.2,
+      12.0
+    ],
+    "notes": "wave11 100-200; rayon over line-sum s",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 136,
+    "baseline_median_ms": 441.6,
+    "candidate_median_ms": 61.1,
+    "speedup": 7.229,
+    "correct": true,
+    "baseline_times": [
+      438.9,
+      443.2,
+      441.6
+    ],
+    "candidate_times": [
+      61.2,
+      61.1,
+      59.5
+    ],
+    "notes": "wave11 100-200; odd-only sieve; n=4,16,p\u22613(mod 4),4p,16p",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 165,
+    "baseline_median_ms": 449.5,
+    "candidate_median_ms": 70.5,
+    "speedup": 6.378,
+    "correct": true,
+    "baseline_times": [
+      449.5,
+      443.4,
+      452.4
+    ],
+    "candidate_times": [
+      74.6,
+      70.5,
+      69.6
+    ],
+    "notes": "wave11 100-200; rayon pairs + sort/dedup (drop HashSet)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 187,
+    "baseline_median_ms": 164.4,
+    "candidate_median_ms": 59.5,
+    "speedup": 2.761,
+    "correct": true,
+    "baseline_times": [
+      165.1,
+      164.4,
+      162.7
+    ],
+    "candidate_times": [
+      59.5,
+      59.0,
+      62.1
+    ],
+    "notes": "wave11 100-200; odd-only bit sieve of LIMIT/2",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 152,
+    "baseline_median_ms": 187.1,
+    "candidate_median_ms": 68.3,
+    "speedup": 2.738,
+    "correct": true,
+    "baseline_times": [
+      187.1,
+      187.2,
+      185.8
+    ],
+    "candidate_times": [
+      69.4,
+      68.3,
+      67.9
+    ],
+    "notes": "wave11 100-200; integer MITM on (L/n)^2, drop i128 Frac gcd",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 167,
+    "baseline_median_ms": 282.2,
+    "candidate_median_ms": 193.7,
+    "speedup": 1.457,
+    "correct": true,
+    "baseline_times": [
+      282.2,
+      286.1,
+      280.2
+    ],
+    "candidate_times": [
+      192.5,
+      193.7,
+      196.4
+    ],
+    "notes": "wave11 100-200; FxHashMap period states",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 196,
+    "baseline_median_ms": 160.2,
+    "candidate_median_ms": 109.6,
+    "speedup": 1.462,
+    "correct": true,
+    "baseline_times": [
+      160.2,
+      159.6,
+      161.0
+    ],
+    "candidate_times": [
+      107.9,
+      109.6,
+      111.0
+    ],
+    "notes": "wave11 100-200; rayon::join of the two row sieves",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 146,
+    "baseline_median_ms": 132.6,
+    "candidate_median_ms": 93.8,
+    "speedup": 1.413,
+    "correct": true,
+    "baseline_times": [
+      132.6,
+      132.1,
+      133.7
+    ],
+    "candidate_times": [
+      93.7,
+      94.9,
+      93.8
+    ],
+    "notes": "wave11 100-200; 7-witness MR (n<3.8e18)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 284,
+    "baseline_median_ms": 628.5,
+    "candidate_median_ms": 5.0,
+    "speedup": 125.18,
+    "correct": true,
+    "baseline_times": [
+      628.6,
+      628.5,
+      622.7
+    ],
+    "candidate_times": [
+      5.0,
+      5.1,
+      4.8
+    ],
+    "notes": "wave12 200-300; packed base 14^16 limbs; rayon::join two Hensel lifts",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 299,
+    "baseline_median_ms": 540.1,
+    "candidate_median_ms": 4.6,
+    "speedup": 117.298,
+    "correct": true,
+    "baseline_times": [
+      540.5,
+      539.0,
+      540.1
+    ],
+    "candidate_times": [
+      4.4,
+      4.6,
+      4.8
+    ],
+    "notes": "wave12 200-300; M\u00f6bius drop gcd; rayon n; hoist f1/f2 quadratics",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 221,
+    "baseline_median_ms": 320.0,
+    "candidate_median_ms": 5.2,
+    "speedup": 61.622,
+    "correct": true,
+    "baseline_times": [
+      319.6,
+      321.8,
+      320.0
+    ],
+    "candidate_times": [
+      5.2,
+      5.2,
+      5.6
+    ],
+    "notes": "wave12 200-300; factor a^2+1 via sqrt(-1) mod p; select_nth",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 229,
+    "baseline_median_ms": 497.2,
+    "candidate_median_ms": 12.3,
+    "speedup": 40.433,
+    "correct": true,
+    "baseline_times": [
+      498.8,
+      497.2,
+      492.4
+    ],
+    "candidate_times": [
+      12.6,
+      12.3,
+      12.2
+    ],
+    "notes": "wave12 200-300; NT count of simultaneous 1/2/3/7-square forms",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 231,
+    "baseline_median_ms": 337.2,
+    "candidate_median_ms": 8.4,
+    "speedup": 40.251,
+    "correct": true,
+    "baseline_times": [
+      343.4,
+      337.2,
+      336.8
+    ],
+    "candidate_times": [
+      9.3,
+      8.4,
+      6.4
+    ],
+    "notes": "wave12 200-300; Legendre sopfr(C(N,K)); Dirichlet floor blocks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 260,
+    "baseline_median_ms": 206.9,
+    "candidate_median_ms": 10.9,
+    "speedup": 19.065,
+    "correct": true,
+    "baseline_times": [
+      206.9,
+      205.9,
+      209.2
+    ],
+    "candidate_times": [
+      10.9,
+      10.9,
+      10.7
+    ],
+    "notes": "wave12 200-300; bit-packed occupancy; trailing_zeros z-scan",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 287,
+    "baseline_median_ms": 457.9,
+    "candidate_median_ms": 24.2,
+    "speedup": 18.886,
+    "correct": true,
+    "baseline_times": [
+      463.4,
+      457.9,
+      453.6
+    ],
+    "candidate_times": [
+      24.1,
+      24.8,
+      24.2
+    ],
+    "notes": "wave12 200-300; exact disk-square test; mixed 2x2; rayon join",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 257,
+    "baseline_median_ms": 176.2,
+    "candidate_median_ms": 10.2,
+    "speedup": 17.28,
+    "correct": true,
+    "baseline_times": [
+      175.7,
+      180.4,
+      176.2
+    ],
+    "candidate_times": [
+      9.9,
+      10.3,
+      10.2
+    ],
+    "notes": "wave12 200-300; rayon m; stride filters; local gcd",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 296,
+    "baseline_median_ms": 552.8,
+    "candidate_median_ms": 32.5,
+    "speedup": 16.984,
+    "correct": true,
+    "baseline_times": [
+      552.7,
+      553.5,
+      552.8
+    ],
+    "candidate_times": [
+      31.7,
+      34.3,
+      32.5
+    ],
+    "notes": "wave12 200-300; closed-form inner k floor-sum; coarse Farey rayon",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 212,
+    "baseline_median_ms": 194.8,
+    "candidate_median_ms": 16.2,
+    "speedup": 12.027,
+    "correct": true,
+    "baseline_times": [
+      194.8,
+      192.3,
+      195.0
+    ],
+    "candidate_times": [
+      16.7,
+      16.0,
+      16.2
+    ],
+    "notes": "wave12 200-300; packed 81^3 grid; rayon sections",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 250,
+    "baseline_median_ms": 90.9,
+    "candidate_median_ms": 8.8,
+    "speedup": 10.312,
+    "correct": true,
+    "baseline_times": [
+      90.9,
+      88.6,
+      90.9
+    ],
+    "candidate_times": [
+      9.2,
+      8.8,
+      8.3
+    ],
+    "notes": "wave12 200-300; stack DP; CRT n^n mod 250; batch residues",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 223,
+    "baseline_median_ms": 272.6,
+    "candidate_median_ms": 34.8,
+    "speedup": 7.842,
+    "correct": true,
+    "baseline_times": [
+      271.3,
+      272.6,
+      273.2
+    ],
+    "candidate_times": [
+      34.2,
+      34.8,
+      34.9
+    ],
+    "notes": "wave12 200-300; count via v=c-b and a^2\u22611 (mod v)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 249,
+    "baseline_median_ms": 326.0,
+    "candidate_median_ms": 52.2,
+    "speedup": 6.25,
+    "correct": true,
+    "baseline_times": [
+      324.9,
+      326.0,
+      327.7
+    ],
+    "candidate_times": [
+      51.4,
+      52.2,
+      53.3
+    ],
+    "notes": "wave12 200-300; AVX2 0-1 knapsack; odd-only bit sieve",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 259,
+    "baseline_median_ms": 1368.8,
+    "candidate_median_ms": 490.9,
+    "speedup": 2.788,
+    "correct": true,
+    "baseline_times": [
+      1367.5,
+      1368.8,
+      1421.8
+    ],
+    "candidate_times": [
+      489.0,
+      490.9,
+      496.9
+    ],
+    "notes": "wave12 200-300; FxHash packed Frac; rayon splits/starts",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 369,
+    "baseline_median_ms": 535.1,
+    "candidate_median_ms": 1.0,
+    "speedup": 551.021,
+    "correct": true,
+    "baseline_times": [
+      535.1,
+      537.8,
+      529.7
+    ],
+    "candidate_times": [
+      1.0,
+      1.1,
+      0.9
+    ],
+    "notes": "wave13 300-400; matching-reachability DP over 68 16-bit suit sets",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 351,
+    "baseline_median_ms": 1310.7,
+    "candidate_median_ms": 6.5,
+    "speedup": 202.265,
+    "correct": true,
+    "baseline_times": [
+      1310.7,
+      1312.2,
+      1304.5
+    ],
+    "candidate_times": [
+      6.5,
+      6.7,
+      6.4
+    ],
+    "notes": "wave13 300-400; Du Jiao \u03a6; sieve to n^{2/3}; floor-array",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 344,
+    "baseline_median_ms": 264.1,
+    "candidate_median_ms": 1.3,
+    "speedup": 200.518,
+    "correct": true,
+    "baseline_times": [
+      263.8,
+      265.0,
+      264.1
+    ],
+    "candidate_times": [
+      1.4,
+      1.3,
+      1.1
+    ],
+    "notes": "wave13 300-400; bit-column carry DP O(m\u00b2 log n)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 398,
+    "baseline_median_ms": 311.3,
+    "candidate_median_ms": 2.2,
+    "speedup": 141.634,
+    "correct": true,
+    "baseline_times": [
+      310.8,
+      314.0,
+      311.3
+    ],
+    "candidate_times": [
+      2.2,
+      2.4,
+      2.1
+    ],
+    "notes": "wave13 300-400; tail-sum E[Y]=\u03a3 P(Y\u2265k); rayon k",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 332,
+    "baseline_median_ms": 498.3,
+    "candidate_median_ms": 5.5,
+    "speedup": 90.457,
+    "correct": true,
+    "baseline_times": [
+      498.3,
+      508.5,
+      496.2
+    ],
+    "candidate_times": [
+      5.3,
+      5.5,
+      6.0
+    ],
+    "notes": "wave13 300-400; isqrt lattice; van Oosterom\u2013Strackee; rayon r",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 336,
+    "baseline_median_ms": 689.6,
+    "candidate_median_ms": 7.8,
+    "speedup": 87.959,
+    "correct": true,
+    "baseline_times": [
+      689.4,
+      693.0,
+      689.6
+    ],
+    "candidate_times": [
+      7.6,
+      8.6,
+      7.8
+    ],
+    "notes": "wave13 300-400; recursive maximix construction; packed u64",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 386,
+    "baseline_median_ms": 871.3,
+    "candidate_median_ms": 17.1,
+    "speedup": 50.963,
+    "correct": true,
+    "baseline_times": [
+      871.3,
+      875.0,
+      868.4
+    ],
+    "candidate_times": [
+      17.1,
+      16.5,
+      18.5
+    ],
+    "notes": "wave13 300-400; last-prime \u03c0(x) batch; Lucy; rayon small-n",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 399,
+    "baseline_median_ms": 1170.1,
+    "candidate_median_ms": 41.1,
+    "speedup": 28.436,
+    "correct": true,
+    "baseline_times": [
+      1170.1,
+      1172.0,
+      1165.6
+    ],
+    "candidate_times": [
+      40.3,
+      41.2,
+      41.1
+    ],
+    "notes": "wave13 300-400; z(p) from p\u00b11; 6-wheel bitset; fast doubling",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 360,
+    "baseline_median_ms": 301.0,
+    "candidate_median_ms": 13.8,
+    "speedup": 21.797,
+    "correct": true,
+    "baseline_times": [
+      301.0,
+      300.8,
+      302.7
+    ],
+    "candidate_times": [
+      13.6,
+      14.0,
+      13.8
+    ],
+    "notes": "wave13 300-400; first-octant r\u2082 lattice; striped rayon x",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 319,
+    "baseline_median_ms": 540.1,
+    "candidate_median_ms": 52.4,
+    "speedup": 10.304,
+    "correct": true,
+    "baseline_times": [
+      538.2,
+      540.4,
+      540.1
+    ],
+    "candidate_times": [
+      52.4,
+      51.8,
+      52.8
+    ],
+    "notes": "wave13 300-400; M\u00f6bius t(n)=1+\u03a3\u03bc(d)G(\u230an/d\u230b); Lucy Mertens",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 309,
+    "baseline_median_ms": 258.8,
+    "candidate_median_ms": 26.2,
+    "speedup": 9.877,
+    "correct": true,
+    "baseline_times": [
+      257.3,
+      258.8,
+      259.4
+    ],
+    "candidate_times": [
+      26.2,
+      26.3,
+      25.6
+    ],
+    "notes": "wave13 300-400; CSR u32 heights; rayon w; (h1+h2)|h1\u00b2",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 370,
+    "baseline_median_ms": 987.9,
+    "candidate_median_ms": 237.8,
+    "speedup": 4.154,
+    "correct": true,
+    "baseline_times": [
+      985.9,
+      987.9,
+      1836.4
+    ],
+    "candidate_times": [
+      237.8,
+      238.6,
+      237.6
+    ],
+    "notes": "wave13 300-400; integer isqrt; stack M\u00f6bius; hybrid floor-sum",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 375,
+    "baseline_median_ms": 325.1,
+    "candidate_median_ms": 99.7,
+    "speedup": 3.261,
+    "correct": true,
+    "baseline_times": [
+      332.2,
+      325.1,
+      323.9
+    ],
+    "candidate_times": [
+      100.9,
+      99.6,
+      99.7
+    ],
+    "notes": "wave13 300-400; one BBS cycle; i64 monotone stack; 3-point Lagrange",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 374,
+    "baseline_median_ms": 354.9,
+    "candidate_median_ms": 116.8,
+    "speedup": 3.039,
+    "correct": true,
+    "baseline_times": [
+      354.9,
+      355.4,
+      352.2
+    ],
+    "candidate_times": [
+      116.6,
+      116.8,
+      117.0
+    ],
+    "notes": "wave13 300-400; factorial inverses; collapsed k; 64k rayon chunks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 554,
+    "baseline_median_ms": 680.0,
+    "candidate_median_ms": 4.7,
+    "speedup": 143.284,
+    "correct": true,
+    "baseline_times": [
+      680.0,
+      679.6,
+      681.1
+    ],
+    "candidate_times": [
+      4.7,
+      5.3,
+      4.7
+    ],
+    "notes": "wave14 400-600; Lucas + Wilson-reduced fact; 32-way range product",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 466,
+    "baseline_median_ms": 350.5,
+    "candidate_median_ms": 4.8,
+    "speedup": 73.49,
+    "correct": true,
+    "baseline_times": [
+      350.5,
+      353.4,
+      349.2
+    ],
+    "candidate_times": [
+      4.6,
+      5.3,
+      4.8
+    ],
+    "notes": "wave14 400-600; divisor-minimal bitmask; rayon m + first-level IE",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 593,
+    "baseline_median_ms": 1508.2,
+    "candidate_median_ms": 52.9,
+    "speedup": 28.501,
+    "correct": true,
+    "baseline_times": [
+      1505.3,
+      1508.2,
+      1508.7
+    ],
+    "candidate_times": [
+      52.9,
+      54.2,
+      52.5
+    ],
+    "notes": "wave14 400-600; odd-only segmented bit sieve; freq-table median",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 428,
+    "baseline_median_ms": 2015.6,
+    "candidate_median_ms": 106.5,
+    "speedup": 18.921,
+    "correct": true,
+    "baseline_times": [
+      2017.2,
+      2015.6,
+      2006.8
+    ],
+    "candidate_times": [
+      107.6,
+      106.4,
+      106.5
+    ],
+    "notes": "wave14 400-600; linearized Du Jiao/Lucy small+large; rayon F/T",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 452,
+    "baseline_median_ms": 1967.0,
+    "candidate_median_ms": 106.0,
+    "speedup": 18.564,
+    "correct": true,
+    "baseline_times": [
+      1967.0,
+      1966.2,
+      1983.4
+    ],
+    "candidate_times": [
+      105.3,
+      106.0,
+      106.2
+    ],
+    "notes": "wave14 400-600; u64 mulmod; rayon Zipf-heavy subtrees",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 571,
+    "baseline_median_ms": 890.5,
+    "candidate_median_ms": 77.5,
+    "speedup": 11.488,
+    "correct": true,
+    "baseline_times": [
+      879.9,
+      890.5,
+      891.7
+    ],
+    "candidate_times": [
+      77.5,
+      77.9,
+      77.0
+    ],
+    "notes": "wave14 400-600; rayon first-3 digits; merge top-10; base-8/4/3 masks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 454,
+    "baseline_median_ms": 550.8,
+    "candidate_median_ms": 48.0,
+    "speedup": 11.48,
+    "correct": true,
+    "baseline_times": [
+      550.8,
+      549.2,
+      550.8
+    ],
+    "candidate_times": [
+      44.0,
+      49.9,
+      48.0
+    ],
+    "notes": "wave14 400-600; odd-only \u03bc; Dirichlet inner; rayon y-stripes",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 580,
+    "baseline_median_ms": 1135.2,
+    "candidate_median_ms": 110.4,
+    "speedup": 10.279,
+    "correct": true,
+    "baseline_times": [
+      1134.3,
+      1135.2,
+      1139.5
+    ],
+    "candidate_times": [
+      109.7,
+      110.4,
+      110.7
+    ],
+    "notes": "wave14 400-600; multiplicative DFS last-prime batch; odd sieve",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 485,
+    "baseline_median_ms": 828.3,
+    "candidate_median_ms": 87.2,
+    "speedup": 9.498,
+    "correct": true,
+    "baseline_times": [
+      828.3,
+      846.2,
+      823.5
+    ],
+    "candidate_times": [
+      84.1,
+      89.9,
+      87.2
+    ],
+    "notes": "wave14 400-600; par pair-divisor sieve; split window endpoints",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 445,
+    "baseline_median_ms": 1398.4,
+    "candidate_median_ms": 274.7,
+    "speedup": 5.09,
+    "correct": true,
+    "baseline_times": [
+      1414.5,
+      1397.0,
+      1398.4
+    ],
+    "candidate_times": [
+      273.8,
+      274.7,
+      277.9
+    ],
+    "notes": "wave14 400-600; \u03c3*(C(N,k)) identity; odd-only SPF; batch inverse",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 583,
+    "baseline_median_ms": 841.1,
+    "candidate_median_ms": 202.4,
+    "speedup": 4.157,
+    "correct": true,
+    "baseline_times": [
+      841.1,
+      834.5,
+      852.8
+    ],
+    "candidate_times": [
+      202.8,
+      201.9,
+      202.4
+    ],
+    "notes": "wave14 400-600; SPF factor-pairs of w\u00b2; two-pointer; finer rayon",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 459,
+    "baseline_median_ms": 3465.1,
+    "candidate_median_ms": 876.5,
+    "speedup": 3.954,
+    "correct": true,
+    "baseline_times": [
+      3591.1,
+      3235.8,
+      3465.1
+    ],
+    "candidate_times": [
+      877.6,
+      876.5,
+      866.2
+    ],
+    "notes": "wave14 400-600; bitset mex; 512\u00b2 nim table; rayon x/y fills",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 432,
+    "baseline_median_ms": 504.6,
+    "candidate_median_ms": 142.2,
+    "speedup": 3.549,
+    "correct": true,
+    "baseline_times": [
+      495.1,
+      504.6,
+      511.6
+    ],
+    "candidate_times": [
+      142.5,
+      138.9,
+      142.2
+    ],
+    "notes": "wave14 400-600; linearized Du Jiao \u03a6; 17-smooth Dirichlet",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 505,
+    "baseline_median_ms": 4262.1,
+    "candidate_median_ms": 1293.6,
+    "speedup": 3.295,
+    "correct": true,
+    "baseline_times": [
+      4262.1,
+      4272.8,
+      4233.6
+    ],
+    "candidate_times": [
+      1291.8,
+      1293.6,
+      1294.5
+    ],
+    "notes": "wave14 400-600; depth-parity child order; unroll last 5 plies",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 814,
+    "baseline_median_ms": 339.6,
+    "candidate_median_ms": 6.9,
+    "speedup": 48.982,
+    "correct": true,
+    "baseline_times": [
+      337.3,
+      339.6,
+      340.7
+    ],
+    "candidate_times": [
+      6.7,
+      7.4,
+      6.9
+    ],
+    "notes": "wave15 600-900; flatten DP + closed k-pass; rayon 4 starts",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 880,
+    "baseline_median_ms": 390.7,
+    "candidate_median_ms": 12.6,
+    "speedup": 30.92,
+    "correct": true,
+    "baseline_times": [
+      384.0,
+      390.7,
+      390.7
+    ],
+    "candidate_times": [
+      11.8,
+      12.6,
+      13.8
+    ],
+    "notes": "wave15 600-900; closed a-limits; cube-free sieve; rayon b",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 602,
+    "baseline_median_ms": 425.5,
+    "candidate_median_ms": 32.4,
+    "speedup": 13.13,
+    "correct": true,
+    "baseline_times": [
+      420.5,
+      425.5,
+      427.2
+    ],
+    "candidate_times": [
+      32.4,
+      32.0,
+      34.0
+    ],
+    "notes": "wave15 600-900; SPF t^N; u64 mulmod; rayon primes",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 646,
+    "baseline_median_ms": 484.2,
+    "candidate_median_ms": 59.1,
+    "speedup": 8.189,
+    "correct": true,
+    "baseline_times": [
+      427.5,
+      484.2,
+      531.8
+    ],
+    "candidate_times": [
+      59.1,
+      56.9,
+      66.1
+    ],
+    "notes": "wave15 600-900; incremental (MOD-p)^e; par_sort; two-pointer",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 732,
+    "baseline_median_ms": 498.5,
+    "candidate_median_ms": 77.0,
+    "speedup": 6.473,
+    "correct": true,
+    "baseline_times": [
+      502.6,
+      496.2,
+      498.5
+    ],
+    "candidate_times": [
+      77.4,
+      77.0,
+      75.3
+    ],
+    "notes": "wave15 600-900; no Vec clone; flat knapsack; rayon join L/R",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 677,
+    "baseline_median_ms": 755.4,
+    "candidate_median_ms": 16.0,
+    "speedup": 47.075,
+    "correct": true,
+    "baseline_times": [
+      752.1,
+      758.2,
+      755.4
+    ],
+    "candidate_times": [
+      16.6,
+      15.7,
+      16.0
+    ],
+    "notes": "wave15 600-900; flatten u32 DP; u64 mulmod; AVX2 conv",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 810,
+    "baseline_median_ms": 1083.4,
+    "candidate_median_ms": 26.5,
+    "speedup": 40.919,
+    "correct": true,
+    "baseline_times": [
+      1083.4,
+      1082.7,
+      1084.2
+    ],
+    "candidate_times": [
+      26.6,
+      25.4,
+      26.5
+    ],
+    "notes": "wave15 600-900; GF(2) irreducibles I(n); Gray-code deg-26 sieve",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 754,
+    "baseline_median_ms": 1077.1,
+    "candidate_median_ms": 106.2,
+    "speedup": 10.144,
+    "correct": true,
+    "baseline_times": [
+      1077.1,
+      1079.9,
+      1071.3
+    ],
+    "candidate_times": [
+      107.6,
+      106.2,
+      105.3
+    ],
+    "notes": "wave15 600-900; segmented mu; Dirichlet fact prefixes; rayon g",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 893,
+    "baseline_median_ms": 1536.3,
+    "candidate_median_ms": 86.8,
+    "speedup": 17.705,
+    "correct": true,
+    "baseline_times": [
+      1536.3,
+      1533.1,
+      1536.6
+    ],
+    "candidate_times": [
+      86.0,
+      86.8,
+      87.7
+    ],
+    "notes": "wave15 600-900; divisor-sieve pcost; SIMD knapsack scans",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 705,
+    "baseline_median_ms": 1518.7,
+    "candidate_median_ms": 80.9,
+    "speedup": 18.774,
+    "correct": true,
+    "baseline_times": [
+      1549.7,
+      1518.7,
+      1504.2
+    ],
+    "candidate_times": [
+      80.8,
+      80.9,
+      86.3
+    ],
+    "notes": "wave15 600-900; odd-only par bit sieve; 4-digit inversion chunks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 608,
+    "baseline_median_ms": 1752.1,
+    "candidate_median_ms": 74.9,
+    "speedup": 23.381,
+    "correct": true,
+    "baseline_times": [
+      1760.7,
+      1749.3,
+      1752.1
+    ],
+    "candidate_times": [
+      73.6,
+      77.3,
+      74.9
+    ],
+    "notes": "wave15 600-900; harmonic D(n) to 8e6; nested rayon DFS",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 852,
+    "baseline_median_ms": 1978.2,
+    "candidate_median_ms": 9.5,
+    "speedup": 209.055,
+    "correct": true,
+    "baseline_times": [
+      1997.7,
+      1978.2,
+      1978.2
+    ],
+    "candidate_times": [
+      9.5,
+      9.5,
+      9.3
+    ],
+    "notes": "wave15 600-900; martingale G(p); direct Bayes; rayon G tasks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 886,
+    "baseline_median_ms": 3158.0,
+    "candidate_median_ms": 199.6,
+    "speedup": 15.821,
+    "correct": true,
+    "baseline_times": [
+      3145.4,
+      3158.0,
+      3164.5
+    ],
+    "candidate_times": [
+      201.5,
+      198.7,
+      199.6
+    ],
+    "notes": "wave15 600-900; adj bitmasks; AtomicI32 memo; rayon first-5 types",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 938,
+    "baseline_median_ms": 2352.1,
+    "candidate_median_ms": 0.9,
+    "speedup": 2670.914,
+    "correct": true,
+    "baseline_times": [
+      2352.1,
+      2338.5,
+      2533.0
+    ],
+    "candidate_times": [
+      0.9,
+      0.8,
+      0.9
+    ],
+    "notes": "wave16 900+; even-R closed form; lgamma + geometric U",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 953,
+    "baseline_median_ms": 1823.6,
+    "candidate_median_ms": 1358.1,
+    "speedup": 1.343,
+    "correct": true,
+    "baseline_times": [
+      1823.6,
+      1823.6,
+      1835.7
+    ],
+    "candidate_times": [
+      1351.9,
+      1360.8,
+      1358.1
+    ],
+    "notes": "wave16 900+; SPRP 2/7/61; odd bit sieve; integer isqrt",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 929,
+    "baseline_median_ms": 1057.0,
+    "candidate_median_ms": 74.0,
+    "speedup": 14.275,
+    "correct": true,
+    "baseline_times": [
+      1043.0,
+      1057.0,
+      1082.3
+    ],
+    "candidate_times": [
+      74.0,
+      74.9,
+      73.8
+    ],
+    "notes": "wave16 900+; u64 NTT; DIF/DIT; rayon 3 moduli",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 933,
+    "baseline_median_ms": 693.4,
+    "candidate_median_ms": 78.2,
+    "speedup": 8.871,
+    "correct": true,
+    "baseline_times": [
+      692.5,
+      694.3,
+      693.4
+    ],
+    "candidate_times": [
+      78.2,
+      78.5,
+      76.4
+    ],
+    "notes": "wave16 900+; V_a cache; AVX2 xor; b\u2194h-b symmetry",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 945,
+    "baseline_median_ms": 557.3,
+    "candidate_median_ms": 24.6,
+    "speedup": 22.692,
+    "correct": true,
+    "baseline_times": [
+      555.2,
+      557.3,
+      560.5
+    ],
+    "candidate_times": [
+      24.6,
+      23.8,
+      25.1
+    ],
+    "notes": "wave16 900+; poly GCD kernel; pext/pdep; XOR enum",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 916,
+    "baseline_median_ms": 501.4,
+    "candidate_median_ms": 13.8,
+    "speedup": 36.454,
+    "correct": true,
+    "baseline_times": [
+      502.3,
+      501.1,
+      501.4
+    ],
+    "candidate_times": [
+      13.8,
+      14.0,
+      13.7
+    ],
+    "notes": "wave16 900+; 32-way rayon range product for (2n)!",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 943,
+    "baseline_median_ms": 495.1,
+    "candidate_median_ms": 200.6,
+    "speedup": 2.469,
+    "correct": true,
+    "baseline_times": [
+      495.1,
+      497.5,
+      459.8
+    ],
+    "candidate_times": [
+      253.6,
+      200.6,
+      199.6
+    ],
+    "notes": "wave16 900+; dense Vec prefill for (2,3)/(3,2)",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 967,
+    "baseline_median_ms": 446.0,
+    "candidate_median_ms": 12.8,
+    "speedup": 34.827,
+    "correct": true,
+    "baseline_times": [
+      446.0,
+      445.7,
+      446.2
+    ],
+    "candidate_times": [
+      12.8,
+      12.8,
+      12.7
+    ],
+    "notes": "wave16 900+; sort d1; partition_point; rayon half-2",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 939,
+    "baseline_median_ms": 434.1,
+    "candidate_median_ms": 246.9,
+    "speedup": 1.758,
+    "correct": true,
+    "baseline_times": [
+      436.3,
+      434.0,
+      434.1
+    ],
+    "candidate_times": [
+      246.9,
+      248.8,
+      246.0
+    ],
+    "notes": "wave16 900+; rayon wa after sequential partition DP",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 952,
+    "baseline_median_ms": 397.1,
+    "candidate_median_ms": 84.4,
+    "speedup": 4.704,
+    "correct": true,
+    "baseline_times": [
+      395.4,
+      397.1,
+      403.7
+    ],
+    "candidate_times": [
+      89.4,
+      81.3,
+      84.4
+    ],
+    "notes": "wave16 900+; rayon primes; u64 mulmod; skip q^2 lift",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 942,
+    "baseline_median_ms": 348.4,
+    "candidate_median_ms": 35.3,
+    "speedup": 9.873,
+    "correct": true,
+    "baseline_times": [
+      354.5,
+      348.4,
+      347.7
+    ],
+    "candidate_times": [
+      34.0,
+      35.3,
+      36.4
+    ],
+    "notes": "wave16 900+; QR bitset; 64-at-a-time; rayon 32 chunks",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 949,
+    "baseline_median_ms": 281.8,
+    "candidate_median_ms": 83.8,
+    "speedup": 3.364,
+    "correct": true,
+    "baseline_times": [
+      285.3,
+      280.6,
+      281.8
+    ],
+    "candidate_times": [
+      83.8,
+      81.7,
+      85.8
+    ],
+    "notes": "wave16 900+; O(1) suffix rec; Vec hist; par_sort conv",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 976,
+    "baseline_median_ms": 243.5,
+    "candidate_median_ms": 113.0,
+    "speedup": 2.155,
+    "correct": true,
+    "baseline_times": [
+      242.1,
+      243.5,
+      245.9
+    ],
+    "candidate_times": [
+      113.0,
+      115.0,
+      113.0
+    ],
+    "notes": "wave16 900+; u64 mulmod; 32-way binom; unroll",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
+  },
+  {
+    "problem": 936,
+    "baseline_median_ms": 211.0,
+    "candidate_median_ms": 5.8,
+    "speedup": 36.372,
+    "correct": true,
+    "baseline_times": [
+      213.7,
+      211.0,
+      210.9
+    ],
+    "candidate_times": [
+      5.6,
+      5.8,
+      5.9
+    ],
+    "notes": "wave16 900+; incremental correction polys; reuse buffers",
+    "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
+    "accepted": true
   }
 ]

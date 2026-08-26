@@ -23,14 +23,19 @@ fn good(sum_val: usize, remaining: usize, base: usize, sd: &[usize]) -> bool {
 }
 
 fn compute_f(n: usize, b: usize) -> Vec<u8> {
-    let sd: Vec<usize> = (0..=n).map(|i| sum_digits_b(i, b)).collect();
+    let sd: Vec<usize> = (0..=n).into_par_iter().map(|i| sum_digits_b(i, b)).collect();
     let mut f = vec![0u8; n + 1];
-    for i in 0..=n {
-        if i < b { f[i] = 0; }
-        else if sd[i] < b { f[i] = 1; }
-        else if good(0, i, b, &sd) { f[i] = 2; }
-        else { f[i] = 3; }
-    }
+    f.par_iter_mut().enumerate().for_each(|(i, fi)| {
+        if i < b {
+            *fi = 0;
+        } else if sd[i] < b {
+            *fi = 1;
+        } else if good(0, i, b, &sd) {
+            *fi = 2;
+        } else {
+            *fi = 3;
+        }
+    });
     f
 }
 

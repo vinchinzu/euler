@@ -1,6 +1,6 @@
 // Project Euler Problem 953
 // Factorisation Nim: S(10^14) mod 10^9+7
-// Optimized: no i128, rayon on DFS phase, unchecked hot paths.
+// Odd-only bit sieve, inlined SPRP, integer isqrt, rayon on DFS/direct.
 
 use rayon::prelude::*;
 
@@ -12,14 +12,8 @@ const SMALL_M_LIMIT: usize = 100_000;
 
 #[inline(always)]
 fn s2_contribution(k: i64) -> i64 {
-    let quot = N_VAL / k;
-    let mut m = (quot as f64).sqrt() as i64;
-    while (m + 1) * (m + 1) <= quot {
-        m += 1;
-    }
-    while m * m > quot {
-        m -= 1;
-    }
+    let quot = (N_VAL / k) as u64;
+    let m = quot.isqrt() as i64;
     if m == 0 {
         return 0;
     }
@@ -28,101 +22,206 @@ fn s2_contribution(k: i64) -> i64 {
     k % MOD * s2 % MOD
 }
 
+/// n < 2^32 so n*n fits in u64; wrapping_mul then % is exact.
 #[inline(always)]
-fn is_prime_td(n: i64) -> bool {
+fn pow_mod_small(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut r = 1u64;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            r = r.wrapping_mul(base) % m;
+        }
+        base = base.wrapping_mul(base) % m;
+        exp >>= 1;
+    }
+    r
+}
+
+#[inline(always)]
+fn mul_mod64(a: u64, b: u64, m: u64) -> u64 {
+    ((a as u128 * b as u128) % m as u128) as u64
+}
+
+#[inline(always)]
+fn pow_mod64(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut r = 1u64;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            r = mul_mod64(r, base, m);
+        }
+        base = mul_mod64(base, base, m);
+        exp >>= 1;
+    }
+    r
+}
+
+#[inline(always)]
+fn sprp_small(n: u64, a: u64) -> bool {
+    let tz = (n - 1).trailing_zeros();
+    let d = (n - 1) >> tz;
+    let mut x = pow_mod_small(a, d, n);
+    if x == 1 || x == n - 1 {
+        return true;
+    }
+    for _ in 1..tz {
+        x = x.wrapping_mul(x) % n;
+        if x == n - 1 {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline(always)]
+fn sprp64(n: u64, a: u64) -> bool {
+    let tz = (n - 1).trailing_zeros();
+    let d = (n - 1) >> tz;
+    let mut x = pow_mod64(a, d, n);
+    if x == 1 || x == n - 1 {
+        return true;
+    }
+    for _ in 1..tz {
+        x = mul_mod64(x, x, n);
+        if x == n - 1 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Deterministic Miller–Rabin. n < 2^32: witnesses 2,7,61.
+/// Larger i64: 2,3,5,7,11,13,23 (Jaeschke, n < 3.825e18).
+#[inline(always)]
+fn is_prime_mr(n: i64) -> bool {
     if n < 2 {
         return false;
     }
-    if n == 2 || n == 3 {
+    if n == 2 || n == 3 || n == 5 || n == 7 {
         return true;
     }
-    if n % 2 == 0 || n % 3 == 0 {
+    if n & 1 == 0 {
         return false;
     }
-    let mut d = 5i64;
-    while d * d <= n {
-        if n % d == 0 || n % (d + 2) == 0 {
-            return false;
-        }
-        d += 6;
+    let n = n as u64;
+    if n % 3 == 0 || n % 5 == 0 || n % 7 == 0 {
+        return n < 8;
     }
-    true
+    if n <= u32::MAX as u64 {
+        return sprp_small(n, 2) && sprp_small(n, 7) && sprp_small(n, 61);
+    }
+    sprp64(n, 2)
+        && sprp64(n, 3)
+        && sprp64(n, 5)
+        && sprp64(n, 7)
+        && sprp64(n, 11)
+        && sprp64(n, 13)
+        && sprp64(n, 23)
+}
+
+/// Odd-only bit-packed sieve. Bit i represents n = 2*i+1.
+fn sieve_odd_bits(limit: usize) -> (Vec<u64>, Vec<i32>) {
+    let n_bits = limit / 2 + 1;
+    let n_words = n_bits.div_ceil(64);
+    let mut words = vec![u64::MAX; n_words];
+    words[0] &= !1u64; // 1 is not prime
+    let rem = n_bits % 64;
+    if rem != 0 {
+        words[n_words - 1] &= (1u64 << rem) - 1;
+    }
+
+    let sqrt_limit = limit.isqrt();
+    let mut i = 1usize;
+    while 2 * i + 1 <= sqrt_limit {
+        if (words[i >> 6] >> (i & 63)) & 1 != 0 {
+            let p = 2 * i + 1;
+            let mut j = p * p / 2;
+            while j < n_bits {
+                words[j >> 6] &= !(1u64 << (j & 63));
+                j += p;
+            }
+        }
+        i += 1;
+    }
+
+    let mut primes = Vec::with_capacity(n_bits / 5);
+    primes.push(2);
+    for i in 1..n_bits {
+        if (words[i >> 6] >> (i & 63)) & 1 != 0 {
+            let p = 2 * i + 1;
+            if p <= limit {
+                primes.push(p as i32);
+            }
+        }
+    }
+    (words, primes)
+}
+
+#[inline(always)]
+fn check_prime(p: i32, words: &[u64]) -> bool {
+    if p < 2 {
+        return false;
+    }
+    if p == 2 {
+        return true;
+    }
+    if p & 1 == 0 {
+        return false;
+    }
+    let pu = p as usize;
+    if pu <= LIMIT_PRIME {
+        let i = pu >> 1;
+        // SAFETY: p odd, 3 <= p <= LIMIT_PRIME, i = p/2 is a valid odd-bit index
+        unsafe { (*words.get_unchecked(i >> 6) >> (i & 63)) & 1 != 0 }
+    } else {
+        is_prime_mr(p as i64)
+    }
 }
 
 fn dfs(
-    idx: i32,
+    start: usize,
     current_m: i64,
     current_g: i32,
     q: i32,
     limit_m: i64,
     primes_small: &[i32],
-    is_prime_sieve: &[bool],
+    words: &[u64],
 ) -> i64 {
     let mut local_sum: i64 = 0;
     let p = current_g ^ q;
 
-    if p > q {
-        let is_p = if (p as usize) <= LIMIT_PRIME {
-            // SAFETY: p <= LIMIT_PRIME, sieve has LIMIT_PRIME+1 entries
-            unsafe { *is_prime_sieve.get_unchecked(p as usize) }
-        } else {
-            is_prime_td(p as i64)
-        };
-        if is_p {
-            // current_m <= limit_m = N/q^2, so cq = current_m*q <= N/q < N, fits i64
-            let cq = current_m * q as i64;
-            if p as i64 <= N_VAL / cq {
-                local_sum = s2_contribution(cq * p as i64);
-            }
+    if p > q && check_prime(p, words) {
+        // current_m <= limit_m = N/q^2, so cq = current_m*q <= N/q < N, fits i64
+        let cq = current_m * q as i64;
+        if p as i64 <= N_VAL / cq {
+            local_sum = s2_contribution(cq * p as i64);
         }
     }
 
-    let mut i = idx;
-    while i >= 0 {
-        // SAFETY: i in 0..primes_small.len() guaranteed by caller
-        let next_p = unsafe { *primes_small.get_unchecked(i as usize) };
+    let nsp = primes_small.len();
+    let mut i = start;
+    while i < nsp {
+        // SAFETY: i in 0..primes_small.len()
+        let next_p = unsafe { *primes_small.get_unchecked(i) };
         // current_m * next_p <= N/q < 10^14, fits i64
         let nm = current_m * next_p as i64;
-        if nm <= limit_m {
-            local_sum = (local_sum
-                + dfs(
-                    i - 1,
-                    nm,
-                    current_g ^ next_p,
-                    q,
-                    limit_m,
-                    primes_small,
-                    is_prime_sieve,
-                ))
-                % MOD;
+        if nm > limit_m {
+            break;
         }
-        i -= 1;
+        local_sum += dfs(
+            i + 1,
+            nm,
+            current_g ^ next_p,
+            q,
+            limit_m,
+            primes_small,
+            words,
+        );
+        i += 1;
     }
-    local_sum
+    local_sum % MOD
 }
 
 fn main() {
-    let mut is_prime_sieve = vec![true; LIMIT_PRIME + 1];
-    is_prime_sieve[0] = false;
-    is_prime_sieve[1] = false;
-    {
-        let mut i = 2;
-        while i * i <= LIMIT_PRIME {
-            if is_prime_sieve[i] {
-                let mut j = i * i;
-                while j <= LIMIT_PRIME {
-                    is_prime_sieve[j] = false;
-                    j += i;
-                }
-            }
-            i += 1;
-        }
-    }
-
-    let primes: Vec<i32> = (2..=LIMIT_PRIME)
-        .filter(|&i| is_prime_sieve[i])
-        .map(|i| i as i32)
-        .collect();
+    let (sieve_words, primes) = sieve_odd_bits(LIMIT_PRIME);
 
     let mut lp = vec![0i32; SMALL_M_LIMIT + 1];
     let mut g_arr = vec![0i32; SMALL_M_LIMIT + 1];
@@ -155,11 +254,11 @@ fn main() {
     }
 
     let mut total_sum: i64 = s2_contribution(1) % MOD;
-    let max_q = ((N_VAL / 2) as f64).sqrt() as i64;
+    let max_q = ((N_VAL / 2) as u64).isqrt() as i64;
 
     // Split into DFS items (large limit_m) and direct iteration items (small limit_m)
-    let mut dfs_items: Vec<(usize, i32)> = Vec::new();
-    let mut direct_items: Vec<(usize, i32)> = Vec::new();
+    let mut dfs_items: Vec<(usize, i32)> = Vec::with_capacity(4000);
+    let mut direct_items: Vec<(usize, i32)> = Vec::with_capacity(500_000);
 
     for (qi, &q) in primes.iter().enumerate() {
         if (q as i64) > max_q {
@@ -182,15 +281,7 @@ fn main() {
         .par_iter()
         .map(|&(qi, q)| {
             let limit_m = N_VAL / (q as i64 * q as i64);
-            dfs(
-                qi as i32 - 1,
-                1,
-                0,
-                q,
-                limit_m,
-                &primes[..qi],
-                &is_prime_sieve,
-            ) % MOD
+            dfs(0, 1, 0, q, limit_m, &primes[..qi], &sieve_words)
         })
         .reduce(|| 0i64, |a, b| (a + b) % MOD);
     total_sum = (total_sum + dfs_sum) % MOD;
@@ -217,17 +308,12 @@ fn main() {
                 if p <= q {
                     continue;
                 }
-                let is_p = if (p as usize) <= LIMIT_PRIME {
-                    unsafe { *is_prime_sieve.get_unchecked(p as usize) }
-                } else {
-                    is_prime_td(p as i64)
-                };
-                if !is_p {
+                if !check_prime(p, &sieve_words) {
                     continue;
                 }
                 let mq = m as i64 * q_i64;
                 if p as i64 <= N_VAL / mq {
-                    local_sum = (local_sum + s2_contribution(mq * p as i64)) % MOD;
+                    local_sum += s2_contribution(mq * p as i64);
                 }
             }
 

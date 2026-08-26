@@ -1,69 +1,103 @@
 // Project Euler 360: Scary Sphere
-use euler_utils::sieve;
+//
+// S(r) = 6r + 24 * Σ_{x=1}^{r-1} x * χ((r-x)(r+x)), χ = r₂/4.
+// r = 5^10, so gcd(r-x, r+x) | 2·5^10 and
+//   χ(ab) = χ(a)χ(b) / ((v₅(a)+1)(v₅(b)+1)) * (v₅(a)+v₅(b)+1).
+// v₅(r-x)+v₅(r+x) = 2 v₅(x) (0 if 5 ∤ x). χ(n) via lattice points x²+y² < 2r.
 
-const R5: i64 = 9765625; // 5^10
-const MAX_N: usize = 19531260;
+use rayon::prelude::*;
+
+const R5: i64 = 9_765_625; // 5^10
+const MAX_N: usize = 19_531_260; // 2*R5 + 10
+const CHUNK: usize = 1 << 17;
 
 fn main() {
-    // Build primes
-    let is_p = sieve(5000);
-    let primes: Vec<usize> = (2..5000).filter(|&i| is_p[i]).collect();
+    let mut chi = vec![0i16; MAX_N];
+    fill_chi(&mut chi);
 
-    // f_no5[n] and v5[n] and cof[n]
-    let mut f_no5 = vec![1i16; MAX_N];
-    let mut v5 = vec![0i8; MAX_N];
-    let mut cof = vec![0i32; MAX_N];
+    let r = R5 as usize;
+    let chi = &chi;
+    let n_x = r - 1;
+    let n_chunks = n_x.div_ceil(CHUNK);
 
-    for n in 1..MAX_N {
-        let mut tmp = n;
-        while tmp % 2 == 0 { tmp /= 2; }
-        let mut v = 0i8;
-        while tmp % 5 == 0 { tmp /= 5; v += 1; }
-        v5[n] = v;
-        cof[n] = tmp as i32;
-    }
+    let partial: i64 = (0..n_chunks)
+        .into_par_iter()
+        .map(|ci| {
+            let start = ci * CHUNK + 1;
+            let end = (start + CHUNK).min(r);
+            chunk_sum(start, end, r, chi)
+        })
+        .sum();
 
-    for &p in &primes {
-        if p == 2 || p == 5 { continue; }
-        let mod4 = p & 3;
-        let mut n = p;
-        while n < MAX_N {
-            if f_no5[n] != 0 && cof[n] % p as i32 == 0 {
-                let mut v = 0;
-                while cof[n] % p as i32 == 0 { cof[n] /= p as i32; v += 1; }
-                if mod4 == 1 {
-                    f_no5[n] *= (v + 1) as i16;
-                } else if v & 1 != 0 {
-                    f_no5[n] = 0;
-                }
-            }
-            n += p;
+    let s_r5 = 6 * R5 + 24 * partial;
+    println!("{}", 1024 * s_r5);
+}
+
+/// χ(n) = r₂(n)/4 for n < MAX_N, via first-octant lattice points.
+fn fill_chi(chi: &mut [i16]) {
+    let p = chi.as_mut_ptr();
+    let max_n = MAX_N as u32;
+    let mut x = 1u32;
+    loop {
+        let x2 = x * x;
+        if x2 >= max_n {
+            break;
         }
-    }
-
-    for n in 1..MAX_N {
-        if f_no5[n] == 0 { continue; }
-        if cof[n] > 1 {
-            if (cof[n] & 3) == 1 {
-                f_no5[n] *= 2;
-            } else {
-                f_no5[n] = 0;
+        // (±x, 0) and (0, ±x): r₂ += 4 → χ += 1
+        unsafe {
+            *p.add(x2 as usize) += 1;
+        }
+        // y = 1, 2, … with n = x²+y² < MAX_N. y < x: (x,y) and (y,x) → χ += 2;
+        // y = x: (x,x) sign patterns → χ += 1.
+        let mut n = x2 + 1;
+        let mut inc = 3u32;
+        let diag = x2 << 1;
+        while n < max_n && n < diag {
+            unsafe {
+                *p.add(n as usize) += 2;
+            }
+            n += inc;
+            inc += 2;
+        }
+        if n < max_n && n == diag {
+            unsafe {
+                *p.add(n as usize) += 1;
             }
         }
+        x += 1;
     }
+}
 
-    let r = R5;
-    let mut partial: i128 = 0;
-    for x in 1..r {
-        let a = (r - x) as usize;
-        let b = (r + x) as usize;
-        if a >= MAX_N || b >= MAX_N { continue; }
-        if f_no5[a] == 0 || f_no5[b] == 0 { continue; }
-        let cv = v5[a] as i64 + v5[b] as i64;
-        let f_combined = f_no5[a] as i64 * f_no5[b] as i64 * (cv + 1);
-        partial += x as i128 * f_combined as i128;
+fn chunk_sum(start: usize, end: usize, r: usize, chi: &[i16]) -> i64 {
+    let p = chi.as_ptr();
+    let mut local = 0i64;
+    for x in start..end {
+        // r ≡ 1 (mod 4); x ≡ 2 (mod 4) ⇒ r±x ≡ 3 (mod 4) ⇒ χ = 0
+        if x & 3 == 2 {
+            continue;
+        }
+        let fa = unsafe { *p.add(r - x) };
+        if fa == 0 {
+            continue;
+        }
+        let fb = unsafe { *p.add(r + x) };
+        if fb == 0 {
+            continue;
+        }
+        let prod = fa as i64 * fb as i64;
+        let w = if x % 5 != 0 {
+            prod
+        } else {
+            let mut t = x;
+            let mut v = 0i64;
+            while t % 5 == 0 {
+                t /= 5;
+                v += 1;
+            }
+            // χ(a)=f(a)(v+1), χ(b)=f(b)(v+1), extra = 2v+1
+            prod * (2 * v + 1) / ((v + 1) * (v + 1))
+        };
+        local += x as i64 * w;
     }
-    let s_r5 = 6 * r as i128 + 24 * partial;
-    let s_final = 1024 * s_r5;
-    println!("{}", s_final as i64);
+    local
 }

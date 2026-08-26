@@ -2,212 +2,172 @@
 // (a ⊗ a) ⊕ (2 ⊗ a ⊗ b) ⊕ (b ⊗ b) = c ⊗ c
 // F(N) = count of (a, b) with 0 ≤ a ≤ b ≤ N having a solution c.
 //
-// Key insight: XOR-product is multiplication in GF(2)[x].
-// The equation reduces to: A_e*B_e = x*A_o*B_o in GF(2)[x]
-// where A_e, A_o are the even/odd bit extractions of a, similarly for B.
-// For each a, solve the linear system over GF(2) for valid (be, bo),
-// convert to b via bit interleaving, count b in [a, N].
+// XOR-product is multiplication in GF(2)[x]. With even/odd bit splits
+// Ae, Ao of a (as 12-bit polynomials), valid b satisfy
+//   Ae(y) Be(y) = y Ao(y) Bo(y)
+// in GF(2)[y], deg Be, Bo < 12. Solutions are polynomial multiples
+// T(y) * (Be0, Bo0) of a single generator, i.e. even shifts of
+// gen = interleave(Be0, Bo0). Count those in [a, N].
 
 use rayon::prelude::*;
 
 fn main() {
     let n: u32 = 10_000_000;
-    let answer = solve(n);
-    println!("{}", answer);
+    println!("{}", solve(n));
 }
 
 fn solve(n: u32) -> u64 {
-    (0..=n).into_par_iter().map(|a| {
-        let (ae, ao) = split(a);
-        let basis = get_basis(ae, ao);
-        let cnt_n = count_xor_leq(&basis, n);
-        let cnt_a = if a > 0 { count_xor_leq(&basis, a - 1) } else { 0 };
-        (cnt_n - cnt_a) as u64
-    }).sum()
+    let rest: u64 = (1..n + 1)
+        .into_par_iter()
+        .with_min_len(2048)
+        .map(|a| count_b(a, n))
+        .sum();
+    rest + n as u64 + 1
 }
 
-#[inline]
-fn split(n: u32) -> (u32, u32) {
-    // Extract even-indexed bits and odd-indexed bits
-    let mut ae: u32 = 0;
-    let mut ao: u32 = 0;
-    // Use parallel bit extraction
-    // Even bits: positions 0,2,4,...,22 -> compress to 0,1,2,...,11
-    // Odd bits: positions 1,3,5,...,23 -> compress to 0,1,2,...,11
-    for i in 0..12 {
-        ae |= ((n >> (2 * i)) & 1) << i;
-        ao |= ((n >> (2 * i + 1)) & 1) << i;
+#[inline(always)]
+fn count_b(a: u32, n: u32) -> u64 {
+    let (ae, ao) = split(a);
+    let ao2 = ao << 1;
+    let g = gf2_gcd(ae, ao2);
+    let be = gf2_div(ao2, g);
+    let bo = gf2_div(ae, g);
+    // dim = min(12 - deg(be), 12 - deg(bo)); deg(0) = -1 so lz(0)-19 = 13
+    let dim_i = (be.leading_zeros() as i32 - 19).min(bo.leading_zeros() as i32 - 19);
+    if dim_i <= 0 {
+        return 0;
     }
-    (ae, ao)
-}
-
-#[inline]
-fn interleave(ae: u32, ao: u32) -> u32 {
-    let mut n: u32 = 0;
-    for i in 0..12 {
-        n |= ((ae >> i) & 1) << (2 * i);
-        n |= ((ao >> i) & 1) << (2 * i + 1);
-    }
-    n
-}
-
-fn get_basis(ae: u32, ao: u32) -> Vec<u32> {
-    // Build the linear system: for each product bit k (0..23),
-    // sum_{i+j=k} ae_i * be_j  XOR  sum_{i+j=k-1} ao_i * bo_j = 0
-    // Variables: be_0..be_11 (bits 0..11), bo_0..bo_11 (bits 12..23)
-
-    let mut pivot: [u32; 24] = [0; 24]; // pivot[col] = row bitmask (0 if no pivot)
-    let mut has_pivot = [false; 24];
-
-    for k in 0..24u32 {
-        let mut eq: u32 = 0;
-        // ae * be contribution at bit k
-        for i in 0..12u32 {
-            if ae & (1 << i) != 0 {
-                let j = k.wrapping_sub(i);
-                if j < 12 {
-                    eq ^= 1 << j;
-                }
-            }
-        }
-        // ao * bo contribution at bit k-1
-        if k >= 1 {
-            for i in 0..12u32 {
-                if ao & (1 << i) != 0 {
-                    let j = (k - 1).wrapping_sub(i);
-                    if j < 12 {
-                        eq ^= 1 << (12 + j);
-                    }
-                }
-            }
-        }
-        if eq == 0 {
-            continue;
-        }
-
-        // Forward elimination
-        let mut cur = eq;
-        loop {
-            if cur == 0 {
-                break;
-            }
-            let msb = 31 - cur.leading_zeros();
-            if has_pivot[msb as usize] {
-                cur ^= pivot[msb as usize];
-            } else {
-                pivot[msb as usize] = cur;
-                has_pivot[msb as usize] = true;
-                break;
-            }
-        }
-    }
-
-    // Back-substitution: for each pivot col (high to low), reduce higher pivots
-    for pc in (0..24).rev() {
-        if !has_pivot[pc] {
-            continue;
-        }
-        for other_pc in (pc + 1)..24 {
-            if has_pivot[other_pc] && (pivot[other_pc] & (1 << pc)) != 0 {
-                pivot[other_pc] ^= pivot[pc];
-            }
-        }
-    }
-
-    // Build null space basis, convert to b
-    let mut basis_b = Vec::new();
-    for fv in 0..24u32 {
-        if has_pivot[fv as usize] {
-            continue;
-        }
-        let mut vec: u32 = 1 << fv;
-        for pc in 0..24u32 {
-            if has_pivot[pc as usize] && (pivot[pc as usize] & (1 << fv)) != 0 {
-                vec |= 1 << pc;
-            }
-        }
-        let be = vec & 0xFFF;
-        let bo = (vec >> 12) & 0xFFF;
-        let b = interleave(be, bo);
-        basis_b.push(b);
-    }
-    basis_b
-}
-
-fn count_xor_leq(basis: &[u32], upper: u32) -> u64 {
-    // Count XOR-subsets of basis that are <= upper.
-    // First, reduce basis to greedy/canonical form (each with unique MSB).
-    let mut reduced: Vec<u32> = Vec::new();
-    for &v in basis {
-        let mut cur = v;
-        for &rv in &reduced {
-            cur = cur.min(cur ^ rv);
-        }
-        if cur > 0 {
-            reduced.push(cur);
-            let new_len = reduced.len();
-            let new_val = reduced[new_len - 1];
-            for i in 0..new_len - 1 {
-                reduced[i] = reduced[i].min(reduced[i] ^ new_val);
-            }
-        }
-    }
-    reduced.retain(|&v| v > 0);
-    reduced.sort_unstable_by(|a, b| b.cmp(a)); // descending
-
-    let d = reduced.len();
-    let mut count: u64 = 0;
-    let mut val: u32 = 0;
-    let mut bidx: usize = 0;
-
-    let max_bit = if reduced.is_empty() {
-        if upper == 0 { 1 } else { 32 - upper.leading_zeros() }
+    let dim = dim_i as u32;
+    let g0 = interleave(be, bo);
+    if dim <= 8 {
+        count_enum(g0, dim, a, n)
     } else {
-        let max_basis = 32 - reduced[0].leading_zeros();
-        let max_upper = if upper == 0 { 1 } else { 32 - upper.leading_zeros() };
-        max_basis.max(max_upper)
-    };
+        count_leq(g0, dim, n) - count_leq(g0, dim, a - 1)
+    }
+}
 
-    for bit_pos in (0..max_bit).rev() {
-        let ub = (upper >> bit_pos) & 1;
-        let has_bv = bidx < d && (32 - reduced[bidx].leading_zeros() - 1) == bit_pos;
+#[inline(always)]
+fn count_enum(g0: u32, dim: u32, a: u32, n: u32) -> u64 {
+    let lim = n - a;
+    let mut x = 0u32;
+    let mut ans = 0u64;
+    let last = 1u32 << dim;
+    for k in 1..last {
+        x ^= g0 << (2 * k.trailing_zeros());
+        ans += (x.wrapping_sub(a) <= lim) as u64;
+    }
+    ans
+}
 
-        if has_bv {
-            let bv = reduced[bidx];
-            bidx += 1;
+/// Count XOR-subsets of {g0, g0<<2, ..., g0<<2(dim-1)} that are <= upper.
+#[inline(always)]
+fn count_leq(g0: u32, dim: u32, upper: u32) -> u64 {
+    let msb_g = 31 - g0.leading_zeros();
+    let mut count = 0u64;
+    let mut val = 0u32;
+    let mut rem = dim;
+    for bit_pos in (0..24u32).rev() {
+        if rem > 0 && bit_pos == msb_g + 2 * (rem - 1) {
+            let bv = g0 << (2 * (rem - 1));
+            rem -= 1;
             let vb = (val >> bit_pos) & 1;
-
-            if vb == 0 {
-                // No use: bit stays 0. Use: bit becomes 1.
-                if ub == 1 {
-                    // 0 < 1. Don't use path: strictly less, all remaining free.
-                    count += 1u64 << (d - bidx);
-                    // Continue on use path (bit=1=ub, tight)
-                    val ^= bv;
-                }
-                // else ub=0: don't use (tight), use exceeds.
-            } else {
-                // vb=1. No use: bit stays 1. Use: bit becomes 0.
-                if ub == 1 {
-                    // Use: 0 < 1=ub. Strictly less, all free.
-                    count += 1u64 << (d - bidx);
-                    // Continue on no-use path (bit=1=ub, tight)
-                } else {
-                    // ub=0. No use: 1>0 exceeds. Must use.
-                    val ^= bv;
-                }
+            let ub = (upper >> bit_pos) & 1;
+            if ub == 1 {
+                count += 1u64 << rem;
+            }
+            if vb != ub {
+                val ^= bv;
             }
         } else {
             let vb = (val >> bit_pos) & 1;
-            if vb > ub {
-                return count;
-            } else if vb < ub {
-                count += 1u64 << (d - bidx);
+            let ub = (upper >> bit_pos) & 1;
+            if vb != ub {
+                if vb < ub {
+                    count += 1u64 << rem;
+                }
                 return count;
             }
         }
     }
+    count + 1
+}
 
-    count += 1; // val <= upper
-    count
+#[inline(always)]
+fn gf2_gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        let lb = b.leading_zeros();
+        while a != 0 {
+            let la = a.leading_zeros();
+            if la > lb {
+                break;
+            }
+            a ^= b << (lb - la);
+        }
+        core::mem::swap(&mut a, &mut b);
+    }
+    a
+}
+
+#[inline(always)]
+fn gf2_div(mut a: u32, b: u32) -> u32 {
+    let lb = b.leading_zeros();
+    let mut q = 0u32;
+    while a != 0 {
+        let la = a.leading_zeros();
+        if la > lb {
+            break;
+        }
+        let sh = lb - la;
+        q |= 1 << sh;
+        a ^= b << sh;
+    }
+    q
+}
+
+#[inline(always)]
+fn split(x: u32) -> (u32, u32) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+    unsafe {
+        (
+            core::arch::x86_64::_pext_u32(x, 0x5555_5555),
+            core::arch::x86_64::_pext_u32(x, 0xAAAA_AAAA),
+        )
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
+    {
+        let mut even = x & 0x5555_5555;
+        even = (even | (even >> 1)) & 0x3333_3333;
+        even = (even | (even >> 2)) & 0x0F0F_0F0F;
+        even = (even | (even >> 4)) & 0x00FF_00FF;
+        even = (even | (even >> 8)) & 0x0000_FFFF;
+        let mut odd = (x >> 1) & 0x5555_5555;
+        odd = (odd | (odd >> 1)) & 0x3333_3333;
+        odd = (odd | (odd >> 2)) & 0x0F0F_0F0F;
+        odd = (odd | (odd >> 4)) & 0x00FF_00FF;
+        odd = (odd | (odd >> 8)) & 0x0000_FFFF;
+        (even, odd)
+    }
+}
+
+#[inline(always)]
+fn interleave(even: u32, odd: u32) -> u32 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+    unsafe {
+        core::arch::x86_64::_pdep_u32(even, 0x5555_5555)
+            | core::arch::x86_64::_pdep_u32(odd, 0xAAAA_AAAA)
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
+    {
+        let mut e = even & 0x0FFF;
+        e = (e | (e << 8)) & 0x00FF_00FF;
+        e = (e | (e << 4)) & 0x0F0F_0F0F;
+        e = (e | (e << 2)) & 0x3333_3333;
+        e = (e | (e << 1)) & 0x5555_5555;
+        let mut o = odd & 0x0FFF;
+        o = (o | (o << 8)) & 0x00FF_00FF;
+        o = (o | (o << 4)) & 0x0F0F_0F0F;
+        o = (o | (o << 2)) & 0x3333_3333;
+        o = (o | (o << 1)) & 0x5555_5555;
+        e | (o << 1)
+    }
 }

@@ -1,119 +1,205 @@
-// Project Euler 880 - Fermat equation with cubes
+// Project Euler 880 - Nested radicals (Fermat cubes)
 
-fn is_perfect_cube(n: i64) -> bool {
-    if n <= 0 { return n == 0; }
-    let c = (n as f64).cbrt().round() as i64;
-    for x in [c - 1, c, c + 1] {
-        if x >= 0 && x * x * x == n { return true; }
+use rayon::prelude::*;
+
+const N: u64 = 1_000_000_000_000_000; // 10^15
+const M: u64 = 1_095_912_793; // 1031^3 + 2
+
+#[inline(always)]
+fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
     }
-    false
-}
-
-fn gcd(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 { let t = b; b = a % b; a = t; }
     a
 }
 
-fn isqrt(n: i64) -> i64 {
-    if n <= 0 { return 0; }
-    let mut x = (n as f64).sqrt() as i64;
-    while (x + 1) * (x + 1) <= n { x += 1; }
-    while x * x > n { x -= 1; }
-    x
+#[inline(always)]
+fn icbrt(n: u64) -> u64 {
+    if n < 8 {
+        return u64::from(n != 0);
+    }
+    let mut x = (n as f64).cbrt() as u64;
+    loop {
+        let x3 = x * x * x;
+        if x3 > n {
+            x -= 1;
+            continue;
+        }
+        let y = x + 1;
+        if y * y * y <= n {
+            x = y;
+            continue;
+        }
+        return x;
+    }
+}
+
+fn iroot4(n: u64) -> u64 {
+    let mut r = n.isqrt().isqrt();
+    loop {
+        let p2 = r.saturating_mul(r);
+        let p4 = p2.saturating_mul(p2);
+        if p4 > n {
+            r -= 1;
+            continue;
+        }
+        let n1 = r + 1;
+        let q2 = n1.saturating_mul(n1);
+        let q4 = q2.saturating_mul(q2);
+        if q4 <= n {
+            r = n1;
+            continue;
+        }
+        return r;
+    }
+}
+
+/// Cube-free kernel: product p^(v_p(n) mod 3).
+fn cube_free_table(limit: usize) -> Vec<u32> {
+    let mut spf: Vec<u32> = (0..=limit as u32).collect();
+    let mut p = 2usize;
+    while p * p <= limit {
+        if spf[p] == p as u32 {
+            let mut m = p * p;
+            while m <= limit {
+                if spf[m] == m as u32 {
+                    spf[m] = p as u32;
+                }
+                m += p;
+            }
+        }
+        p += 1;
+    }
+    let mut cf = vec![1u32; limit + 1];
+    for n in 2..=limit {
+        let p = spf[n] as usize;
+        let mut m = n / p;
+        let mut e = 1u32;
+        while m % p == 0 {
+            m /= p;
+            e += 1;
+        }
+        cf[n] = match e % 3 {
+            0 => cf[m],
+            1 => cf[m] * p as u32,
+            _ => cf[m] * p as u32 * p as u32,
+        };
+    }
+    cf
+}
+
+#[inline(always)]
+fn pair_contrib(x: u64, y: u64) -> u64 {
+    if y == 0 || y > N {
+        return 0;
+    }
+    let maxc = if x > y { x } else { y };
+    let t = (N / maxc).isqrt();
+    if t == 0 {
+        return 0;
+    }
+    let t128 = t as u128;
+    let sg = t128 * (t128 + 1) * (2 * t128 + 1) / 6;
+    ((x + y) as u128 * sg % M as u128) as u64
+}
+
+fn process_odd_b(b: u64, cf_b: u32, cf4: &[u32]) -> u64 {
+    let cb = icbrt(N / b);
+    if cb <= b {
+        return 0;
+    }
+    let a_limit = (cb - b) / 4;
+    if a_limit == 0 {
+        return 0;
+    }
+    let b32 = b as u32;
+    let mut acc = 0u64;
+    for a in 1..=a_limit {
+        if gcd(a as u32, b32) != 1 || cf_b == cf4[a as usize] {
+            continue;
+        }
+        let x_base = b + 4 * a;
+        let x = x_base * x_base * x_base * b;
+        let yb = (a as i64 - 2 * b as i64).unsigned_abs();
+        let y = 4 * a * yb * yb * yb;
+        acc += pair_contrib(x, y);
+    }
+    acc
+}
+
+fn process_even_b(b: u64, cf_2b: u32, cf: &[u32]) -> u64 {
+    let half = b / 2;
+    let cb = icbrt(N / (2 * b));
+    if cb <= half {
+        return 0;
+    }
+    let a_limit = (cb - half) / 2;
+    if a_limit == 0 {
+        return 0;
+    }
+    let b32 = b as u32;
+    let mut acc = 0u64;
+    let mut a = 1u64;
+    while a <= a_limit {
+        if gcd(a as u32, b32) == 1 && cf_2b != cf[a as usize] {
+            let x_base = half + 2 * a;
+            let x = 2 * b * x_base * x_base * x_base;
+            let yb = (a as i64 - 2 * b as i64).unsigned_abs();
+            let y = a * yb * yb * yb;
+            acc += pair_contrib(x, y);
+        }
+        a += 2;
+    }
+    acc
 }
 
 fn main() {
-    let n: i64 = 1_000_000_000_000_000; // 10^15
-    let m: i64 = 1_095_912_793; // 1031^3 + 2
-    let mut ans: i64 = 0;
+    let b_limit = iroot4(4 * N);
+    let max_odd_a = {
+        let c = icbrt(N);
+        if c > 1 { (c - 1) / 4 } else { 0 }
+    };
+    let max_even_a = {
+        let c = icbrt(N / 4);
+        if c > 1 { (c - 1) / 2 } else { 0 }
+    };
+    let cf_limit = (4 * max_odd_a)
+        .max(max_even_a)
+        .max(2 * b_limit) as usize;
+    let cf = cube_free_table(cf_limit);
 
-    // sign_a = 1
-    let mut r: i64 = 1;
-    while r * r * r <= n {
-        for s in 1.. {
-            let v = s + 2 * r;
-            let check = 4i128 * s as i128 * v as i128 * v as i128 * v as i128;
-            if check > n as i128 { break; }
-            if gcd(r, s) != 1 { continue; }
-
-            let val1 = r - 4 * s;
-            let val2 = s + 2 * r;
-            let av1 = val1.abs();
-            let av1_3 = av1 as i128 * av1 as i128 * av1 as i128;
-            let v2_3 = val2 as i128 * val2 as i128 * val2 as i128;
-            let maybe_cube = 2 * r * s * s;
-
-            if !is_perfect_cube(maybe_cube) {
-                let denom_y = 4i128 * s as i128 * v2_3;
-                let mut max_g2: i64 = if denom_y == 0 || denom_y > n as i128 { 0 }
-                    else { (n as i128 / denom_y) as i64 };
-
-                if av1_3 > 0 {
-                    let denom_x = r as i128 * av1_3;
-                    if denom_x > 0 && denom_x <= n as i128 {
-                        let max_g2_x = (n as i128 / denom_x) as i64;
-                        if max_g2_x < max_g2 { max_g2 = max_g2_x; }
-                    } else if denom_x > n as i128 {
-                        max_g2 = 0;
-                    }
-                }
-
-                let max_g = isqrt(max_g2);
-                if max_g >= 1 {
-                    let coeff = r as i128 * av1_3 + 4i128 * s as i128 * v2_3;
-                    let sg = max_g as i128 * (max_g as i128 + 1) * (2 * max_g as i128 + 1) / 6;
-                    let coeff_mod = (coeff % m as i128) as i64;
-                    let sg_mod = (sg % m as i128) as i64;
-                    ans = (ans + (coeff_mod as i128 * sg_mod as i128 % m as i128) as i64) % m;
-                }
-            }
-        }
-        r += 2;
+    let mut cf4 = vec![0u32; max_odd_a as usize + 1];
+    for a in 1..=max_odd_a as usize {
+        cf4[a] = cf[4 * a];
     }
 
-    // sign_a = -1
-    r = 1;
-    while r * r * r <= n {
-        for s in 1.. {
-            let v = r + 4 * s;
-            let check = r as i128 * v as i128 * v as i128 * v as i128;
-            if check > n as i128 { break; }
-            if gcd(r, s) != 1 { continue; }
+    let n_odd = ((b_limit + 1) / 2) as usize;
+    let n_even = (b_limit / 2) as usize;
 
-            let val1 = r + 4 * s;
-            let val2 = s - 2 * r;
-            let v1_3 = val1 as i128 * val1 as i128 * val1 as i128;
-            let av2 = val2.abs();
-            let av2_3 = av2 as i128 * av2 as i128 * av2 as i128;
-            let maybe_cube = 2 * r * s * s;
+    let (odd, even) = rayon::join(
+        || {
+            (0..n_odd)
+                .into_par_iter()
+                .with_min_len(1)
+                .map(|i| {
+                    let b = 2 * i as u64 + 1;
+                    process_odd_b(b, cf[b as usize], &cf4)
+                })
+                .sum::<u64>()
+        },
+        || {
+            (1..n_even + 1)
+                .into_par_iter()
+                .with_min_len(1)
+                .map(|i| {
+                    let b = 2 * i as u64;
+                    process_even_b(b, cf[2 * b as usize], &cf)
+                })
+                .sum::<u64>()
+        },
+    );
 
-            if !is_perfect_cube(maybe_cube) {
-                let denom_x = r as i128 * v1_3;
-                let mut max_g2: i64 = if denom_x == 0 || denom_x > n as i128 { 0 }
-                    else { (n as i128 / denom_x) as i64 };
-
-                if av2_3 > 0 {
-                    let denom_y = 4i128 * s as i128 * av2_3;
-                    if denom_y > 0 && denom_y <= n as i128 {
-                        let max_g2_y = (n as i128 / denom_y) as i64;
-                        if max_g2_y < max_g2 { max_g2 = max_g2_y; }
-                    } else if denom_y > n as i128 {
-                        max_g2 = 0;
-                    }
-                }
-
-                let max_g = isqrt(max_g2);
-                if max_g >= 1 {
-                    let coeff = r as i128 * v1_3 + 4i128 * s as i128 * av2_3;
-                    let sg = max_g as i128 * (max_g as i128 + 1) * (2 * max_g as i128 + 1) / 6;
-                    let coeff_mod = (coeff % m as i128) as i64;
-                    let sg_mod = (sg % m as i128) as i64;
-                    ans = (ans + (coeff_mod as i128 * sg_mod as i128 % m as i128) as i64) % m;
-                }
-            }
-        }
-        r += 2;
-    }
-
-    println!("{}", ans);
+    println!("{}", (odd + even) % M);
 }

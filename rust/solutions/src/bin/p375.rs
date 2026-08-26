@@ -1,71 +1,83 @@
 // Project Euler 375: Minimum of subsequences
-// BBS RNG, find period, stack algorithm, Lagrange interpolation.
+// BBS cycle once, one monotone-stack pass, Lagrange interpolation.
+
+const N: i64 = 2_000_000_000;
+const BBS_MOD: u64 = 50_515_093;
+const STACK: usize = 64;
 
 fn main() {
-    let n_val: i64 = 2_000_000_000;
-    const BBS_MOD: i64 = 50515093;
+    let mut st_val = [0i64; STACK];
+    let mut st_cnt = [0i64; STACK];
+    st_val[0] = -1;
+    let mut sp = 1usize;
+    let mut cur = 0i64;
+    let mut total = 0i64;
 
-    // Find period of BBS
-    let mut s: i64 = 290797;
+    macro_rules! push {
+        ($x:expr) => {{
+            let x = $x;
+            let mut cnt = 1i64;
+            // SAFETY: sentinel at 0; depth < 40 for this PRNG
+            while unsafe { *st_val.get_unchecked(sp - 1) } >= x {
+                sp -= 1;
+                let v = unsafe { *st_val.get_unchecked(sp) };
+                let c = unsafe { *st_cnt.get_unchecked(sp) };
+                cur -= v * c;
+                cnt += c;
+            }
+            unsafe {
+                *st_val.get_unchecked_mut(sp) = x;
+                *st_cnt.get_unchecked_mut(sp) = cnt;
+            }
+            sp += 1;
+            cur += x * cnt;
+            total += cur;
+        }};
+    }
+
+    let mut cycle = Vec::with_capacity(8_000_000);
+    let mut s: u64 = 290797;
     s = s * s % BBS_MOD;
     let first = s;
-    let mut period: i64 = 1;
-    s = s * s % BBS_MOD;
-    while s != first {
+    cycle.push(s as i32);
+    push!(s as i64);
+    loop {
         s = s * s % BBS_MOD;
-        period += 1;
+        if s == first {
+            break;
+        }
+        cycle.push(s as i32);
+        push!(s as i64);
     }
 
-    let start = n_val % period;
+    let period = cycle.len();
+    let r = (N as usize) % period;
+    let cptr = cycle.as_ptr();
 
-    let mut points = [0i128; 3];
-
-    for mult in 1..=3 {
-        let n = start + mult as i64 * period;
-
-        let mut stack_pos: Vec<i64> = vec![0];
-        let mut stack_val: Vec<i64> = vec![-1];
-
-        let mut m: i128 = 0;
-        let mut sv: i64 = 290797;
-
-        for pos in 1..=n {
-            sv = sv * sv % BBS_MOD;
-
-            while *stack_val.last().unwrap() > sv {
-                let v = stack_val.pop().unwrap();
-                let p = stack_pos.pop().unwrap();
-                let prev_p = *stack_pos.last().unwrap();
-                m += v as i128 * (p - prev_p) as i128 * (pos - p) as i128;
+    macro_rules! process {
+        ($lo:expr, $hi:expr) => {{
+            let mut i = $lo;
+            let end = $hi;
+            while i < end {
+                push!(unsafe { *cptr.add(i) } as i64);
+                i += 1;
             }
-
-            stack_pos.push(pos);
-            stack_val.push(sv);
-        }
-
-        // Flush remaining
-        let pos = n + 1;
-        while stack_pos.len() > 1 {
-            let v = stack_val.pop().unwrap();
-            let p = stack_pos.pop().unwrap();
-            let prev_p = *stack_pos.last().unwrap();
-            m += v as i128 * (p - prev_p) as i128 * (pos - p) as i128;
-        }
-
-        points[mult - 1] = m;
+        }};
     }
 
-    // Lagrange interpolation through (1, y0), (2, y1), (3, y2)
-    let k = n_val / period;
+    // Snapshots of M at P+r, 2P+r, 3P+r (continue from offset r, not 0).
+    process!(0, r);
+    let y0 = total as i128;
+    process!(r, period);
+    process!(0, r);
+    let y1 = total as i128;
+    process!(r, period);
+    process!(0, r);
+    let y2 = total as i128;
 
-    let y0 = points[0];
-    let y1 = points[1];
-    let y2 = points[2];
-    let d0 = y0;
+    let k = (N / period as i64) as i128;
     let d1 = y1 - y0;
     let d2 = y2 - 2 * y1 + y0;
-
-    let result = d0 + d1 * (k as i128 - 1) + d2 * (k as i128 - 1) * (k as i128 - 2) / 2;
-
+    let result = y0 + d1 * (k - 1) + d2 * (k - 1) * (k - 2) / 2;
     println!("{}", result as i64);
 }

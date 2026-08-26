@@ -116,3 +116,116 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 966,2101,146,93.05,True,True,wave7 one-run parent verify rayon triangles speedup=14.4x
 975,2524,167,93.38,True,True,wave7 one-run parent verify rayon prime pairs speedup=15.1x
 984,1264,6,99.53,True,True,wave7 one-run parent verify rayon boards; bit-parallel flood speedup=210.7x
+954,3135.7,1223.9,60.97,True,True,wave8 ox-alpha A/B; drop rayon num_threads(4) speedup=2.562x
+478,2268.8,1711.8,24.55,True,True,wave8 ox-alpha A/B; hoist invariant half/term1 pow_mod speedup=1.325x
+739,1595.5,1310.6,17.86,True,True,wave8 ox-alpha A/B; i128->u64 mulmod speedup=1.217x
+660,1944.5,1553.9,20.09,True,True,wave8 ox-alpha A/B; bitmask pandigital speedup=1.251x
+552,2892.3,2039.2,29.50,True,True,wave8 ox-alpha A/B; drop redundant %p; u64 Garner speedup=1.418x
+786,1471.0,1151.1,21.75,True,True,wave8 ox-alpha A/B; Vec<bool> is_composite vs u32 SPF speedup=1.278x
+637,1382.3,143.4,89.63,True,True,wave8 ox-alpha A/B; par_iter compute_f speedup=9.641x
+256,1463.7,1476.2,-0.85,False,True,wave8 ox-alpha A/B reject; early-exit completed s (noise) speedup=0.992x
+870,1820.3,8555.5,-370.00,False,True,wave8 ox-alpha A/B reject; partition_point m (4.7x slower) speedup=0.213x
+614,991.3,1001.9,-1.07,False,True,wave9 ox-alpha A/B; drop clamp(1;16)
+937,941.2,944.0,-0.30,False,True,wave9 ox-alpha A/B; drop redundant k%MOD
+643,732.9,742.1,-1.26,False,True,wave9 ox-alpha A/B; OA hash -> Vec index
+681,948.3,915.5,3.46,False,True,wave9 ox-alpha A/B; y*y vs r2/y; one div
+507,943.6,948.0,-0.47,False,True,wave9 ox-alpha A/B; integer floor/ceil
+714,627.1,643.4,-2.60,False,True,wave9 ox-alpha A/B; running add vs d*md%k
+928,964.3,825.7,14.37,True,True,wave9 ox-alpha A/B; incremental nh product
+563,833.1,833.2,-0.01,False,True,wave9 ox-alpha A/B; start=i; drop count pass
+211,661.4,670.0,-1.30,False,True,wave9 ox-alpha A/B; spf[m]==p peel
+423,711.9,712.0,-0.01,False,True,wave9 ox-alpha A/B; drop redundant n%MOD
+339,578.1,577.0,0.19,False,True,wave9 ox-alpha A/B; incremental inv_k
+815,640.4,647.1,-1.05,False,True,wave9 ox-alpha A/B; stack ncr table
+73,273.1,0.8,99.71,True,True,wave10 1-100; Möbius + prefix count of (1/3,1/2) fractions speedup=326.509x
+95,87.7,18.4,79.02,True,True,wave10 1-100; visit-once aliquot graph, no Vec.contains speedup=4.773x
+68,60.4,1.5,97.52,True,True,wave10 1-100; inner perm, outer determined by line sum speedup=41.444x
+92,49.8,0.8,98.39,True,True,wave10 1-100; 7-digit DP of digit-square sums speedup=61.019x
+84,50.9,1.8,96.46,True,True,wave10 1-100; Markov 120-state occupancy, drop 10M Monte Carlo speedup=28.362x
+96,39.3,1.8,95.42,True,True,wave10 1-100; bitmask MRV sudoku speedup=22.305x
+58,33.2,10.6,68.07,True,True,wave10 1-100; miller_rabin on spiral corners (drop trial division) speedup=3.123x
+60,63.1,6.5,89.70,True,True,wave10 1-100; 3-witness MR + lazy pair cache; skip 2,5; mod3 filter speedup=9.774x
+37,21.5,0.8,96.28,True,True,wave10 1-100; generate right-truncatable primes, test left speedup=26.545x
+36,10.3,0.7,93.20,True,True,wave10 1-100; generate base-10 palindromes (drop to_string scan) speedup=14.853x
+139,191.2,0.7,99.63,True,True,wave11 100-200; Pell generators for c%|a-b|==0 primitives speedup=277.636x
+145,103.0,0.8,99.22,True,True,wave11 100-200; closed-form reversible counts by digit length speedup=133.921x
+122,132.4,1.7,98.72,True,True,wave11 100-200; star-chain DFS, prune non-minimal prefixes speedup=76.996x
+182,171.7,5.8,96.62,True,True,wave11 100-200; gcd tables + skip e sharing a factor with phi speedup=29.486x
+127,202.2,15.6,92.28,True,True,wave11 100-200; rayon over c in abc-hit search speedup=12.985x
+166,97.2,12.5,87.14,True,True,wave11 100-200; rayon over line-sum s speedup=7.795x
+136,441.6,61.1,86.16,True,True,wave11 100-200; odd-only sieve; n=4,16,p≡3(mod 4),4p,16p speedup=7.229x
+165,449.5,70.5,84.32,True,True,wave11 100-200; rayon pairs + sort/dedup (drop HashSet) speedup=6.378x
+187,164.4,59.5,63.81,True,True,wave11 100-200; odd-only bit sieve of LIMIT/2 speedup=2.761x
+152,187.1,68.3,63.50,True,True,wave11 100-200; integer MITM on (L/n)^2, drop i128 Frac gcd speedup=2.738x
+167,282.2,193.7,31.36,True,True,wave11 100-200; FxHashMap period states speedup=1.457x
+196,160.2,109.6,31.59,True,True,wave11 100-200; rayon::join of the two row sieves speedup=1.462x
+146,132.6,93.8,29.26,True,True,wave11 100-200; 7-witness MR (n<3.8e18) speedup=1.413x
+284,628.5,5.0,99.20,True,True,wave12 200-300; packed base 14^16 limbs; rayon::join two Hensel lifts speedup=125.18x
+299,540.1,4.6,99.15,True,True,wave12 200-300; Möbius drop gcd; rayon n; hoist f1/f2 quadratics speedup=117.298x
+221,320.0,5.2,98.38,True,True,wave12 200-300; factor a^2+1 via sqrt(-1) mod p; select_nth speedup=61.622x
+229,497.2,12.3,97.53,True,True,wave12 200-300; NT count of simultaneous 1/2/3/7-square forms speedup=40.433x
+231,337.2,8.4,97.51,True,True,wave12 200-300; Legendre sopfr(C(N,K)); Dirichlet floor blocks speedup=40.251x
+260,206.9,10.9,94.73,True,True,wave12 200-300; bit-packed occupancy; trailing_zeros z-scan speedup=19.065x
+287,457.9,24.2,94.72,True,True,wave12 200-300; exact disk-square test; mixed 2x2; rayon join speedup=18.886x
+257,176.2,10.2,94.21,True,True,wave12 200-300; rayon m; stride filters; local gcd speedup=17.28x
+296,552.8,32.5,94.12,True,True,wave12 200-300; closed-form inner k floor-sum; coarse Farey rayon speedup=16.984x
+212,194.8,16.2,91.68,True,True,wave12 200-300; packed 81^3 grid; rayon sections speedup=12.027x
+250,90.9,8.8,90.32,True,True,wave12 200-300; stack DP; CRT n^n mod 250; batch residues speedup=10.312x
+223,272.6,34.8,87.23,True,True,wave12 200-300; count via v=c-b and a^2≡1 (mod v) speedup=7.842x
+249,326.0,52.2,83.99,True,True,wave12 200-300; AVX2 0-1 knapsack; odd-only bit sieve speedup=6.25x
+259,1368.8,490.9,64.14,True,True,wave12 200-300; FxHash packed Frac; rayon splits/starts speedup=2.788x
+369,535.1,1.0,99.81,True,True,wave13 300-400; matching-reachability DP over 68 16-bit suit sets speedup=551.021x
+351,1310.7,6.5,99.50,True,True,wave13 300-400; Du Jiao Φ; sieve to n^{2/3}; floor-array speedup=202.265x
+344,264.1,1.3,99.51,True,True,wave13 300-400; bit-column carry DP O(m² log n) speedup=200.518x
+398,311.3,2.2,99.29,True,True,wave13 300-400; tail-sum E[Y]=Σ P(Y≥k); rayon k speedup=141.634x
+332,498.3,5.5,98.90,True,True,wave13 300-400; isqrt lattice; van Oosterom–Strackee; rayon r speedup=90.457x
+336,689.6,7.8,98.87,True,True,wave13 300-400; recursive maximix construction; packed u64 speedup=87.959x
+386,871.3,17.1,98.04,True,True,wave13 300-400; last-prime π(x) batch; Lucy; rayon small-n speedup=50.963x
+399,1170.1,41.1,96.49,True,True,wave13 300-400; z(p) from p±1; 6-wheel bitset; fast doubling speedup=28.436x
+360,301.0,13.8,95.42,True,True,wave13 300-400; first-octant r₂ lattice; striped rayon x speedup=21.797x
+319,540.1,52.4,90.30,True,True,wave13 300-400; Möbius t(n)=1+Σμ(d)G(⌊n/d⌋); Lucy Mertens speedup=10.304x
+309,258.8,26.2,89.88,True,True,wave13 300-400; CSR u32 heights; rayon w; (h1+h2)|h1² speedup=9.877x
+370,987.9,237.8,75.93,True,True,wave13 300-400; integer isqrt; stack Möbius; hybrid floor-sum speedup=4.154x
+375,325.1,99.7,69.33,True,True,wave13 300-400; one BBS cycle; i64 monotone stack; 3-point Lagrange speedup=3.261x
+374,354.9,116.8,67.09,True,True,wave13 300-400; factorial inverses; collapsed k; 64k rayon chunks speedup=3.039x
+554,680.0,4.7,99.31,True,True,wave14 400-600; Lucas + Wilson-reduced fact; 32-way range product speedup=143.284x
+466,350.5,4.8,98.63,True,True,wave14 400-600; divisor-minimal bitmask; rayon m + first-level IE speedup=73.49x
+593,1508.2,52.9,96.49,True,True,wave14 400-600; odd-only segmented bit sieve; freq-table median speedup=28.501x
+428,2015.6,106.5,94.72,True,True,wave14 400-600; linearized Du Jiao/Lucy small+large; rayon F/T speedup=18.921x
+452,1967.0,106.0,94.61,True,True,wave14 400-600; u64 mulmod; rayon Zipf-heavy subtrees speedup=18.564x
+571,890.5,77.5,91.30,True,True,wave14 400-600; rayon first-3 digits; merge top-10; base-8/4/3 masks speedup=11.488x
+454,550.8,48.0,91.29,True,True,wave14 400-600; odd-only μ; Dirichlet inner; rayon y-stripes speedup=11.48x
+580,1135.2,110.4,90.27,True,True,wave14 400-600; multiplicative DFS last-prime batch; odd sieve speedup=10.279x
+485,828.3,87.2,89.47,True,True,wave14 400-600; par pair-divisor sieve; split window endpoints speedup=9.498x
+445,1398.4,274.7,80.36,True,True,wave14 400-600; σ*(C(N,k)) identity; odd-only SPF; batch inverse speedup=5.09x
+583,841.1,202.4,75.94,True,True,wave14 400-600; SPF factor-pairs of w²; two-pointer; finer rayon speedup=4.157x
+459,3465.1,876.5,74.70,True,True,wave14 400-600; bitset mex; 512² nim table; rayon x/y fills speedup=3.954x
+432,504.6,142.2,71.82,True,True,wave14 400-600; linearized Du Jiao Φ; 17-smooth Dirichlet speedup=3.549x
+505,4262.1,1293.6,69.65,True,True,wave14 400-600; depth-parity child order; unroll last 5 plies speedup=3.295x
+814,339.6,6.9,97.97,True,True,wave15 600-900; flatten DP + closed k-pass; rayon 4 starts speedup=48.982x
+880,390.7,12.6,96.78,True,True,wave15 600-900; closed a-limits; cube-free sieve; rayon b speedup=30.92x
+602,425.5,32.4,92.39,True,True,wave15 600-900; SPF t^N; u64 mulmod; rayon primes speedup=13.13x
+646,484.2,59.1,87.79,True,True,wave15 600-900; incremental (MOD-p)^e; par_sort; two-pointer speedup=8.189x
+732,498.5,77.0,84.55,True,True,wave15 600-900; no Vec clone; flat knapsack; rayon join L/R speedup=6.473x
+677,755.4,16.0,97.88,True,True,wave15 600-900; flatten u32 DP; u64 mulmod; AVX2 conv speedup=47.075x
+810,1083.4,26.5,97.55,True,True,wave15 600-900; GF(2) irreducibles I(n); Gray-code deg-26 sieve speedup=40.919x
+754,1077.1,106.2,90.14,True,True,wave15 600-900; segmented mu; Dirichlet fact prefixes; rayon g speedup=10.144x
+893,1536.3,86.8,94.35,True,True,wave15 600-900; divisor-sieve pcost; SIMD knapsack scans speedup=17.705x
+705,1518.7,80.9,94.67,True,True,wave15 600-900; odd-only par bit sieve; 4-digit inversion chunks speedup=18.774x
+608,1752.1,74.9,95.73,True,True,wave15 600-900; harmonic D(n) to 8e6; nested rayon DFS speedup=23.381x
+852,1978.2,9.5,99.52,True,True,wave15 600-900; martingale G(p); direct Bayes; rayon G tasks speedup=209.055x
+886,3158.0,199.6,93.68,True,True,wave15 600-900; adj bitmasks; AtomicI32 memo; rayon first-5 types speedup=15.821x
+938,2352.1,0.9,99.96,True,True,wave16 900+; even-R closed form; lgamma + geometric U speedup=2670.914x
+953,1823.6,1358.1,25.53,True,True,wave16 900+; SPRP 2/7/61; odd bit sieve; integer isqrt speedup=1.343x
+929,1057.0,74.0,93.00,True,True,wave16 900+; u64 NTT; DIF/DIT; rayon 3 moduli speedup=14.275x
+933,693.4,78.2,88.72,True,True,wave16 900+; V_a cache; AVX2 xor; b↔h-b symmetry speedup=8.871x
+945,557.3,24.6,95.59,True,True,wave16 900+; poly GCD kernel; pext/pdep; XOR enum speedup=22.692x
+916,501.4,13.8,97.25,True,True,wave16 900+; 32-way rayon range product for (2n)! speedup=36.454x
+943,495.1,200.6,59.48,True,True,wave16 900+; dense Vec prefill for (2,3)/(3,2) speedup=2.469x
+967,446.0,12.8,97.13,True,True,wave16 900+; sort d1; partition_point; rayon half-2 speedup=34.827x
+939,434.1,246.9,43.12,True,True,wave16 900+; rayon wa after sequential partition DP speedup=1.758x
+952,397.1,84.4,78.75,True,True,wave16 900+; rayon primes; u64 mulmod; skip q^2 lift speedup=4.704x
+942,348.4,35.3,89.87,True,True,wave16 900+; QR bitset; 64-at-a-time; rayon 32 chunks speedup=9.873x
+949,281.8,83.8,70.26,True,True,wave16 900+; O(1) suffix rec; Vec hist; par_sort conv speedup=3.364x
+976,243.5,113.0,53.59,True,True,wave16 900+; u64 mulmod; 32-way binom; unroll speedup=2.155x
+936,211.0,5.8,97.25,True,True,wave16 900+; incremental correction polys; reuse buffers speedup=36.372x

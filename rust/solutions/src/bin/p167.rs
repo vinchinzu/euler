@@ -1,5 +1,5 @@
 // Project Euler 167: Investigating Ulam sequences
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
 fn get_ulam_k(v: i32, k: i64) -> i64 {
     let mut terms: Vec<i32> = Vec::new();
@@ -122,7 +122,7 @@ fn get_ulam_k(v: i32, k: i64) -> i64 {
         state = (state << 1) | bit as i64;
     }
 
-    let mut state_map: HashMap<i64, i32> = HashMap::new();
+    let mut state_map: FxHashMap<i64, i32> = FxHashMap::default();
     state_map.insert(state, i);
 
     let period_start;

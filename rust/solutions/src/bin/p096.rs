@@ -3,45 +3,65 @@
 
 type Grid = [[u8; 9]; 9];
 
-fn find_empty(grid: &Grid) -> Option<(usize, usize)> {
+fn box_id(r: usize, c: usize) -> usize {
+    (r / 3) * 3 + c / 3
+}
+
+fn solve(
+    grid: &mut Grid,
+    row: &mut [u16; 9],
+    col: &mut [u16; 9],
+    bx: &mut [u16; 9],
+) -> bool {
+    let mut br = 0;
+    let mut bc = 0;
+    let mut best_mask = 0u16;
+    let mut best_bits = 10u32;
+    let mut filled = 0usize;
+
     for r in 0..9 {
         for c in 0..9 {
-            if grid[r][c] == 0 {
-                return Some((r, c));
+            if grid[r][c] != 0 {
+                filled += 1;
+                continue;
+            }
+            let mask = 0x1FF & !(row[r] | col[c] | bx[box_id(r, c)]);
+            let bits = mask.count_ones();
+            if bits == 0 {
+                return false;
+            }
+            if bits < best_bits {
+                best_bits = bits;
+                best_mask = mask;
+                br = r;
+                bc = c;
+                if bits == 1 {
+                    break;
+                }
             }
         }
     }
-    None
-}
+    if filled == 81 {
+        return true;
+    }
 
-fn is_safe(grid: &Grid, row: usize, col: usize, num: u8) -> bool {
-    for c in 0..9 {
-        if grid[row][c] == num { return false; }
-    }
-    for r in 0..9 {
-        if grid[r][col] == num { return false; }
-    }
-    let br = row - row % 3;
-    let bc = col - col % 3;
-    for r in 0..3 {
-        for c in 0..3 {
-            if grid[br + r][bc + c] == num { return false; }
+    let mut mask = best_mask;
+    let b = box_id(br, bc);
+    while mask != 0 {
+        let bit = mask & mask.wrapping_neg();
+        mask ^= bit;
+        let num = bit.trailing_zeros() as u8 + 1;
+        grid[br][bc] = num;
+        row[br] |= bit;
+        col[bc] |= bit;
+        bx[b] |= bit;
+        if solve(grid, row, col, bx) {
+            return true;
         }
-    }
-    true
-}
-
-fn solve(grid: &mut Grid) -> bool {
-    let (row, col) = match find_empty(grid) {
-        Some(pos) => pos,
-        None => return true,
-    };
-    for num in 1..=9 {
-        if is_safe(grid, row, col, num) {
-            grid[row][col] = num;
-            if solve(grid) { return true; }
-            grid[row][col] = 0;
-        }
+        grid[br][bc] = 0;
+        row[br] ^= bit;
+        col[bc] ^= bit;
+        bx[b] ^= bit;
     }
     false
 }
@@ -55,16 +75,28 @@ fn main() {
     while i < lines.len() {
         if lines[i].starts_with("Grid") {
             let mut grid = [[0u8; 9]; 9];
+            let mut row = [0u16; 9];
+            let mut col = [0u16; 9];
+            let mut bx = [0u16; 9];
             for r in 0..9 {
-                if i + 1 + r >= lines.len() { break; }
+                if i + 1 + r >= lines.len() {
+                    break;
+                }
                 let row_bytes = lines[i + 1 + r].as_bytes();
                 for c in 0..9 {
                     if c < row_bytes.len() {
-                        grid[r][c] = row_bytes[c] - b'0';
+                        let v = row_bytes[c] - b'0';
+                        grid[r][c] = v;
+                        if v != 0 {
+                            let bit = 1u16 << (v - 1);
+                            row[r] |= bit;
+                            col[c] |= bit;
+                            bx[box_id(r, c)] |= bit;
+                        }
                     }
                 }
             }
-            if solve(&mut grid) {
+            if solve(&mut grid, &mut row, &mut col, &mut bx) {
                 total_sum += grid[0][0] as u32 * 100 + grid[0][1] as u32 * 10 + grid[0][2] as u32;
             }
             i += 10;

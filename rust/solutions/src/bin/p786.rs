@@ -7,18 +7,16 @@ fn main() {
     let l = (3 * BIG_N + 5) / 2;
     let g_limit = (l / 5) as usize;
 
-    // Compute Mobius function using linear sieve (O(n))
-    // Each number is visited exactly once via its smallest prime factor.
+    // Compute Mobius function using linear sieve (O(n)).
+    // Composite flags replace SPF values; i % p == 0 is the Euler-sieve break.
     let mut mobius = vec![0i8; g_limit + 1];
-    let mut smallest_prime = vec![0u32; g_limit + 1];
+    let mut is_composite = vec![false; g_limit + 1];
     let mut primes: Vec<usize> = Vec::with_capacity(g_limit / 10);
 
     mobius[1] = 1;
 
     for i in 2..=g_limit {
-        if unsafe { *smallest_prime.get_unchecked(i) } == 0 {
-            // i is prime
-            unsafe { *smallest_prime.get_unchecked_mut(i) = i as u32; }
+        if !is_composite[i] {
             primes.push(i);
             unsafe { *mobius.get_unchecked_mut(i) = -1; }
         }
@@ -26,7 +24,7 @@ fn main() {
         for &p in &primes {
             let ip = i * p;
             if ip > g_limit { break; }
-            unsafe { *smallest_prime.get_unchecked_mut(ip) = p as u32; }
+            is_composite[ip] = true;
             if i % p == 0 {
                 // p^2 divides ip, so mobius[ip] = 0 (already initialized to 0)
                 break;
@@ -36,7 +34,7 @@ fn main() {
         }
     }
 
-    drop(smallest_prime);
+    drop(is_composite);
     drop(primes);
 
     // Closed-form lattice point counting

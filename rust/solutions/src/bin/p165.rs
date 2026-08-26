@@ -1,7 +1,7 @@
 // Project Euler 165 - Intersections
 // Generate 5000 line segments from pseudo-random sequence,
 // find all true intersection points (not at endpoints), count distinct.
-use std::collections::HashSet;
+use rayon::prelude::*;
 
 fn gcd_abs(a: i64, b: i64) -> i64 {
     let (mut a, mut b) = (a.abs(), b.abs());
@@ -41,41 +41,46 @@ fn main() {
         });
     }
     segs.sort_by_key(|s| s.min_x);
-
-    let mut points: HashSet<(i64, i64, i64, i64)> = HashSet::new();
+    let segs = segs;
     let count = segs.len();
 
-    for i in 0..count {
-        let s1 = &segs[i];
-        for j in (i + 1)..count {
-            let s2 = &segs[j];
-            if s2.min_x > s1.max_x { break; }
-            if s1.max_y < s2.min_y || s2.max_y < s1.min_y { continue; }
+    let mut points: Vec<(i64, i64, i64, i64)> = (0..count)
+        .into_par_iter()
+        .flat_map_iter(|i| {
+            let s1 = &segs[i];
+            let mut local = Vec::new();
+            for j in (i + 1)..count {
+                let s2 = &segs[j];
+                if s2.min_x > s1.max_x { break; }
+                if s1.max_y < s2.min_y || s2.max_y < s1.min_y { continue; }
 
-            let o1 = s1.dx * (s2.y1 as i64 - s1.y1 as i64) - s1.dy * (s2.x1 as i64 - s1.x1 as i64);
-            if o1 == 0 { continue; }
-            let o2 = s1.dx * (s2.y2 as i64 - s1.y1 as i64) - s1.dy * (s2.x2 as i64 - s1.x1 as i64);
-            if o2 == 0 || (o1 > 0) == (o2 > 0) { continue; }
+                let o1 = s1.dx * (s2.y1 as i64 - s1.y1 as i64) - s1.dy * (s2.x1 as i64 - s1.x1 as i64);
+                if o1 == 0 { continue; }
+                let o2 = s1.dx * (s2.y2 as i64 - s1.y1 as i64) - s1.dy * (s2.x2 as i64 - s1.x1 as i64);
+                if o2 == 0 || (o1 > 0) == (o2 > 0) { continue; }
 
-            let o3 = s2.dx * (s1.y1 as i64 - s2.y1 as i64) - s2.dy * (s1.x1 as i64 - s2.x1 as i64);
-            if o3 == 0 { continue; }
-            let o4 = s2.dx * (s1.y2 as i64 - s2.y1 as i64) - s2.dy * (s1.x2 as i64 - s2.x1 as i64);
-            if o4 == 0 || (o3 > 0) == (o4 > 0) { continue; }
+                let o3 = s2.dx * (s1.y1 as i64 - s2.y1 as i64) - s2.dy * (s1.x1 as i64 - s2.x1 as i64);
+                if o3 == 0 { continue; }
+                let o4 = s2.dx * (s1.y2 as i64 - s2.y1 as i64) - s2.dy * (s1.x2 as i64 - s2.x1 as i64);
+                if o4 == 0 || (o3 > 0) == (o4 > 0) { continue; }
 
-            let mut den = s1.dx * s2.dy - s1.dy * s2.dx;
-            if den == 0 { continue; }
+                let mut den = s1.dx * s2.dy - s1.dy * s2.dx;
+                if den == 0 { continue; }
 
-            let mut num_x = s1.dx * s2.cross - s1.cross * s2.dx;
-            let mut num_y = s1.dy * s2.cross - s1.cross * s2.dy;
+                let mut num_x = s1.dx * s2.cross - s1.cross * s2.dx;
+                let mut num_y = s1.dy * s2.cross - s1.cross * s2.dy;
 
-            if den < 0 { den = -den; num_x = -num_x; num_y = -num_y; }
+                if den < 0 { den = -den; num_x = -num_x; num_y = -num_y; }
 
-            let g1 = gcd_abs(num_x, den);
-            let g2 = gcd_abs(num_y, den);
-
-            points.insert((num_x / g1, den / g1, num_y / g2, den / g2));
-        }
-    }
+                let g1 = gcd_abs(num_x, den);
+                let g2 = gcd_abs(num_y, den);
+                local.push((num_x / g1, den / g1, num_y / g2, den / g2));
+            }
+            local
+        })
+        .collect();
+    points.par_sort_unstable();
+    points.dedup();
 
     println!("{}", points.len());
 }

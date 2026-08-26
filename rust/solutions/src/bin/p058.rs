@@ -1,7 +1,7 @@
 // Project Euler 58: Spiral primes
 // Find the side length at which the ratio of primes on the diagonals of an Ulam spiral
 // first falls below 10%.
-use euler_utils::is_prime;
+use euler_utils::miller_rabin;
 
 fn main() {
     let mut prime_count = 0u64;
@@ -15,9 +15,15 @@ fn main() {
         let tl = bl - (side - 1);
         let tr = tl - (side - 1);
 
-        if is_prime(bl) { prime_count += 1; }
-        if is_prime(tl) { prime_count += 1; }
-        if is_prime(tr) { prime_count += 1; }
+        if miller_rabin(bl) {
+            prime_count += 1;
+        }
+        if miller_rabin(tl) {
+            prime_count += 1;
+        }
+        if miller_rabin(tr) {
+            prime_count += 1;
+        }
 
         total_diagonals += 4;
 

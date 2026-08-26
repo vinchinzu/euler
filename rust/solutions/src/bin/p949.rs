@@ -1,15 +1,19 @@
 // Problem 949 - Left vs Right II
 // G(20, 7) mod 1001001011
 //
-// Port of the Python reference using game theory with dyadic rationals.
-// For each word of length n (encoded as bit-string of L=0/R=1), we compute
-// a game value via DP over all subwords. Then we count k-tuples where Right wins.
+// Game values are dyadic rationals scaled by 2^n. Length-L words depend only
+// on length L-1, so u_raw/d_raw collapse to a max/min of the previous suffix
+// and prefix. Histograms stay sparse and are stored as sorted Vec<(value, count)>
+// with generate-and-sort convolution (no HashMap).
 
-use fxhash::FxHashMap as HashMap;
+use rayon::prelude::*;
 
 const MOD: u64 = 1_001_001_011;
 
+type Hist = Vec<(i64, u64)>;
+
 /// Ceiling division of x by 2^s.
+#[inline]
 fn ceil_div_pow2(x: i64, s: u32) -> i64 {
     if s == 0 {
         return x;
@@ -24,6 +28,7 @@ fn ceil_div_pow2(x: i64, s: u32) -> i64 {
 
 /// Find the "simplest" dyadic rational (fewest bits in denominator) strictly
 /// between u and d, scaled by 2^e. Returns the numerator times the remaining scale.
+#[inline]
 fn simplest_between(u: i64, d: i64, e: u32) -> i64 {
     for m in 0..=e {
         let s = e - m;
@@ -50,153 +55,231 @@ fn simplest_between(u: i64, d: i64, e: u32) -> i64 {
     0
 }
 
-/// Compute game values (u) and hot/cold flags for all 2^n words of length n.
-/// Returns (u_full, hot) where u_full[bits] is the game value for word `bits`
-/// and hot[bits] is true if the position is "hot" (confused).
+/// Game values (`u`) and hot flags for all 2^n words of length n.
+///
+/// A word of length L only needs its length-(L-1) suffix and prefix:
+///   u_raw(w) = max(dp_u, dp_d) of the proper suffix of length L-1
+///   d_raw(w) = min(dp_u, dp_d) of the proper prefix of length L-1
 fn compute_u_hot(n: u32) -> (Vec<i64>, Vec<bool>) {
-    let e = n;
-    let scale = 1i64 << e;
-    let total = (1usize << (n + 1)) - 1;
-    let mut dp_u = vec![0i64; total];
-    let mut dp_d = vec![0i64; total];
+    let scale = 1i64 << n;
+    let final_size = 1usize << n;
+    let mut prev_u = Vec::with_capacity(final_size);
+    let mut prev_d = Vec::with_capacity(final_size);
+    prev_u.extend_from_slice(&[scale, -scale]);
+    prev_d.extend_from_slice(&[scale, -scale]);
+    let mut cur_u = Vec::with_capacity(final_size);
+    let mut cur_d = Vec::with_capacity(final_size);
 
-    // Base case: length-1 words
-    // Index scheme: words of length L start at index (1<<L)-1.
-    // For length 1: start=1, bit 0 -> index 1, bit 1 -> index 2
-    let start1: usize = 1;
-    dp_u[start1] = scale;      // L -> value +1 (scaled)
-    dp_d[start1] = scale;
-    dp_u[start1 + 1] = -scale; // R -> value -1 (scaled)
-    dp_d[start1 + 1] = -scale;
-
-    let num_words = 1usize << n;
-    let mut hot = vec![false; num_words];
-
-    for length in 2..=n {
+    for length in 2..n {
         let size = 1usize << length;
-        let start = (1usize << length) - 1;
-        for bits in 0..size {
-            // u_raw = max over all proper suffixes of dp_d[suffix]
-            let mut u_raw = i64::MIN;
-            for s_len in 1..length {
-                let suf = bits & ((1usize << s_len) - 1);
-                let cand = dp_d[((1usize << s_len) - 1) + suf];
-                if cand > u_raw {
-                    u_raw = cand;
-                }
-            }
-            // d_raw = min over all proper prefixes of dp_u[prefix]
-            let mut d_raw = i64::MAX;
-            for p_len in 1..length {
-                let pre = bits >> (length - p_len);
-                let cand = dp_u[((1usize << p_len) - 1) + pre];
-                if cand < d_raw {
-                    d_raw = cand;
-                }
-            }
-            let idx = start + bits;
-            if u_raw < d_raw {
-                let x = simplest_between(u_raw, d_raw, e);
-                dp_u[idx] = x;
-                dp_d[idx] = x;
-                if length == n {
-                    hot[bits] = false; // cold
-                }
-            } else {
-                dp_u[idx] = u_raw;
-                dp_d[idx] = d_raw;
-                if length == n {
-                    hot[bits] = true; // hot
-                }
-            }
-        }
+        cur_u.clear();
+        cur_d.clear();
+        cur_u.resize(size, 0);
+        cur_d.resize(size, 0);
+        fill_layer(&prev_u, &prev_d, &mut cur_u, &mut cur_d, size / 2 - 1, n, length);
+        std::mem::swap(&mut prev_u, &mut cur_u);
+        std::mem::swap(&mut prev_d, &mut cur_d);
     }
 
-    let start_n = (1usize << n) - 1;
-    let u_full = dp_u[start_n..start_n + num_words].to_vec();
+    let mut u_full = vec![0i64; final_size];
+    let mut hot = vec![false; final_size];
+    fill_last_layer(&prev_u, &prev_d, &mut u_full, &mut hot, final_size / 2 - 1, n);
     (u_full, hot)
 }
 
-/// Build a histogram: value -> count (mod MOD).
-fn hist_from_values(values: &[i64], modulus: u64) -> HashMap<i64, u64> {
-    let mut hist: HashMap<i64, u64> = HashMap::default();
-    for &v in values {
-        let e = hist.entry(v).or_insert(0);
-        *e = (*e + 1) % modulus;
-    }
-    hist.retain(|_, c| *c != 0);
-    hist
-}
+fn fill_layer(
+    prev_u: &[i64],
+    prev_d: &[i64],
+    cur_u: &mut [i64],
+    cur_d: &mut [i64],
+    mask: usize,
+    e: u32,
+    length: u32,
+) {
+    let eval = |bits: usize| -> (i64, i64) {
+        let suf = bits & mask;
+        let pre = bits >> 1;
+        let u_raw = prev_u[suf].max(prev_d[suf]);
+        let d_raw = prev_u[pre].min(prev_d[pre]);
+        if u_raw < d_raw {
+            let x = simplest_between(u_raw, d_raw, e);
+            (x, x)
+        } else {
+            (u_raw, d_raw)
+        }
+    };
 
-/// Sparse convolution of two histograms (sum of independent random variables).
-fn convolve(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64) -> HashMap<i64, u64> {
-    if a.is_empty() || b.is_empty() {
-        return HashMap::default();
-    }
-    // Iterate over the smaller one in the outer loop
-    let (small, large) = if a.len() <= b.len() { (a, b) } else { (b, a) };
-    let mut out: HashMap<i64, u64> = HashMap::with_capacity_and_hasher(small.len() * large.len(), Default::default());
-    for (&xa, &ca) in small.iter() {
-        for (&xb, &cb) in large.iter() {
-            let k = xa + xb;
-            let prod = ca * cb % modulus;
-            let e = out.entry(k).or_insert(0);
-            *e = (*e + prod) % modulus;
+    if length >= 18 {
+        cur_u
+            .par_iter_mut()
+            .zip(cur_d.par_iter_mut())
+            .enumerate()
+            .for_each(|(bits, (u, d))| {
+                let (uu, dd) = eval(bits);
+                *u = uu;
+                *d = dd;
+            });
+    } else {
+        for bits in 0..cur_u.len() {
+            let (uu, dd) = eval(bits);
+            cur_u[bits] = uu;
+            cur_d[bits] = dd;
         }
     }
-    out.retain(|_, c| *c != 0);
+}
+
+fn fill_last_layer(
+    prev_u: &[i64],
+    prev_d: &[i64],
+    cur_u: &mut [i64],
+    hot: &mut [bool],
+    mask: usize,
+    e: u32,
+) {
+    cur_u
+        .par_iter_mut()
+        .zip(hot.par_iter_mut())
+        .enumerate()
+        .for_each(|(bits, (u, h))| {
+            let suf = bits & mask;
+            let pre = bits >> 1;
+            let u_raw = prev_u[suf].max(prev_d[suf]);
+            let d_raw = prev_u[pre].min(prev_d[pre]);
+            if u_raw < d_raw {
+                *u = simplest_between(u_raw, d_raw, e);
+                *h = false;
+            } else {
+                *u = u_raw;
+                *h = true;
+            }
+        });
+}
+
+/// Run-length encode a sorted slice of values into a modulus histogram.
+fn rle_hist(sorted: &[i64], modulus: u64) -> Hist {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let n = sorted.len();
+    while i < n {
+        let v = sorted[i];
+        let mut j = i + 1;
+        while j < n && sorted[j] == v {
+            j += 1;
+        }
+        let c = ((j - i) as u64) % modulus;
+        if c != 0 {
+            out.push((v, c));
+        }
+        i = j;
+    }
     out
 }
 
-/// Repeated convolution: hist convolved with itself t times.
-fn pow_small(hist: &HashMap<i64, u64>, t: u32, modulus: u64) -> HashMap<i64, u64> {
-    if t == 0 {
-        let mut r = HashMap::default();
-        r.insert(0, 1u64);
-        return r;
+/// Merge a sorted list of (sum, count) pairs, adding counts for equal keys.
+fn merge_sorted_pairs(pairs: &[(i64, u64)], modulus: u64) -> Hist {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let n = pairs.len();
+    while i < n {
+        let s = pairs[i].0;
+        let mut c = 0u64;
+        while i < n && pairs[i].0 == s {
+            c += pairs[i].1;
+            i += 1;
+        }
+        c %= modulus;
+        if c != 0 {
+            out.push((s, c));
+        }
     }
-    let mut d = hist.clone();
-    for _ in 1..t {
-        d = convolve(&d, hist, modulus);
-    }
-    d
+    out
 }
 
-/// Count pairs (sa, sb) with sa in a, sb in b such that sa + sb < 0,
-/// weighted by counts, mod modulus.
-fn count_sum_lt_zero(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64) -> u64 {
-    let mut b_items: Vec<(i64, u64)> = b.iter().map(|(&s, &c)| (s, c)).collect();
-    b_items.sort_by_key(|&(s, _)| s);
-    let b_sums: Vec<i64> = b_items.iter().map(|&(s, _)| s).collect();
+/// Sparse convolution of two sorted histograms: generate all pairwise sums,
+/// sort, and merge. Parallel for the large (n=20, k=7) products.
+fn convolve(a: &Hist, b: &Hist, modulus: u64) -> Hist {
+    if a.is_empty() || b.is_empty() {
+        return Hist::new();
+    }
+    let (small, large) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let n = small.len() * large.len();
 
-    // prefix sums of counts
-    let mut pref = Vec::with_capacity(b_items.len() + 1);
+    let mut pairs = vec![(0i64, 0u64); n];
+    if n >= 50_000 {
+        pairs
+            .par_chunks_mut(large.len())
+            .zip(small.par_iter())
+            .for_each(|(chunk, &(xa, ca))| {
+                for (slot, &(xb, cb)) in chunk.iter_mut().zip(large.iter()) {
+                    *slot = (xa + xb, ca * cb % modulus);
+                }
+            });
+        pairs.par_sort_unstable_by_key(|&(s, _)| s);
+    } else {
+        let mut k = 0;
+        for &(xa, ca) in small {
+            for &(xb, cb) in large {
+                pairs[k] = (xa + xb, ca * cb % modulus);
+                k += 1;
+            }
+        }
+        pairs.sort_unstable_by_key(|&(s, _)| s);
+    }
+    merge_sorted_pairs(&pairs, modulus)
+}
+
+/// hist convolved with itself t times. No clone of the running product.
+fn pow_small(hist: &Hist, t: u32, modulus: u64) -> Hist {
+    match t {
+        0 => vec![(0, 1)],
+        1 => hist.clone(),
+        _ => {
+            let mut d = convolve(hist, hist, modulus);
+            for _ in 2..t {
+                d = convolve(&d, hist, modulus);
+            }
+            d
+        }
+    }
+}
+
+/// Count weighted pairs with sa + sb < 0. Two-pointer on sorted histograms.
+fn count_sum_lt_zero(a: &Hist, b: &Hist, modulus: u64) -> u64 {
+    let mut pref = Vec::with_capacity(b.len() + 1);
     pref.push(0u64);
     let mut run = 0u64;
-    for &(_, c) in &b_items {
+    for &(_, c) in b {
         run = (run + c) % modulus;
         pref.push(run);
     }
 
     let mut ans = 0u64;
-    for (&sa, &ca) in a.iter() {
-        // We need sb < -sa, i.e., sb in b_sums where sb < -sa
+    let mut j = b.len();
+    for &(sa, ca) in a {
         let target = -sa;
-        let idx = b_sums.partition_point(|&x| x < target);
-        let count_b = pref[idx];
-        ans = (ans + ca * count_b % modulus) % modulus;
+        while j > 0 && b[j - 1].0 >= target {
+            j -= 1;
+        }
+        ans = (ans + ca * pref[j] % modulus) % modulus;
     }
     ans
 }
 
-/// Count pairs (sa, sb) with sa in a, sb in b such that sa + sb == 0,
-/// weighted by counts, mod modulus.
-fn count_sum_eq_zero(a: &HashMap<i64, u64>, b: &HashMap<i64, u64>, modulus: u64) -> u64 {
-    let (small, large) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+/// Count weighted pairs with sa + sb == 0. Two-pointer on sorted histograms.
+fn count_sum_eq_zero(a: &Hist, b: &Hist, modulus: u64) -> u64 {
+    let mut i = 0usize;
+    let mut j = b.len();
     let mut ans = 0u64;
-    for (&s, &ca) in small.iter() {
-        if let Some(&cb) = large.get(&(-s)) {
-            ans = (ans + ca * cb % modulus) % modulus;
+    while i < a.len() && j > 0 {
+        let s = a[i].0 + b[j - 1].0;
+        if s == 0 {
+            ans = (ans + a[i].1 * b[j - 1].1 % modulus) % modulus;
+            i += 1;
+            j -= 1;
+        } else if s > 0 {
+            j -= 1;
+        } else {
+            i += 1;
         }
     }
     ans
@@ -207,28 +290,35 @@ fn g(n: u32, k: u32, modulus: u64) -> u64 {
     assert!(k % 2 == 1, "k must be odd");
     assert!(n > 0, "n must be positive");
 
-    let (u_full, hot) = compute_u_hot(n);
+    let (mut u_full, hot) = compute_u_hot(n);
 
-    let u_hist = hist_from_values(&u_full, modulus);
+    let mut cold_values = Vec::with_capacity(u_full.len() / 16);
+    for (&v, &h) in u_full.iter().zip(hot.iter()) {
+        if !h {
+            cold_values.push(v);
+        }
+    }
 
-    let cold_values: Vec<i64> = u_full
-        .iter()
-        .zip(hot.iter())
-        .filter(|&(_, &h)| !h)
-        .map(|(&v, _)| v)
-        .collect();
-    let cold_hist = hist_from_values(&cold_values, modulus);
+    u_full.par_sort_unstable();
+    let u_hist = rle_hist(&u_full, modulus);
+    cold_values.sort_unstable();
+    let cold_hist = rle_hist(&cold_values, modulus);
 
     let a = k / 2;
-    let b = k - a;
+    // For odd k, b = a + 1, so hist^b = hist^a * hist.
 
-    let dist_a = pow_small(&u_hist, a, modulus);
-    let dist_b = pow_small(&u_hist, b, modulus);
-    let neg = count_sum_lt_zero(&dist_a, &dist_b, modulus);
-
-    let cold_a = pow_small(&cold_hist, a, modulus);
-    let cold_b = pow_small(&cold_hist, b, modulus);
-    let zero_cold = count_sum_eq_zero(&cold_a, &cold_b, modulus);
+    let (neg, zero_cold) = rayon::join(
+        || {
+            let dist_a = pow_small(&u_hist, a, modulus);
+            let dist_b = convolve(&dist_a, &u_hist, modulus);
+            count_sum_lt_zero(&dist_a, &dist_b, modulus)
+        },
+        || {
+            let cold_a = pow_small(&cold_hist, a, modulus);
+            let cold_b = convolve(&cold_a, &cold_hist, modulus);
+            count_sum_eq_zero(&cold_a, &cold_b, modulus)
+        },
+    );
 
     (neg + zero_cold) % modulus
 }

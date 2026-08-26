@@ -1,34 +1,67 @@
 // Project Euler 212: Combined Volume of Cuboids
-use std::collections::HashMap;
+use rayon::prelude::*;
 
 const N_CUBOIDS: usize = 50000;
 const L: i32 = 130;
+const G: usize = 81; // section indices 0..80 (coords < 10400)
+const CELLS: usize = G * G * G;
 
-struct Cuboid { x: i32, y: i32, z: i32, dx: i32, dy: i32, dz: i32 }
-
-fn iround_down(n: i32, k: i32) -> i32 {
-    let mut r = n % k;
-    if r < 0 { r += k; }
-    n - r
+#[derive(Clone, Copy)]
+struct Cuboid {
+    x: i32,
+    y: i32,
+    z: i32,
+    x2: i32,
+    y2: i32,
+    z2: i32,
 }
 
-fn helper(cuboids: &[Cuboid], indices: &[usize], idx: usize,
-          min_x: i32, min_y: i32, min_z: i32,
-          max_x: i32, max_y: i32, max_z: i32,
-          num_cuboids: i32) -> i64 {
-    if min_x >= max_x || min_y >= max_y || min_z >= max_z { return 0; }
-    if idx == indices.len() {
-        if num_cuboids == 0 { return 0; }
-        let vol = (max_x - min_x) as i64 * (max_y - min_y) as i64 * (max_z - min_z) as i64;
-        return if num_cuboids % 2 == 0 { vol } else { -vol };
+#[inline(always)]
+fn cell(ix: usize, iy: usize, iz: usize) -> usize {
+    (ix * G + iy) * G + iz
+}
+
+/// Inclusion-exclusion over cuboids overlapping the current box.
+/// Exclude-branches stay in the loop; only include-branches recurse.
+#[inline(always)]
+fn helper(
+    cuboids: &[Cuboid],
+    ids: &[u16],
+    mut idx: usize,
+    min_x: i32,
+    min_y: i32,
+    min_z: i32,
+    max_x: i32,
+    max_y: i32,
+    max_z: i32,
+    num_cuboids: i32,
+) -> i64 {
+    if min_x >= max_x || min_y >= max_y || min_z >= max_z {
+        return 0;
     }
-    let c = &cuboids[indices[idx]];
-    let result = helper(cuboids, indices, idx + 1, min_x, min_y, min_z, max_x, max_y, max_z, num_cuboids)
-        + helper(cuboids, indices, idx + 1,
-                 min_x.max(c.x), min_y.max(c.y), min_z.max(c.z),
-                 max_x.min(c.x + c.dx), max_y.min(c.y + c.dy), max_z.min(c.z + c.dz),
-                 num_cuboids + 1);
-    result
+    let n = ids.len();
+    let mut acc = 0i64;
+    while idx < n {
+        // SAFETY: idx < ids.len(); every id was pushed from 0..N_CUBOIDS.
+        let c = unsafe { cuboids.get_unchecked(*ids.get_unchecked(idx) as usize) };
+        idx += 1;
+        let nx1 = min_x.max(c.x);
+        let ny1 = min_y.max(c.y);
+        let nz1 = min_z.max(c.z);
+        let nx2 = max_x.min(c.x2);
+        let ny2 = max_y.min(c.y2);
+        let nz2 = max_z.min(c.z2);
+        if nx1 < nx2 && ny1 < ny2 && nz1 < nz2 {
+            acc += helper(
+                cuboids, ids, idx, nx1, ny1, nz1, nx2, ny2, nz2, num_cuboids + 1,
+            );
+        }
+    }
+    if num_cuboids == 0 {
+        return acc;
+    }
+    let vol = (max_x - min_x) as i64 * (max_y - min_y) as i64 * (max_z - min_z) as i64;
+    acc + if num_cuboids % 2 == 0 { vol } else { -vol }
 }
 
 fn main() {
@@ -45,30 +78,38 @@ fn main() {
     let mut cuboids = Vec::with_capacity(N_CUBOIDS);
     for i in 0..N_CUBOIDS {
         let idx = 6 * i;
+        let x = s_seq[idx] % 10000;
+        let y = s_seq[idx + 1] % 10000;
+        let z = s_seq[idx + 2] % 10000;
         cuboids.push(Cuboid {
-            x: s_seq[idx] % 10000,
-            y: s_seq[idx + 1] % 10000,
-            z: s_seq[idx + 2] % 10000,
-            dx: s_seq[idx + 3] % 399 + 1,
-            dy: s_seq[idx + 4] % 399 + 1,
-            dz: s_seq[idx + 5] % 399 + 1,
+            x,
+            y,
+            z,
+            x2: x + s_seq[idx + 3] % 399 + 1,
+            y2: y + s_seq[idx + 4] % 399 + 1,
+            z2: z + s_seq[idx + 5] % 399 + 1,
         });
     }
+    drop(s_seq);
 
-    // Assign cuboids to sections
-    let mut sections: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+    // Two-pass packed L×L×L sections (keys are dense in 81³). Count, prefix, fill.
+    let mut counts = vec![0u16; CELLS];
     for i in 0..N_CUBOIDS {
         let c = &cuboids[i];
         let mut dx = 0;
-        while dx < c.dx + L {
+        while dx < (c.x2 - c.x) + L {
             let mut dy = 0;
-            while dy < c.dy + L {
+            while dy < (c.y2 - c.y) + L {
                 let mut dz = 0;
-                while dz < c.dz + L {
-                    let sx = iround_down(c.x + dx, L);
-                    let sy = iround_down(c.y + dy, L);
-                    let sz = iround_down(c.z + dz, L);
-                    sections.entry((sx, sy, sz)).or_default().push(i);
+                while dz < (c.z2 - c.z) + L {
+                    let ix = ((c.x + dx) / L) as usize;
+                    let iy = ((c.y + dy) / L) as usize;
+                    let iz = ((c.z + dz) / L) as usize;
+                    debug_assert!(ix < G && iy < G && iz < G);
+                    // SAFETY: ix,iy,iz ∈ 0..G as coords < 10400.
+                    unsafe {
+                        *counts.get_unchecked_mut(cell(ix, iy, iz)) += 1;
+                    }
                     dz += L;
                 }
                 dy += L;
@@ -77,10 +118,70 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
-    for (&(sx, sy, sz), indices) in &sections {
-        ans -= helper(&cuboids, indices, 0, sx, sy, sz, sx + L, sy + L, sz + L, 0);
+    let mut offs = vec![0u32; CELLS + 1];
+    let mut total = 0u32;
+    let mut occupied = Vec::with_capacity(1 << 19);
+    for i in 0..CELLS {
+        offs[i] = total;
+        if counts[i] != 0 {
+            occupied.push(i as u32);
+        }
+        total += counts[i] as u32;
     }
+    offs[CELLS] = total;
+
+    let mut data = vec![0u16; total as usize];
+    let mut cursor = offs.clone();
+    for i in 0..N_CUBOIDS {
+        let c = &cuboids[i];
+        let id = i as u16;
+        let mut dx = 0;
+        while dx < (c.x2 - c.x) + L {
+            let mut dy = 0;
+            while dy < (c.y2 - c.y) + L {
+                let mut dz = 0;
+                while dz < (c.z2 - c.z) + L {
+                    let ix = ((c.x + dx) / L) as usize;
+                    let iy = ((c.y + dy) / L) as usize;
+                    let iz = ((c.z + dz) / L) as usize;
+                    let k = cell(ix, iy, iz);
+                    // SAFETY: k < CELLS; cursor[k] < offs[k]+counts[k] ≤ data.len().
+                    unsafe {
+                        let p = *cursor.get_unchecked(k);
+                        *data.get_unchecked_mut(p as usize) = id;
+                        *cursor.get_unchecked_mut(k) = p + 1;
+                    }
+                    dz += L;
+                }
+                dy += L;
+            }
+            dx += L;
+        }
+    }
+    drop(counts);
+    drop(cursor);
+
+    let ans: i64 = occupied
+        .par_iter()
+        .with_min_len(64)
+        .map(|&k| {
+            let k = k as usize;
+            let ix = k / (G * G);
+            let iy = (k / G) % G;
+            let iz = k % G;
+            let sx = ix as i32 * L;
+            let sy = iy as i32 * L;
+            let sz = iz as i32 * L;
+            // SAFETY: k < CELLS; offs has length CELLS+1.
+            let (a, b) = unsafe {
+                (
+                    *offs.get_unchecked(k) as usize,
+                    *offs.get_unchecked(k + 1) as usize,
+                )
+            };
+            -helper(&cuboids, &data[a..b], 0, sx, sy, sz, sx + L, sy + L, sz + L, 0)
+        })
+        .sum();
 
     println!("{ans}");
 }

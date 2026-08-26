@@ -167,6 +167,6 @@ fn sum_good_primes(row: i64) -> i64 {
 }
 
 fn main() {
-    let result = sum_good_primes(5678027) + sum_good_primes(7208785);
-    println!("{}", result);
+    let (a, b) = rayon::join(|| sum_good_primes(5678027), || sum_good_primes(7208785));
+    println!("{}", a + b);
 }

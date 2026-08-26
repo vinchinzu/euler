@@ -1,258 +1,441 @@
 // Project Euler 428: Necklace of Circles
-// T(N) = S3 + S4 + S6 where each Si counts necklace triplets for k=3,4,6.
-// Uses: Mertens function, quotient grouping, Lucy DP for pi_1,
-// DFS over 1mod3-smooth numbers.
+// T(N) = S3 + S4 + S6. Linearized Du Jiao / Lucy tables indexed by N/i
+// (small + large Vec), integer isqrt, rayon over independent phases.
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
+use rayon::prelude::*;
 
 const NVAL: i64 = 1_000_000_000;
 
-fn isqrt_ll(n: i64) -> i64 {
-    let mut x = (n as f64).sqrt() as i64;
-    while x * x > n { x -= 1; }
-    while (x + 1) * (x + 1) <= n { x += 1; }
-    x
+#[inline(always)]
+fn isqrt(n: i64) -> i64 {
+    if n <= 0 {
+        0
+    } else {
+        (n as u64).isqrt() as i64
+    }
 }
 
-struct Context {
-    sieve_limit: usize,
-    mu_arr: Vec<i8>,
-    mu_prefix: Vec<i64>,
-    primes_all: Vec<i32>,
-    mertens_cache: HashMap<i64, i64>,
-    f_cache: HashMap<i64, i64>,
-    t_cache: HashMap<i64, i64>,
-    to_cache: HashMap<i64, i64>,
-    ton3_cache: HashMap<i64, i64>,
-    l_cache: HashMap<i64, i64>,
+/// Prefix of f on 1..=limit, plus f(N/i) for i = 1..=N/(limit+1).
+struct LinPref {
+    n: i64,
+    limit: i64,
+    small: Vec<i64>,
+    large: Vec<i64>,
 }
 
-impl Context {
-    fn sieve_mu(limit: usize) -> Self {
-        let mut mu_arr = vec![0i8; limit + 1];
-        mu_arr[1] = 1;
-        let mut is_comp = vec![false; limit + 1];
-        let mut primes_all = Vec::new();
+impl LinPref {
+    #[inline(always)]
+    fn get(&self, x: i64) -> i64 {
+        if x <= 0 {
+            0
+        } else if x <= self.limit {
+            // SAFETY: x in 1..=limit, small.len() == limit+1.
+            unsafe { *self.small.get_unchecked(x as usize) }
+        } else {
+            // SAFETY: x > limit ⇒ n/x <= n/(limit+1) < large.len().
+            unsafe { *self.large.get_unchecked((self.n / x) as usize) }
+        }
+    }
+}
 
-        for i in 2..=limit {
-            if !is_comp[i] {
-                primes_all.push(i as i32);
-                mu_arr[i] = -1;
-            }
-            for j in 0..primes_all.len() {
-                let v = primes_all[j] as usize * i;
-                if v > limit { break; }
-                is_comp[v] = true;
-                if i % primes_all[j] as usize == 0 {
-                    mu_arr[v] = 0;
-                    break;
+struct PiTab {
+    n: i64,
+    sqrt_n: i64,
+    small1: Vec<i64>,
+    big1: Vec<i64>,
+}
+
+impl PiTab {
+    #[inline(always)]
+    fn pi1(&self, v: i64) -> i64 {
+        if v < 2 {
+            0
+        } else if v <= self.sqrt_n {
+            unsafe { *self.small1.get_unchecked(v as usize) }
+        } else {
+            unsafe { *self.big1.get_unchecked((self.n / v) as usize) }
+        }
+    }
+}
+
+#[inline(always)]
+fn l3(x: i64, l: &LinPref) -> i64 {
+    if x <= 0 {
+        0
+    } else {
+        l.get(x) + l.get(x / 3)
+    }
+}
+
+/// F(X) = Σ |μ(d)| ⌊X/d⌋ and T(X) = Σ 2^ω(d) ⌊X/d⌋ share this loop.
+#[inline]
+fn dirichlet_from_prefix(x: i64, pref: &LinPref) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let mut s = 0i64;
+    let mut d = 1i64;
+    let mut prev = 0i64;
+    while d <= x {
+        let q = x / d;
+        let dmax = x / q;
+        let v = pref.get(dmax);
+        s += q * (v - prev);
+        prev = v;
+        d = dmax + 1;
+    }
+    s
+}
+
+/// L(X) = Σ_{j≤√X} M(⌊X/j²⌋), grouped on constant ⌊X/j²⌋.
+fn compute_l(x: i64, m: &LinPref) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    let s = isqrt(x);
+    let mut tot = 0i64;
+    let mut j = 1i64;
+    while j <= s {
+        let q = x / (j * j);
+        let mut j_hi = isqrt(x / q);
+        if j_hi > s {
+            j_hi = s;
+        }
+        if j_hi < j {
+            j_hi = j;
+        }
+        tot += (j_hi - j + 1) * m.get(q);
+        j = j_hi + 1;
+    }
+    tot
+}
+
+fn compute_q_raw(x: i64, mu: &[i8]) -> i64 {
+    let s = isqrt(x);
+    let mut t = 0i64;
+    let mut k = 1i64;
+    while k <= s {
+        // SAFETY: k <= √x <= √N < sieve_limit.
+        let mk = unsafe { *mu.get_unchecked(k as usize) };
+        if mk != 0 {
+            t += mk as i64 * (x / (k * k));
+        }
+        k += 1;
+    }
+    t
+}
+
+fn fill_mertens(n: i64, sl: usize, mu_prefix: Vec<i64>) -> LinPref {
+    let limit = sl as i64;
+    let max_i = (n / (limit + 1)) as usize;
+    let mut large = vec![0i64; max_i + 1];
+    for i in (1..=max_i).rev() {
+        let x = n / i as i64;
+        let mut s = 0i64;
+        let mut l = 2i64;
+        while l <= x {
+            let q = x / l;
+            let r = x / q;
+            let mq = if q <= limit {
+                unsafe { *mu_prefix.get_unchecked(q as usize) }
+            } else {
+                unsafe { *large.get_unchecked((n / q) as usize) }
+            };
+            s += (r - l + 1) * mq;
+            l = r + 1;
+        }
+        unsafe {
+            *large.get_unchecked_mut(i) = 1 - s;
+        }
+    }
+    LinPref {
+        n,
+        limit,
+        small: mu_prefix,
+        large,
+    }
+}
+
+fn fill_q(n: i64, sl: usize, absmu: Vec<i64>, mu: &[i8]) -> LinPref {
+    let limit = sl as i64;
+    let max_i = (n / (limit + 1)) as usize;
+    let mut large = vec![0i64; max_i + 1];
+    large.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        if i == 0 {
+            return;
+        }
+        *slot = compute_q_raw(n / i as i64, mu);
+    });
+    LinPref {
+        n,
+        limit,
+        small: absmu,
+        large,
+    }
+}
+
+fn fill_f(n: i64, sl: usize, f_small: Vec<i64>, qtab: &LinPref) -> LinPref {
+    let limit = sl as i64;
+    let max_i = (n / (limit + 1)) as usize;
+    let mut large = vec![0i64; max_i + 1];
+    large.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        if i == 0 {
+            return;
+        }
+        *slot = dirichlet_from_prefix(n / i as i64, qtab);
+    });
+    LinPref {
+        n,
+        limit,
+        small: f_small,
+        large,
+    }
+}
+
+fn fill_l(n: i64, sqrt_n: usize, m: &LinPref) -> LinPref {
+    let mut small = vec![0i64; sqrt_n + 1];
+    let mut large = vec![0i64; sqrt_n + 1];
+    rayon::join(
+        || {
+            small.par_iter_mut().enumerate().for_each(|(x, slot)| {
+                if x > 0 {
+                    *slot = compute_l(x as i64, m);
                 }
-                mu_arr[v] = -mu_arr[i];
-            }
-        }
-
-        let mut mu_prefix = vec![0i64; limit + 1];
-        for i in 1..=limit {
-            mu_prefix[i] = mu_prefix[i - 1] + mu_arr[i] as i64;
-        }
-
-        Context {
-            sieve_limit: limit,
-            mu_arr,
-            mu_prefix,
-            primes_all,
-            mertens_cache: HashMap::new(),
-            f_cache: HashMap::new(),
-            t_cache: HashMap::new(),
-            to_cache: HashMap::new(),
-            ton3_cache: HashMap::new(),
-            l_cache: HashMap::new(),
-        }
-    }
-
-    fn mertens(&mut self, n: i64) -> i64 {
-        if n <= self.sieve_limit as i64 { return self.mu_prefix[n as usize]; }
-        if let Some(&v) = self.mertens_cache.get(&n) { return v; }
-        let mut s = 0i64;
-        let mut d = 2i64;
-        while d <= n {
-            let q = n / d;
-            let d_max = n / q;
-            s += (d_max - d + 1) * self.mertens(q);
-            d = d_max + 1;
-        }
-        let result = 1 - s;
-        self.mertens_cache.insert(n, result);
-        result
-    }
-
-    fn q_val(&self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        let sq = isqrt_ll(x);
-        let mut s = 0i64;
-        for k in 1..=sq {
-            if self.mu_arr[k as usize] != 0 {
-                s += self.mu_arr[k as usize] as i64 * (x / (k * k));
-            }
-        }
-        s
-    }
-
-    fn f_val(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        if let Some(&v) = self.f_cache.get(&x) { return v; }
-        let sx = isqrt_ll(x);
-        let mut result = 0i64;
-        for d in 1..=sx {
-            if self.mu_arr[d as usize] != 0 {
-                result += x / d;
-            }
-        }
-        let max_q = x / (sx + 1);
-        for q in 1..=max_q {
-            result += q * (self.q_val(x / q) - self.q_val(x / (q + 1)));
-        }
-        self.f_cache.insert(x, result);
-        result
-    }
-
-    fn t_c(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        if let Some(&v) = self.t_cache.get(&x) { return v; }
-        let mut result = 0i64;
-        let mut d = 1i64;
-        while d <= x {
-            let q = x / d;
-            let d_max = x / q;
-            let f1 = self.f_val(d_max);
-            let f2 = self.f_val(d - 1);
-            result += q * (f1 - f2);
-            d = d_max + 1;
-        }
-        self.t_cache.insert(x, result);
-        result
-    }
-
-    fn t_odd(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        if let Some(&v) = self.to_cache.get(&x) { return v; }
-        let mut result = self.t_c(x);
-        let mut a = 1;
-        let mut pw = 2i64;
-        while pw <= x {
-            result -= (2 * a + 1) * self.t_odd(x / pw);
-            a += 1;
-            pw *= 2;
-        }
-        self.to_cache.insert(x, result);
-        result
-    }
-
-    fn t_on3(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        if let Some(&v) = self.ton3_cache.get(&x) { return v; }
-        let mut result = self.t_odd(x);
-        let mut c = 1;
-        let mut pw = 3i64;
-        while pw <= x {
-            result -= (2 * c + 1) * self.t_on3(x / pw);
-            c += 1;
-            pw *= 3;
-        }
-        self.ton3_cache.insert(x, result);
-        result
-    }
-
-    fn l_val(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        if let Some(&v) = self.l_cache.get(&x) { return v; }
-        let sq = isqrt_ll(x);
-        let mut total = 0i64;
-        for j in 1..=sq {
-            total += self.mertens(x / (j * j));
-        }
-        self.l_cache.insert(x, total);
-        total
-    }
-
-    fn l3(&mut self, x: i64) -> i64 {
-        if x <= 0 { return 0; }
-        self.l_val(x) + self.l_val(x / 3)
+            });
+        },
+        || {
+            large.par_iter_mut().enumerate().for_each(|(k, slot)| {
+                if k > 0 {
+                    *slot = compute_l(n / k as i64, m);
+                }
+            });
+        },
+    );
+    LinPref {
+        n,
+        limit: sqrt_n as i64,
+        small,
+        large,
     }
 }
 
-fn main() {
-    let n = NVAL;
-    let sqrt_n = isqrt_ll(n) as usize;
+fn lucy_dp(n: i64, sqrt_n: usize, primes_small: &[i32]) -> PiTab {
+    let mut small1 = vec![0i64; sqrt_n + 1];
+    let mut small2 = vec![0i64; sqrt_n + 1];
+    let mut big1 = vec![0i64; sqrt_n + 2];
+    let mut big2 = vec![0i64; sqrt_n + 2];
+    let mut vlo = vec![0i64; sqrt_n + 1];
 
-    let cbrt = {
-        let mut c = (n as f64).cbrt().round() as i64;
-        while (c + 1) * (c + 1) * (c + 1) <= n { c += 1; }
-        while c * c * c > n { c -= 1; }
-        c as usize
-    };
+    for v in 1..=sqrt_n {
+        let vi = v as i64;
+        small1[v] = (vi + 2) / 3 - 1;
+        small2[v] = (vi + 1) / 3;
+        vlo[v] = n / vi;
+    }
+    for k in 1..=sqrt_n {
+        let v = unsafe { *vlo.get_unchecked(k) };
+        big1[k] = (v + 2) / 3 - 1;
+        big2[k] = (v + 1) / 3;
+    }
 
-    let mut sl = cbrt * cbrt;
-    if sl < sqrt_n + 1 { sl = sqrt_n + 1; }
+    let sqrt_n_i = sqrt_n as i64;
+    for &p in primes_small {
+        if p == 3 {
+            continue;
+        }
+        let p64 = p as i64;
+        let pp = p64 * p64;
+        let p1 = unsafe { *small1.get_unchecked((p as usize) - 1) };
+        let p2 = unsafe { *small2.get_unchecked((p as usize) - 1) };
+        let max_k = std::cmp::min(sqrt_n_i, n / pp) as usize;
+        let pmod1 = p % 3 == 1;
 
-    let mut ctx = Context::sieve_mu(sl);
-
-    // Pre-fill mertens cache
-    {
-        let mut d = 1i64;
-        while d <= n {
-            ctx.mertens(n / d);
-            d = n / (n / d) + 1;
+        if pmod1 {
+            for k in 1..=max_k {
+                let vp = unsafe { *vlo.get_unchecked(k) } / p64;
+                let (c1, c2) = if vp <= sqrt_n_i {
+                    unsafe {
+                        (
+                            *small1.get_unchecked(vp as usize),
+                            *small2.get_unchecked(vp as usize),
+                        )
+                    }
+                } else {
+                    let idx = (n / vp) as usize;
+                    unsafe { (*big1.get_unchecked(idx), *big2.get_unchecked(idx)) }
+                };
+                unsafe {
+                    *big1.get_unchecked_mut(k) -= c1 - p1;
+                    *big2.get_unchecked_mut(k) -= c2 - p2;
+                }
+            }
+            if pp <= sqrt_n_i {
+                for v in (pp as usize..=sqrt_n).rev() {
+                    let vp = v as i64 / p64;
+                    unsafe {
+                        let c1 = *small1.get_unchecked(vp as usize);
+                        let c2 = *small2.get_unchecked(vp as usize);
+                        *small1.get_unchecked_mut(v) -= c1 - p1;
+                        *small2.get_unchecked_mut(v) -= c2 - p2;
+                    }
+                }
+            }
+        } else {
+            for k in 1..=max_k {
+                let vp = unsafe { *vlo.get_unchecked(k) } / p64;
+                let (c1, c2) = if vp <= sqrt_n_i {
+                    unsafe {
+                        (
+                            *small1.get_unchecked(vp as usize),
+                            *small2.get_unchecked(vp as usize),
+                        )
+                    }
+                } else {
+                    let idx = (n / vp) as usize;
+                    unsafe { (*big1.get_unchecked(idx), *big2.get_unchecked(idx)) }
+                };
+                unsafe {
+                    *big1.get_unchecked_mut(k) -= c2 - p2;
+                    *big2.get_unchecked_mut(k) -= c1 - p1;
+                }
+            }
+            if pp <= sqrt_n_i {
+                for v in (pp as usize..=sqrt_n).rev() {
+                    let vp = v as i64 / p64;
+                    unsafe {
+                        let c1 = *small1.get_unchecked(vp as usize);
+                        let c2 = *small2.get_unchecked(vp as usize);
+                        *small1.get_unchecked_mut(v) -= c2 - p2;
+                        *small2.get_unchecked_mut(v) -= c1 - p1;
+                    }
+                }
+            }
         }
     }
 
-    // Precompute F for needed T arguments
-    let mut needed_t = Vec::new();
-    for a in 0..61 {
-        let pw2: i64 = 1i64.checked_shl(a).unwrap_or(i64::MAX);
-        if pw2 > n { break; }
+    drop(small2);
+    drop(big2);
+    PiTab {
+        n,
+        sqrt_n: sqrt_n_i,
+        small1,
+        big1,
+    }
+}
+
+fn t_c(x: i64, f: &LinPref, cache: &mut FxHashMap<i64, i64>) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    if let Some(&v) = cache.get(&x) {
+        return v;
+    }
+    let result = dirichlet_from_prefix(x, f);
+    cache.insert(x, result);
+    result
+}
+
+fn t_odd(
+    x: i64,
+    f: &LinPref,
+    t_cache: &mut FxHashMap<i64, i64>,
+    to_cache: &mut FxHashMap<i64, i64>,
+) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    if let Some(&v) = to_cache.get(&x) {
+        return v;
+    }
+    let mut result = t_c(x, f, t_cache);
+    let mut a = 1i64;
+    let mut pw = 2i64;
+    while pw <= x {
+        result -= (2 * a + 1) * t_odd(x / pw, f, t_cache, to_cache);
+        a += 1;
+        pw *= 2;
+    }
+    to_cache.insert(x, result);
+    result
+}
+
+fn t_on3(
+    x: i64,
+    f: &LinPref,
+    t_cache: &mut FxHashMap<i64, i64>,
+    to_cache: &mut FxHashMap<i64, i64>,
+    ton3_cache: &mut FxHashMap<i64, i64>,
+) -> i64 {
+    if x <= 0 {
+        return 0;
+    }
+    if let Some(&v) = ton3_cache.get(&x) {
+        return v;
+    }
+    let mut result = t_odd(x, f, t_cache, to_cache);
+    let mut c = 1i64;
+    let mut pw = 3i64;
+    while pw <= x {
+        result -= (2 * c + 1) * t_on3(x / pw, f, t_cache, to_cache, ton3_cache);
+        c += 1;
+        pw *= 3;
+    }
+    ton3_cache.insert(x, result);
+    result
+}
+
+fn compute_s3_s4_s6(n: i64, f: &LinPref) -> (i64, i64, i64, i64) {
+    let mut t_cache: FxHashMap<i64, i64> = FxHashMap::with_capacity_and_hasher(1024, Default::default());
+    let mut to_cache: FxHashMap<i64, i64> = FxHashMap::with_capacity_and_hasher(1024, Default::default());
+    let mut ton3_cache: FxHashMap<i64, i64> =
+        FxHashMap::with_capacity_and_hasher(1024, Default::default());
+
+    let mut needed = Vec::with_capacity(512);
+    let mut pw2 = 1i64;
+    for _ in 0..61 {
+        if pw2 > n {
+            break;
+        }
         let mut pw3 = 1i64;
         for _ in 0..40 {
-            let pw = pw2.checked_mul(pw3).unwrap_or(i64::MAX);
-            if pw > n { break; }
-            needed_t.push(n / pw);
-            pw3 = pw3.checked_mul(3).unwrap_or(i64::MAX);
+            let pw = pw2.saturating_mul(pw3);
+            if pw > n {
+                break;
+            }
+            needed.push(n / pw);
+            pw3 = pw3.saturating_mul(3);
         }
+        pw2 = pw2.saturating_mul(2);
     }
-    needed_t.sort_unstable();
-    needed_t.dedup();
-
-    for &x in &needed_t {
-        let mut dd = 1i64;
-        while dd <= x {
-            let qq = x / dd;
-            ctx.f_val(qq);
-            dd = x / qq + 1;
-        }
+    needed.sort_unstable();
+    needed.dedup();
+    for &x in &needed {
+        t_on3(x, f, &mut t_cache, &mut to_cache, &mut ton3_cache);
     }
 
-    // S4
     let mut s4 = 0i64;
     {
         let mut a = 0i64;
         let mut pw = 1i64;
         while pw <= n {
-            s4 += (2 * a + 2) * ctx.t_odd(n / pw);
+            s4 += (2 * a + 2) * t_odd(n / pw, f, &mut t_cache, &mut to_cache);
             a += 1;
             pw *= 2;
         }
     }
 
-    // S3
     let mut s3 = 0i64;
     {
-        let mut a = 0;
+        let mut a = 0i64;
         let mut pw2 = 1i64;
         while pw2 <= n {
-            let mut c = 0;
+            let mut c = 0i64;
             let mut pw3 = 1i64;
             while pw2 * pw3 <= n {
-                s3 += (2 * a + 3) as i64 * (2 * c + 2) as i64 * ctx.t_on3(n / (pw2 * pw3));
+                s3 += (2 * a + 3)
+                    * (2 * c + 2)
+                    * t_on3(n / (pw2 * pw3), f, &mut t_cache, &mut to_cache, &mut ton3_cache);
                 c += 1;
                 pw3 *= 3;
             }
@@ -261,16 +444,17 @@ fn main() {
         }
     }
 
-    // S6_div3
     let mut s6_div3 = 0i64;
     {
         let mut v = 1i64;
         let mut pw3 = 3i64;
         while pw3 <= n {
-            let mut a = 0;
+            let mut a = 0i64;
             let mut pw2 = 1i64;
             while pw2 * pw3 <= n {
-                s6_div3 += (2 * v - 1) * (2 * a + 3) as i64 * ctx.t_on3(n / (pw2 * pw3));
+                s6_div3 += (2 * v - 1)
+                    * (2 * a + 3)
+                    * t_on3(n / (pw2 * pw3), f, &mut t_cache, &mut to_cache, &mut ton3_cache);
                 a += 1;
                 pw2 *= 2;
             }
@@ -279,161 +463,193 @@ fn main() {
         }
     }
 
-    // S6_tau
     let mut s6_tau = 0i64;
     {
         let mut a = 0i64;
         let mut pw = 1i64;
         while pw <= n {
-            s6_tau += (2 * a + 3) * ctx.t_on3(n / pw);
+            s6_tau += (2 * a + 3) * t_on3(n / pw, f, &mut t_cache, &mut to_cache, &mut ton3_cache);
             a += 1;
             pw *= 2;
         }
     }
 
-    // Lucy DP for pi_1
-    let mut small_pi1 = vec![0i64; sqrt_n + 1];
-    let mut big_pi1 = vec![0i64; sqrt_n + 2];
-    let mut small_pi2 = vec![0i64; sqrt_n + 1];
-    let mut big_pi2 = vec![0i64; sqrt_n + 2];
+    (s3, s4, s6_div3, s6_tau)
+}
 
-    for v in 1..=sqrt_n {
-        small_pi1[v] = (v as i64 + 2) / 3 - 1;
-        small_pi2[v] = (v as i64 + 1) / 3;
+fn large_prime_sum(d_val: i64, last_prime: i64, n: i64, sqrt_n: i64, pi: &PiTab, l: &LinPref) -> i64 {
+    let upper = n / d_val;
+    let lower = last_prime.max(sqrt_n);
+    if upper <= lower {
+        return 0;
     }
-    for k in 1..=sqrt_n {
-        let v = n / k as i64;
-        big_pi1[k] = (v + 2) / 3 - 1;
-        big_pi2[k] = (v + 1) / 3;
-    }
-
-    // Collect quotients in descending order
-    let mut quotients_desc = Vec::new();
-    {
-        let mut d = 1i64;
-        while d <= n {
-            quotients_desc.push(n / d);
-            d = n / (n / d) + 1;
+    let mut p = lower + 1;
+    let mut large_sum = 0i64;
+    while p <= upper {
+        let q = upper / p;
+        let p_hi = if q > 0 {
+            upper.min(upper / q)
+        } else {
+            upper
+        };
+        let p_lo = (lower + 1).max(upper / (q + 1) + 1);
+        let cnt = pi.pi1(p_hi) - pi.pi1(p_lo - 1);
+        if cnt > 0 {
+            large_sum += cnt * l3(q, l);
         }
+        p = p_hi + 1;
     }
+    large_sum
+}
 
-    // Primes for Lucy DP
-    let primes_small: Vec<i32> = ctx.primes_all.iter()
-        .filter(|&&p| p as usize <= sqrt_n)
-        .copied()
-        .collect();
+fn node_contrib(d_val: i64, b_val: i64, last_prime: i64, n: i64, sqrt_n: i64, pi: &PiTab, l: &LinPref) -> i64 {
+    let ls = large_prime_sum(d_val, last_prime, n, sqrt_n, pi, l);
+    b_val * (l3(n / d_val, l) + 4 * ls)
+}
 
-    for &p in &primes_small {
-        if p == 3 { continue; }
-        let pp = p as i64 * p as i64;
-        let p1 = small_pi1[p as usize - 1];
-        let p2 = small_pi2[p as usize - 1];
-
-        for &v in &quotients_desc {
-            if v < pp { break; }
-            let vp = v / p as i64;
-            let c1 = if vp <= sqrt_n as i64 { small_pi1[vp as usize] } else { big_pi1[(n / vp) as usize] };
-            let c2 = if vp <= sqrt_n as i64 { small_pi2[vp as usize] } else { big_pi2[(n / vp) as usize] };
-
-            if p % 3 == 1 {
-                if v <= sqrt_n as i64 {
-                    small_pi1[v as usize] -= c1 - p1;
-                    small_pi2[v as usize] -= c2 - p2;
-                } else {
-                    let k = (n / v) as usize;
-                    big_pi1[k] -= c1 - p1;
-                    big_pi2[k] -= c2 - p2;
-                }
-            } else {
-                if v <= sqrt_n as i64 {
-                    let old1 = small_pi1[v as usize];
-                    let old2 = small_pi2[v as usize];
-                    small_pi1[v as usize] = old1 - (c2 - p2);
-                    small_pi2[v as usize] = old2 - (c1 - p1);
-                } else {
-                    let k = (n / v) as usize;
-                    let old1 = big_pi1[k];
-                    let old2 = big_pi2[k];
-                    big_pi1[k] = old1 - (c2 - p2);
-                    big_pi2[k] = old2 - (c1 - p1);
-                }
+fn dfs_subtree(
+    idx: usize,
+    d_val: i64,
+    b_val: i64,
+    last_prime: i64,
+    n: i64,
+    sqrt_n: i64,
+    p1: &[i32],
+    pi: &PiTab,
+    l: &LinPref,
+) -> i64 {
+    let mut s = node_contrib(d_val, b_val, last_prime, n, sqrt_n, pi, l);
+    let cap = n / d_val;
+    let maxp = cap.min(sqrt_n);
+    let end = p1.partition_point(|&p| (p as i64) <= maxp);
+    for i in idx..end {
+        let pr = unsafe { *p1.get_unchecked(i) } as i64;
+        let mut pk = pr;
+        let mut k = 1i64;
+        loop {
+            s += dfs_subtree(i + 1, d_val * pk, b_val * (4 * k), pr, n, sqrt_n, p1, pi, l);
+            if pk > cap / pr {
+                break;
             }
+            pk *= pr;
+            k += 1;
         }
     }
+    s
+}
 
-    let pi1 = |v: i64| -> i64 {
-        if v < 2 { return 0; }
-        if v <= sqrt_n as i64 { small_pi1[v as usize] } else { big_pi1[(n / v) as usize] }
+fn main() {
+    let n = NVAL;
+    let sqrt_n = isqrt(n) as usize;
+
+    let cbrt = {
+        let mut c = (n as f64).cbrt() as i64;
+        while c.saturating_mul(c).saturating_mul(c) > n {
+            c -= 1;
+        }
+        while (c + 1).saturating_mul(c + 1).saturating_mul(c + 1) <= n {
+            c += 1;
+        }
+        c as usize
     };
+    let sl = (cbrt * cbrt).max(sqrt_n + 1);
 
-    // Collect primes 1 mod 3 up to sqrtN
-    let primes_1mod3: Vec<i32> = ctx.primes_all.iter()
-        .filter(|&&p| p % 3 == 1)
+    let mut mu = vec![0i8; sl + 1];
+    mu[1] = 1;
+    let mut is_comp = vec![0u8; sl + 1];
+    let mut primes: Vec<i32> = Vec::with_capacity(sl / 10);
+    let mut tw = vec![0i32; sl + 1];
+    tw[1] = 1;
+
+    for i in 2..=sl {
+        if is_comp[i] == 0 {
+            primes.push(i as i32);
+            mu[i] = -1;
+            tw[i] = 2;
+        }
+        let mu_i = mu[i];
+        let tw_i = tw[i];
+        for &p in &primes {
+            let v = p as usize * i;
+            if v > sl {
+                break;
+            }
+            is_comp[v] = 1;
+            if i % p as usize == 0 {
+                mu[v] = 0;
+                tw[v] = tw_i;
+                break;
+            }
+            mu[v] = -mu_i;
+            tw[v] = tw_i * 2;
+        }
+    }
+    drop(is_comp);
+
+    let mut mu_prefix = vec![0i64; sl + 1];
+    let mut absmu = vec![0i64; sl + 1];
+    let mut f_small = vec![0i64; sl + 1];
+    let mut macc = 0i64;
+    let mut qacc = 0i64;
+    let mut facc = 0i64;
+    for i in 1..=sl {
+        macc += mu[i] as i64;
+        qacc += mu[i].unsigned_abs() as i64;
+        facc += tw[i] as i64;
+        mu_prefix[i] = macc;
+        absmu[i] = qacc;
+        f_small[i] = facc;
+    }
+    drop(tw);
+
+    let primes_small: Vec<i32> = primes
+        .iter()
         .copied()
+        .take_while(|&p| p as usize <= sqrt_n)
         .collect();
+    let primes_1mod3: Vec<i32> = primes_small.iter().copied().filter(|&p| p % 3 == 1).collect();
+    drop(primes);
 
-    // DFS for S6_chi
-    let mut sum_g = 0i64;
+    let ((pi, ltab), (s3, s4, s6_div3, s6_tau)) = rayon::join(
+        || {
+            rayon::join(
+                || lucy_dp(n, sqrt_n, &primes_small),
+                || {
+                    let mtab = fill_mertens(n, sl, mu_prefix);
+                    fill_l(n, sqrt_n, &mtab)
+                },
+            )
+        },
+        || {
+            let qtab = fill_q(n, sl, absmu, &mu);
+            let ftab = fill_f(n, sl, f_small, &qtab);
+            compute_s3_s4_s6(n, &ftab)
+        },
+    );
 
-    struct DfsState {
-        idx: usize,
-        d_val: i64,
-        b_val: i64,
-        last_prime: i64,
-    }
-
-    let mut dfs_stack = vec![DfsState { idx: 0, d_val: 1, b_val: 1, last_prime: 0 }];
-
-    while let Some(state) = dfs_stack.pop() {
-        let l3_val = ctx.l3(n / state.d_val);
-        sum_g += state.b_val * l3_val;
-
-        let upper_p = n / state.d_val;
-        let lower_p = std::cmp::max(state.last_prime, sqrt_n as i64);
-
-        if upper_p > lower_p {
-            let mut p = lower_p + 1;
-            let mut large_sum = 0i64;
-            while p <= upper_p {
-                let q = n / (state.d_val * p);
-                let p_range_hi = std::cmp::min(upper_p, if q > 0 { n / (state.d_val * q) } else { upper_p });
-                let p_range_lo = std::cmp::max(lower_p + 1, if q < upper_p { n / (state.d_val * (q + 1)) + 1 } else { lower_p + 1 });
-
-                let cnt = pi1(p_range_hi) - pi1(p_range_lo - 1);
-                if cnt > 0 {
-                    large_sum += cnt * ctx.l3(q);
+    let sqrt_n_i = sqrt_n as i64;
+    let p1 = &primes_1mod3;
+    let root = node_contrib(1, 1, 0, n, sqrt_n_i, &pi, &ltab);
+    let rest: i64 = (0..p1.len())
+        .into_par_iter()
+        .map(|i| {
+            let pr = p1[i] as i64;
+            let mut s = 0i64;
+            let mut pk = pr;
+            let mut k = 1i64;
+            loop {
+                s += dfs_subtree(i + 1, pk, 4 * k, pr, n, sqrt_n_i, p1, &pi, &ltab);
+                if pk > n / pr {
+                    break;
                 }
-                p = p_range_hi + 1;
-            }
-            sum_g += 4 * state.b_val * large_sum;
-        }
-
-        // Push children in reverse order for correct processing
-        let mut children = Vec::new();
-        for i in state.idx..primes_1mod3.len() {
-            let pr = primes_1mod3[i];
-            if pr as usize > sqrt_n { break; }
-            if state.d_val * pr as i64 > n { break; }
-            let mut pk = pr as i64;
-            let mut k = 1;
-            while state.d_val * pk <= n {
-                children.push(DfsState {
-                    idx: i + 1,
-                    d_val: state.d_val * pk,
-                    b_val: state.b_val * (4 * k),
-                    last_prime: pr as i64,
-                });
+                pk *= pr;
                 k += 1;
-                pk *= pr as i64;
             }
-        }
-        for child in children.into_iter().rev() {
-            dfs_stack.push(child);
-        }
-    }
+            s
+        })
+        .sum();
 
-    let s6_chi = -sum_g;
+    let s6_chi = -(root + rest);
     let s6 = s6_div3 + (s6_tau + s6_chi) / 2;
-
     println!("{}", s3 + s4 + s6);
 }

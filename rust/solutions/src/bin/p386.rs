@@ -1,20 +1,130 @@
 // Project Euler 386 - Antichain Counting
 //
-// N(n) is the max antichain size in divisor lattice of n.
-// Sum of N(n) for n=1 to 10^8.
+// N(n) is the max antichain size in the divisor lattice of n (middle rank).
+// Sum N(n) for n = 1..=10^8.
 //
-// Optimization: memoize by compact u64 key, fast paths for common cases,
-// struct to reduce function parameter overhead in DFS.
+// DFS over increasing-prime factorizations, but batch the last prime via π(x):
+// once p^2 > N/n, remaining primes p <= N/n are leaves with the same exponent
+// signature. Recursion only needs primes <= sqrt(N). π(N/n) comes from a
+// Lucy–Hedgehog table. Small-n prime loops are rayon-split.
 
 use fxhash::FxHashMap;
+use rayon::prelude::*;
 
 const NLIMIT: u64 = 100_000_000;
 const MAX_EXP_SUM: usize = 26;
+const MAX_OMEGA: usize = 12;
+
+#[inline(always)]
+fn isqrt(n: u64) -> u64 {
+    let mut r = (n as f64).sqrt() as u64;
+    while r.saturating_mul(r) > n {
+        r -= 1;
+    }
+    while r.saturating_add(1).saturating_mul(r + 1) <= n {
+        r += 1;
+    }
+    r
+}
+
+fn sieve_primes(limit: usize) -> Vec<u32> {
+    if limit < 2 {
+        return Vec::new();
+    }
+    let mut is_comp = vec![false; limit + 1];
+    let mut p = 2usize;
+    while p * p <= limit {
+        if !is_comp[p] {
+            let mut j = p * p;
+            while j <= limit {
+                is_comp[j] = true;
+                j += p;
+            }
+        }
+        p += 1;
+    }
+    let mut primes = Vec::with_capacity(limit / 10 + 10);
+    for i in 2..=limit {
+        if !is_comp[i] {
+            primes.push(i as u32);
+        }
+    }
+    primes
+}
+
+struct PiTable {
+    n: u64,
+    isqrt: u64,
+    s_small: Vec<i64>,
+    s_large: Vec<i64>,
+}
+
+impl PiTable {
+    fn new(n: u64, primes: &[u32]) -> Self {
+        let sq = isqrt(n);
+        let m = sq as usize;
+        let mut s_small = vec![0i64; m + 1];
+        let mut s_large = vec![0i64; m + 1];
+        for v in 0..=m {
+            s_small[v] = v as i64 - 1;
+        }
+        for k in 1..=m {
+            s_large[k] = (n / k as u64) as i64 - 1;
+        }
+
+        for &p32 in primes {
+            let p = p32 as u64;
+            if p > sq {
+                break;
+            }
+            let p2 = p * p;
+            if p2 > n {
+                break;
+            }
+            let sp_1 = s_small[(p - 1) as usize];
+            let mut k_limit = n / p2;
+            if k_limit > sq {
+                k_limit = sq;
+            }
+            for k in 1..=k_limit as usize {
+                let target = (n / k as u64) / p;
+                let s_target = if target <= sq {
+                    s_small[target as usize]
+                } else {
+                    s_large[(n / target) as usize]
+                };
+                s_large[k] -= s_target - sp_1;
+            }
+            for v in (p2 as usize..=m).rev() {
+                s_small[v] -= s_small[v / p as usize] - sp_1;
+            }
+        }
+
+        Self {
+            n,
+            isqrt: sq,
+            s_small,
+            s_large,
+        }
+    }
+
+    #[inline(always)]
+    fn pi(&self, x: u64) -> i64 {
+        if x <= 1 {
+            return 0;
+        }
+        if x <= self.isqrt {
+            self.s_small[x as usize]
+        } else {
+            self.s_large[(self.n / x) as usize]
+        }
+    }
+}
 
 #[inline(always)]
 fn make_key(exps: &[i32]) -> u64 {
     let n = exps.len();
-    let mut sorted = [0u8; 12];
+    let mut sorted = [0u8; MAX_OMEGA];
     for i in 0..n {
         sorted[i] = exps[i] as u8;
     }
@@ -26,124 +136,200 @@ fn make_key(exps: &[i32]) -> u64 {
     key
 }
 
-struct Solver {
-    primes: Vec<u64>,
-    binom_half: [i64; MAX_EXP_SUM + 1],
+struct Worker<'a> {
+    primes: &'a [u32],
+    pi: &'a PiTable,
+    binom_half: &'a [i64; MAX_EXP_SUM + 1],
     memo: FxHashMap<u64, i64>,
-    exponents: Vec<i32>,
+    exponents: [i32; MAX_OMEGA],
+    exp_len: usize,
     non_one_count: usize,
-    ans: i64,
-    dp_buf: Vec<i64>,
-    new_dp_buf: Vec<i64>,
+    dp: [i64; MAX_EXP_SUM + 2],
+    new_dp: [i64; MAX_EXP_SUM + 2],
 }
 
-impl Solver {
-    fn count_combinations(&mut self, exps_len: usize) -> i64 {
-        let key = make_key(&self.exponents[..exps_len]);
+impl<'a> Worker<'a> {
+    fn new(
+        primes: &'a [u32],
+        pi: &'a PiTable,
+        binom_half: &'a [i64; MAX_EXP_SUM + 1],
+    ) -> Self {
+        Self {
+            primes,
+            pi,
+            binom_half,
+            memo: FxHashMap::with_capacity_and_hasher(4096, Default::default()),
+            exponents: [0; MAX_OMEGA],
+            exp_len: 0,
+            non_one_count: 0,
+            dp: [0; MAX_EXP_SUM + 2],
+            new_dp: [0; MAX_EXP_SUM + 2],
+        }
+    }
 
+    fn count_combinations(&mut self) -> i64 {
+        let k = self.exp_len;
+        let key = make_key(&self.exponents[..k]);
         if let Some(&val) = self.memo.get(&key) {
             return val;
         }
 
-        let exps = &self.exponents[..exps_len];
-        let total: i32 = exps.iter().sum();
+        let mut total = 0i32;
+        for i in 0..k {
+            total += self.exponents[i];
+        }
         let target = (total / 2) as usize;
-
         let needed = target + 1;
-        self.dp_buf.resize(needed, 0);
-        self.dp_buf[..needed].fill(0);
-        self.dp_buf[0] = 1;
 
-        for &e in exps {
-            self.new_dp_buf.resize(needed, 0);
-            self.new_dp_buf[..needed].fill(0);
+        self.dp[..needed].fill(0);
+        self.dp[0] = 1;
+
+        for i in 0..k {
+            let e = self.exponents[i] as usize;
+            self.new_dp[..needed].fill(0);
             for s in 0..needed {
-                let d = self.dp_buf[s];
-                if d > 0 {
-                    let max_k = (e as usize).min(target - s);
-                    for k in 0..=max_k {
-                        unsafe {
-                            *self.new_dp_buf.get_unchecked_mut(s + k) += d;
-                        }
+                let d = self.dp[s];
+                if d != 0 {
+                    let max_k = e.min(target - s);
+                    for t in 0..=max_k {
+                        self.new_dp[s + t] += d;
                     }
                 }
             }
-            std::mem::swap(&mut self.dp_buf, &mut self.new_dp_buf);
+            self.dp[..needed].copy_from_slice(&self.new_dp[..needed]);
         }
 
-        let result = self.dp_buf[target];
+        let result = self.dp[target];
         self.memo.insert(key, result);
         result
     }
 
-    fn helper(&mut self, min_index: usize, n: u64) {
-        let k = self.exponents.len();
+    #[inline(always)]
+    fn n_of_current(&mut self) -> i64 {
+        let k = self.exp_len;
         if k == 0 {
-            self.ans += 1;
+            1
         } else if self.non_one_count == 0 {
-            self.ans += self.binom_half[k];
+            self.binom_half[k]
         } else if k == 1 {
-            self.ans += 1;
+            1
         } else {
-            let val = self.count_combinations(k);
-            self.ans += val;
+            self.count_combinations()
         }
+    }
 
-        let primes_len = self.primes.len();
-        for index in min_index..primes_len {
-            let p = unsafe { *self.primes.get_unchecked(index) };
-            if n * p > NLIMIT {
+    fn n_of_plus_one(&mut self) -> i64 {
+        let k = self.exp_len;
+        if self.non_one_count == 0 {
+            return self.binom_half[k + 1];
+        }
+        self.exponents[k] = 1;
+        self.exp_len = k + 1;
+        let v = self.count_combinations();
+        self.exp_len = k;
+        v
+    }
+
+    fn leaf_contrib(&mut self, min_index: usize, pmax: u64, sqrt_pmax: u64) -> i64 {
+        let lower = if min_index < self.primes.len() {
+            let p_min = unsafe { *self.primes.get_unchecked(min_index) } as u64;
+            if p_min > sqrt_pmax {
+                p_min - 1
+            } else {
+                sqrt_pmax
+            }
+        } else {
+            let last = *self.primes.last().unwrap_or(&1) as u64;
+            if last > sqrt_pmax { last } else { sqrt_pmax }
+        };
+        let cnt = self.pi.pi(pmax) - self.pi.pi(lower);
+        if cnt > 0 {
+            cnt * self.n_of_plus_one()
+        } else {
+            0
+        }
+    }
+
+    fn recurse_one_prime(&mut self, index: usize, n: u64) -> i64 {
+        let p = unsafe { *self.primes.get_unchecked(index) } as u64;
+        let mut ans = 0i64;
+        let mut prod = 1u64;
+        let mut e = 1i32;
+        loop {
+            if p > NLIMIT / prod {
                 break;
             }
+            prod *= p;
+            if n > NLIMIT / prod {
+                break;
+            }
+            self.exponents[self.exp_len] = e;
+            self.exp_len += 1;
+            if e > 1 {
+                self.non_one_count += 1;
+            }
+            ans += self.helper(index + 1, n * prod);
+            if e > 1 {
+                self.non_one_count -= 1;
+            }
+            self.exp_len -= 1;
+            e += 1;
+        }
+        ans
+    }
 
-            let mut prod = 1u64;
-            let mut e = 1i32;
-            loop {
-                prod *= p;
-                if n * prod > NLIMIT {
-                    break;
-                }
-                self.exponents.push(e);
-                if e > 1 { self.non_one_count += 1; }
-                self.helper(index + 1, n * prod);
-                if e > 1 { self.non_one_count -= 1; }
-                self.exponents.pop();
-                e += 1;
+    fn helper(&mut self, min_index: usize, n: u64) -> i64 {
+        let mut ans = self.n_of_current();
+        let pmax = NLIMIT / n;
+        if pmax < 2 {
+            return ans;
+        }
+        let sqrt_pmax = isqrt(pmax);
+        ans += self.leaf_contrib(min_index, pmax, sqrt_pmax);
+
+        let last_rec = self.primes.partition_point(|&p| p as u64 <= sqrt_pmax);
+        if min_index >= last_rec {
+            return ans;
+        }
+
+        // Split only fat nodes so we do not rayon millions of empty leaves.
+        if self.exp_len < 3 && n < 200 && last_rec - min_index > 16 {
+            let primes = self.primes;
+            let pi = self.pi;
+            let binom_half = self.binom_half;
+            let exponents = self.exponents;
+            let exp_len = self.exp_len;
+            let non_one_count = self.non_one_count;
+            ans += (min_index..last_rec)
+                .into_par_iter()
+                .map(|index| {
+                    let mut w = Worker {
+                        primes,
+                        pi,
+                        binom_half,
+                        memo: FxHashMap::with_capacity_and_hasher(512, Default::default()),
+                        exponents,
+                        exp_len,
+                        non_one_count,
+                        dp: [0; MAX_EXP_SUM + 2],
+                        new_dp: [0; MAX_EXP_SUM + 2],
+                    };
+                    w.recurse_one_prime(index, n)
+                })
+                .sum::<i64>();
+        } else {
+            for index in min_index..last_rec {
+                ans += self.recurse_one_prime(index, n);
             }
         }
+        ans
     }
 }
 
 fn main() {
-    // Local bit-packed sieve
-    let limit = NLIMIT as usize;
-    let sieve_size = limit / 2 + 1;
-    let mut is_composite = vec![0u8; (sieve_size + 7) / 8];
-
-    {
-        let mut i = 3usize;
-        while i * i <= limit {
-            let idx = i / 2;
-            if is_composite[idx / 8] & (1 << (idx % 8)) == 0 {
-                let mut j = i * i;
-                while j <= limit {
-                    let jdx = j / 2;
-                    is_composite[jdx / 8] |= 1 << (jdx % 8);
-                    j += 2 * i;
-                }
-            }
-            i += 2;
-        }
-    }
-
-    let mut primes: Vec<u64> = Vec::with_capacity(6_000_000);
-    primes.push(2);
-    for i in (3..=limit).step_by(2) {
-        let idx = i / 2;
-        if is_composite[idx / 8] & (1 << (idx % 8)) == 0 {
-            primes.push(i as u64);
-        }
-    }
+    let sq = isqrt(NLIMIT) as usize;
+    let primes = sieve_primes(sq);
+    let pi = PiTable::new(NLIMIT, &primes);
 
     let mut binom_half = [0i64; MAX_EXP_SUM + 1];
     binom_half[0] = 1;
@@ -156,17 +342,7 @@ fn main() {
         binom_half[k] = val;
     }
 
-    let mut solver = Solver {
-        primes,
-        binom_half,
-        memo: FxHashMap::with_capacity_and_hasher(4096, Default::default()),
-        exponents: Vec::with_capacity(30),
-        non_one_count: 0,
-        ans: 0,
-        dp_buf: vec![0i64; MAX_EXP_SUM / 2 + 2],
-        new_dp_buf: vec![0i64; MAX_EXP_SUM / 2 + 2],
-    };
-
-    solver.helper(0, 1);
-    println!("{}", solver.ans);
+    let mut worker = Worker::new(&primes, &pi, &binom_half);
+    let ans = worker.helper(0, 1);
+    println!("{}", ans);
 }

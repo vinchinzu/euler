@@ -4,7 +4,6 @@
 fn main() {
     const LIMIT: usize = 1_000_000;
 
-    // Compute sum of proper divisors via sieve
     let mut sum_div = vec![0u32; LIMIT + 1];
     for i in 1..=LIMIT {
         let mut j = 2 * i;
@@ -14,32 +13,47 @@ fn main() {
         }
     }
 
-    let mut longest_chain = 0;
-    let mut smallest_member = 0;
+    // vis[x] == stamp  => x is on the current path
+    // vis[x] != 0      => x was already explored
+    let mut vis = vec![0u32; LIMIT + 1];
+    let mut pos_in_path = vec![0u32; LIMIT + 1];
+    let mut path = Vec::with_capacity(100);
+    let mut stamp = 0u32;
+
+    let mut longest = 0usize;
+    let mut smallest = 0u32;
 
     for start in 2..=LIMIT {
-        let mut chain = Vec::with_capacity(100);
+        if vis[start] != 0 {
+            continue;
+        }
+        stamp += 1;
+        path.clear();
         let mut current = start as u32;
 
-        while chain.len() < 100 {
-            if current as usize > LIMIT || current == 0 {
+        loop {
+            let c = current as usize;
+            if c == 0 || c > LIMIT {
                 break;
             }
-            if chain.contains(&current) {
+            if vis[c] == stamp {
+                let idx = pos_in_path[c] as usize;
+                let cycle_len = path.len() - idx;
+                if cycle_len > longest {
+                    longest = cycle_len;
+                    smallest = *path[idx..].iter().min().unwrap();
+                }
                 break;
             }
-            chain.push(current);
-            current = sum_div[current as usize];
-        }
-
-        // Check if we formed a cycle back to start
-        if current == start as u32 && chain.len() > 1 {
-            if chain.len() > longest_chain {
-                longest_chain = chain.len();
-                smallest_member = *chain.iter().min().unwrap() as usize;
+            if vis[c] != 0 {
+                break;
             }
+            vis[c] = stamp;
+            pos_in_path[c] = path.len() as u32;
+            path.push(current);
+            current = sum_div[c];
         }
     }
 
-    println!("{smallest_member}");
+    println!("{smallest}");
 }

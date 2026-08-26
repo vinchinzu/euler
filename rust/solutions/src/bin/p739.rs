@@ -23,11 +23,11 @@ fn main() {
     let mut ncr2: i64 = 1;
     let mut ans = lucas[N];
 
+    const MU: u64 = M as u64;
     for k in (2..N).rev() {
         let mult = (2 * N as i64 - 2 - k as i64) * mod_invs[N - k] % M;
-        ncr1 = (ncr1 as i128 * mult as i128 % M as i128) as i64;
-        ans = (ans + (lucas[k] as i128 * ((ncr1 - ncr2 + M) % M) as i128 % M as i128) as i64)
-            % M;
+        ncr1 = ((ncr1 as u64 * mult as u64) % MU) as i64;
+        ans = (ans + ((lucas[k] as u64 * ((ncr1 - ncr2 + M) % M) as u64) % MU) as i64) % M;
         ncr2 = (ncr2 + ncr1) % M;
     }
 

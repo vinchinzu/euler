@@ -1,6 +1,21 @@
 // Project Euler 374 - Maximum Integer Partition Product
 
+use rayon::prelude::*;
+
 const MOD: u64 = 982_451_653;
+const INV2: u64 = (MOD + 1) / 2;
+
+fn mod_pow(mut base: u64, mut exp: u64) -> u64 {
+    let mut acc = 1u64;
+    while exp > 0 {
+        if exp & 1 != 0 {
+            acc = acc * base % MOD;
+        }
+        base = base * base % MOD;
+        exp >>= 1;
+    }
+    acc
+}
 
 fn main() {
     let n_big: i64 = 100_000_000_000_000; // 10^14
@@ -16,95 +31,118 @@ fn main() {
             hi = mid - 1;
         }
     }
-    let k_val = lo;
-    let max_k = k_val + 10;
+    let k_val = lo as usize;
+    let sz = k_val + 3;
 
-    let sz = (max_k + 3) as usize;
-
-    // Precompute factorials mod MOD
-    let mut fact = vec![0u64; sz];
+    let mut fact = vec![0u32; sz];
     fact[0] = 1;
-    for i in 1..sz {
-        fact[i] = fact[i - 1] * (i as u64) % MOD;
+    {
+        let f = fact.as_mut_ptr();
+        let mut prev = 1u64;
+        for i in 1..sz {
+            prev = prev * (i as u64) % MOD;
+            unsafe {
+                *f.add(i) = prev as u32;
+            }
+        }
     }
 
-    // Precompute modular inverses using linear sieve
-    let mut inv = vec![0u64; sz];
-    inv[1] = 1;
-    for i in 2..sz {
-        inv[i] = (MOD - MOD / (i as u64)) * inv[(MOD % (i as u64)) as usize] % MOD;
+    // 1/i! via one Fermat inverse, then prefix products — avoids variable-divisor divs.
+    let mut harmonic = vec![0u32; sz];
+    {
+        let hptr = harmonic.as_mut_ptr();
+        unsafe {
+            *hptr.add(sz - 1) = mod_pow(fact[sz - 1] as u64, MOD - 2) as u32;
+        }
+        let mut prev = unsafe { *hptr.add(sz - 1) } as u64;
+        for i in (1..sz).rev() {
+            prev = prev * (i as u64) % MOD;
+            unsafe {
+                *hptr.add(i - 1) = prev as u32;
+            }
+        }
+    }
+    let inv_kp1 = fact[k_val] as u64 * harmonic[k_val + 1] as u64 % MOD;
+
+    // Overwrite 1/i! with H_i = sum_{j=2}^{i} 1/j
+    {
+        let f = fact.as_ptr();
+        let hptr = harmonic.as_mut_ptr();
+        let mut h = 0u64;
+        unsafe {
+            *hptr = 0;
+            *hptr.add(1) = 0;
+        }
+        for i in 2..sz {
+            let inv_i = unsafe { *f.add(i - 1) as u64 * *hptr.add(i) as u64 % MOD };
+            h += inv_i;
+            if h >= MOD {
+                h -= MOD;
+            }
+            unsafe {
+                *hptr.add(i) = h as u32;
+            }
+        }
     }
 
-    // Precompute harmonic sums
-    let mut harmonic = vec![0u64; sz];
-    for i in 2..sz {
-        harmonic[i] = (harmonic[i - 1] + inv[i]) % MOD;
-    }
+    // k=1,2: n=1..5 contributions
+    let mut total: u64 = 22;
 
-    let mut total: u64 = 0;
+    // k = 3..K-1: r_max = k, so Case 1+2+3 collapse to two mulmods.
+    const CHUNK: usize = 65_536;
+    let n_chunks = (k_val - 3 + CHUNK - 1) / CHUNK;
+    let par: u64 = (0..n_chunks)
+        .into_par_iter()
+        .map(|ci| {
+            let start = 3 + ci * CHUNK;
+            let end = (start + CHUNK).min(k_val);
+            let fp = fact.as_ptr();
+            let hp = harmonic.as_ptr();
+            let mut local = 0u64;
+            for k in start..end {
+                let ku = k as u64;
+                unsafe {
+                    let fk = *fp.add(k) as u64;
+                    let fk1 = *fp.add(k + 1) as u64;
+                    let hk = *hp.add(k) as u64;
+                    let c13 = fk1 * (((ku - 1) * hk + ku) % MOD) % MOD;
+                    let c2 = fk * (((ku + 2) * (ku - 1) / 2) % MOD) % MOD;
+                    local += c13 + c2;
+                }
+            }
+            local
+        })
+        .sum();
+    total += par;
 
-    // Handle k=1: n=1,2
-    if n_big >= 1 {
-        total = (total + 1) % MOD;
-    }
-    if n_big >= 2 {
-        total = (total + 2) % MOD;
-    }
-
-    // Handle k=2: n=3,4,5
-    if n_big >= 3 {
-        total = (total + 3) % MOD;
-    }
-    if n_big >= 4 {
-        total = (total + 4) % MOD;
-    }
-    if n_big >= 5 {
-        total = (total + 12) % MOD;
-    }
-
-    let inv2 = inv[2];
-
-    for k in 3..=k_val {
+    // k = K may have a truncated r_max
+    {
+        let k = k_val as i64;
         let t_k = k * (k + 1) / 2;
-        let mut r_max = if k < k_val {
-            k
-        } else {
-            n_big - t_k
-        };
+        let mut r_max = n_big - t_k;
         if r_max > k {
             r_max = k;
         }
 
-        // Case 1: r from 0 to min(k-2, r_max)
         let r1 = std::cmp::min(k - 2, r_max);
         if r1 >= 0 {
             let j_min = k - r1;
+            let hk = harmonic[k as usize] as u64;
             let sum_inv = if j_min <= 1 {
-                (1 + harmonic[k as usize]) % MOD
+                (1 + hk) % MOD
             } else {
-                (harmonic[k as usize] + MOD - harmonic[(j_min - 1) as usize]) % MOD
+                (hk + MOD - harmonic[(j_min - 1) as usize] as u64) % MOD
             };
-            let contrib = fact[(k + 1) as usize] % MOD
-                * ((k - 1) as u64 % MOD) % MOD
-                * sum_inv % MOD;
-            total = (total + contrib) % MOD;
+            total += fact[(k + 1) as usize] as u64 * ((k - 1) as u64) % MOD * sum_inv % MOD;
         }
-
-        // Case 2: r = k-1
         if r_max >= k - 1 {
-            let contrib = fact[(k + 2) as usize] % MOD
-                * ((k - 1) as u64 % MOD) % MOD;
-            let contrib = contrib * inv2 % MOD;
-            let contrib = contrib * inv[(k + 1) as usize] % MOD;
-            total = (total + contrib) % MOD;
+            total += fact[(k + 2) as usize] as u64 * ((k - 1) as u64) % MOD * INV2 % MOD * inv_kp1
+                % MOD;
         }
-
-        // Case 3: r = k
         if r_max >= k {
-            let contrib = fact[(k + 1) as usize] % MOD * (k as u64 % MOD) % MOD;
-            total = (total + contrib) % MOD;
+            total += fact[(k + 1) as usize] as u64 * (k as u64) % MOD;
         }
     }
 
-    println!("{}", total);
+    println!("{}", total % MOD);
 }

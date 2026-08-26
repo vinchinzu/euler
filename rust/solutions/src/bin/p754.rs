@@ -1,154 +1,423 @@
 // Project Euler 754 - Product of Gauss Factorials
-// Compute product of g(i) for i=1..N using Mobius function and factorial grouping.
+// Π_{i=1}^N g(i) = Π_g ( g^{tr(⌊N/g⌋)} Π_{i=1}^{⌊N/g⌋} i! )^{μ(g)}
 //
-// Optimizations:
-// - Pure u64 arithmetic (MOD < 2^30, so product < 2^60 < u64::MAX)
-// - Linear sieve for Mobius (O(N), no separate is_prime array)
-// - Eliminate fact[] array (compute prod_fact in single pass)
-// - Quotient grouping for third loop: O(sqrt(N)) instead of O(N)
-// - Merged O(N) pass for prod_fact and prefix sums
-// - unsafe get_unchecked in hot loops
+// - Segmented μ (primes ≤ √N only; no N-length SPF / prefix arrays)
+// - Sparse prod_fact[q] for Dirichlet q, 32-thread + 8-wide prefix
+// - Phase-1 pow_mod over g ≤ N/√N in rayon
+// - Phase-2/3: 32 equal g-ranges, fused μ sieve + block products
 
-fn main() {
-    const MOD: u64 = 1_000_000_007;
-    const N: usize = 100_000_000;
+use rayon::prelude::*;
 
-    #[inline(always)]
-    fn mul_mod(a: u64, b: u64) -> u64 {
-        a * b % MOD
+const MOD: u64 = 1_000_000_007;
+const PHI: u64 = MOD - 1;
+const N: usize = 100_000_000;
+const SEG: usize = 1 << 16;
+
+#[inline(always)]
+fn mul(a: u64, b: u64) -> u64 {
+    a * b % MOD
+}
+
+fn pow_mod(mut base: u64, mut exp: u64) -> u64 {
+    let mut r = 1u64;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            r = mul(r, base);
+        }
+        base = mul(base, base);
+        exp >>= 1;
     }
+    r
+}
 
-    fn pow_mod(mut base: u64, mut exp: u64) -> u64 {
-        let mut result = 1u64;
-        base %= MOD;
-        while exp > 0 {
-            if exp & 1 == 1 {
-                result = result * base % MOD;
+#[inline(always)]
+fn tr(n: u64) -> u64 {
+    n.wrapping_mul(n + 1) / 2
+}
+
+/// Linear sieve μ and odd+even primes up to `limit` (√N).
+fn sieve_small(limit: usize) -> (Vec<i8>, Vec<u32>) {
+    let mut mu = vec![0i8; limit + 1];
+    let mut vis = vec![0u8; limit + 1];
+    let mut primes = Vec::with_capacity(limit / 5);
+    mu[1] = 1;
+    for i in 2..=limit {
+        if unsafe { *vis.get_unchecked(i) } == 0 {
+            primes.push(i as u32);
+            unsafe {
+                *mu.get_unchecked_mut(i) = -1;
             }
-            exp >>= 1;
-            base = base * base % MOD;
         }
-        result
-    }
-
-    fn mod_inv(a: u64) -> u64 {
-        pow_mod(a, MOD - 2)
-    }
-
-    #[inline(always)]
-    fn tr(n: u64) -> u64 {
-        n.wrapping_mul(n + 1) / 2
-    }
-
-    // Linear sieve for Mobius function
-    let mut mobius = vec![0i8; N + 1];
-    mobius[1] = 1;
-    let mut primes: Vec<usize> = Vec::with_capacity(6_000_000);
-    let mut smallest_prime = vec![0u32; N + 1];
-
-    for i in 2..=N {
-        if smallest_prime[i] == 0 {
-            smallest_prime[i] = i as u32;
-            primes.push(i);
-            mobius[i] = -1;
-        }
+        let mu_i = unsafe { *mu.get_unchecked(i) };
         for &p in &primes {
+            let p = p as usize;
+            if p > limit / i {
+                break;
+            }
             let ip = i * p;
-            if ip > N { break; }
-            smallest_prime[ip] = p as u32;
+            unsafe {
+                *vis.get_unchecked_mut(ip) = 1;
+            }
             if i % p == 0 {
                 break;
-            } else {
-                mobius[ip] = -mobius[i];
             }
-        }
-    }
-    drop(smallest_prime);
-    drop(primes);
-
-    // Merged O(N) pass: compute prefix product of factorials and prefix sums of mobius
-    let mut prod_fact = vec![0u64; N + 1];
-    let mut mu_pos_prefix = vec![0u32; N + 1];
-    let mut mu_neg_prefix = vec![0u32; N + 1];
-    {
-        let mut running_fact = 1u64;
-        prod_fact[0] = 1;
-        for i in 1..=N {
-            running_fact = running_fact * (i as u64) % MOD;
             unsafe {
-                *prod_fact.get_unchecked_mut(i) = *prod_fact.get_unchecked(i - 1) * running_fact % MOD;
-                let m = *mobius.get_unchecked(i);
-                *mu_pos_prefix.get_unchecked_mut(i) = *mu_pos_prefix.get_unchecked(i - 1) + (m == 1) as u32;
-                *mu_neg_prefix.get_unchecked_mut(i) = *mu_neg_prefix.get_unchecked(i - 1) + (m == -1) as u32;
+                *mu.get_unchecked_mut(ip) = -mu_i;
             }
         }
     }
+    (mu, primes)
+}
 
-    let l = (N as f64).sqrt() as usize;
+struct ProdFact {
+    l: usize,
+    small: Vec<u64>,
+    large: Vec<u64>,
+}
 
-    let mut res_neg: u64 = 1;
-    let mut res_pos: u64 = 1;
-
-    // Phase 1: For g <= N/L, each g gets its own pow_mod call
-    let g_limit = N / l;
-    for g in 1..=g_limit {
-        unsafe {
-            let m = *mobius.get_unchecked(g);
-            if m == 0 { continue; }
-            let pw = pow_mod(g as u64, tr((N / g) as u64) % (MOD - 1));
-            if m == 1 {
-                res_pos = res_pos * pw % MOD;
-            } else {
-                res_neg = res_neg * pw % MOD;
-            }
+impl ProdFact {
+    #[inline(always)]
+    fn get(&self, q: usize) -> u64 {
+        if q <= self.l {
+            unsafe { *self.small.get_unchecked(q) }
+        } else {
+            unsafe { *self.large.get_unchecked(N / q) }
         }
     }
+}
 
-    // Phase 2: For g > N/L, group by exponent q = N/g
-    for q in 1..l {
-        let mut sub_neg: u64 = 1;
-        let mut sub_pos: u64 = 1;
-        let g_lo = N / (q + 1) + 1;
-        let g_hi = N / q;
-        for g in g_lo..=g_hi {
-            unsafe {
-                let m = *mobius.get_unchecked(g);
-                if m == 0 { continue; }
-                if m == 1 {
-                    sub_pos = sub_pos * (g as u64) % MOD;
+/// 8-wide step of relative factorial prefixes.
+/// `rel` = (i-1)! / (lo-1)!, `pf` = Π_{k=lo}^{i-1} (k! / (lo-1)!).
+#[inline(always)]
+fn step8(rel: u64, pf: u64, i: u64) -> (u64, u64) {
+    let r0 = i;
+    let r1 = mul(r0, i + 1);
+    let r2 = mul(r1, i + 2);
+    let r3 = mul(r2, i + 3);
+    let r4 = mul(r3, i + 4);
+    let r5 = mul(r4, i + 5);
+    let r6 = mul(r5, i + 6);
+    let r7 = mul(r6, i + 7);
+    let p01 = mul(r0, r1);
+    let p23 = mul(r2, r3);
+    let p45 = mul(r4, r5);
+    let p67 = mul(r6, r7);
+    let prod_r = mul(mul(p01, p23), mul(p45, p67));
+    let rel2 = mul(rel, rel);
+    let rel4 = mul(rel2, rel2);
+    let rel8 = mul(rel4, rel4);
+    (mul(rel, r7), mul(pf, mul(rel8, prod_r)))
+}
+
+fn needed_qs(l: usize) -> Vec<usize> {
+    let mut v = Vec::with_capacity(4 * l);
+    let mut g = 1usize;
+    while g <= N {
+        let q = N / g;
+        v.push(q);
+        g = N / q + 1;
+    }
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// prod_fact[q] = Π_{i=1}^q i! at every Dirichlet q = ⌊N/g⌋.
+fn compute_prod_fact(l: usize) -> ProdFact {
+    let needed = needed_qs(l);
+    let nq = needed.len();
+    let nthreads = rayon::current_num_threads().max(1);
+    let chunk = (N + nthreads - 1) / nthreads;
+
+    let parts: Vec<(u64, u64, Vec<(usize, u64)>)> = (0..nthreads)
+        .into_par_iter()
+        .map(|t| {
+            let lo = t * chunk + 1;
+            let hi = ((t + 1) * chunk).min(N);
+            if lo > hi {
+                return (1, 1, Vec::new());
+            }
+            let s = needed.partition_point(|&x| x < lo);
+            let e = needed.partition_point(|&x| x <= hi);
+            let mut rel = 1u64;
+            let mut local_pf = 1u64;
+            let mut saves = Vec::with_capacity(e.saturating_sub(s));
+            let mut i = lo;
+            let mut qi = s;
+            while i <= hi {
+                let next_save = if qi < e {
+                    unsafe { *needed.get_unchecked(qi) }
                 } else {
-                    sub_neg = sub_neg * (g as u64) % MOD;
+                    hi + 1
+                };
+                while i + 7 < next_save {
+                    let (nr, np) = step8(rel, local_pf, i as u64);
+                    rel = nr;
+                    local_pf = np;
+                    i += 8;
+                }
+                let stop = next_save.min(hi);
+                while i <= stop {
+                    rel = mul(rel, i as u64);
+                    local_pf = mul(local_pf, rel);
+                    if qi < e && i == unsafe { *needed.get_unchecked(qi) } {
+                        saves.push((qi, local_pf));
+                        qi += 1;
+                    }
+                    i += 1;
                 }
             }
-        }
-        let exp_val = tr(q as u64) % (MOD - 1);
-        res_pos = mul_mod(res_pos, pow_mod(sub_pos, exp_val));
-        res_neg = mul_mod(res_neg, pow_mod(sub_neg, exp_val));
-    }
+            (rel, local_pf, saves)
+        })
+        .collect();
 
-    // Phase 3: Multiply by product of factorials using quotient grouping
-    {
-        let mut g = 1usize;
-        while g <= N {
-            let q = N / g;
-            let g_hi = N / q;
-            let cnt_pos;
-            let cnt_neg;
+    let mut values = vec![0u64; nq];
+    let mut fact_scale = 1u64;
+    let mut pf_scale = 1u64;
+    for t in 0..nthreads {
+        let lo = t * chunk + 1;
+        let hi = ((t + 1) * chunk).min(N);
+        if lo > hi {
+            continue;
+        }
+        for &(qi, local) in &parts[t].2 {
+            let q = unsafe { *needed.get_unchecked(qi) };
+            let e = (q - lo + 1) as u64;
             unsafe {
-                cnt_pos = *mu_pos_prefix.get_unchecked(g_hi) - *mu_pos_prefix.get_unchecked(g - 1);
-                cnt_neg = *mu_neg_prefix.get_unchecked(g_hi) - *mu_neg_prefix.get_unchecked(g - 1);
+                *values.get_unchecked_mut(qi) = mul(mul(pf_scale, pow_mod(fact_scale, e)), local);
             }
-            let pf_q = unsafe { *prod_fact.get_unchecked(q) };
-            if cnt_pos > 0 {
-                res_pos = mul_mod(res_pos, pow_mod(pf_q, cnt_pos as u64));
-            }
-            if cnt_neg > 0 {
-                res_neg = mul_mod(res_neg, pow_mod(pf_q, cnt_neg as u64));
-            }
-            g = g_hi + 1;
+        }
+        let len = (hi - lo + 1) as u64;
+        pf_scale = mul(mul(pf_scale, pow_mod(fact_scale, len)), parts[t].1);
+        fact_scale = mul(fact_scale, parts[t].0);
+    }
+
+    let mut small = vec![0u64; l + 1];
+    let mut large = vec![0u64; l + 1];
+    for (qi, &q) in needed.iter().enumerate() {
+        let v = values[qi];
+        if q <= l {
+            small[q] = v;
+        } else {
+            large[N / q] = v;
+        }
+    }
+    ProdFact { l, small, large }
+}
+
+#[inline(always)]
+fn absorb(m: i8, x: u64, pos: &mut u64, neg: &mut u64, sum: &mut i32) {
+    if m == 1 {
+        *pos = mul(*pos, x);
+        *sum += 1;
+    } else if m == -1 {
+        *neg = mul(*neg, x);
+        *sum -= 1;
+    }
+}
+
+/// μ on [start, end] via primes ≤ √N, then Dirichlet g-products + prod_fact powers.
+fn process_segment(
+    start: usize,
+    end: usize,
+    primes: &[u32],
+    pf: &ProdFact,
+    mu: &mut [i8],
+    rest: &mut [u32],
+) -> (u64, u64) {
+    let len = end - start + 1;
+    mu[..len].fill(1);
+    for i in 0..len {
+        unsafe {
+            *rest.get_unchecked_mut(i) = (start + i) as u32;
         }
     }
 
-    let ans = mul_mod(res_pos, mod_inv(res_neg));
+    for &p32 in primes {
+        let p = p32 as usize;
+        if p > end {
+            break;
+        }
+        let rem = start % p;
+        let mut m = if rem == 0 { start } else { start + p - rem };
+        while m <= end {
+            let idx = m - start;
+            unsafe {
+                let mv = *mu.get_unchecked(idx);
+                if mv != 0 {
+                    let r = rest.get_unchecked_mut(idx);
+                    *r /= p32;
+                    if *r % p32 == 0 {
+                        *mu.get_unchecked_mut(idx) = 0;
+                        while *r % p32 == 0 {
+                            *r /= p32;
+                        }
+                    } else {
+                        *mu.get_unchecked_mut(idx) = -mv;
+                    }
+                }
+            }
+            m += p;
+        }
+    }
+    for i in 0..len {
+        unsafe {
+            if *mu.get_unchecked(i) != 0 && *rest.get_unchecked(i) > 1 {
+                *mu.get_unchecked_mut(i) = -*mu.get_unchecked(i);
+            }
+        }
+    }
+
+    let mut pos = 1u64;
+    let mut neg = 1u64;
+    let mut g = start;
+    while g <= end {
+        let q = N / g;
+        let g_hi = (N / q).min(end);
+        let mut sub_pos = 1u64;
+        let mut sub_neg = 1u64;
+        let mut sum_mu = 0i32;
+        let mut x = g;
+        while x + 7 <= g_hi {
+            unsafe {
+                absorb(
+                    *mu.get_unchecked(x - start),
+                    x as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 1 - start),
+                    (x + 1) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 2 - start),
+                    (x + 2) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 3 - start),
+                    (x + 3) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 4 - start),
+                    (x + 4) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 5 - start),
+                    (x + 5) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 6 - start),
+                    (x + 6) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+                absorb(
+                    *mu.get_unchecked(x + 7 - start),
+                    (x + 7) as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+            }
+            x += 8;
+        }
+        while x <= g_hi {
+            unsafe {
+                absorb(
+                    *mu.get_unchecked(x - start),
+                    x as u64,
+                    &mut sub_pos,
+                    &mut sub_neg,
+                    &mut sum_mu,
+                );
+            }
+            x += 1;
+        }
+        let exp = tr(q as u64) % PHI;
+        pos = mul(pos, pow_mod(sub_pos, exp));
+        neg = mul(neg, pow_mod(sub_neg, exp));
+        if sum_mu > 0 {
+            pos = mul(pos, pow_mod(pf.get(q), sum_mu as u64));
+        } else if sum_mu < 0 {
+            neg = mul(neg, pow_mod(pf.get(q), (-sum_mu) as u64));
+        }
+        g = g_hi + 1;
+    }
+    (pos, neg)
+}
+
+fn process_range(lo: usize, hi: usize, primes: &[u32], pf: &ProdFact) -> (u64, u64) {
+    if lo > hi {
+        return (1, 1);
+    }
+    let mut mu_buf = vec![0i8; SEG];
+    let mut rest_buf = vec![0u32; SEG];
+    let mut pos = 1u64;
+    let mut neg = 1u64;
+    let mut start = lo;
+    while start <= hi {
+        let end = (start + SEG - 1).min(hi);
+        let (p, n) = process_segment(start, end, primes, pf, &mut mu_buf, &mut rest_buf);
+        pos = mul(pos, p);
+        neg = mul(neg, n);
+        start = end + 1;
+    }
+    (pos, neg)
+}
+
+fn main() {
+    let l = (N as u64).isqrt() as usize;
+    let g_limit = N / l;
+
+    let ((mu_small, primes), pf) = rayon::join(|| sieve_small(l.max(g_limit)), || compute_prod_fact(l));
+
+    let p1 = (1..g_limit + 1)
+        .into_par_iter()
+        .with_min_len(64)
+        .map(|g| {
+            let m = unsafe { *mu_small.get_unchecked(g) };
+            if m == 0 {
+                return (1u64, 1u64);
+            }
+            let q = N / g;
+            let v = mul(pow_mod(g as u64, tr(q as u64) % PHI), pf.get(q));
+            if m == 1 { (v, 1) } else { (1, v) }
+        })
+        .reduce(|| (1, 1), |a, b| (mul(a.0, b.0), mul(a.1, b.1)));
+
+    let lo0 = g_limit + 1;
+    let nthreads = rayon::current_num_threads().max(1);
+    let total = N - g_limit;
+    let chunk = (total + nthreads - 1) / nthreads;
+    let p2 = (0..nthreads)
+        .into_par_iter()
+        .map(|t| {
+            let lo = lo0 + t * chunk;
+            let hi = (lo0 + (t + 1) * chunk - 1).min(N);
+            process_range(lo, hi, &primes, &pf)
+        })
+        .reduce(|| (1, 1), |a, b| (mul(a.0, b.0), mul(a.1, b.1)));
+
+    let res_pos = mul(p1.0, p2.0);
+    let res_neg = mul(p1.1, p2.1);
+    let ans = mul(res_pos, pow_mod(res_neg, PHI - 1));
     println!("{}", ans);
 }

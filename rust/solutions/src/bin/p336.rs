@@ -1,83 +1,70 @@
+// Project Euler 336: Maximix Arrangements
+//
+// Maximix of n are generated from maximix of n-1:
+//   t = reverse([1] + [x+1 for x in seq])
+//   for y in 1..n-1: emit t[:y] + reverse(t[y:])
+// Then take the 2011th in lexicographic order.
+
 const N: usize = 11;
 const TARGET: usize = 2011;
+const MAX_COUNT: usize = 362_880; // 9!
 
-fn reverse_suffix(arr: &mut [i32], start: usize) {
-    let n = arr.len();
-    let mut i = start;
-    let mut j = n - 1;
-    while i < j {
-        arr.swap(i, j);
-        i += 1;
-        j -= 1;
+#[inline]
+fn pack(a: &[u8; N]) -> u64 {
+    let mut x = 0u64;
+    for i in 0..N {
+        x = (x << 4) | a[i] as u64;
     }
-}
-
-fn count_rotations(perm: &[i32]) -> usize {
-    let n = perm.len();
-    let mut arr = perm.to_vec();
-    let mut rotations = 0;
-    for target in 1..n as i32 {
-        let mut pos = None;
-        for j in (target as usize - 1)..n {
-            if arr[j] == target { pos = Some(j); break; }
-        }
-        let pos = match pos { Some(p) => p, None => continue };
-        if pos == target as usize - 1 { continue; }
-        if pos != n - 1 { reverse_suffix(&mut arr, pos); rotations += 1; }
-        reverse_suffix(&mut arr, target as usize - 1); rotations += 1;
-    }
-    rotations
-}
-
-fn generate(perm: &mut [i32; N], pos: usize, result_count: &mut usize, answer: &mut Option<String>) {
-    if answer.is_some() { return; }
-    if pos == N {
-        let max_rot = 2 * (N - 1) - 1;
-        if count_rotations(perm) == max_rot {
-            *result_count += 1;
-            if *result_count == TARGET {
-                let s: String = perm.iter().map(|&v| (b'A' + v as u8 - 1) as char).collect();
-                *answer = Some(s);
-            }
-        }
-        return;
-    }
-
-    // Sort perm[pos..N]
-    let mut tail: Vec<i32> = perm[pos..N].to_vec();
-    tail.sort();
-    perm[pos..N].copy_from_slice(&tail);
-
-    let saved: Vec<i32> = perm[pos..N].to_vec();
-    let nrem = N - pos;
-
-    for ri in 0..nrem {
-        let v = saved[ri];
-        perm[pos] = v;
-        let mut idx = pos + 1;
-        for (j, &sv) in saved.iter().enumerate() {
-            if j == ri { continue; }
-            perm[idx] = sv;
-            idx += 1;
-        }
-        generate(perm, pos + 1, result_count, answer);
-        if answer.is_some() { return; }
-    }
-    // Restore
-    for (i, &sv) in saved.iter().enumerate() {
-        perm[pos + i] = sv;
-    }
+    x
 }
 
 fn main() {
-    let mut perm = [0i32; N];
-    for i in 0..N { perm[i] = (i + 1) as i32; }
-    let mut result_count = 0;
-    let mut answer = None;
-    generate(&mut perm, 0, &mut result_count, &mut answer);
-    if let Some(s) = answer {
-        println!("{}", s);
-    } else {
-        println!("NOT FOUND");
+    let mut cur: Vec<[u8; N]> = Vec::with_capacity(MAX_COUNT / 9);
+    let mut nxt: Vec<[u8; N]> = Vec::with_capacity(MAX_COUNT / 9);
+    let mut seed = [0u8; N];
+    seed[0] = 2;
+    seed[1] = 1;
+    cur.push(seed);
+
+    for n in 3..N {
+        nxt.clear();
+        for seq in &cur {
+            let mut t = [0u8; N];
+            t[0] = 1;
+            for i in 0..n - 1 {
+                t[i + 1] = seq[i] + 1;
+            }
+            t[..n].reverse();
+            for y in 1..n - 1 {
+                let mut p = t;
+                p[y..n].reverse();
+                nxt.push(p);
+            }
+        }
+        std::mem::swap(&mut cur, &mut nxt);
     }
+
+    let mut keys = Vec::with_capacity(MAX_COUNT);
+    for seq in &cur {
+        let mut t = [0u8; N];
+        t[0] = 1;
+        for i in 0..N - 1 {
+            t[i + 1] = seq[i] + 1;
+        }
+        t.reverse();
+        for y in 1..N - 1 {
+            let mut p = t;
+            p[y..].reverse();
+            keys.push(pack(&p));
+        }
+    }
+    keys.sort_unstable();
+    let mut x = keys[TARGET - 1];
+    let mut s = [0u8; N];
+    for i in (0..N).rev() {
+        s[i] = b'A' + (x as u8 & 0xf) - 1;
+        x >>= 4;
+    }
+    // SAFETY: s is ASCII letters A..K
+    println!("{}", unsafe { std::str::from_utf8_unchecked(&s) });
 }
