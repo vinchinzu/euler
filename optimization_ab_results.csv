@@ -231,3 +231,7 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 936,211.0,5.8,97.25,True,True,wave16 900+; incremental correction polys; reuse buffers speedup=36.372x
 476,634.2,121.7,80.81,True,True,algebraic half-angle formulas replacing transcendent calls; inverse table; closed-form count speedup=5.211x
 477,467.2,281.0,39.85,True,True,u64 constant modulo; stack array; drop 400MB heap allocation speedup=1.663x
+529,918.9,259.9,71.72,True,True,u64 mulmod narrowing; rayon parallel 3-prime NTT passes; const generic NTT & vectorized twiddles speedup=3.536x
+556,485.8,59.7,87.71,True,True,two-pointer circle traversal; FxHashMap; norm grouping & hyperbola chunking speedup=8.141x
+625,767.6,57.2,92.55,True,True,O(N) linear odd-sieve; u32 prefix reuse; symmetric hyperbola chunking & parallel prefix speedup=13.412x
+712,1089.4,321.6,70.48,True,True,Lucy DP linear-stride quotient updates; 32-bit division lowering; piecewise constant block updates speedup=3.388x

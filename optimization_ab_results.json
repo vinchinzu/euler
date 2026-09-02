@@ -3986,5 +3986,117 @@
     "notes": "u64 constant modulo; stack array; drop 400MB heap allocation",
     "method": "ab_bench warmup=2 runs=7",
     "accepted": true
+  },
+  {
+    "problem": 529,
+    "baseline_median_ms": 918.9,
+    "candidate_median_ms": 259.9,
+    "speedup": 3.536,
+    "correct": true,
+    "baseline_times": [
+      1188.9,
+      932.9,
+      915.3,
+      918.9,
+      900.5,
+      918.5,
+      928.0
+    ],
+    "candidate_times": [
+      265.2,
+      257.1,
+      259.9,
+      263.0,
+      265.5,
+      256.5,
+      257.0
+    ],
+    "notes": "u64 mulmod narrowing; rayon parallel 3-prime NTT passes; const generic NTT & vectorized twiddles",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 556,
+    "baseline_median_ms": 485.8,
+    "candidate_median_ms": 59.7,
+    "speedup": 8.141,
+    "correct": true,
+    "baseline_times": [
+      484.3,
+      489.6,
+      483.8,
+      488.4,
+      481.5,
+      491.6,
+      485.8
+    ],
+    "candidate_times": [
+      59.1,
+      57.9,
+      60.3,
+      58.2,
+      59.7,
+      61.7,
+      61.0
+    ],
+    "notes": "two-pointer circle traversal; FxHashMap; norm grouping & hyperbola chunking",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 625,
+    "baseline_median_ms": 767.6,
+    "candidate_median_ms": 57.2,
+    "speedup": 13.412,
+    "correct": true,
+    "baseline_times": [
+      778.1,
+      766.3,
+      767.6,
+      770.7,
+      770.2,
+      764.4,
+      756.9
+    ],
+    "candidate_times": [
+      57.2,
+      48.0,
+      57.2,
+      51.3,
+      57.7,
+      58.4,
+      58.0
+    ],
+    "notes": "O(N) linear odd-sieve; u32 prefix reuse; symmetric hyperbola chunking & parallel prefix",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 712,
+    "baseline_median_ms": 1089.4,
+    "candidate_median_ms": 321.6,
+    "speedup": 3.388,
+    "correct": true,
+    "baseline_times": [
+      1040.5,
+      1063.3,
+      1071.1,
+      1089.4,
+      1265.9,
+      1187.2,
+      1150.2
+    ],
+    "candidate_times": [
+      315.7,
+      329.4,
+      332.5,
+      314.3,
+      311.9,
+      321.6,
+      322.9
+    ],
+    "notes": "Lucy DP linear-stride quotient updates; 32-bit division lowering; piecewise constant block updates",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
   }
 ]

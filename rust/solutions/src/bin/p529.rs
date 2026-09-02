@@ -16,7 +16,7 @@ const NUM_TERMS: usize = 5600;
 
 #[inline(always)]
 fn mulmod(a: u64, b: u64, m: u64) -> u64 {
-    (a as u128 * b as u128 % m as u128) as u64
+    (a * b) % m
 }
 
 fn pw(mut base: u64, mut exp: u64, m: u64) -> u64 {
@@ -32,34 +32,47 @@ fn pw(mut base: u64, mut exp: u64, m: u64) -> u64 {
 
 fn pack(mask: usize, s: usize) -> usize { mask * 11 + s }
 
-fn ntt(a: &mut [u64], inv: bool, m: u64, g: u64) {
+fn ntt<const M: u64, const G: u64>(a: &mut [u64], inv: bool) {
     let n = a.len();
-    let mut j = 0usize;
+    let shift = usize::BITS - n.trailing_zeros();
     for i in 1..n {
-        let mut bit = n >> 1;
-        while j & bit != 0 { j ^= bit; bit >>= 1; }
-        j ^= bit;
+        let j = i.reverse_bits() >> shift;
         if i < j { a.swap(i, j); }
     }
     let mut len = 2;
     while len <= n {
-        let w = if inv { pw(g, m - 1 - (m - 1) / len as u64, m) } else { pw(g, (m - 1) / len as u64, m) };
+        let w = if inv { pw(G, M - 1 - (M - 1) / len as u64, M) } else { pw(G, (M - 1) / len as u64, M) };
         let half = len / 2;
-        for i in (0..n).step_by(len) {
+        if half == 1 {
+            for i in (0..n).step_by(2) {
+                let u = a[i];
+                let v = a[i + 1];
+                a[i] = if u + v >= M { u + v - M } else { u + v };
+                a[i + 1] = if u >= v { u - v } else { u + M - v };
+            }
+        } else {
+            let mut twiddles = [0u64; 8192];
             let mut wn = 1u64;
             for jj in 0..half {
-                let u = a[i + jj];
-                let v = mulmod(a[i + jj + half], wn, m);
-                a[i + jj] = if u + v >= m { u + v - m } else { u + v };
-                a[i + jj + half] = if u >= v { u - v } else { u + m - v };
-                wn = mulmod(wn, w, m);
+                twiddles[jj] = wn;
+                wn = mulmod(wn, w, M);
+            }
+            for i in (0..n).step_by(len) {
+                let u_slice = &mut a[i..i + len];
+                let (left, right) = u_slice.split_at_mut(half);
+                for jj in 0..half {
+                    let u = left[jj];
+                    let v = mulmod(right[jj], twiddles[jj], M);
+                    left[jj] = if u + v >= M { u + v - M } else { u + v };
+                    right[jj] = if u >= v { u - v } else { u + M - v };
+                }
             }
         }
         len <<= 1;
     }
     if inv {
-        let inv_n = pw(n as u64, m - 2, m);
-        for v in a.iter_mut() { *v = mulmod(*v, inv_n, m); }
+        let inv_n = pw(n as u64, M - 2, M);
+        for v in a.iter_mut() { *v = mulmod(*v, inv_n, M); }
     }
 }
 
@@ -69,24 +82,32 @@ fn ntt_size(nc: usize) -> usize {
     n
 }
 
-struct CrtHelper { inv12: u64, inv13: u64 }
+struct CrtHelper {
+    inv12: u64,
+    inv13: u64,
+    p1_mod: u64,
+    p1p2_mod: u64,
+}
 
 impl CrtHelper {
     fn new() -> Self {
         CrtHelper {
             inv12: pw(P1, P2 - 2, P2),
-            inv13: pw((P1 as u128 * P2 as u128 % P3 as u128) as u64, P3 - 2, P3),
+            inv13: pw(mulmod(P1, P2, P3), P3 - 2, P3),
+            p1_mod: P1 % MOD,
+            p1p2_mod: mulmod(P1 % MOD, P2 % MOD, MOD),
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn reconstruct(&self, r1: u64, r2: u64, r3: u64) -> u64 {
         let x1 = r1;
         let x2 = mulmod((r2 + P2 - x1 % P2) % P2, self.inv12, P2);
-        let val = (x1 as u128 + x2 as u128 * (P1 % P3) as u128) % P3 as u128;
-        let x3 = mulmod((r3 + P3 - val as u64 % P3) % P3, self.inv13, P3);
-        let result = x1 as u128 + x2 as u128 * P1 as u128 + x3 as u128 * P1 as u128 * P2 as u128;
-        (result % MOD as u128) as u64
+        let val = (x1 + mulmod(x2, P1 % P3, P3)) % P3;
+        let x3 = mulmod((r3 + P3 - val) % P3, self.inv13, P3);
+        let term2 = mulmod(x2, self.p1_mod, MOD);
+        let term3 = mulmod(x3, self.p1p2_mod, MOD);
+        (x1 + term2 + term3) % MOD
     }
 }
 
@@ -102,9 +123,13 @@ impl NttPre {
             t2[i] = poly[i] % P2;
             t3[i] = poly[i] % P3;
         }
-        ntt(&mut t1, false, P1, 3);
-        ntt(&mut t2, false, P2, 3);
-        ntt(&mut t3, false, P3, 11);
+        rayon::join(
+            || ntt::<P1, 3>(&mut t1, false),
+            || rayon::join(
+                || ntt::<P2, 3>(&mut t2, false),
+                || ntt::<P3, 11>(&mut t3, false),
+            ),
+        );
         NttPre { t1, t2, t3 }
     }
 }
@@ -119,17 +144,31 @@ fn poly_mul_with_pre(a: &[u64], b_pre: &NttPre, ntt_sz: usize, nc: usize, trunc:
         a2[i] = a[i] % P2;
         a3[i] = a[i] % P3;
     }
-    ntt(&mut a1, false, P1, 3);
-    ntt(&mut a2, false, P2, 3);
-    ntt(&mut a3, false, P3, 11);
-    for i in 0..n {
-        a1[i] = mulmod(a1[i], b_pre.t1[i], P1);
-        a2[i] = mulmod(a2[i], b_pre.t2[i], P2);
-        a3[i] = mulmod(a3[i], b_pre.t3[i], P3);
-    }
-    ntt(&mut a1, true, P1, 3);
-    ntt(&mut a2, true, P2, 3);
-    ntt(&mut a3, true, P3, 11);
+    rayon::join(
+        || {
+            ntt::<P1, 3>(&mut a1, false);
+            for i in 0..n {
+                a1[i] = mulmod(a1[i], b_pre.t1[i], P1);
+            }
+            ntt::<P1, 3>(&mut a1, true);
+        },
+        || rayon::join(
+            || {
+                ntt::<P2, 3>(&mut a2, false);
+                for i in 0..n {
+                    a2[i] = mulmod(a2[i], b_pre.t2[i], P2);
+                }
+                ntt::<P2, 3>(&mut a2, true);
+            },
+            || {
+                ntt::<P3, 11>(&mut a3, false);
+                for i in 0..n {
+                    a3[i] = mulmod(a3[i], b_pre.t3[i], P3);
+                }
+                ntt::<P3, 11>(&mut a3, true);
+            },
+        ),
+    );
     let out_len = nc.min(trunc);
     let mut res = vec![0u64; out_len];
     for i in 0..out_len {
@@ -142,20 +181,60 @@ fn poly_mul(a: &[u64], b: &[u64], crt: &CrtHelper) -> Vec<u64> {
     if a.is_empty() || b.is_empty() { return vec![]; }
     let nc = a.len() + b.len() - 1;
     let n = ntt_size(nc);
-    let mut a1 = vec![0u64; n]; let mut b1 = vec![0u64; n];
-    let mut a2 = vec![0u64; n]; let mut b2 = vec![0u64; n];
-    let mut a3 = vec![0u64; n]; let mut b3 = vec![0u64; n];
+    let is_sqr = std::ptr::eq(a, b);
+    let mut a1 = vec![0u64; n];
+    let mut a2 = vec![0u64; n];
+    let mut a3 = vec![0u64; n];
     for i in 0..a.len() { a1[i] = a[i] % P1; a2[i] = a[i] % P2; a3[i] = a[i] % P3; }
-    for i in 0..b.len() { b1[i] = b[i] % P1; b2[i] = b[i] % P2; b3[i] = b[i] % P3; }
-    ntt(&mut a1, false, P1, 3); ntt(&mut b1, false, P1, 3);
-    ntt(&mut a2, false, P2, 3); ntt(&mut b2, false, P2, 3);
-    ntt(&mut a3, false, P3, 11); ntt(&mut b3, false, P3, 11);
-    for i in 0..n {
-        a1[i] = mulmod(a1[i], b1[i], P1);
-        a2[i] = mulmod(a2[i], b2[i], P2);
-        a3[i] = mulmod(a3[i], b3[i], P3);
+
+    if is_sqr {
+        rayon::join(
+            || {
+                ntt::<P1, 3>(&mut a1, false);
+                for i in 0..n { a1[i] = mulmod(a1[i], a1[i], P1); }
+                ntt::<P1, 3>(&mut a1, true);
+            },
+            || rayon::join(
+                || {
+                    ntt::<P2, 3>(&mut a2, false);
+                    for i in 0..n { a2[i] = mulmod(a2[i], a2[i], P2); }
+                    ntt::<P2, 3>(&mut a2, true);
+                },
+                || {
+                    ntt::<P3, 11>(&mut a3, false);
+                    for i in 0..n { a3[i] = mulmod(a3[i], a3[i], P3); }
+                    ntt::<P3, 11>(&mut a3, true);
+                },
+            ),
+        );
+    } else {
+        let mut b1 = vec![0u64; n];
+        let mut b2 = vec![0u64; n];
+        let mut b3 = vec![0u64; n];
+        for i in 0..b.len() { b1[i] = b[i] % P1; b2[i] = b[i] % P2; b3[i] = b[i] % P3; }
+        rayon::join(
+            || {
+                ntt::<P1, 3>(&mut a1, false);
+                ntt::<P1, 3>(&mut b1, false);
+                for i in 0..n { a1[i] = mulmod(a1[i], b1[i], P1); }
+                ntt::<P1, 3>(&mut a1, true);
+            },
+            || rayon::join(
+                || {
+                    ntt::<P2, 3>(&mut a2, false);
+                    ntt::<P2, 3>(&mut b2, false);
+                    for i in 0..n { a2[i] = mulmod(a2[i], b2[i], P2); }
+                    ntt::<P2, 3>(&mut a2, true);
+                },
+                || {
+                    ntt::<P3, 11>(&mut a3, false);
+                    ntt::<P3, 11>(&mut b3, false);
+                    for i in 0..n { a3[i] = mulmod(a3[i], b3[i], P3); }
+                    ntt::<P3, 11>(&mut a3, true);
+                },
+            ),
+        );
     }
-    ntt(&mut a1, true, P1, 3); ntt(&mut a2, true, P2, 3); ntt(&mut a3, true, P3, 11);
     let mut res = vec![0u64; nc];
     for i in 0..nc {
         res[i] = crt.reconstruct(a1[i], a2[i], a3[i]);
@@ -235,10 +314,11 @@ fn berlekamp_massey(s: &[u64]) -> Vec<u64> {
     let mut b = 1u64;
 
     for i in 0..n {
-        let mut d = s[i];
+        let mut d_sum = s[i] as u128;
         for j in 1..=l_val {
-            d = (d + mulmod(c_arr[j], s[i - j], MOD)) % MOD;
+            d_sum += c_arr[j] as u128 * s[i - j] as u128;
         }
+        let d = (d_sum % MOD as u128) as u64;
 
         if d == 0 {
             m += 1;
@@ -345,7 +425,7 @@ fn main() {
     trans_offset[nstates] = trans_list.len();
 
     // Target: states with s == 0
-    let target: Vec<bool> = (0..nstates).map(|i| states_s[i] == 0).collect();
+    let target_indices: Vec<usize> = (0..nstates).filter(|&i| states_s[i] == 0).collect();
 
     // Phase 3: Generate sequence via sparse matrix-vector multiply
     let mut cur = vec![0u64; nstates];
@@ -356,19 +436,20 @@ fn main() {
 
     for t in 0..NUM_TERMS {
         let mut val = 0u64;
-        for i in 0..nstates {
-            if target[i] && cur[i] != 0 {
-                val = (val + cur[i]) % MOD;
-            }
+        for &i in &target_indices {
+            val += cur[i];
         }
+        val %= MOD;
         seq[t] = val;
 
         for v in nxt.iter_mut() { *v = 0; }
         for i in 0..nstates {
-            if cur[i] == 0 { continue; }
+            let c = cur[i];
+            if c == 0 { continue; }
             for tt in trans_offset[i]..trans_offset[i + 1] {
                 let j = trans_list[tt];
-                nxt[j] = (nxt[j] + cur[i]) % MOD;
+                let sum = nxt[j] + c;
+                nxt[j] = if sum >= MOD { sum - MOD } else { sum };
             }
         }
         std::mem::swap(&mut cur, &mut nxt);

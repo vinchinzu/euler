@@ -494,16 +494,20 @@ Wave 16 net (sum of accepted medians): **~7.51s**. After this wave the slowest r
 
 ## Wave 17 — Geometry & Hot-Loop Narrowing (this session)
 
-**A/B accepted (2)** — median ≥5%, answer match:
+**A/B accepted (6)** — median ≥5%, answer match:
 
 | Problem | Baseline ms | Candidate ms | Speedup | Notes |
 |--------:|------------:|-------------:|--------:|-------|
 | p476 | 634.2 | 121.7 | 5.21× | algebraic half-angle formulas replacing transcendent calls; inverse table; closed-form count |
 | p477 | 467.2 | 281.0 | 1.66× | u64 constant modulo; stack array; drop 400MB heap allocation |
+| p529 | 918.9 | 259.9 | 3.54× | u64 mulmod narrowing; rayon parallel 3-prime NTT passes; const generic NTT & vectorized twiddles |
+| p556 | 485.8 | 59.7 | 8.14× | two-pointer circle traversal; FxHashMap; norm grouping & hyperbola chunking |
+| p625 | 767.6 | 57.2 | 13.41× | O(N) linear odd-sieve; u32 prefix reuse; symmetric hyperbola chunking & parallel prefix |
+| p712 | 1089.4 | 321.6 | 3.39× | Lucy DP linear-stride quotient updates; 32-bit division lowering; piecewise constant block updates |
 
 ---
 
-## Accepted (257 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 2 wave 17)
+## Accepted (261 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 6 wave 17)
 
 ### Wave 3 — 2s band (this session)
 

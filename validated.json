@@ -526,7 +526,7 @@
 {"problem": 526, "hash": "6a9da6a49bc2bdd6d2c5fb466b939e92", "status": "OK", "answer": "49601160286750947", "time_ms": 620}
 {"problem": 527, "hash": "ddb26484d8d3ffceaf88dafd078dd120", "status": "OK", "answer": "11.92412011", "time_ms": 1}
 {"problem": 528, "hash": "68167e30c50bf0d2f94830c2f6986f83", "status": "OK", "answer": "779027989", "time_ms": 7}
-{"problem": 529, "hash": "ced351092eb67c6a81aef9081736a861", "status": "OK", "answer": "23624465", "time_ms": 844, "optimized": true}
+{"problem": 529, "hash": "b20fb574994e4f61f9c68cb069678025", "status": "OK", "answer": "23624465", "time_ms": 260, "optimized": true}
 {"problem": 530, "hash": "3b0f7b9683c7b1f32475d3f28ec6d3b2", "status": "OK", "answer": "207366437157977206", "time_ms": 277, "optimized": true}
 {"problem": 531, "hash": "51d5ee76be4587e4d7e963eadb9f4dae", "status": "OK", "answer": "4515432351156203105", "time_ms": 38}
 {"problem": 532, "hash": "2c44c9955981771fa97d9a48415068ab", "status": "OK", "answer": "827306.56", "time_ms": 7}
@@ -553,7 +553,7 @@
 {"problem": 553, "hash": "b8d2388c883c6a2887033f119604b20e", "status": "OK", "answer": "57717170", "time_ms": 640}
 {"problem": 554, "hash": "b4df908f15125129daf9f5b7e4c6dff8", "status": "OK", "answer": "89539872", "time_ms": 680}
 {"problem": 555, "hash": "a34a9c808ce6428ffbc15c36fb0f2074", "status": "OK", "answer": "208517717451208352", "time_ms": 13}
-{"problem": 556, "hash": "9bd4834bd5efcb111356dafe70bfef34", "status": "OK", "answer": "52126939292957", "time_ms": 465}
+{"problem": 556, "hash": "e44f62e863d8974a133c106d112d3547", "status": "OK", "answer": "52126939292957", "time_ms": 60, "optimized": true}
 {"problem": 557, "hash": "0850f6019fdd433e4eaeaae32f250a5a", "status": "OK", "answer": "2699929328", "time_ms": 98}
 {"problem": 558, "hash": "32fb7d8a6000c925f672aa610d58aeaf", "status": "OK", "answer": "226754889", "time_ms": 266}
 {"problem": 559, "hash": "f35eff44129650a8986b16d80faa7e78", "status": "OK", "answer": "684724920", "time_ms": 5518}
@@ -622,7 +622,7 @@
 {"problem": 622, "hash": "8ef10b0683df0873f4edbb0b8a43891f", "status": "OK", "answer": "3010983666182123972", "time_ms": 9}
 {"problem": 623, "hash": "c7fff154610256ea05e8d77ffad813c4", "status": "OK", "answer": "3679796", "time_ms": 2336}
 {"problem": 624, "hash": "894cbe593d0fa0a3352193c7d1a99342", "status": "OK", "answer": "984524441", "time_ms": 1}
-{"problem": 625, "hash": "d99c6deb148995b2881bd7b62606238d", "status": "OK", "answer": "551614306", "time_ms": 700}
+{"problem": 625, "hash": "a24c683bd6a5704df1dabc53ad9b6449", "status": "OK", "answer": "551614306", "time_ms": 57, "optimized": true}
 {"problem": 626, "hash": "a9ccce8387a7a97d21ba29fc55532636", "status": "OK", "answer": "695577663", "time_ms": 1039}
 {"problem": 627, "hash": "a87e72346ea282b8bd5e06f6c1643baf", "status": "OK", "answer": "220196142", "time_ms": 1}
 {"problem": 628, "hash": "65a91e21df76f70321a389e875c750e9", "status": "OK", "answer": "210286684", "time_ms": 287}
@@ -709,7 +709,7 @@
 {"problem": 709, "hash": "8e9861aaf57151d2ab6b1dcd8e34d7a7", "status": "OK", "answer": "773479144", "time_ms": 862}
 {"problem": 710, "hash": "5fbd1688964813cbab471ff2c2b58697", "status": "OK", "answer": "1275000", "time_ms": 66}
 {"problem": 711, "hash": "c523ccbc10d51f298b00b86ac1f2413d", "status": "OK", "answer": "541510990", "time_ms": 84}
-{"problem": 712, "hash": "b3c660ba3acaae56cab90ead2cc95c30", "status": "OK", "answer": "413876461", "time_ms": 1019}
+{"problem": 712, "hash": "09b2182b7e66a097a3611f9bcd291d0b", "status": "OK", "answer": "413876461", "time_ms": 322, "optimized": true}
 {"problem": 713, "hash": "f93772ead3105b2a669b71eafce83c6e", "status": "OK", "answer": "788626351539895", "time_ms": 16}
 {"problem": 714, "hash": "7db8b3222b99cadf321fba100df5bdc3", "status": "OK", "answer": "2.452767775565e20", "time_ms": 591, "optimized": true}
 {"problem": 715, "hash": "2d2c156347d4de9460279f645fee7081", "status": "OK", "answer": "883188017", "time_ms": 3747}
