@@ -229,3 +229,5 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 949,281.8,83.8,70.26,True,True,wave16 900+; O(1) suffix rec; Vec hist; par_sort conv speedup=3.364x
 976,243.5,113.0,53.59,True,True,wave16 900+; u64 mulmod; 32-way binom; unroll speedup=2.155x
 936,211.0,5.8,97.25,True,True,wave16 900+; incremental correction polys; reuse buffers speedup=36.372x
+476,634.2,121.7,80.81,True,True,algebraic half-angle formulas replacing transcendent calls; inverse table; closed-form count speedup=5.211x
+477,467.2,281.0,39.85,True,True,u64 constant modulo; stack array; drop 400MB heap allocation speedup=1.663x

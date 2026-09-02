@@ -1,6 +1,6 @@
 # Optimization Applied Summary
 
-Updated: 2026-08-25 (Wave 16 Euler 900+ quick wins)
+Updated: 2026-09-02 (Problem 476 algebraic optimization)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
@@ -492,7 +492,18 @@ Wave 16 net (sum of accepted medians): **~7.51s**. After this wave the slowest r
 
 ---
 
-## Accepted (255 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16)
+## Wave 17 — Geometry & Hot-Loop Narrowing (this session)
+
+**A/B accepted (2)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p476 | 634.2 | 121.7 | 5.21× | algebraic half-angle formulas replacing transcendent calls; inverse table; closed-form count |
+| p477 | 467.2 | 281.0 | 1.66× | u64 constant modulo; stack array; drop 400MB heap allocation |
+
+---
+
+## Accepted (257 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 2 wave 17)
 
 ### Wave 3 — 2s band (this session)
 

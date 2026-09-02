@@ -3930,5 +3930,61 @@
     "notes": "wave16 900+; incremental correction polys; reuse buffers",
     "method": "ab_bench warmup=1 runs=3 (p{NNN} bin names)",
     "accepted": true
+  },
+  {
+    "problem": 476,
+    "baseline_median_ms": 634.2,
+    "candidate_median_ms": 121.7,
+    "speedup": 5.211,
+    "correct": true,
+    "baseline_times": [
+      631.5,
+      634.2,
+      634.9,
+      631.0,
+      638.9,
+      633.8,
+      636.9
+    ],
+    "candidate_times": [
+      121.0,
+      123.6,
+      121.1,
+      121.7,
+      122.4,
+      121.4,
+      122.1
+    ],
+    "notes": "algebraic half-angle formulas replacing transcendent calls; inverse table; closed-form count",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 477,
+    "baseline_median_ms": 467.2,
+    "candidate_median_ms": 281.0,
+    "speedup": 1.663,
+    "correct": true,
+    "baseline_times": [
+      488.8,
+      442.6,
+      487.7,
+      467.2,
+      443.9,
+      444.7,
+      469.4
+    ],
+    "candidate_times": [
+      277.3,
+      274.7,
+      276.1,
+      281.0,
+      286.5,
+      284.3,
+      286.7
+    ],
+    "notes": "u64 constant modulo; stack array; drop 400MB heap allocation",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
   }
 ]

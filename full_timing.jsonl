@@ -473,8 +473,8 @@
 {"problem": 473, "time_ms": 1.0, "status": "OK", "answer": "35856681704365", "old_ms": 2.0, "xt_ms": 1.0, "stderr": ""}
 {"problem": 474, "time_ms": 4.1, "status": "OK", "answer": "9690646731515010", "old_ms": 7.0, "xt_ms": 3.0, "stderr": ""}
 {"problem": 475, "time_ms": 175.9, "status": "OK", "answer": "75780067", "old_ms": 696.0, "xt_ms": 176.0, "stderr": ""}
-{"problem": 476, "time_ms": 730.8, "status": "OK", "answer": "110242.87794", "old_ms": 4755.0, "xt_ms": 697.0, "stderr": ""}
-{"problem": 477, "time_ms": 450.6, "status": "OK", "answer": "25044905874565165", "old_ms": 1325.0, "xt_ms": 436.0, "stderr": ""}
+{"problem": 476, "time_ms": 121.7, "status": "OK", "answer": "110242.87794", "old_ms": 4755.0, "xt_ms": 697.0, "stderr": ""}
+{"problem": 477, "time_ms": 281.0, "status": "OK", "answer": "25044905874565165", "old_ms": 1325.0, "xt_ms": 436.0, "stderr": ""}
 {"problem": 478, "time_ms": 1763.2, "status": "OK", "answer": "59510340", "old_ms": 3672.0, "xt_ms": 2284.0, "stderr": ""}
 {"problem": 479, "time_ms": 127.2, "status": "OK", "answer": "191541795", "old_ms": 150.0, "xt_ms": 123.0, "stderr": ""}
 {"problem": 480, "time_ms": 15.1, "status": "OK", "answer": "turnthestarson", "old_ms": 55.0, "xt_ms": 15.0, "stderr": ""}

@@ -1,40 +1,41 @@
 // Project Euler 477: Number sequence game
 
-const M: i64 = 1_000_000_007;
+const M: u64 = 1_000_000_007;
 const N: usize = 100_000_000;
 
 fn main() {
-    // Generate sequence on the fly — no intermediate nums buffer
-    let mut reduced: Vec<i64> = Vec::with_capacity(N / 2);
-    let mut sum: i128 = 0;
-    let mut s: i64 = 0;
+    // Fixed-size stack array (max depth observed is < 30)
+    let mut reduced = [0i64; 64];
+    let mut len: usize = 0;
+    let mut sum: u64 = 0;
+    let mut s: u64 = 0;
 
     for _ in 0..N {
-        sum += s as i128;
-        reduced.push(s);
-        // SAFETY: we only index within reduced.len()
-        let mut idx = reduced.len();
-        while idx >= 3 {
+        sum += s;
+        unsafe {
+            *reduced.get_unchecked_mut(len) = s as i64;
+        }
+        len += 1;
+        while len >= 3 {
             // peak reduction: a <= b >= c  =>  a := a+c-b, drop b,c
-            let a = unsafe { *reduced.get_unchecked(idx - 3) };
-            let b = unsafe { *reduced.get_unchecked(idx - 2) };
-            let c = unsafe { *reduced.get_unchecked(idx - 1) };
+            let a = unsafe { *reduced.get_unchecked(len - 3) };
+            let b = unsafe { *reduced.get_unchecked(len - 2) };
+            let c = unsafe { *reduced.get_unchecked(len - 1) };
             if a <= b && b >= c {
                 unsafe {
-                    *reduced.get_unchecked_mut(idx - 3) = a + c - b;
+                    *reduced.get_unchecked_mut(len - 3) = a + c - b;
                 }
-                reduced.truncate(idx - 2);
-                idx = reduced.len();
+                len -= 2;
             } else {
                 break;
             }
         }
-        s = ((s as i128 * s as i128 + 45) % M as i128) as i64;
+        s = (s * s + 45) % M;
     }
 
     let mut reduced_score: i128 = 0;
     let mut start = 0usize;
-    let mut end = reduced.len() as i64 - 1;
+    let mut end = len as i64 - 1;
     while start as i64 <= end {
         let score;
         if reduced[start] > reduced[end as usize] {
@@ -52,6 +53,6 @@ fn main() {
         reduced_score += parity * score as i128;
     }
 
-    let ans = (sum + reduced_score) / 2;
+    let ans = (sum as i128 + reduced_score) / 2;
     println!("{}", ans);
 }

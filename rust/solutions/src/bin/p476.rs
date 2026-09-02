@@ -1,80 +1,73 @@
 use rayon::prelude::*;
 use std::f64::consts::PI;
 
-#[inline(always)]
-fn corner_radius(angle: f64, r: f64) -> f64 {
-    let sh = (angle * 0.5).sin();
-    r * (1.0 - sh) / (1.0 + sh)
-}
-
 fn main() {
     let n: i32 = 1803;
 
-    // Parallelize over 'a' values; each a has enough inner work to amortize overhead
-    let (total_area, count) = (1..=n)
+    // Precompute inverses for c in 1..=n (only ~14 KB, fits in L1 cache)
+    let mut inv_c = vec![0.0f64; (n + 1) as usize];
+    for i in 1..=n as usize {
+        inv_c[i] = 1.0 / i as f64;
+    }
+
+    // Parallelize over 'a' values (1..=n/2)
+    let total_area: f64 = (1..=n / 2)
         .into_par_iter()
         .map(|a| {
             let mut local_area = 0.0f64;
-            let mut local_count = 0u64;
             let af = a as f64;
-            let ab = af * af;
+            // SAFETY: a <= n/2 < n + 1
+            let inv_af = unsafe { *inv_c.get_unchecked(a as usize) };
 
-            let b_max = n.min(n - a); // a + b <= n => b <= n - a
+            let b_max = n - a;
             for b in a..=b_max {
                 let bf = b as f64;
-                let bb = bf * bf;
-                let c_max = n.min(a + b - 1);
+                // SAFETY: b <= n - a < n + 1
+                let inv_bf = unsafe { *inv_c.get_unchecked(b as usize) };
+
+                let ab = af + bf;
+                let amb = af - bf;
+                let bma = bf - af;
+
+                let c_max = a + b - 1;
                 for c in b..=c_max {
                     let cf = c as f64;
-                    let cb = cf * cf;
+                    // SAFETY: c <= a + b - 1 <= n < n + 1
+                    let inv_cf = unsafe { *inv_c.get_unchecked(c as usize) };
 
-                    // Heron's formula
-                    let s = (af + bf + cf) * 0.5;
-                    let area2 = s * (s - af) * (s - bf) * (s - cf);
-                    if area2 < 1e-24 { continue; }
-                    let area = area2.sqrt();
-                    let r = area / s;
+                    let s = (ab + cf) * 0.5;
+                    let sa = (bma + cf) * 0.5;
+                    let sb = (amb + cf) * 0.5;
+                    let sc = (ab - cf) * 0.5;
 
-                    let cos_a = ((bb + cb - ab) / (2.0 * bf * cf)).clamp(-1.0, 1.0);
-                    let cos_b = ((ab + cb - bb) / (2.0 * af * cf)).clamp(-1.0, 1.0);
-                    let cos_c = ((ab + bb - cb) / (2.0 * af * bf)).clamp(-1.0, 1.0);
-                    let angle_a = cos_a.acos();
-                    let angle_b = cos_b.acos();
-                    let angle_c = cos_c.acos();
+                    let r2 = (sa * sb * sc) / s;
 
-                    let r_a = corner_radius(angle_a, r);
-                    let r_b = corner_radius(angle_b, r);
-                    let r_c = corner_radius(angle_c, r);
+                    // Algebraic half-angle formulas:
+                    // sin(A/2) = sqrt((s - b)(s - c) / (bc))
+                    // sin(B/2) = sqrt((s - a)(s - c) / (ac))
+                    let inv_bcf = inv_bf * inv_cf;
+                    let inv_acf = inv_af * inv_cf;
 
-                    // Find largest corner circle
-                    let (first_r, first_angle, second_r) = if r_a >= r_b && r_a >= r_c {
-                        (r_a, angle_a, if r_b >= r_c { r_b } else { r_c })
-                    } else if r_b >= r_c {
-                        (r_b, angle_b, if r_a >= r_c { r_a } else { r_c })
-                    } else {
-                        (r_c, angle_c, if r_a >= r_b { r_a } else { r_b })
-                    };
+                    let sha = (sb * sc * inv_bcf).sqrt();
+                    let shb = (sa * sc * inv_acf).sqrt();
 
-                    let mut best_third = second_r;
+                    let ratio_a = (1.0 - sha) / (1.0 + sha);
+                    let ratio_b = (1.0 - shb) / (1.0 + shb);
 
-                    // Corner-of-corner
-                    let coc = corner_radius(first_angle, first_r);
-                    if coc > best_third { best_third = coc; }
+                    let coc_ratio = ratio_a * ratio_a;
+                    let ratio_3 = ratio_b.max(coc_ratio);
 
-                    // Soddy circle
-                    let k1 = 1.0 / r;
-                    let k2 = 1.0 / first_r;
-                    let k3 = k1 + k2 + 2.0 * (k1 * k2).sqrt();
-                    let soddy = 1.0 / k3;
-                    if soddy > best_third { best_third = soddy; }
-
-                    local_area += r * r + first_r * first_r + best_third * best_third;
-                    local_count += 1;
+                    local_area += r2 * (1.0 + ratio_a * ratio_a + ratio_3 * ratio_3);
                 }
             }
-            (local_area, local_count)
+            local_area
         })
-        .reduce(|| (0.0f64, 0u64), |(a1, c1), (a2, c2)| (a1 + a2, c1 + c2));
+        .sum();
+
+    let count: u64 = (1..=n / 2)
+        .map(|a| a as u64 * (n - 2 * a + 1) as u64)
+        .sum();
 
     println!("{:.5}", PI * total_area / count as f64);
 }
+
