@@ -20,18 +20,6 @@ fn sum_2_to_n(n: i64) -> i64 {
     (s % M as i128) as i64
 }
 
-fn cnt_lookup(x: i64, l: i64, small_cnt: &[i64], big_cnt: &[i64]) -> i64 {
-    if x == 0 { return 0; }
-    let q = N / x;
-    if q < N / l { small_cnt[q as usize] } else { big_cnt[(N / q) as usize] }
-}
-
-fn sum_lookup(x: i64, l: i64, small_sum: &[i64], big_sum: &[i64]) -> i64 {
-    if x == 0 { return 0; }
-    let q = N / x;
-    if q < N / l { small_sum[q as usize] } else { big_sum[(N / q) as usize] }
-}
-
 fn main() {
     let l = isqrt(N);
 
@@ -59,28 +47,75 @@ fn main() {
 
     for &p in &primes {
         let p2 = p * p;
+        let p_cnt = small_cnt[(p - 1) as usize];
+        let p_sum = small_sum[(p - 1) as usize];
+        let p_mod = p % M;
 
-        let removed = cnt_lookup(p, l, &small_cnt, &big_cnt) - small_cnt[(p - 1) as usize];
-        ans = (ans + (p % M) * (removed % M)) % M;
+        let removed = big_cnt[p as usize] - p_cnt;
+        ans = (ans + p_mod * (removed % M)) % M;
 
         // Update big arrays
-        let mut i = 1i64;
-        while i <= l && N / i >= p2 {
-            let cnt_remove = cnt_lookup(i * p, l, &small_cnt, &big_cnt) - small_cnt[(p - 1) as usize];
+        let max_i = (N / p2).min(l);
+        let i_split = (l / p).min(max_i);
+
+        let mut idx = p as usize;
+        let p_stride = p as usize;
+        for i in 1..=i_split {
+            let cnt_remove = big_cnt[idx] - p_cnt;
             big_cnt[i as usize] -= cnt_remove;
-            let sum_remove = (sum_lookup(i * p, l, &small_sum, &big_sum) - small_sum[(p - 1) as usize] + M) % M;
-            big_sum[i as usize] = (big_sum[i as usize] - (p % M) * sum_remove % M + M) % M;
-            i += 1;
+            let mut sum_remove = big_sum[idx] - p_sum;
+            if sum_remove < 0 {
+                sum_remove += M;
+            }
+            let term = (p_mod * sum_remove) % M;
+            let mut s = big_sum[i as usize] - term;
+            if s < 0 {
+                s += M;
+            }
+            big_sum[i as usize] = s;
+            idx += p_stride;
+        }
+
+        let n_div_p = N / p;
+        for i in (i_split + 1)..=max_i {
+            let q = (n_div_p / i) as usize;
+            let cnt_remove = small_cnt[q] - p_cnt;
+            big_cnt[i as usize] -= cnt_remove;
+            let mut sum_remove = small_sum[q] - p_sum;
+            if sum_remove < 0 {
+                sum_remove += M;
+            }
+            let term = (p_mod * sum_remove) % M;
+            let mut s = big_sum[i as usize] - term;
+            if s < 0 {
+                s += M;
+            }
+            big_sum[i as usize] = s;
         }
 
         // Update small arrays
         let mut i = N / l - 1;
         while i >= p2 {
-            let cnt_remove = small_cnt[(i / p) as usize] - small_cnt[(p - 1) as usize];
-            small_cnt[i as usize] -= cnt_remove;
-            let sum_remove = (small_sum[(i / p) as usize] - small_sum[(p - 1) as usize] + M) % M;
-            small_sum[i as usize] = (small_sum[i as usize] - (p % M) * sum_remove % M + M) % M;
-            i -= 1;
+            let q = (i / p) as usize;
+            let cnt_remove = small_cnt[q] - p_cnt;
+            let mut sum_remove = small_sum[q] - p_sum;
+            if sum_remove < 0 {
+                sum_remove += M;
+            }
+            let term = (p_mod * sum_remove) % M;
+            let start = (q as i64 * p).max(p2) as usize;
+            let end = i as usize;
+            let c_slice = &mut small_cnt[start..=end];
+            let s_slice = &mut small_sum[start..=end];
+            for (c, s) in c_slice.iter_mut().zip(s_slice.iter_mut()) {
+                *c -= cnt_remove;
+                let mut val = *s - term;
+                if val < 0 {
+                    val += M;
+                }
+                *s = val;
+            }
+            i = start as i64 - 1;
         }
     }
 

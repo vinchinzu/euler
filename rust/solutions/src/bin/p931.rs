@@ -13,95 +13,224 @@
 // D = sum_{p prime, p<=sqrt(N)} p * f(floor(N/p^2))
 // C_ge2 = sum_{a>=2} sum_{p: p^a<=N} [f(floor(N/p^a)) - p*f(floor(N/p^{a+1}))]
 //
-// S_main is computed via Lucy DP (prime sum/count at quotient values).
+// Optimized Lucy DP:
+// - Two dense u32 arrays (small and large) fitting in L3 cache (16MB total vs 64MB)
+// - Eliminates quotient vector, idx_small, idx_large, and hash maps
+// - Loop-invariant prime term hoisting
+// - Branch-free loop split with stride addition in large-large updates
+// - 32-bit division and piecewise constant block updates for small quotient range
 
 const MOD: u64 = 715827883;
 const LIMIT: u64 = 1_000_000_000_000;
+const K: usize = 1_000_000;
 
 fn main() {
-    let sqrt_n = (LIMIT as f64).sqrt() as u64 + 1;
-
-    // Collect all quotient values floor(N/k)
-    let mut quotients: Vec<u64> = Vec::new();
-    {
-        let mut k = 1u64;
-        while k <= LIMIT {
-            let q = LIMIT / k;
-            quotients.push(q);
-            k = LIMIT / q + 1;
-        }
-    }
-    quotients.sort_unstable();
-    quotients.dedup();
-
-    let num_q = quotients.len();
-    let sq = sqrt_n as usize + 2;
-    let mut idx_small = vec![0usize; sq];
-    let mut idx_large = vec![0usize; sq];
-
-    for (i, &q) in quotients.iter().enumerate() {
-        if q < sq as u64 {
-            idx_small[q as usize] = i;
-        } else {
-            idx_large[(LIMIT / q) as usize] = i;
-        }
-    }
-
-    let get_idx = |q: u64| -> usize {
-        if q < sq as u64 {
-            idx_small[q as usize]
-        } else {
-            idx_large[(LIMIT / q) as usize]
-        }
-    };
-
-    // Lucy DP: compute prime sum and prime count at all quotient values
     let inv2 = (MOD + 1) / 2;
 
-    let mut s0: Vec<u64> = vec![0; num_q]; // prime count
-    let mut s1: Vec<u64> = vec![0; num_q]; // prime sum
-
-    for (i, &q) in quotients.iter().enumerate() {
-        let qm = q % MOD;
-        s1[i] = (qm * ((qm + 1) % MOD) % MOD * inv2 % MOD + MOD - 1) % MOD;
-        s0[i] = (qm + MOD - 1) % MOD;
-    }
-
-    // Sieve primes up to sqrt(N)
-    let sieve_limit = sqrt_n as usize + 1;
-    let mut is_prime = vec![true; sieve_limit + 1];
+    // Sieve primes up to K
+    let mut is_prime = vec![true; K + 1];
     is_prime[0] = false;
-    if sieve_limit >= 1 { is_prime[1] = false; }
-    {
-        let mut i = 2;
-        while i * i <= sieve_limit {
-            if is_prime[i] {
-                let mut j = i * i;
-                while j <= sieve_limit {
-                    is_prime[j] = false;
-                    j += i;
-                }
+    is_prime[1] = false;
+    let mut i = 2;
+    while i * i <= K {
+        if is_prime[i] {
+            let mut j = i * i;
+            while j <= K {
+                is_prime[j] = false;
+                j += i;
             }
-            i += 1;
         }
+        i += 1;
     }
-    let primes: Vec<u64> = (2..=sieve_limit).filter(|&i| is_prime[i]).map(|i| i as u64).collect();
+    let primes: Vec<u32> = (2..=K).filter(|&x| is_prime[x]).map(|x| x as u32).collect();
 
-    // Lucy DP sieve step
-    for &p in &primes {
+    // Allocate s0 and s1 for small and large (4 x 4MB = 16MB)
+    let mut s0_small = vec![0u32; K + 1];
+    let mut s1_small = vec![0u32; K + 1];
+    let mut s0_large = vec![0u32; K + 1];
+    let mut s1_large = vec![0u32; K + 1];
+
+    for v in 1..=K {
+        let qm = v as u64 % MOD;
+        s1_small[v] = ((qm * (qm + 1) % MOD * inv2 % MOD + MOD - 1) % MOD) as u32;
+        s0_small[v] = ((qm + MOD - 1) % MOD) as u32;
+    }
+
+    for k in 1..=K {
+        let q = LIMIT / k as u64;
+        let qm = q % MOD;
+        s1_large[k] = ((qm * ((qm + 1) % MOD) % MOD * inv2 % MOD + MOD - 1) % MOD) as u32;
+        s0_large[k] = ((qm + MOD - 1) % MOD) as u32;
+    }
+
+    // Lucy DP
+    for &p_u32 in &primes {
+        let p = p_u32 as u64;
         let p2 = p * p;
+        if p2 > LIMIT {
+            break;
+        }
         let pm = p % MOD;
-        for j in (0..num_q).rev() {
-            let q = quotients[j];
-            if q < p2 { break; }
-            let idx_qp = get_idx(q / p);
-            let idx_pm1 = if p > 1 { get_idx(p - 1) } else { 0 };
+        let p_u = p_u32 as usize;
 
-            let sub1 = (s1[idx_qp] + MOD - s1[idx_pm1]) % MOD;
-            s1[j] = (s1[j] + MOD - pm * sub1 % MOD) % MOD;
+        let s1_pm1 = s1_small[p_u - 1] as u64;
+        let s0_pm1 = s0_small[p_u - 1] as u64;
 
-            let sub0 = (s0[idx_qp] + MOD - s0[idx_pm1]) % MOD;
-            s0[j] = (s0[j] + MOD - sub0) % MOD;
+        let max_k = K.min((LIMIT / p2) as usize);
+        let lim_div_p = LIMIT / p;
+        let split_k = (K / p_u).min(max_k);
+
+        // Branch-free loop 1: kp <= K (access s_large)
+        let mut kp = p_u;
+        for k in 1..=split_k {
+            // SAFETY: kp <= K
+            let idx_s1 = unsafe { *s1_large.get_unchecked(kp) } as u64;
+            let idx_s0 = unsafe { *s0_large.get_unchecked(kp) } as u64;
+
+            let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+            let prod = pm * sub1 % MOD;
+            let cur_s1 = unsafe { *s1_large.get_unchecked(k) } as u64;
+            let new_s1 = if cur_s1 >= prod { cur_s1 - prod } else { cur_s1 + MOD - prod };
+            unsafe { *s1_large.get_unchecked_mut(k) = new_s1 as u32; }
+
+            let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+            let cur_s0 = unsafe { *s0_large.get_unchecked(k) } as u64;
+            let new_s0 = if cur_s0 >= sub0 { cur_s0 - sub0 } else { cur_s0 + MOD - sub0 };
+            unsafe { *s0_large.get_unchecked_mut(k) = new_s0 as u32; }
+            kp += p_u;
+        }
+
+        // Branch-free loop 2: kp > K (access s_small)
+        let s1_l_ptr = s1_large.as_mut_ptr();
+        let s0_l_ptr = s0_large.as_mut_ptr();
+        let s1_s_ptr = s1_small.as_ptr();
+        let s0_s_ptr = s0_small.as_ptr();
+
+        if lim_div_p <= u32::MAX as u64 {
+            let m_u32 = lim_div_p as u32;
+            let isqrt_m = (m_u32 as f64).sqrt() as usize;
+            let mid_k = isqrt_m.min(max_k);
+
+            let mut k = split_k + 1;
+            while k <= mid_k {
+                let v = (m_u32 / k as u32) as usize;
+                // SAFETY: v <= K
+                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+
+                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                let prod = pm * sub1 % MOD;
+                let cur_s1 = unsafe { *s1_l_ptr.add(k) } as u64;
+                let new_s1 = if cur_s1 >= prod { cur_s1 - prod } else { cur_s1 + MOD - prod };
+                unsafe { *s1_l_ptr.add(k) = new_s1 as u32; }
+
+                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+                let cur_s0 = unsafe { *s0_l_ptr.add(k) } as u64;
+                let new_s0 = if cur_s0 >= sub0 { cur_s0 - sub0 } else { cur_s0 + MOD - sub0 };
+                unsafe { *s0_l_ptr.add(k) = new_s0 as u32; }
+                k += 1;
+            }
+
+            while k <= max_k {
+                let v = (m_u32 / k as u32) as usize;
+                let k_last = (m_u32 / v as u32) as usize;
+                let k_end = k_last.min(max_k);
+
+                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+
+                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                let prod = pm * sub1 % MOD;
+                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+
+                let prod_u32 = prod as u32;
+                let sub0_u32 = sub0 as u32;
+                let mod_u32 = MOD as u32;
+
+                for ki in k..=k_end {
+                    let cur_s1 = unsafe { *s1_l_ptr.add(ki) };
+                    let new_s1 = if cur_s1 >= prod_u32 { cur_s1 - prod_u32 } else { cur_s1 + mod_u32 - prod_u32 };
+                    unsafe { *s1_l_ptr.add(ki) = new_s1; }
+
+                    let cur_s0 = unsafe { *s0_l_ptr.add(ki) };
+                    let new_s0 = if cur_s0 >= sub0_u32 { cur_s0 - sub0_u32 } else { cur_s0 + mod_u32 - sub0_u32 };
+                    unsafe { *s0_l_ptr.add(ki) = new_s0; }
+                }
+
+                k = k_end + 1;
+            }
+        } else {
+            let isqrt_m = (lim_div_p as f64).sqrt() as usize;
+            let mid_k = isqrt_m.min(max_k);
+
+            let mut k = split_k + 1;
+            while k <= mid_k {
+                let v = (lim_div_p / k as u64) as usize;
+                // SAFETY: v <= K
+                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+
+                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                let prod = pm * sub1 % MOD;
+                let cur_s1 = unsafe { *s1_l_ptr.add(k) } as u64;
+                let new_s1 = if cur_s1 >= prod { cur_s1 - prod } else { cur_s1 + MOD - prod };
+                unsafe { *s1_l_ptr.add(k) = new_s1 as u32; }
+
+                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+                let cur_s0 = unsafe { *s0_l_ptr.add(k) } as u64;
+                let new_s0 = if cur_s0 >= sub0 { cur_s0 - sub0 } else { cur_s0 + MOD - sub0 };
+                unsafe { *s0_l_ptr.add(k) = new_s0 as u32; }
+                k += 1;
+            }
+
+            while k <= max_k {
+                let v = (lim_div_p / k as u64) as usize;
+                let k_last = (lim_div_p / v as u64) as usize;
+                let k_end = k_last.min(max_k);
+
+                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+
+                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                let prod = pm * sub1 % MOD;
+                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+
+                let prod_u32 = prod as u32;
+                let sub0_u32 = sub0 as u32;
+                let mod_u32 = MOD as u32;
+
+                for ki in k..=k_end {
+                    let cur_s1 = unsafe { *s1_l_ptr.add(ki) };
+                    let new_s1 = if cur_s1 >= prod_u32 { cur_s1 - prod_u32 } else { cur_s1 + mod_u32 - prod_u32 };
+                    unsafe { *s1_l_ptr.add(ki) = new_s1; }
+
+                    let cur_s0 = unsafe { *s0_l_ptr.add(ki) };
+                    let new_s0 = if cur_s0 >= sub0_u32 { cur_s0 - sub0_u32 } else { cur_s0 + mod_u32 - sub0_u32 };
+                    unsafe { *s0_l_ptr.add(ki) = new_s0; }
+                }
+
+                k = k_end + 1;
+            }
+        }
+
+        if p2 <= K as u64 {
+            let p2_u = p2 as usize;
+            for v in (p2_u..=K).rev() {
+                let qp = v / p_u;
+                let idx_s1 = unsafe { *s1_small.get_unchecked(qp) } as u64;
+                let idx_s0 = unsafe { *s0_small.get_unchecked(qp) } as u64;
+
+                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                let prod = pm * sub1 % MOD;
+                let cur_s1 = unsafe { *s1_small.get_unchecked(v) } as u64;
+                let new_s1 = if cur_s1 >= prod { cur_s1 - prod } else { cur_s1 + MOD - prod };
+                unsafe { *s1_small.get_unchecked_mut(v) = new_s1 as u32; }
+
+                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
+                let cur_s0 = unsafe { *s0_small.get_unchecked(v) } as u64;
+                let new_s0 = if cur_s0 >= sub0 { cur_s0 - sub0 } else { cur_s0 + MOD - sub0 };
+                unsafe { *s0_small.get_unchecked_mut(v) = new_s0 as u32; }
+            }
         }
     }
 
@@ -111,41 +240,50 @@ fn main() {
         xm * ((xm + 1) % MOD) % MOD * inv2 % MOD
     };
 
-    // S_main = sum_{p prime, p<=N} (p-2) * f(floor(N/p))
-    // Group by v = floor(N/p)
     let mut s_main: u64 = 0;
-    {
-        let mut k = 1u64;
-        while k <= LIMIT {
-            let v = LIMIT / k;
-            let k_end = LIMIT / v;
+    let mut k = 1u64;
+    while k <= LIMIT {
+        let v = LIMIT / k;
+        let k_end = LIMIT / v;
 
-            let hi = k_end;
-            let lo = if v + 1 <= LIMIT { LIMIT / (v + 1) } else { 0 };
+        let hi = k_end;
+        let lo = if v + 1 <= LIMIT { LIMIT / (v + 1) } else { 0 };
 
-            let (sp_hi, cp_hi) = (s1[get_idx(hi)], s0[get_idx(hi)]);
-            let (sp_lo, cp_lo) = if lo == 0 { (0, 0) } else { (s1[get_idx(lo)], s0[get_idx(lo)]) };
+        let (sp_hi, cp_hi) = if hi <= K as u64 {
+            (s1_small[hi as usize] as u64, s0_small[hi as usize] as u64)
+        } else {
+            let idx = (LIMIT / hi) as usize;
+            (s1_large[idx] as u64, s0_large[idx] as u64)
+        };
 
-            let sp_range = (sp_hi + MOD - sp_lo) % MOD;
-            let cp_range = (cp_hi + MOD - cp_lo) % MOD;
-            let sum_p_minus_2 = (sp_range + 2 * MOD - 2 * cp_range % MOD) % MOD;
+        let (sp_lo, cp_lo) = if lo == 0 {
+            (0, 0)
+        } else if lo <= K as u64 {
+            (s1_small[lo as usize] as u64, s0_small[lo as usize] as u64)
+        } else {
+            let idx = (LIMIT / lo) as usize;
+            (s1_large[idx] as u64, s0_large[idx] as u64)
+        };
 
-            s_main = (s_main + f(v) * sum_p_minus_2 % MOD) % MOD;
+        let sp_range = (sp_hi + MOD - sp_lo) % MOD;
+        let cp_range = (cp_hi + MOD - cp_lo) % MOD;
+        let sum_p_minus_2 = (sp_range + 2 * MOD - 2 * cp_range % MOD) % MOD;
 
-            k = k_end + 1;
-        }
+        s_main = (s_main + f(v) * sum_p_minus_2 % MOD) % MOD;
+
+        k = k_end + 1;
     }
 
-    // D = sum_{p prime, p<=sqrt(N)} p * f(floor(N/p^2))
     let mut d_sum: u64 = 0;
-    for &p in &primes {
+    for &p_u32 in &primes {
+        let p = p_u32 as u64;
         if p * p > LIMIT { break; }
         d_sum = (d_sum + (p % MOD) * f(LIMIT / (p * p)) % MOD) % MOD;
     }
 
-    // C_ge2 = sum_{a>=2} sum_{p: p^a<=N} [f(floor(N/p^a)) - p * f(floor(N/p^{a+1}))]
     let mut c_ge2: u64 = 0;
-    for &p in &primes {
+    for &p_u32 in &primes {
+        let p = p_u32 as u64;
         let mut pa = p * p;
         if pa > LIMIT { break; }
         loop {

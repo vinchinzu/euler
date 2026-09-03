@@ -12,43 +12,72 @@ fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
     result
 }
 
-fn add_shifted(dp: &[i64], new_dp: &mut [i64], shift: usize) {
-    let ku = dp.len();
-    if shift == 0 {
-        for j in 0..ku {
-            new_dp[j] += dp[j];
-        }
-        return;
-    }
-    let n1 = ku - shift;
-    for j in 0..n1 {
-        new_dp[j + shift] += dp[j];
-    }
-    for j in n1..ku {
-        new_dp[j + shift - ku] += dp[j];
-    }
-}
-
 fn num_palindromes(num_digits: usize, k: i64) -> i64 {
     let ku = k as usize;
-    let mut dp = vec![0i64; ku];
-    let mut new_dp = vec![0i64; ku];
-    dp[0] = 1;
     let half = (num_digits + 1) / 2;
+    if half == 0 {
+        return 0;
+    }
+    let mut dp = vec![0i64; ku];
     let inv10 = pow_mod(10, k - 2, k); // k is prime
     let mut lo = 1i64; // 10^i
     let mut hi = pow_mod(10, (num_digits - 1) as i64, k); // 10^{n-1-i}
-    for i in 0..half {
+
+    // Step i = 0: state is completely sparse (only dp[0] = 1).
+    let mult = if 1 == num_digits {
+        lo
+    } else {
+        (lo + hi) % k
+    };
+    for d in 0..10i64 {
+        let shift = (mult * d % k) as usize;
+        dp[shift] += 1;
+    }
+    lo = lo * 10 % k;
+    hi = hi * inv10 % k;
+
+    let mut new_dp = vec![0i64; ku];
+    const CHUNK: usize = 8192;
+
+    for i in 1..half {
         let mult = if 2 * i + 1 == num_digits {
             lo
         } else {
             (lo + hi) % k
         };
-        new_dp.fill(0);
-        for d in 0..10i64 {
-            let shift = (mult * d % k) as usize;
-            add_shifted(&dp, &mut new_dp, shift);
+        let shifts: [usize; 9] = std::array::from_fn(|idx| {
+            let d = (idx + 1) as i64;
+            (mult * d % k) as usize
+        });
+
+        for chunk_start in (0..ku).step_by(CHUNK) {
+            let chunk_end = (chunk_start + CHUNK).min(ku);
+            let len = chunk_end - chunk_start;
+            let dst = &mut new_dp[chunk_start..chunk_end];
+            dst.copy_from_slice(&dp[chunk_start..chunk_end]);
+
+            for &shift in &shifts {
+                let offset = if chunk_start >= shift {
+                    chunk_start - shift
+                } else {
+                    chunk_start + ku - shift
+                };
+                if offset + len <= ku {
+                    for (d_val, &s_val) in dst.iter_mut().zip(&dp[offset..offset + len]) {
+                        *d_val += s_val;
+                    }
+                } else {
+                    let part1 = ku - offset;
+                    for (d_val, &s_val) in dst[..part1].iter_mut().zip(&dp[offset..ku]) {
+                        *d_val += s_val;
+                    }
+                    for (d_val, &s_val) in dst[part1..].iter_mut().zip(&dp[..len - part1]) {
+                        *d_val += s_val;
+                    }
+                }
+            }
         }
+
         std::mem::swap(&mut dp, &mut new_dp);
         lo = lo * 10 % k;
         hi = hi * inv10 % k;
@@ -59,6 +88,10 @@ fn num_palindromes(num_digits: usize, k: i64) -> i64 {
 fn main() {
     let k: i64 = 10_000_019;
     let nn = 32;
-    let ans = num_palindromes(nn - 1, k) + num_palindromes(nn, k);
+    let (ans1, ans2) = rayon::join(
+        || num_palindromes(nn - 1, k),
+        || num_palindromes(nn, k),
+    );
+    let ans = ans1 + ans2;
     println!("{}", ans);
 }

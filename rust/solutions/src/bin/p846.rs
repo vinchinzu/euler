@@ -45,7 +45,98 @@ fn dfs_cycle(
     pot
 }
 
+fn biconnected_components(
+    active: &[bool],
+    adj_offset: &[u32],
+    adj_data: &[u32],
+) -> Vec<Vec<usize>> {
+    struct Search<'a> {
+        active: &'a [bool],
+        adj_offset: &'a [u32],
+        adj_data: &'a [u32],
+        next_depth: u32,
+        depth: Vec<u32>,
+        low: Vec<u32>,
+        edge_stack: Vec<(usize, usize)>,
+        blocks: Vec<Vec<usize>>,
+    }
 
+    fn visit(u: usize, parent: usize, search: &mut Search<'_>) {
+        let u_depth = search.next_depth;
+        search.next_depth += 1;
+        search.depth[u] = u_depth;
+        search.low[u] = u_depth;
+
+        for edge_idx in search.adj_offset[u] as usize..search.adj_offset[u + 1] as usize {
+            let v = search.adj_data[edge_idx] as usize;
+            if !search.active[v] {
+                continue;
+            }
+
+            if search.depth[v] == 0 {
+                search.edge_stack.push((u, v));
+                visit(v, u, search);
+                search.low[u] = search.low[u].min(search.low[v]);
+
+                if search.low[v] >= search.depth[u] {
+                    let mut block = Vec::new();
+                    loop {
+                        let edge = search.edge_stack.pop().unwrap();
+                        block.push(edge.0);
+                        block.push(edge.1);
+                        if edge == (u, v) {
+                            break;
+                        }
+                    }
+                    block.sort_unstable();
+                    block.dedup();
+                    search.blocks.push(block);
+                }
+            } else if v != parent && search.depth[v] < search.depth[u] {
+                search.low[u] = search.low[u].min(search.depth[v]);
+                search.edge_stack.push((u, v));
+            }
+        }
+    }
+
+    let mut search = Search {
+        active,
+        adj_offset,
+        adj_data,
+        next_depth: 1,
+        depth: vec![0; active.len()],
+        low: vec![0; active.len()],
+        edge_stack: Vec::new(),
+        blocks: Vec::new(),
+    };
+
+    for root in 0..active.len() {
+        if active[root] && search.depth[root] == 0 {
+            visit(root, usize::MAX, &mut search);
+            debug_assert!(search.edge_stack.is_empty());
+        }
+    }
+
+    search.blocks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::biconnected_components;
+
+    #[test]
+    fn splits_cycles_at_articulation_vertices() {
+        // Two triangles joined at vertex 2, with a bridge from vertex 4 to 5.
+        let active = vec![true; 6];
+        let offsets = [0, 2, 4, 8, 10, 13, 14];
+        let edges = [1, 2, 0, 2, 0, 1, 3, 4, 2, 4, 2, 3, 5, 4];
+
+        let mut blocks = biconnected_components(&active, &offsets, &edges);
+        blocks.sort();
+
+        assert_eq!(blocks, vec![vec![0, 1, 2], vec![2, 3, 4], vec![4, 5]]);
+    }
+}
 
 fn main() {
     let n_val = 1_000_000usize;
@@ -110,7 +201,7 @@ fn main() {
     for ai in 0..nallowed {
         let u = allowed_set[ai];
         let mut roots = [0i32; 4];
-        let mut nroots = 0usize;
+        let nroots: usize;
 
         if u == 1 { roots[0] = 0; nroots = 1; }
         else if u == 2 { roots[0] = 1; nroots = 1; }
@@ -133,8 +224,13 @@ fn main() {
             }
             if u % 2 == 0 {
                 let r0 = if cur_r % 2 == 0 { cur_r + temp as i64 } else { cur_r };
-                roots[0] = r0 as i32; nroots = 1;
-                if r0 as i32 * 2 != u { roots[1] = u - r0 as i32; nroots = 2; }
+                roots[0] = r0 as i32;
+                if r0 as i32 * 2 != u {
+                    roots[1] = u - r0 as i32;
+                    nroots = 2;
+                } else {
+                    nroots = 1;
+                }
             } else {
                 roots[0] = cur_r as i32; roots[1] = u - cur_r as i32; nroots = 2;
             }
@@ -209,31 +305,18 @@ fn main() {
         }
     }
 
-    // Connected components
-    let mut comp_id = vec![-1i32; nallowed];
-    let mut ncomps = 0i32;
-    for i in 0..nallowed {
-        if !active[i] || comp_id[i] >= 0 { continue; }
-        let mut q: VecDeque<usize> = VecDeque::new();
-        q.push_back(i); comp_id[i] = ncomps;
-        while let Some(u) = q.pop_front() {
-            for idx in adj_offset[u] as usize..adj_offset[u + 1] as usize {
-                let v = adj_data[idx] as usize;
-                if active[v] && comp_id[v] < 0 { comp_id[v] = ncomps; q.push_back(v); }
-            }
-        }
-        ncomps += 1;
-    }
+    // Every simple cycle is contained in exactly one biconnected component.
+    // Splitting at articulation vertices avoids exploring paths that can never
+    // return to their start without revisiting that articulation vertex.
+    let blocks = biconnected_components(&active, &adj_offset, &adj_data);
 
     let mut total_potency: i64 = 0;
 
-    for ci in 0..ncomps {
-        let mut nodes: Vec<usize> = Vec::new();
-        for i in 0..nallowed { if comp_id[i] == ci { nodes.push(i); } }
+    for nodes in blocks {
         if nodes.len() < 3 { continue; }
         let nn = nodes.len();
 
-        let mut local_map = vec![0u32; nallowed];
+        let mut local_map = vec![u32::MAX; nallowed];
         for (li, &ni) in nodes.iter().enumerate() { local_map[ni] = li as u32; }
 
         // Build sub_adj as CSR
@@ -242,7 +325,7 @@ fn main() {
             let ni = nodes[li];
             for idx in adj_offset[ni] as usize..adj_offset[ni + 1] as usize {
                 let nb = adj_data[idx] as usize;
-                if active[nb] && comp_id[nb] == ci { sub_deg[li] += 1; }
+                if local_map[nb] != u32::MAX { sub_deg[li] += 1; }
             }
         }
         let mut sub_offset = vec![0u32; nn + 1];
@@ -254,7 +337,7 @@ fn main() {
             let ni = nodes[li];
             for idx in adj_offset[ni] as usize..adj_offset[ni + 1] as usize {
                 let nb = adj_data[idx] as usize;
-                if active[nb] && comp_id[nb] == ci {
+                if local_map[nb] != u32::MAX {
                     sub_data[sub_pos[li] as usize] = local_map[nb];
                     sub_pos[li] += 1;
                 }

@@ -406,14 +406,18 @@ fn contrib_for_g(
         (phi_inv_pow_g2, phi_pow_g2)
     };
 
-    let (np_phi, np_psi) = nonprimitive_pair(
-        scaled_limit,
-        phi_pow_g2,
-        phi_inv_pow_g2,
-        psi_pow_g2,
-        psi_inv_pow_g2,
-        small_terms,
-    );
+    let (np_phi, np_psi) = if scaled_limit == 1 {
+        (phi_pow_g2, psi_pow_g2)
+    } else {
+        nonprimitive_pair(
+            scaled_limit,
+            phi_pow_g2,
+            phi_inv_pow_g2,
+            psi_pow_g2,
+            psi_inv_pow_g2,
+            small_terms,
+        )
+    };
 
     let sign = mu_g as i64;
     (np_phi * sign, np_psi * sign)
@@ -438,59 +442,55 @@ fn solve(limit: i64, c: &Constants) -> i64 {
         })
         .reduce(|| (0i64, 0i64), |a, b| (a.0 + b.0, a.1 + b.1));
 
-    // --- Sequential region: large g with incremental powers ---
-    // Start powers at g = par_max: need phi^(par_max^2) then step.
-    // Incremental recurrence used in the original:
-    //   after processing g, advance to g+1:
-    //   pow *= forward_step; forward_step *= phi_sq
-    // where before loop pow=1, forward=phi, and at start of g-body we first update.
-    // So after full sequential 1..=G, phi_pow = phi^(G^2).
-    //
-    // We seed at g = par_max by computing phi^(par_max^2), then run the same
-    // step as the original loop from g = par_max+1 ..= root.
-
+    // --- Parallel chunked region: large g with incremental powers ---
     if par_max < root {
-        let g0 = par_max as i64;
-        let mut phi_pow_g2 = if par_max == 0 {
-            1
-        } else {
-            mod_pow(c.phi as u64, (g0 * g0) as u64, MOD as u64) as i64
-        };
-        let mut phi_inv_pow_g2 = if par_max == 0 {
-            1
-        } else {
-            mod_pow(c.phi_inv as u64, (g0 * g0) as u64, MOD as u64) as i64
-        };
-        // forward_step after processing g is phi^(2g+1), because:
-        // start: pow=1, step=phi
-        // for g=1: pow*=step => phi, step*=phi_sq => phi^3
-        // for g=2: pow*=step => phi^4 = phi^(2^2), step => phi^5
-        // for g: after update, pow = phi^(g^2), step = phi^(2g+1)
-        let mut forward_step =
-            mod_pow(c.phi as u64, (2 * g0 + 1) as u64, MOD as u64) as i64;
-        let mut backward_step =
-            mod_pow(c.phi_inv as u64, (2 * g0 + 1) as u64, MOD as u64) as i64;
+        let chunk_size = 50_000usize;
+        let chunks: Vec<(usize, usize)> = (par_max + 1..=root)
+            .step_by(chunk_size)
+            .map(|start| (start, (start + chunk_size - 1).min(root)))
+            .collect();
 
-        for g in (par_max + 1)..=root {
-            phi_pow_g2 = phi_pow_g2 * forward_step % MOD;
-            forward_step = forward_step * c.phi_sq % MOD;
-            phi_inv_pow_g2 = phi_inv_pow_g2 * backward_step % MOD;
-            backward_step = backward_step * c.phi_inv_sq % MOD;
+        let (c_phi, c_psi) = chunks
+            .par_iter()
+            .map(|&(g_start, g_end)| {
+                let g0 = (g_start - 1) as i64;
+                let mut phi_pow_g2 = mod_pow(c.phi as u64, (g0 * g0) as u64, MOD as u64) as i64;
+                let mut phi_inv_pow_g2 =
+                    mod_pow(c.phi_inv as u64, (g0 * g0) as u64, MOD as u64) as i64;
+                let mut forward_step =
+                    mod_pow(c.phi as u64, (2 * g0 + 1) as u64, MOD as u64) as i64;
+                let mut backward_step =
+                    mod_pow(c.phi_inv as u64, (2 * g0 + 1) as u64, MOD as u64) as i64;
 
-            let mu_g = mu[g];
-            if mu_g != 0 {
-                let (dphi, dpsi) = contrib_for_g(
-                    g,
-                    limit,
-                    phi_pow_g2,
-                    phi_inv_pow_g2,
-                    mu_g,
-                    &c.small_terms,
-                );
-                p_phi += dphi;
-                p_psi += dpsi;
-            }
-        }
+                let mut chunk_phi = 0i64;
+                let mut chunk_psi = 0i64;
+
+                for g in g_start..=g_end {
+                    phi_pow_g2 = phi_pow_g2 * forward_step % MOD;
+                    forward_step = forward_step * c.phi_sq % MOD;
+                    phi_inv_pow_g2 = phi_inv_pow_g2 * backward_step % MOD;
+                    backward_step = backward_step * c.phi_inv_sq % MOD;
+
+                    let mu_g = mu[g];
+                    if mu_g != 0 {
+                        let (dphi, dpsi) = contrib_for_g(
+                            g,
+                            limit,
+                            phi_pow_g2,
+                            phi_inv_pow_g2,
+                            mu_g,
+                            &c.small_terms,
+                        );
+                        chunk_phi += dphi;
+                        chunk_psi += dpsi;
+                    }
+                }
+                (chunk_phi % MOD, chunk_psi % MOD)
+            })
+            .reduce(|| (0i64, 0i64), |a, b| ((a.0 + b.0) % MOD, (a.1 + b.1) % MOD));
+
+        p_phi = (p_phi + c_phi) % MOD;
+        p_psi = (p_psi + c_psi) % MOD;
     }
 
     let p_phi = p_phi.rem_euclid(MOD);

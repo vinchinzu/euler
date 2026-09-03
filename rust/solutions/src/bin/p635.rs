@@ -35,37 +35,81 @@ fn mod_pow(mut base: u64, mut exp: u64) -> u64 {
 fn mod_inv(a: u64) -> u64 { mod_pow(a, M - 2) }
 
 fn main() {
-    // Bit-packed sieve
-    let bytes = (N + 7) / 8;
-    let mut sieve = vec![0u8; bytes + 1];
-    sieve[0] |= 3; // mark 0 and 1
-    let mut i = 2;
-    while i * i <= N {
-        if sieve[i >> 3] & (1 << (i & 7)) == 0 {
-            let mut j = i * i;
-            while j <= N { sieve[j >> 3] |= 1 << (j & 7); j += i; }
+    // Odd-only bit-packed sieve
+    let num_odds = N / 2;
+    let num_words = (num_odds + 63) / 64;
+    let mut composite = vec![0u64; num_words];
+    composite[0] |= 1; // 1 is not prime (k = 0 corresponds to 2*0 + 1 = 1)
+
+    let limit_k = (((N as f64).sqrt() as usize) - 1) / 2;
+    for k in 1..=limit_k {
+        let word_idx = k / 64;
+        let bit_idx = k % 64;
+        if (composite[word_idx] & (1 << bit_idx)) == 0 {
+            let p = 2 * k + 1;
+            let mut step_k = 2 * k * (k + 1);
+            while step_k < num_odds {
+                composite[step_k / 64] |= 1 << (step_k % 64);
+                step_k += p;
+            }
         }
-        i += 1;
     }
 
     // Collect primes > 2
-    let mut primes: Vec<usize> = Vec::with_capacity(6_000_000);
-    for p in 3..N {
-        if sieve[p >> 3] & (1 << (p & 7)) == 0 {
-            primes.push(p);
+    let mut primes: Vec<u32> = Vec::with_capacity(5_761_455);
+    for (w_idx, &word) in composite.iter().enumerate() {
+        let mut free = !word;
+        if w_idx == 0 {
+            free &= !1;
+        }
+        let base_k = w_idx * 64;
+        while free != 0 {
+            let tz = free.trailing_zeros();
+            let k = base_k + tz as usize;
+            if k < num_odds {
+                primes.push((2 * k + 1) as u32);
+            }
+            free &= free - 1;
         }
     }
 
-    // Precompute factorials mod M up to 3*N
+    // Precompute factorials mod M up to 3*N in parallel chunks
     let flen = 3 * N + 1;
-    let mut fact = vec![1u64; flen];
-    for i in 1..flen {
-        // SAFETY: i < flen, i-1 < flen
-        unsafe {
-            let prev = *fact.get_unchecked(i - 1);
-            *fact.get_unchecked_mut(i) = prev * (i as u64) % M;
-        }
+    let num_chunks = (rayon::current_num_threads().max(1) * 8).min(flen - 1);
+    let chunk_size = (flen - 1 + num_chunks - 1) / num_chunks;
+
+    let chunk_prods: Vec<u64> = (0..num_chunks)
+        .into_par_iter()
+        .map(|c| {
+            let start = 1 + c * chunk_size;
+            let end = (start + chunk_size).min(flen);
+            let mut p = 1u64;
+            for x in start..end {
+                p = mulmod(p, x as u64);
+            }
+            p
+        })
+        .collect();
+
+    let mut chunk_starts = vec![1u64; num_chunks];
+    for c in 1..num_chunks {
+        chunk_starts[c] = mulmod(chunk_starts[c - 1], chunk_prods[c - 1]);
     }
+
+    let mut fact = vec![0u32; flen];
+    fact[0] = 1;
+    fact[1..]
+        .par_chunks_mut(chunk_size)
+        .enumerate()
+        .for_each(|(c, chunk)| {
+            let mut cur = chunk_starts[c];
+            let mut x = 1 + c * chunk_size;
+            for elem in chunk.iter_mut() {
+                cur = mulmod(cur, x as u64);
+                *elem = cur as u32;
+                x += 1;
+            }
+        });
 
     // For p=2: A(2,2)+A(3,2) = 2+6 = 8
     let base_ans = 8u64;
@@ -77,32 +121,33 @@ fn main() {
     //   C(3p,p) = fact[3p] * inv(fact[p]) * inv(fact[2p])
     //   A(3,p) = (C(3p,p) + 3(p-1)) * inv(p) mod M
     //
-    // We compute mod_inv for fact[p], fact[2p], and p directly.
-    // This avoids the 2.4GB inv_fact precomputation.
-
+    // Montgomery simultaneous inversion for fp, f2p, and pp with a single mod_inv
     let chunk_sum: u64 = primes.par_chunks(8192).map(|chunk| {
         let mut local_sum = 0u64;
         for &p in chunk {
             let pp = p as u64;
+            let p_idx = p as usize;
             // SAFETY: 2*p < 2*N < 3*N+1 = flen, 3*p < 3*N+1 = flen, p < N < flen
             unsafe {
-                let fp = *fact.get_unchecked(p);
-                let f2p = *fact.get_unchecked(2 * p);
-                let f3p = *fact.get_unchecked(3 * p);
+                let fp = *fact.get_unchecked(p_idx) as u64;
+                let f2p = *fact.get_unchecked(2 * p_idx) as u64;
+                let f3p = *fact.get_unchecked(3 * p_idx) as u64;
 
-                let inv_fp = mod_inv(fp);
-                let inv_f2p = mod_inv(f2p);
-                let inv_p = mod_inv(pp);
+                let xy = mulmod(fp, f2p);
+                let xyz = mulmod(xy, pp);
+                let inv_xyz = mod_inv(xyz);
+
+                let inv_p = mulmod(xy, inv_xyz);
+                let inv_xy = mulmod(pp, inv_xyz);
+                let inv_fp = mulmod(f2p, inv_xy);
 
                 // C(2p,p) = f2p * inv_fp^2
                 let c2p = mulmod(f2p, mulmod(inv_fp, inv_fp));
-                let a2 = mulmod(addmod(c2p, 2 * (pp - 1) % M), inv_p);
+                // C(3p,p) = f3p * inv_fp * inv_f2p = f3p * inv_xy
+                let c3p = mulmod(f3p, inv_xy);
 
-                // C(3p,p) = f3p * inv_fp * inv_f2p
-                let c3p = mulmod(f3p, mulmod(inv_fp, inv_f2p));
-                let a3 = mulmod(addmod(c3p, 3 * (pp - 1) % M), inv_p);
-
-                local_sum = addmod(local_sum, addmod(a2, a3));
+                let total = addmod(addmod(c2p, c3p), 5 * (pp - 1));
+                local_sum = addmod(local_sum, mulmod(total, inv_p));
             }
         }
         local_sum

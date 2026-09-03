@@ -1,6 +1,6 @@
 # Optimization Applied Summary
 
-Updated: 2026-09-02 (Problem 476 algebraic optimization)
+Updated: 2026-09-02 (Wave 23 sub-agent batch: p837, p540, p417, p972, p415)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
@@ -507,7 +507,108 @@ Wave 16 net (sum of accepted medians): **~7.51s**. After this wave the slowest r
 
 ---
 
-## Accepted (261 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 6 wave 17)
+## Wave 18 — Slowest Remaining Problem
+
+**A/B accepted (1)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p846 | 7549.9 | 232.2 | 32.51× | Tarjan biconnected-component decomposition; largest cycle-search graph shrank from a 4,638-node connected component to a 43-node block |
+
+Wave 18 net: **~7.32s**. p846 is now sub-250ms; the slowest remaining problem in the living log is p468 (~4.9s).
+
+---
+
+## Wave 19 — Slowest Remainder Optimization (this session)
+
+Sequential benchmark via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`. Preserved `p846.rs` without modification as requested.
+
+**A/B accepted (6)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p847 | 4468.2 | 398.2 | 11.22× | Precomputed PTRANS transition lookup table eliminating deep nested loop branches and bit-twiddling; parallel `rayon::join` of independent subproblems `(t1, t2, t3)` |
+| p931 | 2359.8 | 743.6 | 3.17× | Dense `u32` Lucy DP arrays fitting in L3 cache (16MB total vs 64MB); loop-invariant prime term hoisting; branch-free loop split with stride addition; 32-bit division lowering & piecewise constant block updates |
+| p662 | 1907.3 | 1126.0 | 1.69× | AVX2 4-way unrolled vectorized row accumulation for vertical and diagonal jumps; monotonic jump pointer and Barrett reduction in the horizontal DP loop; elimination of redundant bounds checks |
+| p989 | 2442.4 | 1575.5 | 1.55× | Parallel chunked region for large g using rayon with independent mod_pow chunk roots; `scaled_limit == 1` nonprimitive fast path |
+| p468 | 5049.9 | 2459.9 | 2.05× | Interleaved `u32` segment-tree nodes cutting memory footprint in half and improving locality; batched dense-prime boundary events through p=2000 |
+| p337 | 2646.7 | 1766.8 | 1.50× | Parallel rayon unstable sort on packed `u64` (phi << 32 \| idx); branchless `u32` accumulation in `bit_query`; elimination of 64-bit integer divisions (`% MOD`) in `bit_update` and DP query loop |
+
+Wave 19 net: **~9.91s** saved. Both **p847** (4468.2 → 398.2 ms) and **p931** (2359.8 → 743.6 ms) are now sub-second.
+
+---
+
+## Wave 20 — Sub-agent Batch Optimization (this session)
+
+Worktree-isolated subagents dispatched concurrently for each problem, candidate files verified and A/B-gated sequentially by parent via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`. Preserved `p846.rs` without modification as requested.
+
+**A/B accepted (6)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p478 | 1742.4 | 269.1 | 6.48× | Rayon work-stealing parallel reductions over b mixture loop and Mertens mobius sums; two-level pow2 table for $O(1)$ exponentiation; analytical shortcut $f(b,n)=n+1-b$ for $b>n/2$; `i32` Mertens array saving 40MB |
+| p635 | 1240.5 | 292.8 | 4.24× | `u32` factorial array cutting memory footprint in half (1.2GB vs 2.4GB); Montgomery simultaneous batch inversion cutting `mod_pow` calls by 3× across 5.76M primes; parallel chunked factorial generation; odd-only 6.25MB bitset sieve |
+| p655 | 1899.0 | 541.0 | 3.51× | Parallel `rayon::join` on independent palindrome lengths $N=31$ and $N=32$; direct sparse $i=0$ state initialization; 8192-element L1 cache-resident chunking with in-place shift accumulation |
+| p552 | 2054.6 | 909.9 | 2.26× | Barrett reduction reciprocal constant eliminating hardware integer divisions; packed `Item { garner: u32, prime: u32 }` dense cache layout; simplified unconditional `barrett_prod` |
+| p521 | 1713.4 | 787.6 | 2.18× | Lucy DP linear-stride quotient updates for $i \cdot p \le l$ eliminating nested divisions; piecewise-constant block updates for small array ranges reducing loop iterations by factor of $p$ |
+| p797 | 2147.7 | 1049.6 | 2.05× | $O(N)$ linear sieve; compact `u32` cyclotomic F and divisor G arrays cutting RAM from 300MB to 80MB; unsigned compile-time modulo; 32-bit `mod_inv`; `i32` Mertens array |
+
+Wave 20 net: **~6.95s** saved. Five problems (**p478**, **p635**, **p655**, **p521**, **p552**) crossed under 1.0 second.
+
+---
+
+## Wave 21 — Slow Target Optimization (this session)
+
+Benchmarked via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (2)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p660 | 1615.3 | 492.2 | 3.28× | Const-generic digit extraction replacing runtime division instructions with compile-time reciprocal multiplications; fine-grained rayon parallelism over `(base, n)` subtasks eliminating thread starvation (previously base 18 monopolized a single core); inline binary `gcd32` |
+| p606 | 1550.5 | 336.2 | 4.61× | Dense `u32` Lucy DP arrays fitting in L3 cache (8MB vs 16MB); incremental sum-of-cubes; branch-free linear-stride quotient indexing eliminating division for $k \le \sqrt{L}/p$; 32-bit division lowering for $k > \sqrt{L}/p$; piecewise-constant block updates; Rayon parallel reduction |
+
+Wave 21 net: **~2.33s** saved. Both **p660** (1615.3 → 492.2 ms) and **p606** (1550.5 → 336.2 ms) crossed under 500ms.
+
+---
+
+## Wave 22 — Sub-agent Batch Optimization (this session)
+
+Worktree-isolated subagents dispatched concurrently for each problem, candidate files verified and A/B-gated sequentially by parent via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (5)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p543 | 1328.7 | 20.8 | 63.91× | Odd-only segmented bit sieve in 52KB cache-resident chunks; mod 105 wheel pre-patterning eliminating multiples of 3, 5, 7; parallel Rayon chunks; 4x loop unrolling; O(num_chunks) prefix popcount aggregation |
+| p518 | 1368.1 | 33.5 | 40.85× | Mathematical pruning: parity constraints requiring even k and k != 1 mod 3; 6.25MB odd-only parallel segmented bit sieve; multi-range load-balanced Rayon distribution; branchless coprimality check |
+| p739 | 1329.3 | 50.7 | 26.23× | Zero-allocation Lucas numbers via backward generation; factored hockey-stick identity for binomial difference terms; L1/L2 cache-resident Montgomery batch inversion (128KB buffers); parallel chunking with Rayon |
+| p256 | 1632.1 | 158.6 | 10.29× | Cache-resident chunking (2M elements) fitting in L3 cache; parallel rayon chunk distribution; analytical k-bounds [k_start, k_end] eliminating inner iterations; atomic early-exit threshold; tight assembly loop |
+| p715 | 1096.2 | 229.9 | 4.77× | Odd-only Euler linear sieve cutting RAM to 50MB; 9-wave parallelized backward Lucy DP recurrence; 32-bit division lowering; parallel hyperbola floor-block summation with Rayon |
+
+Wave 22 net: **~6.26s** saved. All five problems (**p543**, **p518**, **p739**, **p256**, **p715**) dropped from >1s to sub-250ms (with three sub-55ms).
+
+---
+
+## Wave 23 — Sub-agent Batch Optimization (this session)
+
+Worktree-isolated subagents dispatched concurrently for each problem, candidate files verified and A/B-gated sequentially by parent via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (5)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p540 | 1332.6 | 47.7 | 27.92× | Analytical totient sum for small m via sublinear Du Jiao sieve with memo table; odd-only u16 SPF sieve in parallel L2 chunks; concurrent initialization with rayon::join; branchless isqrt; unrolled inclusion-exclusion for nf <= 3 |
+| p837 | 1363.7 | 70.9 | 19.25× | Eliminated 1GB array entirely via L1 cache stack buffers; simultaneous batch inversion on pairs (2k+2)(2k+3); folded numerator into Montgomery backward pass; Rayon chunked parallel summation; 8-stream ILP range products |
+| p415 | 1397.6 | 163.5 | 8.55× | Linear phi sieve with 128-chunk parallel prefix scan; fused Lucy DP reformulating floor-block into disjoint hyperbola domains; 32-bit division lowering; reverse geometric layered parallel scheduling; parallel hyperbola reductions |
+| p972 | 1443.4 | 235.4 | 6.13× | Eliminated all per-chunk FxHashMap allocations; packed 128-bit geodesic keys into unified buffer; zero-allocation direct parallel chunk writing; Stein binary GCD; par_sort_unstable on u128 with linear multiplicity scan |
+| p417 | 1010.6 | 166.1 | 6.08× | Parallel segmented odd-only SPF sieve halving memory to 400MB; quadratic reciprocity for factor 2 in ord10(p); Barrett reduction with FastMod; Hamming multiplicity decomposition over coprimes to 10; branchless binary GCD/LCM |
+
+Wave 23 net: **~5.86s** saved. All five problems (**p540**, **p837**, **p415**, **p972**, **p417**) dropped from >1s to sub-250ms (with two sub-75ms).
+
+---
+
+## Accepted (286 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 6 wave 17 + 1 wave 18 + 6 wave 19 + 6 wave 20 + 2 wave 21 + 5 wave 22 + 5 wave 23)
 
 ### Wave 3 — 2s band (this session)
 

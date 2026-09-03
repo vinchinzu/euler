@@ -13,59 +13,210 @@ fn isqrt(n: i64) -> i64 {
     if n <= 0 {
         return 0;
     }
-    let mut x = (n as f64).sqrt() as i64;
-    while x > 0 && x * x > n {
-        x -= 1;
-    }
-    while (x + 1) * (x + 1) <= n {
-        x += 1;
-    }
-    x
+    let x = (n as f64).sqrt() as i64;
+    x - (x * x > n) as i64
 }
 
-#[inline(always)]
-fn sq(x: i64) -> i64 {
-    x * x
-}
 
 #[inline(always)]
-fn fill_prime_factors(mut m: usize, ff: &[u32], out: &mut [i64; 16]) -> usize {
+fn fill_prime_factors(mut m: usize, limit: i64, ff: &[u16], out: &mut [i64; 8]) -> usize {
     let mut n = 0usize;
+    if m % 2 == 0 {
+        out[0] = 2;
+        n = 1;
+        m >>= m.trailing_zeros();
+    }
     while m > 1 {
-        let p = ff[m] as i64;
-        if n == 0 || out[n - 1] != p {
-            out[n] = p;
-            n += 1;
+        let spf = unsafe { *ff.get_unchecked(m / 2) } as usize;
+        if spf == 0 {
+            if (m as i64) <= limit {
+                out[n] = m as i64;
+                n += 1;
+            }
+            break;
         }
-        m /= p as usize;
+        if (spf as i64) > limit {
+            break;
+        }
+        out[n] = spf as i64;
+        n += 1;
+        m /= spf;
+        while m % spf == 0 {
+            m /= spf;
+        }
     }
     n
 }
 
 #[inline(always)]
-fn num_relatively_prime(m: usize, limit: i64, ff: &[u32]) -> i64 {
+fn count_rec(limit: i64, factors: &[i64], idx: usize, cur: i64) -> i64 {
+    let mut sum = limit / cur;
+    for i in idx..factors.len() {
+        let next = cur * factors[i];
+        if next > limit {
+            break;
+        }
+        sum -= count_rec(limit, factors, i + 1, next);
+    }
+    sum
+}
+
+#[inline(always)]
+fn num_relatively_prime(m: usize, limit: i64, ff: &[u16]) -> i64 {
     if limit <= 0 {
         return 0;
     }
-    let mut factors = [0i64; 16];
-    let nf = fill_prime_factors(m, ff, &mut factors);
-    let mut count = 0i64;
-    for mask in 0..(1u32 << nf) {
-        let mut prod = 1i64;
-        let mut bits = 0;
-        for i in 0..nf {
-            if mask & (1 << i) != 0 {
-                prod *= factors[i];
-                bits += 1;
+    let mut factors = [0i64; 8];
+    let nf = fill_prime_factors(m, limit, ff, &mut factors);
+    if nf == 0 {
+        return limit;
+    }
+    if nf == 1 {
+        return limit - limit / factors[0];
+    }
+    if nf == 2 {
+        let f0 = factors[0];
+        let f1 = factors[1];
+        let p = f0 * f1;
+        return limit - limit / f0 - limit / f1 + if p <= limit { limit / p } else { 0 };
+    }
+    if nf == 3 {
+        let f0 = factors[0];
+        let f1 = factors[1];
+        let f2 = factors[2];
+        let mut ans = limit - limit / f0 - limit / f1 - limit / f2;
+        let p01 = f0 * f1;
+        if p01 <= limit {
+            ans += limit / p01;
+            let p02 = f0 * f2;
+            if p02 <= limit {
+                ans += limit / p02;
+                let p12 = f1 * f2;
+                if p12 <= limit {
+                    ans += limit / p12;
+                    let p012 = p01 * f2;
+                    if p012 <= limit {
+                        ans -= limit / p012;
+                    }
+                }
             }
         }
-        if bits % 2 == 0 {
-            count += limit / prod;
-        } else {
-            count -= limit / prod;
+        return ans;
+    }
+    count_rec(limit, &factors[..nf], 0, 1)
+}
+
+fn compute_small(l: i64) -> i64 {
+    const K: usize = 250_000;
+    let mut phi = vec![0u32; K + 1];
+    let mut primes = Vec::with_capacity(25_000);
+    phi[1] = 1;
+    for i in 2..=K {
+        if phi[i] == 0 {
+            primes.push(i);
+            phi[i] = (i - 1) as u32;
+        }
+        for &p in &primes {
+            let ip = i * p;
+            if ip > K {
+                break;
+            }
+            if i % p == 0 {
+                phi[ip] = phi[i] * p as u32;
+                break;
+            } else {
+                phi[ip] = phi[i] * (p - 1) as u32;
+            }
         }
     }
-    count
+    let mut pref_small = vec![0i64; K + 1];
+    for i in 1..=K {
+        pref_small[i] = pref_small[i - 1] + phi[i] as i64;
+    }
+
+    let mut memo = [0i64; 256];
+    fn get_phi(n: i64, l: i64, pref: &[i64], memo: &mut [i64; 256]) -> i64 {
+        if (n as usize) < pref.len() {
+            return pref[n as usize];
+        }
+        let d = (l / n) as usize;
+        if memo[d] != 0 {
+            return memo[d];
+        }
+        let mut sum = 0i64;
+        let mut m = 2i64;
+        while m <= n {
+            let q = n / m;
+            let next_m = n / q;
+            sum += (next_m - m + 1) * get_phi(q, l, pref, memo);
+            m = next_m + 1;
+        }
+        let res = n * (n + 1) / 2 - sum;
+        memo[d] = res;
+        res
+    }
+
+    let mut fast_small = 0i64;
+    let mut cur = l;
+    while cur > 0 {
+        fast_small += get_phi(cur, l, &pref_small, &mut memo);
+        cur /= 2;
+    }
+    (fast_small - 1) / 2
+}
+
+fn sieve_ff(sqrt_n: usize) -> Vec<u16> {
+    let limit_prime = isqrt(sqrt_n as i64) as usize;
+    let mut is_p = vec![true; limit_prime + 1];
+    let mut odd_primes = Vec::new();
+    for i in 3..=limit_prime {
+        if i % 2 == 1 && is_p[i] {
+            odd_primes.push(i);
+            let mut j = i * i;
+            while j <= limit_prime {
+                is_p[j] = false;
+                j += 2 * i;
+            }
+        }
+    }
+
+    let num_odds = sqrt_n / 2 + 1;
+    let mut ff = vec![0u16; num_odds];
+    const CHUNK_SIZE: usize = 65536;
+
+    ff.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let start_idx = chunk_idx * CHUNK_SIZE;
+            let low = 2 * start_idx + 1;
+            let chunk_len = chunk.len();
+            let high = low + 2 * (chunk_len - 1);
+
+            for &p in &odd_primes {
+                if p * p > high {
+                    break;
+                }
+                let mut k = (low + p - 1) / p;
+                if k < p {
+                    k = p;
+                }
+                if k % 2 == 0 {
+                    k += 1;
+                }
+                let first = k * p;
+                let mut local_idx = (first - low) / 2;
+                while local_idx < chunk_len {
+                    unsafe {
+                        let ptr = chunk.get_unchecked_mut(local_idx);
+                        if *ptr == 0 {
+                            *ptr = p as u16;
+                        }
+                    }
+                    local_idx += p;
+                }
+            }
+        });
+    ff
 }
 
 fn main() {
@@ -73,42 +224,20 @@ fn main() {
     let sqrt_n = isqrt(N) as usize;
     let m_max = isqrt(N);
 
-    let mut ff = vec![0u32; sqrt_n + 1];
-    for i in 2..=sqrt_n {
-        if ff[i] == 0 {
-            for j in (i..=sqrt_n).step_by(i) {
-                if ff[j] == 0 {
-                    ff[j] = i as u32;
-                }
-            }
-        }
-    }
+    let (sum_small, ff) = rayon::join(|| compute_small(l), || sieve_ff(sqrt_n));
 
-    let l_usize = l as usize;
-    let mut phi = vec![0u32; l_usize + 1];
-    for i in 0..=l_usize {
-        phi[i] = i as u32;
-    }
-    for i in 2..=l_usize {
-        if phi[i] == i as u32 {
-            for j in (i..=l_usize).step_by(i) {
-                phi[j] -= phi[j] / i as u32;
-            }
-        }
-    }
-
-    let ans: i64 = (2..=m_max)
+    let start_m = l as usize + 1;
+    let end_m = m_max as usize + 1;
+    let sum_large: i64 = (start_m..end_m)
         .into_par_iter()
         .map(|m| {
-            let mult = if m % 2 == 0 { 1 } else { 2 };
-            if m <= l {
-                phi[m as usize] as i64 / mult
-            } else {
-                let limit = isqrt(N - sq(m)) / mult;
-                num_relatively_prime(m as usize, limit, &ff)
-            }
+            let m_i64 = m as i64;
+            let limit = isqrt(N - m_i64 * m_i64) >> (m & 1);
+            num_relatively_prime(m, limit, &ff)
         })
         .sum();
+
+    let ans = sum_small + sum_large;
 
     println!("{ans}");
 }

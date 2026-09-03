@@ -1,5 +1,9 @@
 // Project Euler 847 - Digit DP with bit-level processing
-// Optimizations: FxHashMap + stack arrays for carry transitions (no Vec allocs).
+//
+// Optimizations:
+// - Precomputed PTRANS transition lookup table eliminating deep nested loop branches and bit-twiddling
+// - Parallel rayon::join of independent subproblems t1, t2, and t3
+// - FxHashMap + stack arrays for carry transitions (no heap allocs in hot loop)
 
 use fxhash::FxHashMap;
 
@@ -29,7 +33,76 @@ fn unpack_state(mut k: u64) -> (i32, i32, i32, i32, i32) {
     (r_off, carries, c0, c1, c2)
 }
 
-fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
+struct Tables {
+    ptrans: [[[[[u8; 256]; 2]; 2]; 2]; 2],
+}
+
+impl Tables {
+    fn init() -> Self {
+        let mut ptrans = [[[[[0u8; 256]; 2]; 2]; 2]; 2];
+        for b_a in 0..2 {
+            for b_b in 0..2 {
+                for b_c in 0..2 {
+                    for has_source in 0..2 {
+                        let max_owner = if has_source == 1 { 3 } else { 1 };
+                        let mut trans_ps = [0u8; 8];
+                        for ps in 0..8 {
+                            let ps_a = (ps >> 2) & 1;
+                            let ps_b = (ps >> 1) & 1;
+                            let ps_c = ps & 1;
+                            let mut current_possible = 0u8;
+                            for oi in 0..max_owner {
+                                let owner: i32 = if has_source == 1 { oi } else { -1 };
+                                let mut valid_owner = true;
+                                let mut ns_a = ps_a;
+                                let mut ns_b = ps_b;
+                                let mut ns_c = ps_c;
+
+                                if owner == 0 {
+                                    if ps_a == 0 && b_a == 0 { ns_a = 1; }
+                                } else if ps_a == 0 && b_a == 1 {
+                                    valid_owner = false;
+                                }
+                                if !valid_owner { continue; }
+
+                                if owner == 1 {
+                                    if ps_b == 0 && b_b == 0 { ns_b = 1; }
+                                } else if ps_b == 0 && b_b == 1 {
+                                    valid_owner = false;
+                                }
+                                if !valid_owner { continue; }
+
+                                if owner == 2 {
+                                    if ps_c == 0 && b_c == 0 { ns_c = 1; }
+                                } else if ps_c == 0 && b_c == 1 {
+                                    valid_owner = false;
+                                }
+                                if !valid_owner { continue; }
+
+                                let ns = (ns_a << 2) | (ns_b << 1) | ns_c;
+                                current_possible |= 1 << ns;
+                            }
+                            trans_ps[ps] = current_possible;
+                        }
+
+                        for mask in 0..256usize {
+                            let mut possible = 0u8;
+                            for ps in 0..8 {
+                                if (mask & (1 << ps)) != 0 {
+                                    possible |= trans_ps[ps];
+                                }
+                            }
+                            ptrans[b_a][b_b][b_c][has_source][mask] = possible;
+                        }
+                    }
+                }
+            }
+        }
+        Tables { ptrans }
+    }
+}
+
+fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize, tables: &Tables) -> i64 {
     let mut l_bits = [0i32; 100];
     let mut actual_bits = 0;
     {
@@ -58,7 +131,7 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
     for j in (0..nb).rev() {
         nxt.clear();
         let limit_bit = if j < actual_bits { l_bits[j] } else { 0 };
-        let has_source = j < kval as usize;
+        let has_source = if j < kval as usize { 1usize } else { 0usize };
 
         for (&skey, &sval) in &cur {
             if sval == 0 {
@@ -81,7 +154,6 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
                             new_r = -3;
                         }
 
-                        // Stack arrays (no heap allocs in hot loop)
                         let mut valid_nca = [0i32; 2];
                         let nca_count = if c_a != 0 {
                             if a == 1 {
@@ -150,71 +222,17 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize) -> i64 {
                                     let mut new_cs = [0i32; 3];
 
                                     for idx in 0..nchk {
-                                        let b_a = if checks[idx][0] != 0 { bit_a1 } else { bit_a };
-                                        let b_b = if checks[idx][1] != 0 { bit_b1 } else { bit_b };
-                                        let b_c = if checks[idx][2] != 0 { bit_c1 } else { bit_c };
+                                        let b_a = if checks[idx][0] != 0 { bit_a1 } else { bit_a } as usize;
+                                        let b_b = if checks[idx][1] != 0 { bit_b1 } else { bit_b } as usize;
+                                        let b_c = if checks[idx][2] != 0 { bit_c1 } else { bit_c } as usize;
 
                                         let prev_states = match idx {
                                             0 => cs0,
                                             1 => cs1,
                                             _ => cs2,
-                                        };
+                                        } as usize;
 
-                                        let mut current_possible = 0i32;
-
-                                        for ps in 0..8 {
-                                            if prev_states & (1 << ps) == 0 {
-                                                continue;
-                                            }
-                                            let ps_a = (ps >> 2) & 1;
-                                            let ps_b = (ps >> 1) & 1;
-                                            let ps_c = ps & 1;
-
-                                            let max_owner = if has_source { 3 } else { 1 };
-                                            for oi in 0..max_owner {
-                                                let owner: i32 = if has_source { oi } else { -1 };
-                                                let mut valid_owner = true;
-                                                let mut ns_a = ps_a;
-                                                let mut ns_b = ps_b;
-                                                let mut ns_c = ps_c;
-
-                                                if owner == 0 {
-                                                    if ps_a == 0 && b_a == 0 {
-                                                        ns_a = 1;
-                                                    }
-                                                } else if ps_a == 0 && b_a == 1 {
-                                                    valid_owner = false;
-                                                }
-                                                if !valid_owner {
-                                                    continue;
-                                                }
-
-                                                if owner == 1 {
-                                                    if ps_b == 0 && b_b == 0 {
-                                                        ns_b = 1;
-                                                    }
-                                                } else if ps_b == 0 && b_b == 1 {
-                                                    valid_owner = false;
-                                                }
-                                                if !valid_owner {
-                                                    continue;
-                                                }
-
-                                                if owner == 2 {
-                                                    if ps_c == 0 && b_c == 0 {
-                                                        ns_c = 1;
-                                                    }
-                                                } else if ps_c == 0 && b_c == 1 {
-                                                    valid_owner = false;
-                                                }
-                                                if !valid_owner {
-                                                    continue;
-                                                }
-
-                                                let ns = (ns_a << 2) | (ns_b << 1) | ns_c;
-                                                current_possible |= 1 << ns;
-                                            }
-                                        }
+                                        let current_possible = tables.ptrans[b_a][b_b][b_c][has_source][prev_states] as i32;
 
                                         if current_possible == 0 {
                                             possible = false;
@@ -284,6 +302,8 @@ fn c_val_mod(n: i64) -> i64 {
 }
 
 fn main() {
+    let tables = Tables::init();
+
     let mut n: i64 = 0;
     let mut p: i64 = 1;
     for _ in 0..19 {
@@ -298,13 +318,16 @@ fn main() {
 
     loop {
         let chk1 = [[0, 0, 0]];
-        let t1 = solve_dp(n - 1, k, &chk1, 1);
-
         let chk2 = [[0, 1, 0], [1, 0, 0]];
-        let t2 = solve_dp(n - 2, k, &chk2, 2);
-
         let chk3 = [[0, 1, 1], [1, 0, 1], [1, 1, 0]];
-        let t3 = solve_dp(n - 3, k, &chk3, 3);
+
+        let ((t1, t2), t3) = rayon::join(
+            || rayon::join(
+                || solve_dp(n - 1, k, &chk1, 1, &tables),
+                || solve_dp(n - 2, k, &chk2, 2, &tables)
+            ),
+            || solve_dp(n - 3, k, &chk3, 3, &tables)
+        );
 
         let size_sk = ((3 * t1 % MOD - 3 * t2 % MOD + t3 % MOD) % MOD + MOD) % MOD;
         let term = (c_n_mod - size_sk % MOD + MOD) % MOD;

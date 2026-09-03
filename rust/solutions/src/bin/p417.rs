@@ -5,185 +5,297 @@
 
 use rayon::prelude::*;
 
-const NMAX: usize = 100_000_001;
+struct FastMod {
+    m: u64,
+    inv: u64,
+}
 
-#[inline(always)]
-fn pow_mod_32(base: u32, mut exp: u32, modv: u32) -> u32 {
-    let m = modv as u64;
-    let mut result = 1u64;
-    let mut b = base as u64 % m;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = result * b % m;
+impl FastMod {
+    #[inline(always)]
+    fn new(m: u32) -> Self {
+        let m = m as u64;
+        let inv = u64::MAX / m;
+        Self { m, inv }
+    }
+
+    #[inline(always)]
+    fn reduce(&self, x: u64) -> u64 {
+        let q = ((x as u128 * self.inv as u128) >> 64) as u64;
+        let mut r = x.wrapping_sub(q.wrapping_mul(self.m));
+        if r >= self.m {
+            r -= self.m;
         }
-        b = b * b % m;
-        exp >>= 1;
+        r
     }
-    result as u32
-}
 
-/// pow_mod for larger moduli (p^2 etc.) using u128 intermediates
-#[inline(always)]
-fn pow_mod_big(mut base: u64, mut exp: u64, modv: u64) -> u64 {
-    let mut result = 1u64;
-    base %= modv;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = (result as u128 * base as u128 % modv as u128) as u64;
+    #[inline(always)]
+    fn mul(&self, a: u64, b: u64) -> u64 {
+        self.reduce(a * b)
+    }
+
+    #[inline(always)]
+    fn pow10(&self, mut exp: u32) -> u64 {
+        let mut base = 10u64;
+        while (exp & 1) == 0 {
+            base = self.mul(base, base);
+            exp >>= 1;
         }
-        base = (base as u128 * base as u128 % modv as u128) as u64;
+        let mut res = base;
         exp >>= 1;
+        while exp > 0 {
+            base = self.mul(base, base);
+            if exp & 1 == 1 {
+                res = self.mul(res, base);
+            }
+            exp >>= 1;
+        }
+        res
     }
-    result
 }
 
 #[inline(always)]
-fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+fn gcd64(mut u: u64, mut v: u64) -> u64 {
+    if u == 0 { return v; }
+    if v == 0 { return u; }
+    let shift = (u | v).trailing_zeros();
+    u >>= u.trailing_zeros();
+    loop {
+        v >>= v.trailing_zeros();
+        if u > v {
+            std::mem::swap(&mut u, &mut v);
+        }
+        v -= u;
+        if v == 0 { break; }
     }
-    a
+    u << shift
 }
 
 #[inline(always)]
-fn lcm_i64(a: i64, b: i64) -> i64 {
+fn lcm64(a: u64, b: u64) -> u64 {
     if a == 0 { return b; }
     if b == 0 { return a; }
-    a / gcd_i64(a, b) * b
+    (a / gcd64(a, b)) * b
 }
+
+const HALF_N: usize = 50_000_001;
 
 fn main() {
     let n: usize = 100_000_000;
 
-    // Sieve smallest prime factors
-    // spf[i] == 0 means i is prime (for i >= 2, excluding 0 and 1)
-    let mut spf = vec![0u32; NMAX];
-    {
-        let mut i = 2usize;
-        while i * i <= n {
-            if spf[i] == 0 {
-                let mut j = i * i;
-                while j <= n {
-                    if spf[j] == 0 {
-                        spf[j] = i as u32;
-                    }
-                    j += i;
-                }
+    // Sieve base primes up to sqrt(N)
+    let sqrt_n = 10000usize;
+    let mut is_prime_base = vec![true; sqrt_n + 1];
+    let mut base_primes = Vec::new();
+    for p in 3..=sqrt_n {
+        if p % 2 != 0 && is_prime_base[p] {
+            base_primes.push(p);
+            let mut j = p * p;
+            while j <= sqrt_n {
+                is_prime_base[j] = false;
+                j += 2 * p;
             }
-            i += 1;
         }
     }
 
-    // Collect all primes != 2, 5
-    let primes: Vec<usize> = (3..=n)
-        .filter(|&p| spf[p] == 0 && p != 5)
-        .collect();
+    // Sieve smallest prime factors for odd numbers in parallel chunks
+    let mut spf = vec![0u32; HALF_N];
+    let chunk_size = 128 * 1024;
+    spf.par_chunks_mut(chunk_size).enumerate().for_each(|(chunk_idx, chunk)| {
+        let start_idx = chunk_idx * chunk_size;
+        let end_idx = start_idx + chunk.len() - 1;
+        let start_num = 2 * start_idx + 1;
+        let end_num = 2 * end_idx + 1;
 
-    // Compute ord_10(p) for all primes in parallel
-    let mut ord10 = vec![0u32; NMAX];
-    let ord_results: Vec<(usize, u32)> = primes
-        .par_iter()
-        .map(|&p| {
-            // Factor p-1 using spf
-            let mut result = (p - 1) as u32;
-            let mut temp = p - 1;
-            while temp > 1 {
-                // SAFETY: temp < p <= n, spf has size NMAX > n
-                let q = unsafe {
-                    let s = *spf.get_unchecked(temp);
-                    if s == 0 { temp as u32 } else { s }
-                };
-                while temp % q as usize == 0 {
-                    temp /= q as usize;
-                }
-                while result % q == 0 {
-                    let pow = pow_mod_32(10, result / q, p as u32);
-                    if pow == 1 {
-                        result /= q;
-                    } else {
-                        break;
+        for &p in &base_primes {
+            if p * p > end_num { break; }
+            let m = start_num.max(p * p);
+            let mut q = (m + p - 1) / p;
+            if q % 2 == 0 { q += 1; }
+            let first_num = q * p;
+            if first_num <= end_num {
+                let first_idx = first_num >> 1;
+                let mut j = first_idx - start_idx;
+                while j < chunk.len() {
+                    if chunk[j] == 0 {
+                        chunk[j] = p as u32;
                     }
+                    j += p;
                 }
             }
-            (p, result)
-        })
-        .collect();
+        }
+    });
 
-    for (p, ord) in ord_results {
-        ord10[p] = ord;
+    // Compute ord_10(p) for all primes in parallel chunks
+    const LEGENDRE_10: u64 = (1 << 1) | (1 << 3) | (1 << 9) | (1 << 13) | (1 << 27) | (1 << 31) | (1 << 37) | (1 << 39);
+    let mut ord10 = vec![0u32; HALF_N];
+    ord10.par_chunks_mut(chunk_size).enumerate().for_each(|(chunk_idx, chunk)| {
+        let start_idx = chunk_idx * chunk_size;
+        for (i, slot) in chunk.iter_mut().enumerate() {
+            let idx = start_idx + i;
+            let p = (idx << 1) | 1;
+            if p > n { break; }
+            if p < 3 || p == 5 { continue; }
+            if unsafe { *spf.get_unchecked(idx) } == 0 {
+                // p is prime
+                let fm = FastMod::new(p as u32);
+                let mut result = (p - 1) as u32;
+                let mut temp = ((p - 1) >> (p - 1).trailing_zeros()) as u32;
+
+                // Handle factor 2 using quadratic reciprocity
+                let is_qr = ((LEGENDRE_10 >> (p % 40)) & 1) != 0;
+                if is_qr {
+                    result >>= 1;
+                    while (result & 1) == 0 {
+                        if fm.pow10(result >> 1) == 1 {
+                            result >>= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                while temp > 1 {
+                    let s = unsafe { *spf.get_unchecked((temp >> 1) as usize) };
+                    if s == 0 {
+                        let q = temp;
+                        while result % q == 0 {
+                            if fm.pow10(result / q) == 1 {
+                                result /= q;
+                            } else {
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    let q = s;
+                    while temp % q == 0 {
+                        temp /= q;
+                    }
+                    while result % q == 0 {
+                        if fm.pow10(result / q) == 1 {
+                            result /= q;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                *slot = result;
+            }
+        }
+    });
+
+    // Precompute 2^a * 5^b Hamming numbers
+    let mut hamming = Vec::new();
+    let mut p2 = 1u64;
+    while p2 <= n as u64 {
+        let mut p10 = p2;
+        while p10 <= n as u64 {
+            hamming.push(p10 as u32);
+            p10 *= 5;
+        }
+        p2 *= 2;
+    }
+    hamming.sort_unstable();
+
+    // Small lookup table for count(K) for K <= 100_000
+    const K_MAX: usize = 100_001;
+    let mut count_table = vec![0u8; K_MAX];
+    for k in 1..K_MAX {
+        count_table[k] = hamming.partition_point(|&h| h <= k as u32) as u8;
     }
 
-    // Compute sum of L(n) for n = 3..N in parallel chunks
-    let chunk_size = 500_000usize;
-    let n_chunks = (n - 2 + chunk_size - 1) / chunk_size; // chunks covering 3..=n
+    #[inline(always)]
+    fn get_count(m: u32, count_table: &[u8], hamming: &[u32]) -> i64 {
+        if m > 50_000_000 {
+            return 1;
+        }
+        let k = 100_000_000 / m;
+        if (k as usize) < K_MAX {
+            unsafe { *count_table.get_unchecked(k as usize) as i64 }
+        } else {
+            hamming.partition_point(|&h| h <= k) as i64
+        }
+    }
 
-    let total: i64 = (0..n_chunks)
+    // Compute sum of L(n) for n = 3..N in parallel chunks over odd indices
+    let chunk_size_idx = 128 * 1024;
+    let n_idx_chunks = (HALF_N - 1 + chunk_size_idx - 1) / chunk_size_idx;
+    let total: i64 = (0..n_idx_chunks)
         .into_par_iter()
         .map(|ci| {
-            let start = 3 + ci * chunk_size;
-            let end = n.min(start + chunk_size - 1);
+            let start_idx = 1 + ci * chunk_size_idx;
+            let end_idx = (HALF_N - 1).min(start_idx + chunk_size_idx - 1);
             let mut local_total: i64 = 0;
 
-            for nn in start..=end {
-                let mut temp = nn;
-                while temp % 2 == 0 { temp /= 2; }
-                while temp % 5 == 0 { temp /= 5; }
-                if temp <= 1 { continue; }
+            for idx in start_idx..=end_idx {
+                if idx % 5 == 2 {
+                    continue; // 2 * idx + 1 is divisible by 5
+                }
+                let m = (2 * idx + 1) as u32;
+                if m > n as u32 {
+                    break;
+                }
 
-                // SAFETY: temp <= nn <= n < NMAX
-                let sp = unsafe { *spf.get_unchecked(temp) };
+                let cnt = get_count(m, &count_table, &hamming);
+
+                let sp = unsafe { *spf.get_unchecked(idx) };
                 if sp == 0 {
-                    // temp is prime, use cached order
-                    local_total += unsafe { *ord10.get_unchecked(temp) } as i64;
+                    let lm = unsafe { *ord10.get_unchecked(idx) } as i64;
+                    local_total += lm * cnt;
                     continue;
                 }
 
-                // Factor temp, compute LCM of L(p^e)
-                let mut result: i64 = 0;
-                let mut t = temp;
-                while t > 1 {
-                    let p = unsafe {
-                        let s = *spf.get_unchecked(t);
-                        if s == 0 { t as u32 } else { s }
-                    };
+                let mut t = m / sp;
+                let mut e = 1u32;
+                while t % sp == 0 {
+                    t /= sp;
+                    e += 1;
+                }
 
-                    let mut e = 0u32;
-                    while t % p as usize == 0 {
-                        t /= p as usize;
+                let lp = unsafe { *ord10.get_unchecked((sp >> 1) as usize) } as u64;
+                let mut result = lp;
+                if e >= 2 {
+                    if sp == 3 {
+                        result = 3u64.pow(e - 2);
+                    } else if sp == 487 {
+                        result = 486;
+                    } else {
+                        for _ in 1..e {
+                            result *= sp as u64;
+                        }
+                    }
+                }
+
+                while t > 1 {
+                    let s = unsafe { *spf.get_unchecked((t >> 1) as usize) };
+                    if s == 0 {
+                        let lp = unsafe { *ord10.get_unchecked((t >> 1) as usize) } as u64;
+                        result = lcm64(result, lp);
+                        break;
+                    }
+                    let mut e = 1u32;
+                    t /= s;
+                    while t % s == 0 {
+                        t /= s;
                         e += 1;
                     }
 
-                    let lp = unsafe { *ord10.get_unchecked(p as usize) } as i64;
-                    if lp == 0 { continue; }
-
+                    let lp = unsafe { *ord10.get_unchecked((s >> 1) as usize) } as u64;
                     let mut lpe = lp;
                     if e >= 2 {
-                        let pp = p as u64 * p as u64;
-                        if pow_mod_big(10, lp as u64, pp) == 1 {
-                            let mut e0 = 2u32;
-                            let mut ppow = pp;
-                            for i in 3..=e {
-                                ppow *= p as u64;
-                                if pow_mod_big(10, lp as u64, ppow) == 1 {
-                                    e0 = i;
-                                } else {
-                                    break;
-                                }
-                            }
-                            for _ in e0..e {
-                                lpe *= p as i64;
-                            }
+                        if s == 3 {
+                            lpe = 3u64.pow(e - 2);
+                        } else if s == 487 {
+                            lpe = 486;
                         } else {
                             for _ in 1..e {
-                                lpe *= p as i64;
+                                lpe *= s as u64;
                             }
                         }
                     }
-                    result = lcm_i64(result, lpe);
+                    result = lcm64(result, lpe);
                 }
-                local_total += result;
+                local_total += result as i64 * cnt;
             }
             local_total
         })
