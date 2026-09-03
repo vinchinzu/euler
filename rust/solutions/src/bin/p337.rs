@@ -1,130 +1,265 @@
 // Project Euler 337 - Totient Stairstep Sequences
-// DP with Fenwick tree, sorting by (phi, value).
+// DP with AVX2 Wide Segment Tree (branching factor B=16).
 //
 // Optimizations:
+// - Fast linear sieve for phi using phi_i == 0 as prime test (eliminating is_composite, saving 20MB)
 // - Parallel rayon unstable sort on packed u64 (phi << 32 | idx)
-// - Branchless u32 accumulation in bit_query
-// - Elimination of 64-bit integer divisions (% MOD) in bit_update and DP query loop
-// - Direct pointer accesses in inner loops
+// - 7-layer Wide Segment Tree (B=16): reduces tree height from 24 (Fenwick) to 7 layers
+// - Branchless AVX2 vectorization for suffix updates inside 16-element nodes
+// - Branchless query with only 7 array lookups (layers 2..6 permanently resident in L1 cache)
+// - Elimination of zero updates (DP=0 when phi(j) + 1 >= j, e.g. for primes)
+// - Skipping groups and prefix elements where j <= left = max(START, phi(j) + 1)
+// - Reusable stack buffer instead of Vec allocations for group updates
 
 use rayon::prelude::*;
+use std::arch::x86_64::*;
 
 const TARGET_N: usize = 20_000_000;
 const MOD: i64 = 100_000_000;
 const START: usize = 6;
+const B: usize = 16;
+const SHIFT: usize = 4;
+const H_MAX: usize = 7;
 
-#[inline(always)]
-fn bit_update(b_ptr: *mut i32, n: usize, idx: usize, val: i32) {
-    let mut i = idx + 1;
-    while i < n {
-        unsafe {
-            let p = b_ptr.add(i);
-            let mut sum = *p + val;
-            if sum >= 100_000_000 {
-                sum -= 100_000_000;
-            }
-            *p = sum;
-        }
-        i += i & i.wrapping_neg();
-    }
+struct WideSegTree {
+    offsets: [usize; H_MAX],
+    data: Vec<i32>,
+    masks: [__m256i; 16],
 }
 
-#[inline(always)]
-fn bit_query(b_ptr: *const i32, idx: usize) -> i64 {
-    let mut i = idx + 1;
-    let mut s = 0u32;
-    while i > 0 {
-        unsafe { s += *b_ptr.add(i) as u32; }
-        i -= i & i.wrapping_neg();
+impl WideSegTree {
+    fn new(n: usize) -> Self {
+        let mut offsets = [0usize; H_MAX];
+        let mut cur_offset = 0;
+        let mut cur_n = n;
+        for h in 0..H_MAX {
+            cur_offset = (cur_offset + 15) & !15;
+            offsets[h] = cur_offset;
+            let num_blocks = (cur_n + B - 1) / B;
+            cur_offset += num_blocks * B;
+            cur_n = num_blocks;
+        }
+        let total_size = cur_offset + 32;
+
+        let mut masks = [unsafe { _mm256_setzero_si256() }; 16];
+        for pos in 0..16 {
+            let mut m = [0i32; 8];
+            let p_in_chunk = pos % 8;
+            for i in 0..8 {
+                if i > p_in_chunk {
+                    m[i] = -1;
+                }
+            }
+            unsafe {
+                masks[pos] = _mm256_loadu_si256(m.as_ptr() as *const __m256i);
+            }
+        }
+
+        WideSegTree {
+            offsets,
+            data: vec![0i32; total_size],
+            masks,
+        }
     }
-    (s % 100_000_000) as i64
+
+    #[target_feature(enable = "avx2")]
+    #[inline]
+    unsafe fn add(&mut self, mut k: usize, x: i32) {
+        unsafe {
+            let d_ptr = self.data.as_mut_ptr();
+            let v_x = _mm256_set1_epi32(x);
+            let v_mod_minus_1 = _mm256_set1_epi32(99_999_999);
+            let v_mod = _mm256_set1_epi32(100_000_000);
+
+            for h in 0..H_MAX {
+                let pos = k & (B - 1);
+                if pos < 15 {
+                    let block_start = *self.offsets.get_unchecked(h) + (k & !(B - 1));
+                    if pos >= 8 {
+                        let p1 = d_ptr.add(block_start + 8) as *mut __m256i;
+                        let cur1 = _mm256_loadu_si256(p1);
+                        let mask1 = *self.masks.get_unchecked(pos);
+                        let delta1 = _mm256_and_si256(v_x, mask1);
+                        let sum1 = _mm256_add_epi32(cur1, delta1);
+                        let cmp1 = _mm256_cmpgt_epi32(sum1, v_mod_minus_1);
+                        let sub1 = _mm256_and_si256(cmp1, v_mod);
+                        let res1 = _mm256_sub_epi32(sum1, sub1);
+                        _mm256_storeu_si256(p1, res1);
+                    } else {
+                        let p0 = d_ptr.add(block_start) as *mut __m256i;
+                        let p1 = d_ptr.add(block_start + 8) as *mut __m256i;
+                        let cur0 = _mm256_loadu_si256(p0);
+                        let cur1 = _mm256_loadu_si256(p1);
+
+                        let mask0 = *self.masks.get_unchecked(pos);
+                        let delta0 = _mm256_and_si256(v_x, mask0);
+                        let sum0 = _mm256_add_epi32(cur0, delta0);
+                        let sum1 = _mm256_add_epi32(cur1, v_x);
+
+                        let cmp0 = _mm256_cmpgt_epi32(sum0, v_mod_minus_1);
+                        let cmp1 = _mm256_cmpgt_epi32(sum1, v_mod_minus_1);
+                        let sub0 = _mm256_and_si256(cmp0, v_mod);
+                        let sub1 = _mm256_and_si256(cmp1, v_mod);
+                        let res0 = _mm256_sub_epi32(sum0, sub0);
+                        let res1 = _mm256_sub_epi32(sum1, sub1);
+
+                        _mm256_storeu_si256(p0, res0);
+                        _mm256_storeu_si256(p1, res1);
+                    }
+                }
+                k >>= SHIFT;
+            }
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn query(&self, mut k: usize) -> i64 {
+        unsafe {
+            let d_ptr = self.data.as_ptr();
+            let mut s = 0i64;
+            for h in 0..H_MAX {
+                let idx = *self.offsets.get_unchecked(h) + k;
+                s += *d_ptr.add(idx) as i64;
+                k >>= SHIFT;
+            }
+            s % MOD
+        }
+    }
 }
 
 fn main() {
-    // Linear sieve for phi
-    let mut phi_arr = vec![0u32; TARGET_N + 1];
-    let mut is_composite = vec![false; TARGET_N + 1];
-    let mut primes = Vec::with_capacity(2_000_000);
+    let limit = TARGET_N + 1;
+    let mut phi = vec![0u32; limit];
+    let mut primes: Vec<u32> = Vec::with_capacity(1_300_000);
 
-    phi_arr[1] = 1;
-    for i in 2..=TARGET_N {
-        unsafe {
-            if !*is_composite.get_unchecked(i) {
-                primes.push(i);
-                *phi_arr.get_unchecked_mut(i) = (i - 1) as u32;
-            }
+    unsafe {
+        let phi_p = phi.as_mut_ptr();
+        *phi_p.add(1) = 1;
+        primes.push(2);
+        *phi_p.add(2) = 1;
+        if limit > 4 {
+            *phi_p.add(4) = 2;
         }
-        for &p in &primes {
-            let x = i * p;
-            if x > TARGET_N { break; }
-            unsafe {
-                *is_composite.get_unchecked_mut(x) = true;
-                if i % p == 0 {
-                    *phi_arr.get_unchecked_mut(x) = *phi_arr.get_unchecked(i) * p as u32;
-                } else {
-                    *phi_arr.get_unchecked_mut(x) = *phi_arr.get_unchecked(i) * (p - 1) as u32;
+
+        for i in 3..limit {
+            if i & 1 == 0 {
+                let phi_i = *phi_p.add(i);
+                let i2 = i << 1;
+                if i2 < limit {
+                    *phi_p.add(i2) = phi_i << 1;
                 }
+                continue;
             }
-            if i % p == 0 { break; }
+
+            let mut phi_i = *phi_p.add(i);
+            if phi_i == 0 {
+                primes.push(i as u32);
+                phi_i = i as u32 - 1;
+                *phi_p.add(i) = phi_i;
+            }
+
+            let i2 = i << 1;
+            if i2 < limit {
+                *phi_p.add(i2) = phi_i;
+            }
+
+            let pr = primes.as_ptr();
+            let np = primes.len();
+            let mut j = 1;
+            while j < np {
+                let p = *pr.add(j);
+                let ip = i as u64 * p as u64;
+                if ip >= limit as u64 {
+                    break;
+                }
+                if (i as u32) % p == 0 {
+                    *phi_p.add(ip as usize) = phi_i * p;
+                    break;
+                }
+                *phi_p.add(ip as usize) = phi_i * (p - 1);
+                j += 1;
+            }
         }
     }
 
-    // Build packed u64 pairs (phi << 32 | idx), sort with rayon
     let count = TARGET_N - START + 1;
     let mut pairs: Vec<u64> = Vec::with_capacity(count);
     for i in START..=TARGET_N {
         unsafe {
-            let phi = *phi_arr.get_unchecked(i) as u64;
-            pairs.push((phi << 32) | (i as u64));
+            let p = *phi.get_unchecked(i) as u64;
+            pairs.push((p << 32) | (i as u64));
         }
     }
-    drop(phi_arr);
-    drop(is_composite);
+    drop(phi);
     pairs.par_sort_unstable();
 
-    // Fenwick tree (i32 halves cache footprint; MOD=10^8 fits in i32)
-    let mut bit = vec![0i32; TARGET_N + 2];
-    let b_ptr = bit.as_mut_ptr();
-    let n_bit = bit.len();
+    let mut tree = WideSegTree::new(TARGET_N + 2);
 
-    let mut group_vals: Vec<(usize, i32)> = Vec::new();
+    let mut buf_j = [0usize; 8192];
+    let mut buf_val = [0i32; 8192];
+
     let mut total = 0i64;
     let mut pos = 0;
 
-    while pos < count {
-        let cur_phi = (pairs[pos] >> 32) as u32;
-        group_vals.clear();
+    unsafe {
+        while pos < count {
+            let cur_phi = (pairs[pos] >> 32) as u32;
+            let left = START.max(cur_phi as usize + 1);
 
-        // Hoist the left-boundary query — same for all elements in this group
-        let left = START.max(cur_phi as usize + 1);
-        let base_sum = if left > 0 { bit_query(b_ptr, left - 1) } else { 0 };
-
-        while pos < count && ((pairs[pos] >> 32) as u32) == cur_phi {
-            let j = (pairs[pos] as u32) as usize;
-            let right = j.saturating_sub(1);
-
-            let sum_prev = if left <= right {
-                let diff = bit_query(b_ptr, right) - base_sum;
-                if diff < 0 { diff + MOD } else { diff }
-            } else {
-                0
-            };
-            let base = if j == START { 1i64 } else { 0 };
-            let mut value = base + sum_prev;
-            if value >= MOD {
-                value -= MOD;
+            let group_start = pos;
+            while pos < count && ((pairs[pos] >> 32) as u32) == cur_phi {
+                pos += 1;
             }
-            let val_i32 = value as i32;
-            group_vals.push((j, val_i32));
-            total += value;
-            if total >= MOD {
-                total -= MOD;
-            }
-            pos += 1;
-        }
+            let group_end = pos;
 
-        for &(j, value) in &group_vals {
-            bit_update(b_ptr, n_bit, j, value);
+            if cur_phi == 2 {
+                total = 1;
+                tree.add(START, 1);
+                continue;
+            }
+
+            let max_j = (pairs[group_end - 1] as u32) as usize;
+            if max_j <= left {
+                continue;
+            }
+
+            let mut active_start = group_start;
+            let min_j = (pairs[group_start] as u32) as usize;
+            if min_j <= left {
+                while active_start < group_end && ((pairs[active_start] as u32) as usize) <= left {
+                    active_start += 1;
+                }
+            }
+
+            if active_start == group_end {
+                continue;
+            }
+
+            // query(k) returns prefix sum of elements < k
+            // We want sum of elements in [left, right] = query(right + 1) - query(left) = query(j) - query(left)
+            let base_sum = tree.query(left);
+            let mut g_len = 0;
+            for k in active_start..group_end {
+                let j = (pairs[k] as u32) as usize;
+                let diff = tree.query(j) - base_sum;
+                let value = if diff < 0 { diff + MOD } else { diff };
+                let val_i32 = value as i32;
+                buf_j[g_len] = j;
+                buf_val[g_len] = val_i32;
+                g_len += 1;
+
+                total += value;
+                if total >= MOD {
+                    total -= MOD;
+                }
+            }
+
+            for k in 0..g_len {
+                let val = buf_val[k];
+                if val != 0 {
+                    tree.add(buf_j[k], val);
+                }
+            }
         }
     }
 

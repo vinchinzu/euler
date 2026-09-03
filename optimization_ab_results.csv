@@ -282,3 +282,7 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 786,1202.6,736.5,38.76,True,True,Tightened Mobius sieve limit to exact non-zero bound l/8 = 187.5M saving 340MB RAM; constant compile-time lookup tables TAB3 and TAB9; pure 64-bit integer arithmetic speedup=1.633x
 954,1251.7,660.4,47.24,True,True,Unified single-pass digit DP solving all lengths 1..13 in single forward pass; direct accumulator sum for MSD digit eliminating 1.44M hash table; rayon tr parallelism speedup=1.895x
 774,1363.8,1005.2,26.30,True,True,Parallelized hadamard add apply_disjoint TT core contractions with Rayon; contiguous slice pivot copies; swapped loop nesting in t_update for contiguous memory access; SIMD swap in gauss_elim speedup=1.357x
+662,1084.3,1136.8,-4.84,True,False,3-row AVX2 addition and std modulo reduction; regression (0.954x); cleanly reverted
+578,1089.7,61.6,94.35,True,True,Interleaved prefix_sf_k lookup table resolving 97% of squarefree_min_prime in O(1); analytic 3rd/4th root cutoffs in DPP; light/heavy Rayon speedup=17.700x
+439,1073.3,177.0,83.51,True,True,Compacted sieve to u32 in L3 cache; parallel dyadic layers for n_mu_cache; u128 accumulation eliminating inner % MOD; closed-form sum_range speedup=6.064x
+337,1804.7,916.7,49.20,True,True,AVX2 7-level Wide Segment Tree (B=16) replacing 24-level binary Fenwick; L1/L2 upper layers; mathematical group pruning skipping 472K groups speedup=1.969x

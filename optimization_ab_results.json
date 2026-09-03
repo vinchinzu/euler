@@ -4937,5 +4937,53 @@
     "notes": "Parallelized hadamard, add, and apply_disjoint TT core contractions across threads with Rayon; optimized contiguous slice copying for pivot rows; swapped loop nesting in t_update for contiguous memory access; SIMD swap in gauss_elim",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 662,
+    "baseline_median_ms": 1084.3,
+    "candidate_median_ms": 1136.8,
+    "speedup": 0.954,
+    "correct": true,
+    "baseline_times": [1084.3, 1080.7, 1085.7],
+    "candidate_times": [1167.4, 1136.8, 1000.1],
+    "notes": "3-row AVX2 addition and std modulo reduction; regression (0.954x); cleanly reverted per A/B gate rule",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 578,
+    "baseline_median_ms": 1089.7,
+    "candidate_median_ms": 61.6,
+    "speedup": 17.700,
+    "correct": true,
+    "baseline_times": [1093.6, 1089.7, 1078.2],
+    "candidate_times": [60.5, 67.5, 61.6],
+    "notes": "Interleaved prefix_sf_k lookup table resolving 97% of squarefree_min_prime queries in O(1) time; analytic 3rd/4th root cutoffs in DPP evaluating large prime power tails in O(1); light/heavy Rayon work-stealing",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 439,
+    "baseline_median_ms": 1073.3,
+    "candidate_median_ms": 177.0,
+    "speedup": 6.064,
+    "correct": true,
+    "baseline_times": [1073.3, 1071.0, 1118.5],
+    "candidate_times": [177.9, 177.0, 153.0],
+    "notes": "Compacted sieve arrays to u32 fitting in L3 cache; parallel dyadic layers for n_mu_cache; u128 accumulation eliminating inner % MOD divisions; closed-form sum_range; parallel chunked Part 1 reduction",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 337,
+    "baseline_median_ms": 1804.7,
+    "candidate_median_ms": 916.7,
+    "speedup": 1.969,
+    "correct": true,
+    "baseline_times": [1804.7, 1791.1, 2157.9],
+    "candidate_times": [907.7, 916.7, 935.4],
+    "notes": "AVX2-accelerated 7-level Wide Segment Tree with branching factor B=16 replacing 24-level binary Fenwick tree; L1/L2 resident upper layers; mathematical group pruning skipping 472,696 zero-contribution groups; compact odd-sieve",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
   }
 ]
