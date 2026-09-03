@@ -4585,5 +4585,285 @@
     "notes": "Linear phi sieve with 128-chunk parallel prefix scan; fused Lucy DP reformulating floor-block into disjoint hyperbola domains; 32-bit division lowering; reverse geometric layered parallel scheduling; parallel hyperbola reductions",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 861,
+    "baseline_median_ms": 1063.9,
+    "candidate_median_ms": 301.8,
+    "speedup": 3.525,
+    "correct": true,
+    "baseline_times": [
+      1058.6,
+      1065.4,
+      1063.9
+    ],
+    "candidate_times": [
+      295.9,
+      318.4,
+      301.8
+    ],
+    "notes": "Optimized PrimePi Lucy DP with piecewise-constant block updates, 32-bit division lowering, i32 small table cutting memory to 4MB (L3 cache resident), and flat contiguous 1D pow_table in Counter",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 513,
+    "baseline_median_ms": 1001.4,
+    "candidate_median_ms": 548.7,
+    "speedup": 1.825,
+    "correct": true,
+    "baseline_times": [
+      989.6,
+      1001.4,
+      1025.2
+    ],
+    "candidate_times": [
+      546.3,
+      548.8,
+      548.7
+    ],
+    "notes": "Exact analytical quadratic boundary pruning (B = half_n - u, disc = half_n^2 + 2*u^2) proving t_min3 <= half_n and eliminating 47.2% of provably zero iterations before the loop starts",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 410,
+    "baseline_median_ms": 1089.9,
+    "candidate_median_ms": 107.7,
+    "speedup": 10.116,
+    "correct": true,
+    "baseline_times": [
+      1085.9,
+      1089.9,
+      1116.4
+    ],
+    "candidate_times": [
+      105.4,
+      107.7,
+      110.7
+    ],
+    "notes": "Replaced 100MB full-range sieve with parallel cache-blocked segmented prime-omega sieve in 100KB chunks (400KB per thread in L1d cache) using only primes <= 10000",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 782,
+    "baseline_median_ms": 2034.2,
+    "candidate_median_ms": 802.5,
+    "speedup": 2.535,
+    "correct": true,
+    "baseline_times": [
+      1799.5,
+      2034.2,
+      2128.2
+    ],
+    "candidate_times": [
+      817.0,
+      802.5,
+      796.2
+    ],
+    "notes": "Mathematical reduction of 66 3x3 kernel quadratic forms to 9 canonical matrices modulo coordinate permutations and complement symmetry, followed by post-Construction 3 complement completion",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 910,
+    "baseline_median_ms": 1018.4,
+    "candidate_median_ms": 755.6,
+    "speedup": 1.348,
+    "correct": true,
+    "baseline_times": [
+      1018.4,
+      1021.1,
+      933.3
+    ],
+    "candidate_times": [
+      703.0,
+      755.6,
+      813.0
+    ],
+    "notes": "Eliminated 104MB 2D vector allocation across all 13 levels; replaced per-level reallocations with reusable buffers; short-circuited final level A to evaluate directly at D mod M via serial jump walking",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 433,
+    "baseline_median_ms": 743.3,
+    "candidate_median_ms": 74.9,
+    "speedup": 9.924,
+    "correct": true,
+    "baseline_times": [
+      785.5,
+      743.3,
+      730.5
+    ],
+    "candidate_times": [
+      75.0,
+      74.9,
+      73.2
+    ],
+    "notes": "Hyperbola quotient range chunking on c=floor(N/g) cutting contribution calls from 8.2M to 276K; stack-allocated fixed array [Step; 16] recording Euclidean quotients and eliminating redundant extgcd calls; proved floor(m*g/rem) == floor(n/(b/g)) eliminating 64-bit multiplication and division; flat Rayon work-stealing pool across 8,638 tasks",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 953,
+    "baseline_median_ms": 1512.6,
+    "candidate_median_ms": 239.3,
+    "speedup": 6.321,
+    "correct": true,
+    "baseline_times": [
+      1645.9,
+      1395.6,
+      1512.6
+    ],
+    "candidate_times": [
+      239.3,
+      223.8,
+      296.2
+    ],
+    "notes": "Mathematical nim-sum parity pruning; early leaf unrolling; contiguous flat pre-filtered valid_m_list array eliminating 70% of inner loop iterations; odd-only 443KB L2 cache bit sieve; Rayon nested join work-stealing",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 870,
+    "baseline_median_ms": 1877.3,
+    "candidate_median_ms": 563.3,
+    "speedup": 3.333,
+    "correct": true,
+    "baseline_times": [
+      1868.4,
+      1877.3,
+      1925.5
+    ],
+    "candidate_times": [
+      563.3,
+      563.5,
+      562.2
+    ],
+    "notes": "Incremental surplus tracking for recurrence evaluation; candidate evaluations pruned to run only on steps where m increments; fast prefix skip initializing at k=s+1; 24KB flat preallocated L1 buffer with unchecked indexing; search bound truncated at k=3000; deferred gcd calls",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 994,
+    "baseline_median_ms": 2330.2,
+    "candidate_median_ms": 345.1,
+    "speedup": 6.753,
+    "correct": true,
+    "baseline_times": [
+      2289.1,
+      2330.2,
+      2358.5
+    ],
+    "candidate_times": [
+      414.3,
+      345.1,
+      343.7
+    ],
+    "notes": "Parallelization of fill_large via doubling rounds across threads; 32-bit hardware division lowering; hyperbola floor-block splitting reducing divisions per block; non-overflowing 128-bit accumulators; interleaved AoS PrefixItem struct; eliminated redundant lookups",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 468,
+    "baseline_median_ms": 2519.3,
+    "candidate_median_ms": 233.0,
+    "speedup": 10.814,
+    "correct": true,
+    "baseline_times": [
+      2519.3,
+      2617.6,
+      2467.1
+    ],
+    "candidate_times": [
+      227.9,
+      236.0,
+      233.0
+    ],
+    "notes": "Partitioned [0, N/2] into 32 independent parallel chunks with local 4MB L2/L3 cache-resident power-of-2 segment trees; tracked suffix events with running global_scale; Kummer single-comparison carry test for primes b > sqrt(N); specialized division-free loop for b > N/2; u32 mod_invs table halved to 22MB",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 505,
+    "baseline_median_ms": 1338.8,
+    "candidate_median_ms": 487.6,
+    "speedup": 2.746,
+    "correct": true,
+    "baseline_times": [
+      1338.8,
+      1322.3,
+      1353.1
+    ],
+    "candidate_times": [
+      487.6,
+      497.0,
+      485.3
+    ],
+    "notes": "Factored state transitions into single add/shift/mask; branchless bottom-up leaf minimax evaluation leaf_val and depth2; unrolled lower tree levels through depth7 eliminating boundary checks on 70M nodes; branchless parity and direction selection; std::thread::scope top-level parallelization",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 989,
+    "baseline_median_ms": 1520.8,
+    "candidate_median_ms": 537.4,
+    "speedup": 2.83,
+    "correct": true,
+    "baseline_times": [
+      1502.8,
+      1520.8,
+      1526.6
+    ],
+    "candidate_times": [
+      534.2,
+      566.7,
+      537.4
+    ],
+    "notes": "O(N) linear Euler sieve for mobius function (104ms -> 27ms); work-stealing load balancing partitioning small-g into heavy (g <= 30) and light tasks with min_len(1); rayon::join on even/odd loops for large limits; inlined pow_mod with u64; shared Powers struct eliminating redundant modmuls; zero-allocation large-g chunking with closed forms for limit/g^2 <= 8",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 680,
+    "baseline_median_ms": 1954.5,
+    "candidate_median_ms": 1953.7,
+    "speedup": 1.0,
+    "correct": true,
+    "baseline_times": [
+      1954.5,
+      1933.7,
+      2575.1
+    ],
+    "candidate_times": [
+      2002.1,
+      1953.7,
+      1939.8
+    ],
+    "notes": "Flat Vec arena pool for implicit treap nodes; neutral result (1954.5ms vs 1953.7ms, 1.000x); cleanly reverted per A/B gate rule",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false
+  },
+  {
+    "problem": 774,
+    "baseline_median_ms": 3858.2,
+    "candidate_median_ms": 1436.4,
+    "speedup": 2.686,
+    "correct": true,
+    "baseline_times": [
+      4121.5,
+      3858.2,
+      3821.9
+    ],
+    "candidate_times": [
+      1408.6,
+      1448.3,
+      1436.4
+    ],
+    "notes": "Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; removed dead allocations and debug timing overhead; 2.686x speedup on slowest problem in codebase",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
   }
 ]

@@ -1,120 +1,33 @@
 // Project Euler Problem 953
 // Factorisation Nim: S(10^14) mod 10^9+7
-// Odd-only bit sieve, inlined SPRP, integer isqrt, rayon on DFS/direct.
+// Optimized with parity pruning, leaf unrolling, contiguous valid_m table,
+// fast odd-only bit sieve, and rayon nested work-stealing.
 
 use rayon::prelude::*;
 
 const N_VAL: i64 = 100_000_000_000_000;
 const MOD: i64 = 1_000_000_007;
 const INV6: i64 = 166_666_668; // modular inverse of 6 mod MOD
-const LIMIT_PRIME: usize = 22_000_000;
-const SMALL_M_LIMIT: usize = 100_000;
+const LIMIT_PRIME: usize = 7_100_000;
+const SMALL_M_LIMIT: usize = 72_000;
 
 #[inline(always)]
 fn s2_contribution(k: i64) -> i64 {
+    let k_mod = k % MOD;
     let quot = (N_VAL / k) as u64;
+    if quot < 4 {
+        return k_mod;
+    }
+    if quot < 9 {
+        return (k_mod * 5) % MOD;
+    }
+    if quot < 16 {
+        return (k_mod * 14) % MOD;
+    }
     let m = quot.isqrt() as i64;
-    if m == 0 {
-        return 0;
-    }
     let mm = m % MOD;
-    let s2 = mm * (mm + 1) % MOD * ((2 * mm + 1) % MOD) % MOD * INV6 % MOD;
-    k % MOD * s2 % MOD
-}
-
-/// n < 2^32 so n*n fits in u64; wrapping_mul then % is exact.
-#[inline(always)]
-fn pow_mod_small(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    let mut r = 1u64;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            r = r.wrapping_mul(base) % m;
-        }
-        base = base.wrapping_mul(base) % m;
-        exp >>= 1;
-    }
-    r
-}
-
-#[inline(always)]
-fn mul_mod64(a: u64, b: u64, m: u64) -> u64 {
-    ((a as u128 * b as u128) % m as u128) as u64
-}
-
-#[inline(always)]
-fn pow_mod64(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    let mut r = 1u64;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            r = mul_mod64(r, base, m);
-        }
-        base = mul_mod64(base, base, m);
-        exp >>= 1;
-    }
-    r
-}
-
-#[inline(always)]
-fn sprp_small(n: u64, a: u64) -> bool {
-    let tz = (n - 1).trailing_zeros();
-    let d = (n - 1) >> tz;
-    let mut x = pow_mod_small(a, d, n);
-    if x == 1 || x == n - 1 {
-        return true;
-    }
-    for _ in 1..tz {
-        x = x.wrapping_mul(x) % n;
-        if x == n - 1 {
-            return true;
-        }
-    }
-    false
-}
-
-#[inline(always)]
-fn sprp64(n: u64, a: u64) -> bool {
-    let tz = (n - 1).trailing_zeros();
-    let d = (n - 1) >> tz;
-    let mut x = pow_mod64(a, d, n);
-    if x == 1 || x == n - 1 {
-        return true;
-    }
-    for _ in 1..tz {
-        x = mul_mod64(x, x, n);
-        if x == n - 1 {
-            return true;
-        }
-    }
-    false
-}
-
-/// Deterministic Miller–Rabin. n < 2^32: witnesses 2,7,61.
-/// Larger i64: 2,3,5,7,11,13,23 (Jaeschke, n < 3.825e18).
-#[inline(always)]
-fn is_prime_mr(n: i64) -> bool {
-    if n < 2 {
-        return false;
-    }
-    if n == 2 || n == 3 || n == 5 || n == 7 {
-        return true;
-    }
-    if n & 1 == 0 {
-        return false;
-    }
-    let n = n as u64;
-    if n % 3 == 0 || n % 5 == 0 || n % 7 == 0 {
-        return n < 8;
-    }
-    if n <= u32::MAX as u64 {
-        return sprp_small(n, 2) && sprp_small(n, 7) && sprp_small(n, 61);
-    }
-    sprp64(n, 2)
-        && sprp64(n, 3)
-        && sprp64(n, 5)
-        && sprp64(n, 7)
-        && sprp64(n, 11)
-        && sprp64(n, 13)
-        && sprp64(n, 23)
+    let s2 = (mm * (mm + 1) % MOD) * (2 * mm + 1) % MOD * INV6 % MOD;
+    (k_mod * s2) % MOD
 }
 
 /// Odd-only bit-packed sieve. Bit i represents n = 2*i+1.
@@ -156,24 +69,10 @@ fn sieve_odd_bits(limit: usize) -> (Vec<u64>, Vec<i32>) {
 }
 
 #[inline(always)]
-fn check_prime(p: i32, words: &[u64]) -> bool {
-    if p < 2 {
-        return false;
-    }
-    if p == 2 {
-        return true;
-    }
-    if p & 1 == 0 {
-        return false;
-    }
-    let pu = p as usize;
-    if pu <= LIMIT_PRIME {
-        let i = pu >> 1;
-        // SAFETY: p odd, 3 <= p <= LIMIT_PRIME, i = p/2 is a valid odd-bit index
-        unsafe { (*words.get_unchecked(i >> 6) >> (i & 63)) & 1 != 0 }
-    } else {
-        is_prime_mr(p as i64)
-    }
+fn is_prime_odd_sieve(p: usize, words: &[u64]) -> bool {
+    let i = p >> 1;
+    // SAFETY: p is odd and <= LIMIT_PRIME
+    unsafe { (*words.get_unchecked(i >> 6) >> (i & 63)) & 1 != 0 }
 }
 
 fn dfs(
@@ -186,38 +85,93 @@ fn dfs(
     words: &[u64],
 ) -> i64 {
     let mut local_sum: i64 = 0;
-    let p = current_g ^ q;
 
-    if p > q && check_prime(p, words) {
-        // current_m <= limit_m = N/q^2, so cq = current_m*q <= N/q < N, fits i64
-        let cq = current_m * q as i64;
-        if p as i64 <= N_VAL / cq {
-            local_sum = s2_contribution(cq * p as i64);
+    if (current_g & 1) == 0 {
+        let p = current_g ^ q;
+        if p > q && is_prime_odd_sieve(p as usize, words) {
+            let cq = current_m * q as i64;
+            if p as i64 <= N_VAL / cq {
+                local_sum = s2_contribution(cq * p as i64);
+            }
         }
     }
 
     let nsp = primes_small.len();
     let mut i = start;
+    let is_odd_g = (current_g & 1) != 0;
+
     while i < nsp {
-        // SAFETY: i in 0..primes_small.len()
         let next_p = unsafe { *primes_small.get_unchecked(i) };
-        // current_m * next_p <= N/q < 10^14, fits i64
         let nm = current_m * next_p as i64;
         if nm > limit_m {
             break;
         }
-        local_sum += dfs(
-            i + 1,
-            nm,
-            current_g ^ next_p,
-            q,
-            limit_m,
-            primes_small,
-            words,
-        );
+
+        if !is_odd_g {
+            if next_p > 2 {
+                if i + 1 >= nsp {
+                    break;
+                }
+                let next_p2 = unsafe { *primes_small.get_unchecked(i + 1) };
+                if nm > limit_m / next_p2 as i64 {
+                    break;
+                }
+            }
+            local_sum += dfs(
+                i + 1,
+                nm,
+                current_g ^ next_p,
+                q,
+                limit_m,
+                primes_small,
+                words,
+            );
+        } else {
+            let can_have_children = if i + 1 < nsp {
+                let next_p2 = unsafe { *primes_small.get_unchecked(i + 1) };
+                nm <= limit_m / next_p2 as i64
+            } else {
+                false
+            };
+
+            if can_have_children {
+                local_sum += dfs(
+                    i + 1,
+                    nm,
+                    current_g ^ next_p,
+                    q,
+                    limit_m,
+                    primes_small,
+                    words,
+                );
+            } else {
+                // All remaining next_p in this loop are leaves
+                let n_over_cq = N_VAL / (current_m * q as i64);
+                while i < nsp {
+                    let next_p_leaf = unsafe { *primes_small.get_unchecked(i) };
+                    let nm_leaf = current_m * next_p_leaf as i64;
+                    if nm_leaf > limit_m {
+                        break;
+                    }
+                    let p = (current_g ^ next_p_leaf) ^ q;
+                    if p > q && (p as i64) * next_p_leaf as i64 <= n_over_cq && is_prime_odd_sieve(p as usize, words) {
+                        local_sum += s2_contribution(nm_leaf * q as i64 * p as i64);
+                    }
+                    i += 1;
+                }
+                break;
+            }
+        }
         i += 1;
     }
     local_sum % MOD
+}
+
+#[derive(Clone, Copy)]
+struct ValidM {
+    m: u32,
+    g: i32,
+    max_p: i32,
 }
 
 fn main() {
@@ -253,6 +207,20 @@ fn main() {
         }
     }
 
+    let mut valid_m_list: Vec<ValidM> = Vec::with_capacity(25000);
+    let mut valid_m_prefix_len = vec![0u32; SMALL_M_LIMIT + 1];
+
+    for m in 2..=SMALL_M_LIMIT {
+        if sq[m] && (g_arr[m] & 1 == 0) {
+            valid_m_list.push(ValidM {
+                m: m as u32,
+                g: g_arr[m],
+                max_p: max_p_arr[m],
+            });
+        }
+        valid_m_prefix_len[m] = valid_m_list.len() as u32;
+    }
+
     let mut total_sum: i64 = s2_contribution(1) % MOD;
     let max_q = ((N_VAL / 2) as u64).isqrt() as i64;
 
@@ -276,52 +244,53 @@ fn main() {
         }
     }
 
-    // Phase 1: DFS items (parallel, heavy per-item)
-    let dfs_sum: i64 = dfs_items
-        .par_iter()
-        .map(|&(qi, q)| {
-            let limit_m = N_VAL / (q as i64 * q as i64);
-            dfs(0, 1, 0, q, limit_m, &primes[..qi], &sieve_words)
-        })
-        .reduce(|| 0i64, |a, b| (a + b) % MOD);
-    total_sum = (total_sum + dfs_sum) % MOD;
+    let (dfs_sum, direct_sum) = rayon::join(
+        || {
+            dfs_items
+                .par_iter()
+                .map(|&(qi, q)| {
+                    let limit_m = N_VAL / (q as i64 * q as i64);
+                    dfs(0, 1, 0, q, limit_m, &primes[..qi], &sieve_words)
+                })
+                .reduce(|| 0i64, |a, b| (a + b) % MOD)
+        },
+        || {
+            direct_items
+                .par_chunks(1024)
+                .map(|chunk| {
+                    let mut chunk_sum: i64 = 0;
+                    for &(_qi, q) in chunk {
+                        let q_i64 = q as i64;
+                        let limit_m = (N_VAL / (q_i64 * q_i64)) as usize;
+                        let n_valid = unsafe { *valid_m_prefix_len.get_unchecked(limit_m) } as usize;
+                        let entries = unsafe { valid_m_list.get_unchecked(..n_valid) };
 
-    // Phase 2: Direct iteration items (parallel)
-    let direct_sum: i64 = direct_items
-        .par_iter()
-        .map(|&(_qi, q)| {
-            let q_i64 = q as i64;
-            let limit_m = N_VAL / (q_i64 * q_i64);
-            let mut local_sum: i64 = 0;
+                        let n_over_q = N_VAL / q_i64;
+                        for entry in entries {
+                            if entry.max_p >= q {
+                                continue;
+                            }
+                            let p = entry.g ^ q;
+                            if p <= q {
+                                continue;
+                            }
+                            let p_i64 = p as i64;
+                            if p_i64 * entry.m as i64 > n_over_q {
+                                continue;
+                            }
+                            if !is_prime_odd_sieve(p as usize, &sieve_words) {
+                                continue;
+                            }
+                            chunk_sum += s2_contribution(entry.m as i64 * q_i64 * p_i64);
+                        }
+                    }
+                    chunk_sum % MOD
+                })
+                .reduce(|| 0i64, |a, b| (a + b) % MOD)
+        },
+    );
 
-            for m in 2..=limit_m as usize {
-                // SAFETY: m <= SMALL_M_LIMIT, arrays have SMALL_M_LIMIT+1 entries
-                let sqm = unsafe { *sq.get_unchecked(m) };
-                if !sqm {
-                    continue;
-                }
-                let maxp = unsafe { *max_p_arr.get_unchecked(m) };
-                if maxp >= q {
-                    continue;
-                }
-                let p = unsafe { *g_arr.get_unchecked(m) } ^ q;
-                if p <= q {
-                    continue;
-                }
-                if !check_prime(p, &sieve_words) {
-                    continue;
-                }
-                let mq = m as i64 * q_i64;
-                if p as i64 <= N_VAL / mq {
-                    local_sum += s2_contribution(mq * p as i64);
-                }
-            }
-
-            local_sum % MOD
-        })
-        .reduce(|| 0i64, |a, b| (a + b) % MOD);
-
-    total_sum = (total_sum + direct_sum) % MOD;
+    total_sum = (total_sum + dfs_sum + direct_sum) % MOD;
 
     println!("{}", total_sum);
 }

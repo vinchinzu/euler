@@ -102,59 +102,34 @@ fn main() {
         }
     }
 
-    // Construction 3: Kernel 3x3 matrices
-    let rows_3: [[i64; 3]; 8] = {
-        let mut r = [[0i64; 3]; 8];
-        for i in 0..8 {
-            r[i][0] = (i >> 2) as i64 & 1;
-            r[i][1] = (i >> 1) as i64 & 1;
-            r[i][2] = i as i64 & 1;
-        }
-        r
-    };
+    // Construction 3: Kernel 3x3 matrices (reduced to 9 non-trivial matrices modulo symmetry and complement)
+    let unique_m: [[[i64; 3]; 3]; 9] = [
+        [[0, 0, 0], [0, 0, 0], [0, 0, 1]],
+        [[0, 0, 0], [0, 0, 1], [0, 1, 0]],
+        [[0, 0, 0], [0, 0, 1], [0, 1, 1]],
+        [[0, 0, 0], [0, 1, 0], [0, 0, 1]],
+        [[0, 0, 1], [0, 0, 1], [1, 1, 0]],
+        [[0, 0, 1], [0, 1, 0], [1, 0, 0]],
+        [[0, 0, 1], [0, 1, 0], [1, 0, 1]],
+        [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
+        [[0, 1, 1], [1, 0, 1], [1, 1, 0]],
+    ];
 
     let mut forms: Vec<[i64; 6]> = Vec::new();
-
-    for r0i in 0..8usize {
-        for r1i in 0..8usize {
-            for r2i in 0..8usize {
-                let m = [rows_3[r0i], rows_3[r1i], rows_3[r2i]];
-
-                let mut ok = true;
-                for j in 0..3 {
-                    let col = [m[0][j], m[1][j], m[2][j]];
-                    let mut found = false;
-                    for ri in 0..3 {
-                        if m[ri] == col {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        ok = false;
-                        break;
-                    }
-                }
-                if !ok {
-                    continue;
-                }
-
-                let (a_coeff, b_coeff, c_coeff) = (m[0][0], m[1][1], m[2][2]);
-                let d01 = m[0][1] + m[1][0];
-                let d02 = m[0][2] + m[2][0];
-                let d12 = m[1][2] + m[2][1];
-                let aa = a_coeff + c_coeff - d02;
-                let bb = b_coeff + c_coeff - d12;
-                let ab = d01 + 2 * c_coeff - d02 - d12;
-                let a1 = n * (d02 - 2 * c_coeff);
-                let b1 = n * (d12 - 2 * c_coeff);
-                let c0 = c_coeff * n * n;
-
-                let form = [aa, bb, ab, a1, b1, c0];
-                if !forms.contains(&form) {
-                    forms.push(form);
-                }
-            }
+    for m in unique_m {
+        let (a_coeff, b_coeff, c_coeff) = (m[0][0], m[1][1], m[2][2]);
+        let d01 = m[0][1] + m[1][0];
+        let d02 = m[0][2] + m[2][0];
+        let d12 = m[1][2] + m[2][1];
+        let aa = a_coeff + c_coeff - d02;
+        let bb = b_coeff + c_coeff - d12;
+        let ab = d01 + 2 * c_coeff - d02 - d12;
+        let a1 = n * (d02 - 2 * c_coeff);
+        let b1 = n * (d12 - 2 * c_coeff);
+        let c0 = c_coeff * n * n;
+        let form = [aa, bb, ab, a1, b1, c0];
+        if !forms.contains(&form) {
+            forms.push(form);
         }
     }
 
@@ -219,6 +194,21 @@ fn main() {
         }
         for w in 0..nwords {
             achievable[w] |= local[w];
+        }
+    }
+
+    // Complete complement symmetry after Construction 3
+    for k in 1..=(big_n_u / 2) {
+        let comp = big_n_u - k;
+        let ak = bit_get(&achievable, k);
+        let ac = bit_get(&achievable, comp);
+        if ak || ac {
+            if !ak {
+                bit_set(&mut achievable, k);
+            }
+            if !ac {
+                bit_set(&mut achievable, comp);
+            }
         }
     }
 

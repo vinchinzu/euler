@@ -102,11 +102,28 @@ fn count_for_u(u: u32, half_n: u32) -> i64 {
     let u_odd = u & 1 == 1;
     let half_n_i64 = half_n as i64;
 
+    let b = half_n as i64 - u as i64;
+    let disc = (half_n as i64) * (half_n as i64) + 2 * (u as i64) * (u as i64);
+    let mut root = (disc as f64).sqrt() as i64;
+    while (root + 1) * (root + 1) <= disc {
+        root += 1;
+    }
+    while root * root > disc {
+        root -= 1;
+    }
+    let v_bound = (if root * root == disc { root } else { root + 1 }) - b;
+    let mut v_start = (u as i64 + 2).max(v_bound) as u32;
+    if (v_start ^ u) & 1 == 1 {
+        v_start += 1;
+    }
+
+    if v_start > v_max {
+        return 0;
+    }
+
     if u_odd {
-        // For odd u, iterate v = u+2, u+4, ... (odd values)
-        // Split into: v coprime to u (gcd=1) and v sharing a factor with u
-        // Use divisor-based iteration to handle non-coprime efficiently
-        let mut v: u32 = u + 2;
+        // For odd u, iterate v from v_start (odd values)
+        let mut v: u32 = v_start;
         while v <= v_max {
             let g = gcd32(u, v);
             count += process_odd(u, v, g, half_n_i64);
@@ -114,7 +131,7 @@ fn count_for_u(u: u32, half_n: u32) -> i64 {
         }
     } else {
         let hu = u / 2;
-        let mut v: u32 = u + 2;
+        let mut v: u32 = v_start;
         while v <= v_max {
             let g = gcd32(u, v);
             let vp = v / g;

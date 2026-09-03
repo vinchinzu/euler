@@ -1,30 +1,8 @@
-// Project Euler 433 - Steps in Euclid's Algorithm
-// S(N) = sum of E(x,y) for 1 <= x,y <= N, N = 5*10^6.
-
 use rayon::prelude::*;
 
 const N: usize = 5_000_000;
 
-fn gcd_fn(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
-}
-
-fn isqrt(n: i64) -> i64 {
-    let mut x = (n as f64).sqrt() as i64;
-    while x > 0 && x * x > n {
-        x -= 1;
-    }
-    while (x + 1) * (x + 1) <= n {
-        x += 1;
-    }
-    x
-}
-
+#[inline(always)]
 fn ncr2(n: i64) -> i64 {
     if n < 2 {
         0
@@ -33,46 +11,65 @@ fn ncr2(n: i64) -> i64 {
     }
 }
 
-fn floor_sum(n: i64, a: i64, b: i64) -> i64 {
-    if n <= 0 || a == 0 {
-        return 0;
+#[derive(Clone, Copy)]
+struct Step {
+    q: i32,
+    rem: i32,
+    b: i32,
+    b_over_g: i32,
+}
+
+#[inline(always)]
+fn extgcd_and_steps(b: i64, a: i64, steps: &mut [Step; 16]) -> (i64, i64, usize) {
+    let (mut y, mut y1) = (0i64, 1i64);
+    let mut cur_a = b;
+    let mut cur_b = a;
+    let mut count = 0;
+    while cur_b != 0 {
+        let q = cur_a / cur_b;
+        let rem = cur_a % cur_b;
+        steps[count] = Step { q: q as i32, rem: rem as i32, b: cur_b as i32, b_over_g: cur_b as i32 };
+        count += 1;
+        let next_y1 = y - q * y1;
+        y = y1;
+        y1 = next_y1;
+        cur_a = cur_b;
+        cur_b = rem;
     }
+    let gcd = cur_a;
+    if gcd > 1 {
+        for s in &mut steps[..count] {
+            s.b_over_g /= gcd as i32;
+        }
+    }
+    (gcd, y, count)
+}
+
+#[inline(always)]
+fn floor_sum_from_steps(mut n: i64, steps: &[Step]) -> i64 {
     let mut ans = 0i64;
-    let mut a = a;
-    if a >= b {
-        ans += (a / b) * n * (n + 1) / 2;
-        a %= b;
+    let mut sign = 1i64;
+    for s in steps {
+        if n <= 0 {
+            break;
+        }
+        ans += sign * (s.q as i64) * (n * (n + 1) / 2);
+        if s.rem == 0 {
+            break;
+        }
+        let m = (s.rem as i64 * n) / s.b as i64;
+        ans += sign * (m * n + n / s.b_over_g as i64);
+        sign = -sign;
+        n = m;
     }
-    if a == 0 {
-        return ans;
-    }
-    let m = a * n / b;
-    let g = gcd_fn(a, b);
-    ans + m * n - floor_sum(m, b, a) + (m * g) / a
+    ans
 }
 
-fn extgcd(mut a: i64, mut b: i64) -> (i64, i64, i64) {
-    let (mut x, mut y, mut x1, mut y1) = (1i64, 0i64, 0i64, 1i64);
-    while b != 0 {
-        let q = a / b;
-        let t = b;
-        b = a % b;
-        a = t;
-        let t = x1;
-        x1 = x - q * x1;
-        x = t;
-        let t = y1;
-        y1 = y - q * y1;
-        y = t;
-    }
-    (a, x, y)
-}
-
-#[inline]
-fn contribution_for_b(b: i64, c: i64, sqrt_c: i64) -> i64 {
+#[inline(always)]
+fn contribution_for_b(b: i64, c: i64, sqrt_c: i64, x2: i64, steps: &mut [Step; 16]) -> i64 {
     let mut res = 0i64;
     for a in 1..b {
-        let (gcd, _x_coef, y_coef) = extgcd(b, a);
+        let (gcd, y_coef, num_steps) = extgcd_and_steps(b, a, steps);
         let scale = c / gcd;
         let temp = y_coef * scale;
         let y_mod = temp % b;
@@ -80,89 +77,108 @@ fn contribution_for_b(b: i64, c: i64, sqrt_c: i64) -> i64 {
         let x = (c - a * y) / b;
 
         let x1 = c / (a + b);
-        let x2 = c / b;
+        let active_steps = &steps[..num_steps];
 
         if sqrt_c > x1 {
-            res += ncr2(x1);
-            let pts1 = floor_sum(x - x1 - 1, b, a);
-            let pts2 = floor_sum(x - sqrt_c - 1, b, a);
-            let pts3 = floor_sum(x - x2 - 1, b, a);
-            res += pts1 + pts2 - 2 * pts3;
-            res += (2 * x2 - x1 - sqrt_c) * y;
+            let pts1 = floor_sum_from_steps(x - x1 - 1, active_steps);
+            let pts2 = floor_sum_from_steps(x - sqrt_c - 1, active_steps);
+            let pts3 = floor_sum_from_steps(x - x2 - 1, active_steps);
+            res += ncr2(x1) + pts1 + pts2 - 2 * pts3 + (2 * x2 - x1 - sqrt_c) * y;
         } else {
-            let pts1 = floor_sum(x - x1 - 1, b, a);
-            let pts3 = floor_sum(x - x2 - 1, b, a);
-            res += 2 * (ncr2(x1) + pts1 - pts3 + (x2 - x1) * y);
-            res -= ncr2(sqrt_c);
+            let pts1 = floor_sum_from_steps(x - x1 - 1, active_steps);
+            let pts3 = floor_sum_from_steps(x - x2 - 1, active_steps);
+            res += 2 * (ncr2(x1) + pts1 - pts3 + (x2 - x1) * y) - ncr2(sqrt_c);
         }
     }
     res
 }
 
+struct Task {
+    c: i64,
+    sqrt_c: i64,
+    m: i64,
+    b_start: i64,
+    b_end: i64,
+}
+
 fn main() {
-    // Sieve for phi and mobius
     let mut phi = vec![0i32; N + 1];
     let mut mobius = vec![0i8; N + 1];
-    let mut spf = vec![0i32; N + 1];
+    let mut primes = Vec::with_capacity(350_000);
 
-    for i in 0..=N {
-        phi[i] = i as i32;
-        spf[i] = i as i32;
-        mobius[i] = 1;
-    }
+    phi[1] = 1;
+    mobius[1] = 1;
+
+    let mut ans: i64 = 0;
 
     for i in 2..=N {
-        if spf[i] == i as i32 {
+        if phi[i] == 0 {
             phi[i] = (i - 1) as i32;
             mobius[i] = -1;
-            let mut j = (i as i64) * (i as i64);
-            while j <= N as i64 {
-                if spf[j as usize] == j as i32 {
-                    spf[j as usize] = i as i32;
-                }
-                j += i as i64;
+            primes.push(i as u32);
+        }
+        if i >= 3 {
+            ans += (N / i) as i64 * (phi[i] as i64 / 2);
+        }
+        for &p in &primes {
+            let p = p as usize;
+            let ip = i * p;
+            if ip > N {
+                break;
             }
-        } else {
-            let p = spf[i] as usize;
-            let q = i / p;
-            if q % p == 0 {
-                phi[i] = phi[q] * p as i32;
-                mobius[i] = 0;
+            if i % p == 0 {
+                phi[ip] = phi[i] * p as i32;
+                mobius[ip] = 0;
+                break;
             } else {
-                phi[i] = phi[q] * (p as i32 - 1);
-                mobius[i] = -mobius[q];
+                phi[ip] = phi[i] * (p as i32 - 1);
+                mobius[ip] = -mobius[i];
             }
         }
     }
 
-    let mut ans: i64 = 0;
+    drop(phi);
+    drop(primes);
 
-    for sum in 3..=N {
-        ans += (N / sum) as i64 * (phi[sum] as i64 / 2);
+    let mut pref_mobius = vec![0i32; N + 1];
+    for i in 1..=N {
+        pref_mobius[i] = pref_mobius[i - 1] + mobius[i] as i32;
     }
+    drop(mobius);
 
-    let extra: i64 = (1..=N)
-        .into_par_iter()
-        .map(|g| {
-            if mobius[g] == 0 {
-                return 0;
-            }
-
-            let c = (N / g) as i64;
-            let sqrt_c = isqrt(c);
-            // A handful of small g values contain most of the work. Split their
-            // b-ranges too, so the g=1 task cannot pin one Rayon worker.
-            let res: i64 = if g <= 64 {
-                (1..sqrt_c + 1)
-                    .into_par_iter()
-                    .map(|b| contribution_for_b(b, c, sqrt_c))
-                    .sum()
+    let mut tasks = Vec::with_capacity(9000);
+    let mut l = 1;
+    while l <= N {
+        let c = (N / l) as i64;
+        let r = N / (c as usize);
+        let m = (pref_mobius[r] - pref_mobius[l - 1]) as i64;
+        if m != 0 && c >= 4 {
+            let sqrt_c = (c as u64).isqrt() as i64;
+            if sqrt_c > 64 {
+                let step = 32;
+                let mut b_start = 1;
+                while b_start <= sqrt_c {
+                    let b_end = (b_start + step - 1).min(sqrt_c);
+                    tasks.push(Task { c, sqrt_c, m, b_start, b_end });
+                    b_start += step;
+                }
             } else {
-                (1..sqrt_c + 1)
-                    .map(|b| contribution_for_b(b, c, sqrt_c))
-                    .sum()
-            };
-            mobius[g] as i64 * res
+                tasks.push(Task { c, sqrt_c, m, b_start: 1, b_end: sqrt_c });
+            }
+        }
+        l = r + 1;
+    }
+    drop(pref_mobius);
+
+    let extra: i64 = tasks
+        .into_par_iter()
+        .map(|task| {
+            let mut steps = [Step { q: 0, rem: 0, b: 0, b_over_g: 0 }; 16];
+            let mut sum = 0i64;
+            for b in task.b_start..=task.b_end {
+                sum += contribution_for_b(b, task.c, task.sqrt_c, task.c / b, &mut steps);
+            }
+            task.m * sum
         })
         .sum();
     ans += extra;

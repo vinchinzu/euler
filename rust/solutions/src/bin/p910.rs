@@ -64,14 +64,18 @@ fn crt(x1: u64, m1: u64, x2: u64, m2: u64) -> u64 {
 /// Apply function `func` exactly `steps` times to each element in `values`,
 /// using streaming binary lifting (only 2 jump levels in memory at once).
 /// This is much more cache-friendly than building the full jump table.
-fn iterate_all_streaming(func: &[u32], steps: u64, values: &mut [u32], use_par: bool) {
+fn iterate_all_streaming(
+    func: &[u32],
+    steps: u64,
+    values: &mut [u32],
+    use_par: bool,
+    buf_a: &mut [u32],
+    buf_b: &mut [u32],
+) {
     let n = func.len();
     let bits = if steps == 0 { return } else { bit_len(steps) };
 
-    // Double-buffer: avoid allocation inside loop
-    let mut buf_a = vec![0u32; n];
-    let mut buf_b = vec![0u32; n];
-    buf_a.copy_from_slice(func);
+    buf_a[..n].copy_from_slice(func);
 
     for bit in 0..bits {
         // If this bit is set in steps, apply buf_a to all values
@@ -87,9 +91,10 @@ fn iterate_all_streaming(func: &[u32], steps: u64, values: &mut [u32], use_par: 
         // Build next level: buf_b[x] = buf_a[buf_a[x]]
         if bit + 1 < bits {
             if use_par {
-                buf_b.par_iter_mut().enumerate().for_each(|(i, out)| {
-                    let mid = unsafe { *buf_a.get_unchecked(i) } as usize;
-                    *out = unsafe { *buf_a.get_unchecked(mid) };
+                let a_slice = &buf_a[..n];
+                buf_b[..n].par_iter_mut().enumerate().for_each(|(i, out)| {
+                    let mid = unsafe { *a_slice.get_unchecked(i) } as usize;
+                    *out = unsafe { *a_slice.get_unchecked(mid) };
                 });
             } else {
                 for i in 0..n {
@@ -97,7 +102,7 @@ fn iterate_all_streaming(func: &[u32], steps: u64, values: &mut [u32], use_par: 
                     unsafe { *buf_b.get_unchecked_mut(i) = *buf_a.get_unchecked(mid) };
                 }
             }
-            std::mem::swap(&mut buf_a, &mut buf_b);
+            buf_a[..n].copy_from_slice(&buf_b[..n]);
         }
     }
 }
@@ -174,34 +179,32 @@ fn phi_mod_table(modulus: u64) -> u64 {
     drop(pow_c);
     drop(pow_cp1);
 
-    // phi[level][x] tables
-    let mut phi: Vec<Vec<u32>> = vec![vec![0u32; size]; A + 1];
+    let mut buf_a = vec![0u32; size];
+    let mut buf_b = vec![0u32; size];
 
-    // Phi_0(x) = g_c^(B+1)(g_{c+1}(x))
-    // Initialize phi[0] with g_{c+1}(x) then apply g_c B+1 times
-    phi[0].copy_from_slice(&gcp1);
-    drop(gcp1);
-
-    // Apply g_c (B+1) times to all phi[0] values using streaming
-    iterate_all_streaming(&gc, B + 1, &mut phi[0], use_par);
+    let mut prev = gcp1;
+    iterate_all_streaming(&gc, B + 1, &mut prev, use_par, &mut buf_a, &mut buf_b);
     drop(gc);
 
-    for level in 1..=A {
-        // curr[x] = prev^B(x * prev[x])
-        let (left, right) = phi.split_at_mut(level);
-        let prev = &left[level - 1];
-        let curr = &mut right[0];
+    let mut curr = vec![0u32; size];
 
+    for _level in 1..A {
         // Compute starting values
         for x in 0..size {
             curr[x] = (((x as u64) * prev[x] as u64) % modulus) as u32;
         }
 
-        // Apply prev B times to all curr values using streaming
-        iterate_all_streaming(prev, B, curr, use_par);
+        iterate_all_streaming(&prev, B, &mut curr, use_par, &mut buf_a, &mut buf_b);
+        std::mem::swap(&mut prev, &mut curr);
     }
 
-    phi[A][(D % modulus) as usize] as u64
+    // Last level A: only evaluate at D % modulus!
+    let start_x = (D % modulus) as usize;
+    let mut val = (((start_x as u64) * prev[start_x] as u64) % modulus) as usize;
+    for _ in 0..B {
+        val = prev[val] as usize;
+    }
+    val as u64
 }
 
 fn main() {

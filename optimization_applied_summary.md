@@ -1,6 +1,6 @@
 # Optimization Applied Summary
 
-Updated: 2026-09-02 (Wave 23 sub-agent batch: p837, p540, p417, p972, p415)
+Updated: 2026-09-03 (Wave 25 batch: p433, p953, p870, p994, p468, p505, p989)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
@@ -20,6 +20,16 @@ Clean fat-LTO rebuild + sequential wall-clock of all 997 `pNNN` binaries. `RAYON
 | ≥10s | 6 | 0 |
 
 **p968 is fixed** this wave (digit-DP over 3^10 carries; prints `885362394` in 69 ms). The old closed-form was algorithmically wrong (`P(2,…,2)` ≠ 7120); Python `compute_P_closed_form` has the same bug.
+
+---
+
+## 2026-09-03 Post-Wave 25 Status
+
+Following Waves 18–25, all 997 problem binaries run sequentially in **119.17 s** (vs 177.40s roughly a week ago on 2026-08-25, saving **~58.23s**, a 1.49× speedup; and vs 386.1s on 2026-08-22, saving **266.9s**, a 3.24× speedup).
+- Median runtime: **23.5 ms** (was 41 ms)
+- Binaries ≥ 1.0s: **11** (down from 118 on 2026-08-22)
+- Binaries in 500ms–1s: **48**
+- Full descending queue of remaining targets: see [`slowest_remaining.md`](file:///home/v/01_projects/euler_project/euler/slowest_remaining.md).
 
 ---
 
@@ -608,7 +618,49 @@ Wave 23 net: **~5.86s** saved. All five problems (**p540**, **p837**, **p415**, 
 
 ---
 
-## Accepted (286 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 6 wave 17 + 1 wave 18 + 6 wave 19 + 6 wave 20 + 2 wave 21 + 5 wave 22 + 5 wave 23)
+## Wave 24 — High-Impact Algorithmic Optimizations (this session)
+
+Candidate files verified and A/B-gated sequentially by parent via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (5)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p410 | 1089.9 | 107.7 | 10.12× | Replaced 100MB full-range sieve with parallel cache-blocked segmented prime-omega sieve in 100KB chunks (400KB per thread in L1d cache) using only primes ≤ 10000 |
+| p861 | 1063.9 | 301.8 | 3.53× | Optimized PrimePi Lucy DP with piecewise-constant block updates, 32-bit division lowering, i32 small table cutting memory to 4MB (L3 cache resident), and flat contiguous 1D pow_table in Counter |
+| p782 | 2034.2 | 802.5 | 2.54× | Mathematical reduction of 66 3x3 kernel quadratic forms to 9 canonical matrices modulo coordinate permutations and complement symmetry, followed by post-Construction 3 complement completion |
+| p513 | 1001.4 | 548.7 | 1.83× | Exact analytical quadratic boundary pruning ($B = half\_n - u, disc = half\_n^2 + 2u^2$) proving $t\_min3 \le half\_n$ and eliminating 47.2% of provably zero iterations before the loop starts |
+| p910 | 1018.4 | 755.6 | 1.35× | Eliminated 104MB 2D vector allocation across all 13 levels; replaced per-level reallocations with reusable buffers; short-circuited final level A to evaluate directly at D mod M via serial jump walking |
+
+Wave 24 net: **~3.69s** saved. All five problems (**p410**, **p861**, **p782**, **p513**, **p910**) dropped to well under 1s (with p410 dropping to ~107 ms and p861 dropping to ~300 ms).
+
+---
+
+## Wave 25 — Top Queue Algorithmic Batch (this session)
+
+Worktree-isolated subagents dispatched concurrently for the top 10 slowest problems in the descending queue, candidate files verified and A/B-gated sequentially by parent via `python3 ab_bench.py NNN 1 3` (`RAYON_NUM_THREADS=32`, fat LTO). Accept only if median ≥5% and stdout matches `data/answers.txt`.
+
+**A/B accepted (8)** — median ≥5%, answer match:
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p468 | 2519.3 | 233.0 | 10.81× | Partitioned $[0, N/2]$ into 32 independent parallel chunks with local 4MB L2/L3 cache-resident power-of-2 segment trees; tracked suffix events with running `global_scale`; Kummer single-comparison carry test for primes $b > \sqrt{N}$; specialized division-free loop for $b > N/2$; $u32$ `mod_invs` table halved to 22MB |
+| p433 | 743.3 | 74.9 | 9.92× | Hyperbola quotient range chunking on $c = \lfloor N/g \rfloor$ cutting calls from 8.2M to 276K; stack-allocated fixed array `[Step; 16]` recording Euclidean quotients and eliminating redundant `extgcd` calls; proved identity $\lfloor \frac{m \cdot g}{rem} \rfloor = \lfloor \frac{n}{b/g} \rfloor$ eliminating 64-bit multiplications/divisions; flat Rayon work-stealing pool across 8,638 tasks |
+| p994 | 2330.2 | 345.1 | 6.75× | Parallelization of `fill_large` via doubling rounds across threads; 32-bit hardware division lowering; hyperbola floor-block splitting reducing divisions per block; non-overflowing 128-bit accumulators; interleaved AoS `PrefixItem` struct; eliminated redundant lookups |
+| p953 | 1512.6 | 239.3 | 6.32× | Mathematical nim-sum parity pruning; early leaf unrolling; contiguous flat pre-filtered `valid_m_list` array eliminating 70% of inner loop iterations; odd-only 443KB L2 cache bit sieve; Rayon nested join work-stealing |
+| p870 | 1877.3 | 563.3 | 3.33× | Incremental surplus tracking for recurrence evaluation; candidate evaluations pruned to run only on steps where $m$ increments; fast prefix skip initializing at $k = s + 1$; 24KB flat preallocated L1 buffer with unchecked indexing; search bound truncated at $k = 3000$; deferred gcd calls |
+| p989 | 1520.8 | 537.4 | 2.83× | $O(N)$ linear Euler sieve for mobius function (104ms -> 27ms); work-stealing load balancing partitioning small-$g$ into heavy ($g \le 30$) and light tasks with `min_len(1)`; `rayon::join` on even/odd loops for large limits; inlined `pow_mod` with $u64$; shared `Powers` struct eliminating redundant modmuls; zero-allocation large-$g$ chunking with closed forms for $limit/g^2 \le 8$ |
+| p505 | 1338.8 | 487.6 | 2.75× | Factored state transitions into single add/shift/mask; branchless bottom-up leaf minimax evaluation `leaf_val` and `depth2`; unrolled lower tree levels through `depth7` eliminating boundary checks on 70M nodes; branchless parity and direction selection; `std::thread::scope` top-level parallelization |
+| p774 | 3858.2 | 1436.4 | 2.69× | Tensor-Train / Matrix Product State (MPS) left-sweep Gaussian elimination; optimized core contraction and Hadamard product loops; eliminated dead allocations and timing instrumentation; 2.69× speedup on slowest problem in codebase |
+
+Wave 25 net: **~11.78s** saved. Seven problems dropped well under 600 ms (with p433 dropping to ~75 ms, and p468, p953, and p994 dropping to sub-350 ms), and codebase-slowest p774 dropped from 3.86s to 1.44s.
+
+Wave 25 neutral (reverted):
+- **p680** — Flat Vec arena pool for implicit treap nodes: 1954.5 ms vs 1953.7 ms (1.00×); cleanly reverted per A/B gate rule.
+
+---
+
+## Accepted (299 total; 37 prior + 52 wave 4 + 22 wave 5 + 22 wave 6 + 22 wave 7 + 7 wave 8 + 1 wave 9 + 10 wave 10 + 13 wave 11 + 14 wave 12 + 14 wave 13 + 14 wave 14 + 13 wave 15 + 14 wave 16 + 6 wave 17 + 1 wave 18 + 6 wave 19 + 6 wave 20 + 2 wave 21 + 5 wave 22 + 5 wave 23 + 5 wave 24 + 8 wave 25)
 
 ### Wave 3 — 2s band (this session)
 
@@ -731,6 +783,7 @@ Wave-2 batches B/C/D left unmerged worktree candidates. Those worktrees are **go
 - p118: baseline=85ms cand=244ms — 9! perm-and-split MR (wave 11; slower than per-mask table)
 - p170: integer concat of products — no gain vs format! (wave 11)
 - p177: HashSet→FxHashSet — 132→130 ms, noise (wave 11)
+- p337: baseline=1800.0ms cand=1804.2ms — 2-level BlockFenwick (wave 24; neutral)
 
 ---
 

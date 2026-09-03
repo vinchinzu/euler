@@ -44,7 +44,7 @@ fn sieve_primes(limit: usize) -> Vec<u32> {
 struct PrimePi {
     n: u64,
     isqrt: u64,
-    s_small: Vec<i64>,
+    s_small: Vec<i32>,
     s_large: Vec<i64>,
 }
 
@@ -59,15 +59,18 @@ impl PrimePi {
         }
 
         let m = isqrt as usize;
-        let mut s_small = vec![0i64; m + 1];
+        let mut s_small = vec![0i32; m + 1];
         let mut s_large = vec![0i64; m + 1];
 
         for v in 0..=m {
-            s_small[v] = v as i64 - 1;
+            s_small[v] = v as i32 - 1;
         }
         for k in 1..=m {
             s_large[k] = (n / k as u64) as i64 - 1;
         }
+
+        let s_ptr = s_small.as_mut_ptr();
+        let l_ptr = s_large.as_mut_ptr();
 
         for &p32 in primes {
             let p = p32 as u64;
@@ -79,24 +82,100 @@ impl PrimePi {
                 break;
             }
 
-            let sp_1 = s_small[(p - 1) as usize];
-            let mut k_limit = n / p2;
-            if k_limit > isqrt {
-                k_limit = isqrt;
+            let p_usize = p as usize;
+            let sp_1 = unsafe { *s_ptr.add(p_usize - 1) } as i64;
+            let k_limit = ((n / p2) as usize).min(m);
+            let i_split = (m / p_usize).min(k_limit);
+
+            let mut kp = p_usize;
+            unsafe {
+                for k in 1..=i_split {
+                    let s_target = *l_ptr.add(kp);
+                    *l_ptr.add(k) -= s_target - sp_1;
+                    kp += p_usize;
+                }
             }
 
-            for k in 1..=k_limit as usize {
-                let target = (n / k as u64) / p;
-                let s_target = if target <= isqrt {
-                    s_small[target as usize]
+            let n_div_p = n / p;
+            let mut k = i_split + 1;
+
+            unsafe {
+                if n_div_p <= u32::MAX as u64 {
+                    let nd = n_div_p as u32;
+                    let isqrt_m = ((nd as f32).sqrt() as usize).min(k_limit);
+                    while k + 1 <= isqrt_m {
+                        let q0 = (nd / (k as u32)) as usize;
+                        let q1 = (nd / ((k + 1) as u32)) as usize;
+                        let s_target0 = *s_ptr.add(q0) as i64;
+                        let s_target1 = *s_ptr.add(q1) as i64;
+                        *l_ptr.add(k) -= s_target0 - sp_1;
+                        *l_ptr.add(k + 1) -= s_target1 - sp_1;
+                        k += 2;
+                    }
+                    if k <= isqrt_m {
+                        let q = (nd / (k as u32)) as usize;
+                        let s_target = *s_ptr.add(q) as i64;
+                        *l_ptr.add(k) -= s_target - sp_1;
+                        k += 1;
+                    }
+                    while k <= k_limit {
+                        let q = nd / (k as u32);
+                        let k_last = ((nd / q) as usize).min(k_limit);
+                        let diff = *s_ptr.add(q as usize) as i64 - sp_1;
+                        let count = k_last - k + 1;
+                        let ptr = l_ptr.add(k);
+                        for offset in 0..count {
+                            *ptr.add(offset) -= diff;
+                        }
+                        k = k_last + 1;
+                    }
                 } else {
-                    s_large[k * p as usize]
-                };
-                s_large[k] -= s_target - sp_1;
+                    let isqrt_m = ((n_div_p as f64).sqrt() as usize).min(k_limit);
+                    while k + 1 <= isqrt_m {
+                        let q0 = (n_div_p / (k as u64)) as usize;
+                        let q1 = (n_div_p / ((k + 1) as u64)) as usize;
+                        let s_target0 = *s_ptr.add(q0) as i64;
+                        let s_target1 = *s_ptr.add(q1) as i64;
+                        *l_ptr.add(k) -= s_target0 - sp_1;
+                        *l_ptr.add(k + 1) -= s_target1 - sp_1;
+                        k += 2;
+                    }
+                    if k <= isqrt_m {
+                        let q = (n_div_p / (k as u64)) as usize;
+                        let s_target = *s_ptr.add(q) as i64;
+                        *l_ptr.add(k) -= s_target - sp_1;
+                        k += 1;
+                    }
+                    while k <= k_limit {
+                        let q = (n_div_p / (k as u64)) as usize;
+                        let k_last = ((n_div_p / (q as u64)) as usize).min(k_limit);
+                        let diff = *s_ptr.add(q) as i64 - sp_1;
+                        let count = k_last - k + 1;
+                        let ptr = l_ptr.add(k);
+                        for offset in 0..count {
+                            *ptr.add(offset) -= diff;
+                        }
+                        k = k_last + 1;
+                    }
+                }
             }
 
-            for v in (p2 as usize..=m).rev() {
-                s_small[v] -= s_small[v / p as usize] - sp_1;
+            if p2 <= isqrt {
+                let mut v = m;
+                let sp_1_i32 = sp_1 as i32;
+                unsafe {
+                    while v >= p2 as usize {
+                        let q = v / p_usize;
+                        let diff = *s_ptr.add(q) - sp_1_i32;
+                        let start = (q * p_usize).max(p2 as usize);
+                        let count = v - start + 1;
+                        let ptr = s_ptr.add(start);
+                        for offset in 0..count {
+                            *ptr.add(offset) -= diff;
+                        }
+                        v = start - 1;
+                    }
+                }
             }
         }
 
@@ -113,7 +192,7 @@ impl PrimePi {
             return 0;
         }
         if x <= self.isqrt {
-            self.s_small[x as usize]
+            self.s_small[x as usize] as i64
         } else {
             self.s_large[(self.n / x) as usize]
         }
@@ -284,27 +363,29 @@ struct Counter {
     n: u64,
     primes: Vec<u32>,
     pi_table: PrimePi,
-    // pow_table[e][i] = primes[i]^e, capped at n+1
-    pow_table: Vec<Vec<u64>>,
+    plen: usize,
+    // Flat pow_table[exp * plen + idx]
+    pow_table: Vec<u64>,
 }
 
 impl Counter {
     fn new(n: u64, primes: Vec<u32>, pi_table: PrimePi) -> Self {
         let plen = primes.len();
-        let mut pow_table = vec![vec![n + 1; plen]; MAX_EXP + 1];
+        let mut pow_table = vec![n + 1; (MAX_EXP + 1) * plen];
         for i in 0..plen {
-            pow_table[0][i] = 1;
+            pow_table[i] = 1;
         }
         for e in 1..=MAX_EXP {
+            let prev_offset = (e - 1) * plen;
+            let cur_offset = e * plen;
             for (i, &p32) in primes.iter().enumerate() {
-                let prev = pow_table[e - 1][i];
+                let prev = pow_table[prev_offset + i];
                 if prev > n {
-                    pow_table[e][i] = n + 1;
                     continue;
                 }
                 let p = p32 as u64;
                 let val = prev.saturating_mul(p);
-                pow_table[e][i] = if val > n { n + 1 } else { val };
+                pow_table[cur_offset + i] = if val > n { n + 1 } else { val };
             }
         }
 
@@ -312,8 +393,14 @@ impl Counter {
             n,
             primes,
             pi_table,
+            plen,
             pow_table,
         }
+    }
+
+    #[inline(always)]
+    fn pow_at(&self, exp: usize, idx: usize) -> u64 {
+        unsafe { *self.pow_table.get_unchecked(exp * self.plen + idx) }
     }
 
     fn count_permutation(&self, exps: &[u8]) -> u64 {
@@ -324,7 +411,7 @@ impl Counter {
         let exp0 = exps[0] as usize;
         let mut end = 0usize;
         while end < self.primes.len() {
-            let p_pow = self.pow_table[exp0][end];
+            let p_pow = self.pow_at(exp0, end);
             if p_pow > self.n {
                 break;
             }
@@ -337,7 +424,7 @@ impl Counter {
 
         let mut total = 0u64;
         for idx in 0..end {
-            let rem = self.n / self.pow_table[exp0][idx];
+            let rem = self.n / self.pow_at(exp0, idx);
             total += self.dfs(exps, 1, idx + 1, rem);
         }
         total
@@ -355,7 +442,7 @@ impl Counter {
         let mut idx = start_idx;
 
         while idx < self.primes.len() {
-            let p_pow = self.pow_table[exp][idx];
+            let p_pow = self.pow_at(exp, idx);
             if p_pow > rem {
                 break;
             }
@@ -365,15 +452,9 @@ impl Counter {
                 break;
             }
 
-            // Prune: the last prime (at position `last`) must be > primes[idx]
-            // (since primes are increasing). Check that at least one such prime
-            // fits: integer_root(rem_after_non_last, last_exp) >= primes[next_idx].
-            // For pos == last-1, this is: integer_root(rem2, last_exp) >= primes[idx+1].
             if pos == last - 1 {
                 if idx + 1 < self.primes.len() {
-                    // The last prime must be at index >= idx+1, so its power
-                    // must fit: primes[idx+1]^last_exp <= rem2
-                    if self.pow_table[last_exp][idx + 1] > rem2 {
+                    if self.pow_at(last_exp, idx + 1) > rem2 {
                         break;
                     }
                 }
@@ -386,8 +467,6 @@ impl Counter {
         total
     }
 
-    // Necessary bound: can we assign the smallest available primes to all
-    // remaining non-final positions?
     fn can_fill_nonlast(
         &self,
         exps: &[u8],
@@ -404,7 +483,7 @@ impl Counter {
             if start_idx >= self.primes.len() {
                 return false;
             }
-            let need = self.pow_table[e as usize][start_idx];
+            let need = self.pow_at(e as usize, start_idx);
             if need > rem {
                 return false;
             }

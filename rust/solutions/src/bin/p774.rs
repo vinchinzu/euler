@@ -8,7 +8,392 @@
 // - unsafe get_unchecked + raw ptr GE inner loops
 // - Avoid cloning ones each step: scale first core into a reusable buffer
 
+use std::arch::x86_64::*;
+
 const MOD: i32 = 998244353;
+const BARRETT_M: u128 = 18479187002;
+const R_MOD: u64 = 301989884;
+const INV: u32 = 998244351;
+
+#[target_feature(enable = "avx2")]
+unsafe fn axpy_sub_avx2(row: *mut i32, prow: *const i32, f_scaled: u64, len: usize) {
+    unsafe {
+        let vf_scaled = _mm256_set1_epi64x(f_scaled as i64);
+        let vinv = _mm256_set1_epi64x(INV as i64);
+        let vmod = _mm256_set1_epi64x(MOD as i64);
+        let vmod32 = _mm256_set1_epi32(MOD);
+        let vmod_m1 = _mm256_set1_epi32(MOD - 1);
+
+        let mut j = 0;
+        while j + 16 <= len {
+            let cur0 = _mm256_loadu_si256(row.add(j) as *const __m256i);
+            let piv0 = _mm256_loadu_si256(prow.add(j) as *const __m256i);
+            let cur1 = _mm256_loadu_si256(row.add(j + 8) as *const __m256i);
+            let piv1 = _mm256_loadu_si256(prow.add(j + 8) as *const __m256i);
+
+            let prod_even0 = _mm256_mul_epu32(piv0, vf_scaled);
+            let prod_even1 = _mm256_mul_epu32(piv1, vf_scaled);
+
+            let piv_odd0 = _mm256_srli_epi64(piv0, 32);
+            let piv_odd1 = _mm256_srli_epi64(piv1, 32);
+
+            let prod_odd0 = _mm256_mul_epu32(piv_odd0, vf_scaled);
+            let prod_odd1 = _mm256_mul_epu32(piv_odd1, vf_scaled);
+
+            let m_even0 = _mm256_mul_epu32(prod_even0, vinv);
+            let m_even1 = _mm256_mul_epu32(prod_even1, vinv);
+
+            let m_odd0 = _mm256_mul_epu32(prod_odd0, vinv);
+            let m_odd1 = _mm256_mul_epu32(prod_odd1, vinv);
+
+            let mp_even0 = _mm256_mul_epu32(m_even0, vmod);
+            let mp_even1 = _mm256_mul_epu32(m_even1, vmod);
+
+            let mp_odd0 = _mm256_mul_epu32(m_odd0, vmod);
+            let mp_odd1 = _mm256_mul_epu32(m_odd1, vmod);
+
+            let sum_even0 = _mm256_add_epi64(prod_even0, mp_even0);
+            let sum_even1 = _mm256_add_epi64(prod_even1, mp_even1);
+
+            let sum_odd0 = _mm256_add_epi64(prod_odd0, mp_odd0);
+            let sum_odd1 = _mm256_add_epi64(prod_odd1, mp_odd1);
+
+            let res_even0 = _mm256_srli_epi64(sum_even0, 32);
+            let res_even1 = _mm256_srli_epi64(sum_even1, 32);
+
+            let res_odd0 = _mm256_srli_epi64(sum_odd0, 32);
+            let res_odd1 = _mm256_srli_epi64(sum_odd1, 32);
+
+            let res_odd_shifted0 = _mm256_slli_epi64(res_odd0, 32);
+            let res_odd_shifted1 = _mm256_slli_epi64(res_odd1, 32);
+
+            let t0 = _mm256_or_si256(res_even0, res_odd_shifted0);
+            let t1 = _mm256_or_si256(res_even1, res_odd_shifted1);
+
+            let sub_t0 = _mm256_sub_epi32(t0, vmod32);
+            let sub_t1 = _mm256_sub_epi32(t1, vmod32);
+
+            let cmp_t0 = _mm256_cmpgt_epi32(t0, vmod_m1);
+            let cmp_t1 = _mm256_cmpgt_epi32(t1, vmod_m1);
+
+            let t_norm0 = _mm256_blendv_epi8(t0, sub_t0, cmp_t0);
+            let t_norm1 = _mm256_blendv_epi8(t1, sub_t1, cmp_t1);
+
+            let sub_cur0 = _mm256_sub_epi32(cur0, t_norm0);
+            let sub_cur1 = _mm256_sub_epi32(cur1, t_norm1);
+
+            let add_cur0 = _mm256_add_epi32(sub_cur0, vmod32);
+            let add_cur1 = _mm256_add_epi32(sub_cur1, vmod32);
+
+            let cmp_cur0 = _mm256_cmpgt_epi32(t_norm0, cur0);
+            let cmp_cur1 = _mm256_cmpgt_epi32(t_norm1, cur1);
+
+            let final_val0 = _mm256_blendv_epi8(sub_cur0, add_cur0, cmp_cur0);
+            let final_val1 = _mm256_blendv_epi8(sub_cur1, add_cur1, cmp_cur1);
+
+            _mm256_storeu_si256(row.add(j) as *mut __m256i, final_val0);
+            _mm256_storeu_si256(row.add(j + 8) as *mut __m256i, final_val1);
+
+            j += 16;
+        }
+
+        while j + 8 <= len {
+            let cur = _mm256_loadu_si256(row.add(j) as *const __m256i);
+            let piv = _mm256_loadu_si256(prow.add(j) as *const __m256i);
+
+            let prod_even = _mm256_mul_epu32(piv, vf_scaled);
+            let m_even = _mm256_mul_epu32(prod_even, vinv);
+            let mp_even = _mm256_mul_epu32(m_even, vmod);
+            let sum_even = _mm256_add_epi64(prod_even, mp_even);
+            let res_even = _mm256_srli_epi64(sum_even, 32);
+
+            let piv_odd = _mm256_srli_epi64(piv, 32);
+            let prod_odd = _mm256_mul_epu32(piv_odd, vf_scaled);
+            let m_odd = _mm256_mul_epu32(prod_odd, vinv);
+            let mp_odd = _mm256_mul_epu32(m_odd, vmod);
+            let sum_odd = _mm256_add_epi64(prod_odd, mp_odd);
+            let res_odd = _mm256_srli_epi64(sum_odd, 32);
+            let res_odd_shifted = _mm256_slli_epi64(res_odd, 32);
+
+            let t = _mm256_or_si256(res_even, res_odd_shifted);
+
+            let sub_t = _mm256_sub_epi32(t, vmod32);
+            let cmp_t = _mm256_cmpgt_epi32(t, vmod_m1);
+            let t_norm = _mm256_blendv_epi8(t, sub_t, cmp_t);
+
+            let sub_cur = _mm256_sub_epi32(cur, t_norm);
+            let add_cur = _mm256_add_epi32(sub_cur, vmod32);
+            let cmp_cur = _mm256_cmpgt_epi32(t_norm, cur);
+            let final_val = _mm256_blendv_epi8(sub_cur, add_cur, cmp_cur);
+
+            _mm256_storeu_si256(row.add(j) as *mut __m256i, final_val);
+            j += 8;
+        }
+
+        while j < len {
+            let p = row.add(j);
+            let piv_val = *prow.add(j) as u64;
+            let prod_mod = redc(f_scaled * piv_val);
+            let cur = *p as u32;
+            let res = if cur >= prod_mod {
+                cur - prod_mod
+            } else {
+                cur + MOD as u32 - prod_mod
+            };
+            *p = res as i32;
+            j += 1;
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[target_feature(enable = "avx2")]
+unsafe fn hadamard_b01_avx2(c_ptr: *mut i32, a_ptr: *const i32, len: usize, case: u8) {
+    unsafe {
+        let mut ra = 0;
+        while ra + 8 <= len {
+            let s = _mm256_loadu_si256(a_ptr.add(ra) as *const __m256i);
+            let s_low = _mm256_castsi256_si128(s);
+            let s_high = _mm256_extracti128_si256(s, 1);
+
+            let v0 = _mm256_cvtepu32_epi64(s_low);
+            let v1 = _mm256_cvtepu32_epi64(s_high);
+
+            let (out0, out1) = match case {
+                0 => (v0, v1),
+                1 => (_mm256_slli_epi64(v0, 32), _mm256_slli_epi64(v1, 32)),
+                _ => {
+                    let v0_odd = _mm256_slli_epi64(v0, 32);
+                    let v1_odd = _mm256_slli_epi64(v1, 32);
+                    (_mm256_or_si256(v0, v0_odd), _mm256_or_si256(v1, v1_odd))
+                }
+            };
+
+            _mm256_storeu_si256(c_ptr.add(2 * ra) as *mut __m256i, out0);
+            _mm256_storeu_si256(c_ptr.add(2 * ra + 8) as *mut __m256i, out1);
+            ra += 8;
+        }
+
+        while ra < len {
+            let v = *a_ptr.add(ra);
+            match case {
+                0 => *c_ptr.add(2 * ra) = v,
+                1 => *c_ptr.add(2 * ra + 1) = v,
+                _ => {
+                    *c_ptr.add(2 * ra) = v;
+                    *c_ptr.add(2 * ra + 1) = v;
+                }
+            }
+            ra += 1;
+        }
+    }
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn axpy_add_avx2(dst: *mut i32, src: *const i32, f_scaled: u64, len: usize) {
+    unsafe {
+        let vf_scaled = _mm256_set1_epi64x(f_scaled as i64);
+        let vinv = _mm256_set1_epi64x(INV as i64);
+        let vmod = _mm256_set1_epi64x(MOD as i64);
+        let vmod32 = _mm256_set1_epi32(MOD);
+        let vmod_m1 = _mm256_set1_epi32(MOD - 1);
+
+        let mut j = 0;
+        while j + 8 <= len {
+            let cur = _mm256_loadu_si256(dst.add(j) as *const __m256i);
+            let s = _mm256_loadu_si256(src.add(j) as *const __m256i);
+
+            let prod_even = _mm256_mul_epu32(s, vf_scaled);
+            let m_even = _mm256_mul_epu32(prod_even, vinv);
+            let mp_even = _mm256_mul_epu32(m_even, vmod);
+            let sum_even = _mm256_add_epi64(prod_even, mp_even);
+            let res_even = _mm256_srli_epi64(sum_even, 32);
+
+            let s_odd = _mm256_srli_epi64(s, 32);
+            let prod_odd = _mm256_mul_epu32(s_odd, vf_scaled);
+            let m_odd = _mm256_mul_epu32(prod_odd, vinv);
+            let mp_odd = _mm256_mul_epu32(m_odd, vmod);
+            let sum_odd = _mm256_add_epi64(prod_odd, mp_odd);
+            let res_odd = _mm256_srli_epi64(sum_odd, 32);
+            let res_odd_shifted = _mm256_slli_epi64(res_odd, 32);
+
+            let t = _mm256_or_si256(res_even, res_odd_shifted);
+
+            let sub_t = _mm256_sub_epi32(t, vmod32);
+            let cmp_t = _mm256_cmpgt_epi32(t, vmod_m1);
+            let t_norm = _mm256_blendv_epi8(t, sub_t, cmp_t);
+
+            let sum_cur = _mm256_add_epi32(cur, t_norm);
+            let sub_cur = _mm256_sub_epi32(sum_cur, vmod32);
+            let cmp_cur = _mm256_cmpgt_epi32(sum_cur, vmod_m1);
+            let final_val = _mm256_blendv_epi8(sum_cur, sub_cur, cmp_cur);
+
+            _mm256_storeu_si256(dst.add(j) as *mut __m256i, final_val);
+            j += 8;
+        }
+
+        while j < len {
+            let p = dst.add(j);
+            let s_val = *src.add(j) as u64;
+            let prod_mod = redc(f_scaled * s_val);
+            let cur = *p as u32;
+            let sum = cur + prod_mod;
+            *p = if sum >= MOD as u32 {
+                (sum - MOD as u32) as i32
+            } else {
+                sum as i32
+            };
+            j += 1;
+        }
+    }
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn scale_row_avx2(row: *mut i32, inv_scaled: u64, len: usize) {
+    unsafe {
+        let vf_scaled = _mm256_set1_epi64x(inv_scaled as i64);
+        let vinv = _mm256_set1_epi64x(INV as i64);
+        let vmod = _mm256_set1_epi64x(MOD as i64);
+        let vmod32 = _mm256_set1_epi32(MOD);
+        let vmod_m1 = _mm256_set1_epi32(MOD - 1);
+
+        let mut j = 0;
+        while j + 8 <= len {
+            let s = _mm256_loadu_si256(row.add(j) as *const __m256i);
+
+            let prod_even = _mm256_mul_epu32(s, vf_scaled);
+            let m_even = _mm256_mul_epu32(prod_even, vinv);
+            let mp_even = _mm256_mul_epu32(m_even, vmod);
+            let sum_even = _mm256_add_epi64(prod_even, mp_even);
+            let res_even = _mm256_srli_epi64(sum_even, 32);
+
+            let s_odd = _mm256_srli_epi64(s, 32);
+            let prod_odd = _mm256_mul_epu32(s_odd, vf_scaled);
+            let m_odd = _mm256_mul_epu32(prod_odd, vinv);
+            let mp_odd = _mm256_mul_epu32(m_odd, vmod);
+            let sum_odd = _mm256_add_epi64(prod_odd, mp_odd);
+            let res_odd = _mm256_srli_epi64(sum_odd, 32);
+            let res_odd_shifted = _mm256_slli_epi64(res_odd, 32);
+
+            let t = _mm256_or_si256(res_even, res_odd_shifted);
+
+            let sub_t = _mm256_sub_epi32(t, vmod32);
+            let cmp_t = _mm256_cmpgt_epi32(t, vmod_m1);
+            let t_norm = _mm256_blendv_epi8(t, sub_t, cmp_t);
+
+            _mm256_storeu_si256(row.add(j) as *mut __m256i, t_norm);
+            j += 8;
+        }
+
+        while j < len {
+            let p = row.add(j);
+            let val = *p as u64;
+            *p = redc(inv_scaled * val) as i32;
+            j += 1;
+        }
+    }
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn hadamard_strided_avx2(c_ptr: *mut i32, a_ptr: *const i32, bv_scaled: u64, len: usize, rb: usize) {
+    unsafe {
+        let vf_scaled = _mm256_set1_epi64x(bv_scaled as i64);
+        let vinv = _mm256_set1_epi64x(INV as i64);
+        let vmod = _mm256_set1_epi64x(MOD as i64);
+        let vmod32 = _mm256_set1_epi32(MOD);
+        let vmod_m1 = _mm256_set1_epi32(MOD - 1);
+
+        let mut ra = 0;
+        while ra + 8 <= len {
+            let s = _mm256_loadu_si256(a_ptr.add(ra) as *const __m256i);
+
+            let prod_even = _mm256_mul_epu32(s, vf_scaled);
+            let m_even = _mm256_mul_epu32(prod_even, vinv);
+            let mp_even = _mm256_mul_epu32(m_even, vmod);
+            let sum_even = _mm256_add_epi64(prod_even, mp_even);
+            let res_even = _mm256_srli_epi64(sum_even, 32);
+
+            let s_odd = _mm256_srli_epi64(s, 32);
+            let prod_odd = _mm256_mul_epu32(s_odd, vf_scaled);
+            let m_odd = _mm256_mul_epu32(prod_odd, vinv);
+            let mp_odd = _mm256_mul_epu32(m_odd, vmod);
+            let sum_odd = _mm256_add_epi64(prod_odd, mp_odd);
+            let res_odd = _mm256_srli_epi64(sum_odd, 32);
+            let res_odd_shifted = _mm256_slli_epi64(res_odd, 32);
+
+            let t = _mm256_or_si256(res_even, res_odd_shifted);
+
+            let sub_t = _mm256_sub_epi32(t, vmod32);
+            let cmp_t = _mm256_cmpgt_epi32(t, vmod_m1);
+            let t_norm = _mm256_blendv_epi8(t, sub_t, cmp_t);
+
+            let t_low = _mm256_castsi256_si128(t_norm);
+            let t_high = _mm256_extracti128_si256(t_norm, 1);
+
+            let mut exp0 = _mm256_cvtepu32_epi64(t_low);
+            let mut exp1 = _mm256_cvtepu32_epi64(t_high);
+
+            if rb == 1 {
+                exp0 = _mm256_slli_epi64(exp0, 32);
+                exp1 = _mm256_slli_epi64(exp1, 32);
+            }
+
+            let dst0 = c_ptr.add(2 * ra);
+            let cur0 = _mm256_loadu_si256(dst0 as *const __m256i);
+            let sum0 = _mm256_add_epi32(cur0, exp0);
+            let sub0 = _mm256_sub_epi32(sum0, vmod32);
+            let cmp0 = _mm256_cmpgt_epi32(sum0, vmod_m1);
+            let res0 = _mm256_blendv_epi8(sum0, sub0, cmp0);
+            _mm256_storeu_si256(dst0 as *mut __m256i, res0);
+
+            let dst1 = c_ptr.add(2 * ra + 8);
+            let cur1 = _mm256_loadu_si256(dst1 as *const __m256i);
+            let sum1 = _mm256_add_epi32(cur1, exp1);
+            let sub1 = _mm256_sub_epi32(sum1, vmod32);
+            let cmp1 = _mm256_cmpgt_epi32(sum1, vmod_m1);
+            let res1 = _mm256_blendv_epi8(sum1, sub1, cmp1);
+            _mm256_storeu_si256(dst1 as *mut __m256i, res1);
+
+            ra += 8;
+        }
+
+        while ra < len {
+            let av = *a_ptr.add(ra);
+            if av != 0 {
+                let term = redc(bv_scaled * av as u64);
+                let p = c_ptr.add(ra * 2 + rb);
+                let sum = *p as u32 + term;
+                *p = if sum >= MOD as u32 {
+                    (sum - MOD as u32) as i32
+                } else {
+                    sum as i32
+                };
+            }
+            ra += 1;
+        }
+    }
+}
+
+#[inline(always)]
+fn redc(t: u64) -> u32 {
+    let m = (t as u32).wrapping_mul(INV);
+    let res = ((t + m as u64 * (MOD as u64)) >> 32) as u32;
+    if res >= MOD as u32 {
+        res - MOD as u32
+    } else {
+        res
+    }
+}
+
+#[inline(always)]
+fn barrett_reduce(z: u64) -> u32 {
+    let q = ((z as u128 * BARRETT_M) >> 64) as u64;
+    let mut r = (z - q * (MOD as u64)) as u32;
+    if r >= MOD as u32 {
+        r -= MOD as u32;
+    }
+    r
+}
 
 #[inline(always)]
 fn modd(x: i32) -> i32 {
@@ -18,7 +403,7 @@ fn modd(x: i32) -> i32 {
 
 #[inline(always)]
 fn mulmod(a: i32, b: i32) -> i32 {
-    ((a as i64 * b as i64) % MOD as i64) as i32
+    barrett_reduce(a as u32 as u64 * b as u32 as u64) as i32
 }
 
 /// Extended Euclidean modular inverse.
@@ -117,6 +502,8 @@ struct Scratch {
     is_pivot: Vec<bool>,
     sum_vec: Vec<i32>,
     sum_new: Vec<i32>,
+    t_gauss: std::time::Duration,
+    t_update: std::time::Duration,
 }
 
 impl Scratch {
@@ -127,6 +514,8 @@ impl Scratch {
             is_pivot: Vec::with_capacity(256),
             sum_vec: Vec::with_capacity(256),
             sum_new: Vec::with_capacity(256),
+            t_gauss: std::time::Duration::ZERO,
+            t_update: std::time::Duration::ZERO,
         }
     }
 }
@@ -205,123 +594,222 @@ impl TT {
     fn add(&self, other: &TT, coef_b: i32) -> Self {
         let coef_b = modd(coef_b);
         let m = self.m;
-        let mut cores = Vec::with_capacity(m);
-        for i in 0..m {
-            let a = &self.cores[i];
-            let b = &other.cores[i];
-            if i == 0 {
-                let mut c = Core::new(1, a.r_r + b.r_r);
-                for bit in 0..2 {
-                    for r in 0..a.r_r {
-                        c.set(0, bit, r, a.get(0, bit, r));
-                    }
-                    for r in 0..b.r_r {
-                        c.set(0, bit, a.r_r + r, mulmod(b.get(0, bit, r), coef_b));
-                    }
-                }
-                cores.push(c);
-            } else if i == m - 1 {
-                let mut c = Core::new(a.r_l + b.r_l, 1);
-                for l in 0..a.r_l {
+        let cores = (0..m)
+            .map(|i| {
+                let a = &self.cores[i];
+                let b = &other.cores[i];
+                if i == 0 {
+                    let mut c = Core::new(1, a.r_r + b.r_r);
                     for bit in 0..2 {
-                        c.set(l, bit, 0, a.get(l, bit, 0));
-                    }
-                }
-                for l in 0..b.r_l {
-                    for bit in 0..2 {
-                        c.set(a.r_l + l, bit, 0, b.get(l, bit, 0));
-                    }
-                }
-                cores.push(c);
-            } else {
-                let mut c = Core::new(a.r_l + b.r_l, a.r_r + b.r_r);
-                for l in 0..a.r_l {
-                    for bit in 0..2 {
-                        for r in 0..a.r_r {
-                            c.set(l, bit, r, a.get(l, bit, r));
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(
+                                a.data.as_ptr().wrapping_add(bit * a.r_r),
+                                c.data.as_mut_ptr().wrapping_add(bit * c.r_r),
+                                a.r_r,
+                            );
                         }
-                    }
-                }
-                for l in 0..b.r_l {
-                    for bit in 0..2 {
                         for r in 0..b.r_r {
-                            c.set(a.r_l + l, bit, a.r_r + r, b.get(l, bit, r));
+                            c.set(0, bit, a.r_r + r, mulmod(b.get(0, bit, r), coef_b));
                         }
                     }
+                    c
+                } else if i == m - 1 {
+                    let mut c = Core::new(a.r_l + b.r_l, 1);
+                    for l in 0..a.r_l {
+                        for bit in 0..2 {
+                            c.set(l, bit, 0, a.get(l, bit, 0));
+                        }
+                    }
+                    for l in 0..b.r_l {
+                        for bit in 0..2 {
+                            c.set(a.r_l + l, bit, 0, b.get(l, bit, 0));
+                        }
+                    }
+                    c
+                } else {
+                    let mut c = Core::new(a.r_l + b.r_l, a.r_r + b.r_r);
+                    for l in 0..a.r_l {
+                        for bit in 0..2 {
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    a.data.as_ptr().wrapping_add(l * 2 * a.r_r + bit * a.r_r),
+                                    c.data.as_mut_ptr().wrapping_add(l * 2 * c.r_r + bit * c.r_r),
+                                    a.r_r,
+                                );
+                            }
+                        }
+                    }
+                    for l in 0..b.r_l {
+                        for bit in 0..2 {
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    b.data.as_ptr().wrapping_add(l * 2 * b.r_r + bit * b.r_r),
+                                    c.data.as_mut_ptr().wrapping_add((a.r_l + l) * 2 * c.r_r + bit * c.r_r + a.r_r),
+                                    b.r_r,
+                                );
+                            }
+                        }
+                    }
+                    c
                 }
-                cores.push(c);
-            }
-        }
+            })
+            .collect();
         TT { m, cores }
     }
 
     fn hadamard(&self, other: &TT) -> Self {
         let m = self.m;
-        let mut cores = Vec::with_capacity(m);
-        for i in 0..m {
-            let a = &self.cores[i];
-            let b = &other.cores[i];
-            let r_l = a.r_l * b.r_l;
-            let r_r = a.r_r * b.r_r;
-            let mut c = Core::new(r_l, r_r);
-            let b_r_l = b.r_l;
-            let b_r_r = b.r_r;
-            for la in 0..a.r_l {
-                for lb in 0..b_r_l {
-                    let l = la * b_r_l + lb;
-                    for bit in 0..2usize {
-                        for ra in 0..a.r_r {
-                            let av = a.get(la, bit, ra);
-                            if av == 0 {
+        let cores = (0..m)
+            .map(|i| {
+                let a = &self.cores[i];
+                let b = &other.cores[i];
+                let r_l = a.r_l * b.r_l;
+                let r_r = a.r_r * b.r_r;
+                let mut c = Core::new(r_l, r_r);
+                let b_r_l = b.r_l;
+                let b_r_r = b.r_r;
+
+                if b_r_r == 1 {
+                    for lb in 0..b_r_l {
+                        for bit in 0..2 {
+                            let bv = b.get(lb, bit, 0);
+                            if bv == 0 {
                                 continue;
                             }
-                            let c_base = l * 2 * r_r + bit * r_r + ra * b_r_r;
-                            for rb in 0..b_r_r {
-                                let bv = b.get(lb, bit, rb);
-                                if bv == 0 {
-                                    continue;
+                            if bv == 1 {
+                                for la in 0..a.r_l {
+                                    let l = la * b_r_l + lb;
+                                    let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                    let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                    unsafe {
+                                        std::ptr::copy_nonoverlapping(a_ptr, c_ptr, a.r_r);
+                                    }
                                 }
-                                // SAFETY: c_base + rb < r_l * 2 * r_r
-                                unsafe {
-                                    let p = c.data.get_unchecked_mut(c_base + rb);
-                                    *p = modd(*p + mulmod(av, bv));
+                            } else {
+                                let bv_scaled = mulmod(bv, R_MOD as i32) as u64;
+                                for la in 0..a.r_l {
+                                    let l = la * b_r_l + lb;
+                                    let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                    let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                    unsafe {
+                                        axpy_add_avx2(c_ptr, a_ptr, bv_scaled, a.r_r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if b_r_r == 2 {
+                    for lb in 0..b_r_l {
+                        for bit in 0..2 {
+                            let b0 = b.get(lb, bit, 0);
+                            let b1 = b.get(lb, bit, 1);
+                            if b0 == 0 && b1 == 0 {
+                                continue;
+                            }
+                            if b0 == 1 && b1 == 0 {
+                                for la in 0..a.r_l {
+                                    let l = la * b_r_l + lb;
+                                    let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                    let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                    unsafe {
+                                        for ra in 0..a.r_r {
+                                            let v = *a_ptr.add(ra);
+                                            if v != 0 {
+                                                *c_ptr.add(2 * ra) = v;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if b0 == 0 && b1 == 1 {
+                                for la in 0..a.r_l {
+                                    let l = la * b_r_l + lb;
+                                    let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                    let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                    unsafe {
+                                        for ra in 0..a.r_r {
+                                            let v = *a_ptr.add(ra);
+                                            if v != 0 {
+                                                *c_ptr.add(2 * ra + 1) = v;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if b0 == 1 && b1 == 1 {
+                                for la in 0..a.r_l {
+                                    let l = la * b_r_l + lb;
+                                    let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                    let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                    unsafe {
+                                        for ra in 0..a.r_r {
+                                            let v = *a_ptr.add(ra);
+                                            if v != 0 {
+                                                *c_ptr.add(2 * ra) = v;
+                                                *c_ptr.add(2 * ra + 1) = v;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // General fallback for arbitrary values
+                                if b0 != 0 {
+                                    let bv_scaled = mulmod(b0, R_MOD as i32) as u64;
+                                    for la in 0..a.r_l {
+                                        let l = la * b_r_l + lb;
+                                        let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                        let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                        unsafe {
+                                            hadamard_strided_avx2(c_ptr, a_ptr, bv_scaled, a.r_r, 0);
+                                        }
+                                    }
+                                }
+                                if b1 != 0 {
+                                    let bv_scaled = mulmod(b1, R_MOD as i32) as u64;
+                                    for la in 0..a.r_l {
+                                        let l = la * b_r_l + lb;
+                                        let c_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r + bit * r_r);
+                                        let a_ptr = a.data.as_ptr().wrapping_add(la * 2 * a.r_r + bit * a.r_r);
+                                        unsafe {
+                                            hadamard_strided_avx2(c_ptr, a_ptr, bv_scaled, a.r_r, 1);
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            cores.push(c);
-        }
+                c
+            })
+            .collect();
         TT { m, cores }
     }
 
-    fn apply_local(&self, mat: &[[i32; 2]; 2]) -> Self {
+    fn apply_disjoint(&self) -> Self {
         let m = self.m;
-        let mut cores = Vec::with_capacity(m);
-        for i in 0..m {
-            let s = &self.cores[i];
-            let mut c = Core::with_capacity_like(s.r_l, s.r_r, s.data.len());
-            for l in 0..s.r_l {
-                for r in 0..s.r_r {
-                    let a0 = s.get(l, 0, r);
-                    let a1 = s.get(l, 1, r);
-                    c.set(
-                        l,
-                        0,
-                        r,
-                        modd(mulmod(mat[0][0], a0) + mulmod(mat[0][1], a1)),
-                    );
-                    c.set(
-                        l,
-                        1,
-                        r,
-                        modd(mulmod(mat[1][0], a0) + mulmod(mat[1][1], a1)),
-                    );
+        let cores = (0..m)
+            .map(|i| {
+                let s = &self.cores[i];
+                let mut c = Core::with_capacity_like(s.r_l, s.r_r, s.data.len());
+                let r_r = s.r_r;
+                for l in 0..s.r_l {
+                    let a0_ptr = s.data.as_ptr().wrapping_add(l * 2 * r_r);
+                    let a1_ptr = a0_ptr.wrapping_add(r_r);
+                    let c0_ptr = c.data.as_mut_ptr().wrapping_add(l * 2 * r_r);
+                    let c1_ptr = c0_ptr.wrapping_add(r_r);
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(a0_ptr, c1_ptr, r_r);
+                        for r in 0..r_r {
+                            let sum = *a0_ptr.add(r) as u32 + *a1_ptr.add(r) as u32;
+                            *c0_ptr.add(r) = if sum >= MOD as u32 {
+                                (sum - MOD as u32) as i32
+                            } else {
+                                sum as i32
+                            };
+                        }
+                    }
                 }
-            }
-            cores.push(c);
-        }
+                c
+            })
+            .collect();
         TT { m, cores }
     }
 
@@ -334,15 +822,18 @@ impl TT {
                 let c = &self.cores[i];
                 sc.sum_new.clear();
                 sc.sum_new.resize(c.r_r, 0);
+                let dst = sc.sum_new.as_mut_ptr();
                 for l in 0..c.r_l {
                     let vl = sc.sum_vec[l];
                     if vl == 0 {
                         continue;
                     }
-                    for bit in 0..2 {
-                        for r in 0..c.r_r {
-                            sc.sum_new[r] = modd(sc.sum_new[r] + mulmod(vl, c.get(l, bit, r)));
-                        }
+                    let vl_scaled = mulmod(vl, R_MOD as i32) as u64;
+                    let p0 = c.data.as_ptr().wrapping_add(l * 2 * c.r_r);
+                    let p1 = p0.wrapping_add(c.r_r);
+                    unsafe {
+                        axpy_add_avx2(dst, p0, vl_scaled, c.r_r);
+                        axpy_add_avx2(dst, p1, vl_scaled, c.r_r);
                     }
                 }
                 let tmp = std::mem::take(&mut sc.sum_new);
@@ -383,12 +874,17 @@ impl TT {
                 }
             }
             let pivot_base = row_ptr * ncols;
-            let inv = modinv(unsafe { *mat.get_unchecked(pivot_base + c) });
-            unsafe {
-                let prow = mat.as_mut_ptr().add(pivot_base);
-                for j in c..ncols {
-                    let p = prow.add(j);
-                    *p = mulmod(*p, inv);
+            let p_pivot = unsafe { *mat.get_unchecked(pivot_base + c) };
+            if p_pivot != 1 {
+                let inv = modinv(p_pivot);
+                let inv_scaled = mulmod(inv, R_MOD as i32) as u64;
+                unsafe {
+                    let prow = mat.as_mut_ptr().add(pivot_base);
+                    *prow.add(c) = 1;
+                    let rem = ncols - (c + 1);
+                    if rem > 0 {
+                        scale_row_avx2(prow.add(c + 1), inv_scaled, rem);
+                    }
                 }
             }
             unsafe {
@@ -398,20 +894,16 @@ impl TT {
                         continue;
                     }
                     let rr_base = rr * ncols;
-                    let f = *mat.get_unchecked(rr_base + c);
+                    let f = *mat.get_unchecked(rr_base + c) as u32;
                     if f == 0 {
                         continue;
                     }
+                    let f_scaled = mulmod(f as i32, R_MOD as i32) as u64;
                     let row = mat.as_mut_ptr().add(rr_base);
-                    for j in c..ncols {
-                        let p = row.add(j);
-                        let piv_val = *prow.add(j);
-                        // f,piv_val in [0,MOD); product fits i64
-                        let mut x = *p as i64 - (f as i64 * piv_val as i64 % MOD as i64);
-                        if x < 0 {
-                            x += MOD as i64;
-                        }
-                        *p = x as i32;
+                    *row.add(c) = 0;
+                    let rem = ncols - (c + 1);
+                    if rem > 0 {
+                        axpy_sub_avx2(row.add(c + 1), prow.add(c + 1), f_scaled, rem);
                     }
                 }
             }
@@ -450,7 +942,10 @@ impl TT {
                 }
                 let mut pivots = std::mem::take(&mut sc.pivots);
                 let mat_slice = &mut sc.mat[..need];
+                let t_g0 = std::time::Instant::now();
                 Self::gauss_elim(mat_slice, nrows, r_r, &mut pivots);
+                let t_g1 = std::time::Instant::now();
+                sc.t_gauss += t_g1 - t_g0;
                 let rank = pivots.len();
                 if rank == 0 || rank == r_r {
                     sc.pivots = pivots;
@@ -481,6 +976,8 @@ impl TT {
                     }
                 }
 
+                let t_u0 = std::time::Instant::now();
+                let len2 = 2 * r_next;
                 for j in 0..r_r {
                     if sc.is_pivot[j] {
                         continue;
@@ -490,19 +987,18 @@ impl TT {
                         if coeff == 0 {
                             continue;
                         }
-                        for bit in 0..2 {
-                            let dst_base = k * 2 * r_next + bit * r_next;
-                            let src_base = j * 2 * r_next + bit * r_next;
-                            for t in 0..r_next {
-                                unsafe {
-                                    let src = *self.cores[i + 1].data.get_unchecked(src_base + t);
-                                    let dst = new_nxt.data.get_unchecked_mut(dst_base + t);
-                                    *dst = modd(*dst + mulmod(coeff, src));
-                                }
-                            }
+                        let c_scaled = mulmod(coeff, R_MOD as i32) as u64;
+                        let dst_base = k * len2;
+                        let src_base = j * len2;
+                        unsafe {
+                            let dst = new_nxt.data.as_mut_ptr().add(dst_base);
+                            let src = self.cores[i + 1].data.as_ptr().add(src_base);
+                            axpy_add_avx2(dst, src, c_scaled, len2);
                         }
                     }
                 }
+                let t_u1 = std::time::Instant::now();
+                sc.t_update += t_u1 - t_u0;
                 sc.pivots = pivots;
 
                 self.cores[i] = new_core;
@@ -526,12 +1022,11 @@ fn solve(n: usize, b: i64) -> i32 {
     dp.reduce_left();
 
     let ones = TT::all_ones(m);
-    let r_disjoint: [[i32; 2]; 2] = [[1, 1], [1, 0]];
 
-    for _step in 0..n - 1 {
+    for _ in 0..n - 1 {
         let total = dp.sum_all();
         let j = ones.scalar_mul(total);
-        let bv = dp.apply_local(&r_disjoint);
+        let bv = dp.apply_disjoint();
         let nxt = j.add(&bv, MOD - 1);
         let mut masked = nxt.hadamard(&mask);
         masked.reduce_left();
