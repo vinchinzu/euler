@@ -151,21 +151,21 @@ fn build_tables() -> Tables {
 }
 
 #[inline(never)]
-fn solve_single(t: &Tables, l: usize, tr: usize) -> i64 {
-    let mut dp: FxHashMap<u64, [i16; 7]> = FxHashMap::default();
-    dp.reserve(1024);
+fn solve_all_lengths_for_tr(t: &Tables, max_l: usize, tr: usize) -> i64 {
+    let mut dp: FxHashMap<u64, [i32; 7]> = FxHashMap::default();
     dp.insert(0, [1, 0, 0, 0, 0, 0, 0]);
 
-    for pos in 0..l {
+    let mut total_count = 0i64;
+
+    for pos in 0..max_l {
         let c = pos % 6;
         let sc = SH[c];
-        let msd = pos == l - 1;
-        let mf = if msd { &t.mask_no0[..] } else { &t.mask_all[..] };
         let sr = &t.shifts[tr];
         let ac = &t.add_contrib[c];
-        let mut ndp: FxHashMap<u64, [i16; 7]> =
-            FxHashMap::with_capacity_and_hasher(dp.len() * 4, Default::default());
 
+        // Part 1: Branch for MSD (treat pos as the final MSD digit)
+        // Here msd = true: mf = mask_no0, idx starts at 1.
+        // Accumulate directly into total_count without building any hash table!
         for (&st, cn) in &dp {
             let mut forb = 0u8;
             for a in 0..6usize {
@@ -173,10 +173,8 @@ fn solve_single(t: &Tables, l: usize, tr: usize) -> i64 {
                     continue;
                 }
                 let ba = ((st >> SH[a]) & CB) as usize;
-                // SAFETY: ba < 512 since CB = 0x1FF
-                let mu = unsafe { *mf.get_unchecked(ba) };
+                let mu = unsafe { *t.mask_no0.get_unchecked(ba) };
                 if mu != 0 {
-                    // SAFETY: sr[a][c] < 7, mu < 128
                     forb |= unsafe {
                         *t.rot_table
                             .get_unchecked(sr[a][c])
@@ -185,73 +183,98 @@ fn solve_single(t: &Tables, l: usize, tr: usize) -> i64 {
                 }
             }
 
-            let bc = ((st >> sc) & CB) as u16;
-            let s0 = if msd { 1usize } else { 0 };
-
-            for idx in s0..8 {
-                // SAFETY: idx < 8
+            for idx in 1..8 {
                 let res = unsafe { *RES.get_unchecked(idx) };
                 if forb & (1u8 << res) != 0 {
                     continue;
                 }
-                // SAFETY: bc < 512, idx < 8
-                let nbc = unsafe {
-                    *t.update_table
-                        .get_unchecked(bc as usize)
-                        .get_unchecked(idx)
-                };
-                let ns = st ^ (((bc ^ nbc) as u64) << sc);
                 let add = unsafe { *ac.get_unchecked(idx) };
-                let p = unsafe { t.perm.get_unchecked(add) };
-                let m = unsafe { *MULT.get_unchecked(idx) };
-
-                let arr = ndp.entry(ns).or_insert([0i16; 7]);
-                // SAFETY: p[i] < 7 for all i, arrays have 7 elements
-                unsafe {
-                    let p0 = *p.get_unchecked(0);
-                    let p1 = *p.get_unchecked(1);
-                    let p2 = *p.get_unchecked(2);
-                    let p3 = *p.get_unchecked(3);
-                    let p4 = *p.get_unchecked(4);
-                    let p5 = *p.get_unchecked(5);
-                    let p6 = *p.get_unchecked(6);
-                    if m == 1 {
-                        *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0);
-                        *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1);
-                        *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2);
-                        *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3);
-                        *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4);
-                        *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5);
-                        *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6);
-                    } else {
-                        *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0) * 2;
-                        *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1) * 2;
-                        *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2) * 2;
-                        *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3) * 2;
-                        *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4) * 2;
-                        *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5) * 2;
-                        *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6) * 2;
-                    }
-                }
+                let m = unsafe { *MULT.get_unchecked(idx) } as i64;
+                let s_needed = (tr + 7 - add) % 7;
+                total_count += m * (unsafe { *cn.get_unchecked(s_needed) } as i64);
             }
         }
 
-        dp = ndp;
+        // Part 2: If pos + 1 < max_l, advance dp with non-MSD transitions (msd = false)
+        if pos + 1 < max_l {
+            let mut ndp: FxHashMap<u64, [i32; 7]> =
+                FxHashMap::with_capacity_and_hasher(dp.len() * 3, Default::default());
+
+            for (&st, cn) in &dp {
+                let mut forb = 0u8;
+                for a in 0..6usize {
+                    if a == c {
+                        continue;
+                    }
+                    let ba = ((st >> SH[a]) & CB) as usize;
+                    let mu = unsafe { *t.mask_all.get_unchecked(ba) };
+                    if mu != 0 {
+                        forb |= unsafe {
+                            *t.rot_table
+                                .get_unchecked(sr[a][c])
+                                .get_unchecked(mu as usize)
+                        };
+                    }
+                }
+
+                let bc = ((st >> sc) & CB) as u16;
+                for idx in 0..8 {
+                    let res = unsafe { *RES.get_unchecked(idx) };
+                    if forb & (1u8 << res) != 0 {
+                        continue;
+                    }
+                    let nbc = unsafe {
+                        *t.update_table
+                            .get_unchecked(bc as usize)
+                            .get_unchecked(idx)
+                    };
+                    let ns = st ^ (((bc ^ nbc) as u64) << sc);
+                    let add = unsafe { *ac.get_unchecked(idx) };
+                    let p = unsafe { t.perm.get_unchecked(add) };
+                    let m = unsafe { *MULT.get_unchecked(idx) } as i32;
+
+                    let arr = ndp.entry(ns).or_insert([0i32; 7]);
+                    unsafe {
+                        let p0 = *p.get_unchecked(0);
+                        let p1 = *p.get_unchecked(1);
+                        let p2 = *p.get_unchecked(2);
+                        let p3 = *p.get_unchecked(3);
+                        let p4 = *p.get_unchecked(4);
+                        let p5 = *p.get_unchecked(5);
+                        let p6 = *p.get_unchecked(6);
+                        if m == 1 {
+                            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0);
+                            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1);
+                            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2);
+                            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3);
+                            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4);
+                            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5);
+                            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6);
+                        } else {
+                            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0) * 2;
+                            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1) * 2;
+                            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2) * 2;
+                            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3) * 2;
+                            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4) * 2;
+                            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5) * 2;
+                            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6) * 2;
+                        }
+                    }
+                }
+            }
+            dp = ndp;
+        }
     }
 
-    dp.values().map(|c| c[tr] as i64).sum::<i64>()
+    total_count
 }
 
 fn main() {
     let t = build_tables();
 
-    let work: Vec<(usize, usize)> = (1..=13usize)
-        .flat_map(|l| (1..7usize).map(move |tr| (l, tr)))
-        .collect();
-
-    let grand_total: i64 = work
-        .par_iter()
-        .map(|&(l, tr)| solve_single(&t, l, tr))
+    let grand_total: i64 = (1..7usize)
+        .into_par_iter()
+        .map(|tr| solve_all_lengths_for_tr(&t, 13, tr))
         .sum();
 
     println!("{}", grand_total);

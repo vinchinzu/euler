@@ -502,8 +502,6 @@ struct Scratch {
     is_pivot: Vec<bool>,
     sum_vec: Vec<i32>,
     sum_new: Vec<i32>,
-    t_gauss: std::time::Duration,
-    t_update: std::time::Duration,
 }
 
 impl Scratch {
@@ -514,8 +512,6 @@ impl Scratch {
             is_pivot: Vec::with_capacity(256),
             sum_vec: Vec::with_capacity(256),
             sum_new: Vec::with_capacity(256),
-            t_gauss: std::time::Duration::ZERO,
-            t_update: std::time::Duration::ZERO,
         }
     }
 }
@@ -592,9 +588,11 @@ impl TT {
     }
 
     fn add(&self, other: &TT, coef_b: i32) -> Self {
+        use rayon::prelude::*;
         let coef_b = modd(coef_b);
         let m = self.m;
-        let cores = (0..m)
+        let cores: Vec<Core> = (0..m)
+            .into_par_iter()
             .map(|i| {
                 let a = &self.cores[i];
                 let b = &other.cores[i];
@@ -658,8 +656,10 @@ impl TT {
     }
 
     fn hadamard(&self, other: &TT) -> Self {
+        use rayon::prelude::*;
         let m = self.m;
-        let cores = (0..m)
+        let cores: Vec<Core> = (0..m)
+            .into_par_iter()
             .map(|i| {
                 let a = &self.cores[i];
                 let b = &other.cores[i];
@@ -784,8 +784,10 @@ impl TT {
     }
 
     fn apply_disjoint(&self) -> Self {
+        use rayon::prelude::*;
         let m = self.m;
-        let cores = (0..m)
+        let cores: Vec<Core> = (0..m)
+            .into_par_iter()
             .map(|i| {
                 let s = &self.cores[i];
                 let mut c = Core::with_capacity_like(s.r_l, s.r_r, s.data.len());
@@ -864,13 +866,9 @@ impl TT {
             }
             if piv != row_ptr {
                 unsafe {
-                    let pa = mat.as_mut_ptr().add(row_ptr * ncols);
-                    let pb = mat.as_mut_ptr().add(piv * ncols);
-                    for j in 0..ncols {
-                        let tmp = *pa.add(j);
-                        *pa.add(j) = *pb.add(j);
-                        *pb.add(j) = tmp;
-                    }
+                    let pa = mat.as_mut_ptr().add(row_ptr * ncols + c);
+                    let pb = mat.as_mut_ptr().add(piv * ncols + c);
+                    core::ptr::swap_nonoverlapping(pa, pb, ncols - c);
                 }
             }
             let pivot_base = row_ptr * ncols;
@@ -942,10 +940,7 @@ impl TT {
                 }
                 let mut pivots = std::mem::take(&mut sc.pivots);
                 let mat_slice = &mut sc.mat[..need];
-                let t_g0 = std::time::Instant::now();
                 Self::gauss_elim(mat_slice, nrows, r_r, &mut pivots);
-                let t_g1 = std::time::Instant::now();
-                sc.t_gauss += t_g1 - t_g0;
                 let rank = pivots.len();
                 if rank == 0 || rank == r_r {
                     sc.pivots = pivots;
@@ -953,10 +948,18 @@ impl TT {
                 }
 
                 let mut new_core = Core::new(r_l, rank);
-                for l in 0..r_l {
-                    for (k, &p) in pivots.iter().enumerate() {
-                        new_core.set(l, 0, k, self.cores[i].get(l, 0, p));
-                        new_core.set(l, 1, k, self.cores[i].get(l, 1, p));
+                unsafe {
+                    let nc_ptr = new_core.data.as_mut_ptr();
+                    let ci_ptr = self.cores[i].data.as_ptr();
+                    for l in 0..r_l {
+                        let dst0 = nc_ptr.add(l * 2 * rank);
+                        let dst1 = dst0.add(rank);
+                        let src0 = ci_ptr.add(l * 2 * r_r);
+                        let src1 = src0.add(r_r);
+                        for (k, &p) in pivots.iter().enumerate() {
+                            *dst0.add(k) = *src0.add(p);
+                            *dst1.add(k) = *src1.add(p);
+                        }
                     }
                 }
 
@@ -969,36 +972,35 @@ impl TT {
                 }
 
                 for (k, &p) in pivots.iter().enumerate() {
-                    for bit in 0..2 {
-                        for t in 0..r_next {
-                            new_nxt.set(k, bit, t, self.cores[i + 1].get(p, bit, t));
-                        }
+                    let src_ptr = self.cores[i + 1].data.as_ptr().wrapping_add(p * 2 * r_next);
+                    let dst_ptr = new_nxt.data.as_mut_ptr().wrapping_add(k * 2 * r_next);
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, 2 * r_next);
                     }
                 }
 
-                let t_u0 = std::time::Instant::now();
                 let len2 = 2 * r_next;
-                for j in 0..r_r {
-                    if sc.is_pivot[j] {
-                        continue;
-                    }
+                unsafe {
+                    let mat_ptr = sc.mat.as_ptr();
+                    let nxt_ptr = new_nxt.data.as_mut_ptr();
+                    let c_next_ptr = self.cores[i + 1].data.as_ptr();
                     for k in 0..rank {
-                        let coeff = unsafe { *sc.mat.get_unchecked(k * r_r + j) };
-                        if coeff == 0 {
-                            continue;
-                        }
-                        let c_scaled = mulmod(coeff, R_MOD as i32) as u64;
-                        let dst_base = k * len2;
-                        let src_base = j * len2;
-                        unsafe {
-                            let dst = new_nxt.data.as_mut_ptr().add(dst_base);
-                            let src = self.cores[i + 1].data.as_ptr().add(src_base);
+                        let dst = nxt_ptr.add(k * len2);
+                        let k_mat = k * r_r;
+                        for j in 0..r_r {
+                            if *sc.is_pivot.get_unchecked(j) {
+                                continue;
+                            }
+                            let coeff = *mat_ptr.add(k_mat + j);
+                            if coeff == 0 {
+                                continue;
+                            }
+                            let c_scaled = mulmod(coeff, R_MOD as i32) as u64;
+                            let src = c_next_ptr.add(j * len2);
                             axpy_add_avx2(dst, src, c_scaled, len2);
                         }
                     }
                 }
-                let t_u1 = std::time::Instant::now();
-                sc.t_update += t_u1 - t_u0;
                 sc.pivots = pivots;
 
                 self.cores[i] = new_core;

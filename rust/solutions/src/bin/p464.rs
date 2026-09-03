@@ -6,31 +6,6 @@
 const NN: usize = 20_000_000;
 const K: i32 = 100;
 
-#[inline(always)]
-fn bit_add(bit: &mut [i32], mut idx: usize, n: usize) {
-    idx += 1;
-    while idx <= n {
-        // SAFETY: idx in 1..=n and bit.len() >= n + 1
-        unsafe {
-            *bit.get_unchecked_mut(idx) += 1;
-        }
-        idx += idx & idx.wrapping_neg();
-    }
-}
-
-#[inline(always)]
-fn bit_sum(bit: &[i32], mut idx: usize) -> i32 {
-    idx += 1;
-    let mut s = 0i32;
-    while idx > 0 {
-        // SAFETY: idx starts at a 1-based in-range index and strictly decreases
-        unsafe {
-            s += *bit.get_unchecked(idx);
-        }
-        idx -= idx & idx.wrapping_neg();
-    }
-    s
-}
 
 fn mobius(n: usize) -> Vec<i8> {
     let mut mu = vec![0i8; n + 1];
@@ -62,34 +37,87 @@ fn mobius(n: usize) -> Vec<i8> {
     mu
 }
 
-/// One Fenwick pass: subtract intervals that violate the `sign` inequality.
-/// `delta[mu+1]` is the walk step for this sign. Counts fit in i32 (NN = 2e7).
-fn fenwick_violations(mu: &[i8], delta: [i32; 3], l: i32, tree_size: usize) -> i64 {
-    let mut bit = vec![0i32; tree_size + 2];
-    let mut f = 0i32;
-    let mut sub = 0i64;
-    for b in 1..=NN {
-        bit_add(&mut bit, (f + l) as usize, tree_size);
-        // SAFETY: mu.len() == NN + 1
-        let m = unsafe { *mu.get_unchecked(b) };
-        f += delta[(m + 1) as usize];
-        // Insertions are in-range, so the tree total equals b.
-        sub += b as i64 - bit_sum(&bit, (f + l) as usize) as i64;
+fn count_inversions_merge(arr: &mut [i32], temp: &mut [i32]) -> i64 {
+    let len = arr.len();
+    if len <= 1 {
+        return 0;
     }
-    sub
+    if len <= 32 {
+        let mut inv = 0i64;
+        for i in 1..len {
+            let key = arr[i];
+            let mut j = i;
+            while j > 0 && arr[j - 1] > key {
+                arr[j] = arr[j - 1];
+                j -= 1;
+                inv += 1;
+            }
+            arr[j] = key;
+        }
+        return inv;
+    }
+
+    let mid = len / 2;
+    let (arr_l, arr_r) = arr.split_at_mut(mid);
+    let (temp_l, temp_r) = temp.split_at_mut(mid);
+
+    let (inv_l, inv_r) = if len > 16384 {
+        rayon::join(
+            || count_inversions_merge(arr_l, temp_l),
+            || count_inversions_merge(arr_r, temp_r),
+        )
+    } else {
+        (
+            count_inversions_merge(arr_l, temp_l),
+            count_inversions_merge(arr_r, temp_r),
+        )
+    };
+
+    let mut cross_inv = 0i64;
+    let (mut i, mut j, mut k) = (0, 0, 0);
+    while i < mid && j < len - mid {
+        if arr_l[i] <= arr_r[j] {
+            temp[k] = arr_l[i];
+            i += 1;
+        } else {
+            temp[k] = arr_r[j];
+            j += 1;
+            cross_inv += (mid - i) as i64;
+        }
+        k += 1;
+    }
+    if i < mid {
+        temp[k..k + mid - i].copy_from_slice(&arr_l[i..mid]);
+    }
+    if j < len - mid {
+        temp[k..len].copy_from_slice(&arr_r[j..len - mid]);
+    }
+    arr.copy_from_slice(temp);
+
+    inv_l + inv_r + cross_inv
+}
+
+fn count_violations(mu: &[i8], delta: [i32; 3]) -> i64 {
+    let mut x = vec![0i32; NN + 1];
+    let mut cur = 0i32;
+    for b in 1..=NN {
+        let m = unsafe { *mu.get_unchecked(b) };
+        cur += delta[(m + 1) as usize];
+        x[b] = cur;
+    }
+    let mut temp = vec![0i32; NN + 1];
+    count_inversions_merge(&mut x, &mut temp)
 }
 
 fn main() {
     let mu = mobius(NN);
-    let l = K * (NN as f64).sqrt() as i32;
-    let tree_size = NN + l as usize + 2;
     let ans0 = (NN as i64) * (NN as i64 + 1) / 2;
     // sign = +1: mu=1 => +K, mu=-1 => -(K-1); sign = -1 swaps those.
     let d_pos = [-(K - 1), 0, K];
     let d_neg = [K, 0, -(K - 1)];
     let (s1, s2) = rayon::join(
-        || fenwick_violations(&mu, d_pos, l, tree_size),
-        || fenwick_violations(&mu, d_neg, l, tree_size),
+        || count_violations(&mu, d_pos),
+        || count_violations(&mu, d_neg),
     );
     println!("{}", ans0 - s1 - s2);
 }

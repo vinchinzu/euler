@@ -1,40 +1,47 @@
 # Slowest Remaining Problems Queue (Descending)
 
-**Updated:** 2026-09-03 (Wave 25 completed: 8 problems A/B gated, 8 accepted)
+**Updated:** 2026-09-03 (Wave 26: 6 problems optimized and A/B gated, 6 accepted)
 
 ## Current Project Snapshot
 
 | Metric | Value |
 |---|---:|
 | Total Solutions | 997 |
-| Total Sequential Wall-Clock | **119.17 s** |
-| Speedup vs Original Cache (1101.1s) | **9.24×** |
-| Speedup vs Clean 5900XT Baseline (386.1s) | **3.24×** (~266.9s saved) |
-| Speedup vs ~180s Milestone (2026-08-25) | **1.49×** (~58.23s saved) |
-| Median Execution Time | **23.5 ms** |
-| Remaining ≥ 1.0s | **11** |
-| Remaining 500ms – 1.0s | **55** |
-| Remaining 200ms – 500ms | **107** |
+| Total Sequential Wall-Clock | **~115.5 s** |
+| Speedup vs Original Cache (1101.1s) | **9.53×** |
+| Speedup vs Clean 5900XT Baseline (386.1s) | **3.34×** (~270.6s saved) |
+| Speedup vs ~180s Milestone (2026-08-25) | **1.56×** (~64.5s saved) |
+| Median Execution Time | **23.1 ms** |
+| Remaining ≥ 1.0s | **4** (plus p774 at 1005ms; p680 skipped per user) |
+| Remaining 500ms – 1.0s | **58** |
+| Remaining 200ms – 500ms | **109** |
 | Remaining 50ms – 200ms | **232** |
-| Fast (< 50ms) | **592** |
+| Fast (< 50ms) | **594** |
 
 ---
 
-## Tier 1: All Remaining Problems ≥ 1.0s (Only 11 targets left!)
+## Tier 1: All Remaining Problems ≥ 1.0s (Only 4 targets left!)
 
 | Rank | Problem | Current Time | Band | Historical Notes & Optimization Angles |
 |:---:|:---:|:---:|:---:|:---|
-| 1 | [`p680.rs`](rust/solutions/src/bin/p680.rs) | **2142.8 ms** | ≥1.0s | implicit treap N=1e18 K=1e6; recursion/stack only |
-| 2 | [`p337.rs`](rust/solutions/src/bin/p337.rs) | **1766.8 ms** | ≥1.0s | Fenwick DP over 2e7; loop-carried like p410 |
-| 3 | [`p774.rs`](rust/solutions/src/bin/p774.rs) | **1436.4 ms** | ≥1.0s | wave2 i32 MPS/GE accepted; remaining serial TT sweep |
-| 4 | [`p954.rs`](rust/solutions/src/bin/p954.rs) | **1201.7 ms** | ≥1.0s | already rayon (l,tr); leftover FxHashMap vs C DFS |
-| 5 | [`p578.rs`](rust/solutions/src/bin/p578.rs) | **1180.0 ms** | ≥1.0s | FxHashMap memos; rayon top-level prime branches with private maps then merge. |
-| 6 | [`p464.rs`](rust/solutions/src/bin/p464.rs) | **1151.0 ms** | ≥1.0s | Mertens/Möbius window; Lucy vs sieve |
-| 7 | [`p786.rs`](rust/solutions/src/bin/p786.rs) | **1145.7 ms** | ≥1.0s | inner rayon already |
-| 8 | [`p379.rs`](rust/solutions/src/bin/p379.rs) | **1138.0 ms** | ≥1.0s | Keep outer d par_iter; run t_func inner loop sequentially to drop nested-rayon contention. |
-| 9 | [`p654.rs`](rust/solutions/src/bin/p654.rs) | **1129.3 ms** | ≥1.0s | NTT mulmod uses u128; P1/P2/P3 all <2^32 so u64 mulmod |
-| 10 | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **1126.0 ms** | ≥1.0s | Lattice DP with carried h_jumps; rayon on cheap x-adds likely regresses (playbook tiny-iter). |
-| 11 | [`p797.rs`](rust/solutions/src/bin/p797.rs) | **1049.6 ms** | ≥1.0s | Incremental 2^i for F[i]; linear-sieve inverses instead of N Fermat inv; optional rayon on final sum. |
+| 1 | [`p680.rs`](rust/solutions/src/bin/p680.rs) | **1954.5 ms** | ≥1.0s | *Skipped per user request*. Implicit treap N=1e18 K=1e6; dynamic subtree queries. |
+| 2 | [`p337.rs`](rust/solutions/src/bin/p337.rs) | **1766.8 ms** | ≥1.0s | Fenwick DP over 2e7; 20M queries & updates in 80MB buffer. |
+| 3 | [`p578.rs`](rust/solutions/src/bin/p578.rs) | **1180.0 ms** | ≥1.0s | FxHashMap memos; top-level prime branches with map_init. |
+| 4 | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **1126.0 ms** | ≥1.0s | Lattice DP with carried h_jumps; AVX2 row accumulation. |
+| (5) | [`p774.rs`](rust/solutions/src/bin/p774.rs) | **1005.2 ms** | ~1.0s | Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; down from 3858ms. |
+
+---
+
+## Wave 26 Accepted Optimizations
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p464.rs`](rust/solutions/src/bin/p464.rs) | 1209.1 ms | **345.0 ms** | **3.504×** | `198775297232878` | Proved exact mathematical bijection between Fenwick violation queries and 1D inversion counting; replaced 82MB DRAM-thrashing Fenwick tree with parallel Rayon merge-sort inversion count streaming sequentially through memory. |
+| [`p654.rs`](rust/solutions/src/bin/p654.rs) | 1165.7 ms | **408.5 ms** | **2.854×** | `815868280` | Precomputed powers-of-2 twiddle tables and bit reversal in `NTTContext`; constant-folded CRT modular inverses; pre-transformed static polynomials `char_poly` and `inv_rev_f` directly into frequency domain (`NTTPoly`); parallelized 3 NTT branches via `rayon::join`; `square_freq` for binary exponentiation. |
+| [`p954.rs`](rust/solutions/src/bin/p954.rs) | 1251.7 ms | **660.4 ms** | **1.895×** | `736463823` | Unified single-pass digit DP solving all lengths $1..13$ in a single forward pass; direct accumulator sum for final MSD digit eliminating 1.44M-entry hash table allocations entirely; Rayon parallel execution across target residues `tr`. |
+| [`p786.rs`](rust/solutions/src/bin/p786.rs) | 1202.6 ms | **736.5 ms** | **1.633×** | `45594532839912702` | Tightened Mobius sieve limit from 300M to exact non-zero bound $l/8 = 187.5\text{M}$, saving 340MB RAM; constant compile-time lookup tables `TAB3` and `TAB9` replacing dynamic residue loops; pure 64-bit integer arithmetic eliminating 128-bit operations. |
+| [`p797.rs`](rust/solutions/src/bin/p797.rs) | 1327.2 ms | **754.4 ms** | **1.759×** | `47722272` | Montgomery batch inversion replacing 2.5M scalar `mod_inv` Euclidean calls; parallelized raw pointer disjoint sieve for $i \in (N/4, N/2]$; parallel chunked L2-cache-resident sieve (256K elements) for Phase 3 $G[n]$ product with direct multiplier grouping. |
+| [`p774.rs`](rust/solutions/src/bin/p774.rs) | 1363.8 ms | **1005.2 ms** | **1.357×** | `459155763` | Parallelized `hadamard`, `add`, and `apply_disjoint` TT core contractions across threads with Rayon; optimized contiguous slice copying for pivot rows; swapped loop nesting in `t_update` for contiguous memory access; SIMD swap in `gauss_elim`. |
 
 ---
 

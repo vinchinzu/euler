@@ -4865,5 +4865,77 @@
     "notes": "Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; removed dead allocations and debug timing overhead; 2.686x speedup on slowest problem in codebase",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 797,
+    "baseline_median_ms": 1327.2,
+    "candidate_median_ms": 754.4,
+    "speedup": 1.759,
+    "correct": true,
+    "baseline_times": [1333.1, 1327.2, 1325.0],
+    "candidate_times": [757.2, 754.4, 753.1],
+    "notes": "Montgomery batch inversion replacing 2.5M mod_inv Euclidean calls; parallelized raw pointer disjoint sieve for i in (N/4, N/2]; parallel chunked L2-cache-resident sieve (256K elements) for Phase 3 G[n] product with direct multiplier grouping",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 654,
+    "baseline_median_ms": 1165.7,
+    "candidate_median_ms": 408.5,
+    "speedup": 2.854,
+    "correct": true,
+    "baseline_times": [1165.7, 1166.4, 1163.2],
+    "candidate_times": [410.2, 408.5, 407.9],
+    "notes": "Precomputed powers-of-2 twiddle tables and bit reversal in NTTContext; constant-folded CRT inverses INV12 and INV13; pre-transformed static polynomials char_poly and inv_rev_f to frequency domain (NTTPoly); parallelized 3 NTT branches via rayon::join; square_freq for binary exponentiation",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 464,
+    "baseline_median_ms": 1209.1,
+    "candidate_median_ms": 345.0,
+    "speedup": 3.504,
+    "correct": true,
+    "baseline_times": [1208.0, 1209.1, 1213.1],
+    "candidate_times": [355.7, 345.0, 344.0],
+    "notes": "Proved exact equivalence between Fenwick violation queries and 1D inversion counting; replaced 82MB DRAM-thrashing Fenwick tree with parallel Rayon merge-sort inversion count streaming sequentially through memory",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 786,
+    "baseline_median_ms": 1202.6,
+    "candidate_median_ms": 736.5,
+    "speedup": 1.633,
+    "correct": true,
+    "baseline_times": [1202.6, 1206.5, 1189.4],
+    "candidate_times": [736.5, 748.2, 725.0],
+    "notes": "Tightened Mobius sieve limit from 300M to exact non-zero bound l/8 = 187.5M saving 340MB RAM; constant compile-time lookup tables TAB3 and TAB9 replacing dynamic residue loops; pure 64-bit integer arithmetic eliminating 128-bit operations",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 954,
+    "baseline_median_ms": 1251.7,
+    "candidate_median_ms": 660.4,
+    "speedup": 1.895,
+    "correct": true,
+    "baseline_times": [1251.7, 1291.4, 1232.4],
+    "candidate_times": [662.0, 660.4, 659.8],
+    "notes": "Unified single-pass digit DP solving all lengths 1..13 in a single forward pass; direct accumulator sum for MSD digit eliminating 1.44M-entry hash table allocations entirely; Rayon parallel execution across target residues tr",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 774,
+    "baseline_median_ms": 1363.8,
+    "candidate_median_ms": 1005.2,
+    "speedup": 1.357,
+    "correct": true,
+    "baseline_times": [1364.7, 1354.9, 1363.8],
+    "candidate_times": [1004.1, 1005.2, 1023.4],
+    "notes": "Parallelized hadamard, add, and apply_disjoint TT core contractions across threads with Rayon; optimized contiguous slice copying for pivot rows; swapped loop nesting in t_update for contiguous memory access; SIMD swap in gauss_elim",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
   }
 ]
