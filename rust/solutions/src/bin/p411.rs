@@ -1,7 +1,3 @@
-// Project Euler 411 - Uphill paths
-// Compute S(k^5) for k=1..30, sum them.
-// Stations at (2^i mod n, 3^i mod n); LIS of y after sorting by x.
-
 use rayon::prelude::*;
 
 fn gcd_fn(mut a: u64, mut b: u64) -> u64 {
@@ -17,7 +13,6 @@ fn lcm_fn(a: u64, b: u64) -> u64 {
     a / gcd_fn(a, b) * b
 }
 
-// n = k^5 <= 30^5 < 2^32, so m*m fits in u64.
 #[inline]
 fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
     let mut result = 1u64;
@@ -91,21 +86,9 @@ fn lis_y(stations: &[u64]) -> i64 {
             tails.push(val);
             continue;
         }
-        let mut lo = 0usize;
-        let mut hi = tails.len();
-        while lo < hi {
-            let mid = lo + ((hi - lo) >> 1);
-            // SAFETY: lo < hi <= len ⇒ mid < len
-            let t = unsafe { *tails.get_unchecked(mid) };
-            if t <= val {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-        // SAFETY: last > val ⇒ upper_bound is in 0..len
+        let idx = tails.partition_point(|&t| t <= val);
         unsafe {
-            *tails.get_unchecked_mut(lo) = val;
+            *tails.get_unchecked_mut(idx) = val;
         }
     }
     tails.len() as i64
@@ -140,11 +123,9 @@ fn s(n: u32) -> i64 {
     let mut x = 1u32;
     let mut y = 1u32;
     for i in 0..num_stations {
-        // SAFETY: i < capacity; every slot is written before set_len
         unsafe {
             ptr.add(i).write(((x as u64) << 32) | y as u64);
         }
-        // 2x < 2n, 3y < 3n, both fit u64; n <= 30^5 so at most two subtracts for *3
         let t = (x as u64) << 1;
         x = (if t >= n64 { t - n64 } else { t }) as u32;
         let mut t = y as u64 * 3;
@@ -156,7 +137,6 @@ fn s(n: u32) -> i64 {
         }
         y = t as u32;
     }
-    // SAFETY: 0..num_stations written
     unsafe {
         stations.set_len(num_stations);
     }
@@ -172,11 +152,14 @@ fn s(n: u32) -> i64 {
 }
 
 fn main() {
-    let ans: i64 = (1..31)
+    // Longest Processing Time first to maximize Rayon load balancing
+    const KS: [u32; 30] = [
+        29, 27, 25, 23, 19, 28, 17, 26, 24, 22, 21, 30, 13, 16, 15, 18, 20, 11, 14, 9, 12, 7, 8, 10, 5, 6, 4, 3, 2, 1
+    ];
+    let ans: i64 = KS
         .into_par_iter()
-        .rev()
         .with_max_len(1)
-        .map(|k| s((k as u32).pow(5)))
+        .map(|k| s(k.pow(5)))
         .sum();
     println!("{}", ans);
 }

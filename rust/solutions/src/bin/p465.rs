@@ -1,29 +1,24 @@
-// Project Euler 465 - Polar polygons
-// Lucy DP for summatory Euler totient, modular arithmetic.
-
-
-
-const MOD: u64 = 1_000_000_007;
-
-#[inline(always)]
-fn mulmod(a: u64, b: u64, m: u64) -> u64 {
-    (a * b) % m
-}
-
-fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
-    let mut result = 1u64;
-    base %= m;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            result = mulmod(result, base, m);
-        }
-        base = mulmod(base, base, m);
-        exp >>= 1;
-    }
-    result
-}
-
 fn main() {
+    const MOD: u64 = 1_000_000_007;
+
+    #[inline(always)]
+    fn mulmod(a: u64, b: u64, m: u64) -> u64 {
+        (a * b) % m
+    }
+
+    fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+        let mut result = 1u64;
+        base %= m;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                result = mulmod(result, base, m);
+            }
+            base = mulmod(base, base, m);
+            exp >>= 1;
+        }
+        result
+    }
+
     let n: u64 = {
         let mut v = 1u64;
         for _ in 0..13 { v *= 7; }
@@ -43,7 +38,6 @@ fn main() {
     if slimit < ndl { slimit = ndl; }
     if slimit < l as usize + 2 { slimit = l as usize + 2; }
 
-    // Sieve phi
     let mut phi_arr = vec![0u64; slimit + 1];
     for i in 0..=slimit { phi_arr[i] = i as u64; }
     for i in 2..=slimit {
@@ -59,26 +53,25 @@ fn main() {
         prefix_phi[i] = prefix_phi[i - 1] + phi_arr[i] as i64;
     }
 
-    // Compute sum_phi for both mod M-1 and mod M
-    fn compute_sum_phi(
-        n: u64, l: u64, slimit: usize, prefix_phi: &[i64], mod_val: u64,
+    fn compute_sum_phi<const M: u64>(
+        n: u64, l: u64, slimit: usize, prefix_phi: &[i64],
     ) -> (Vec<u64>, Vec<u64>) {
-        let l = l as usize;
-        let mut small = vec![0u64; l + 2];
-        let mut large = vec![0u64; l + 2];
+        let l_us = l as usize;
+        let mut small = vec![0u64; l_us + 2];
+        let mut large = vec![0u64; l_us + 2];
 
-        for v in 0..=l.min(slimit) {
-            small[v] = ((prefix_phi[v] % mod_val as i64 + mod_val as i64) % mod_val as i64) as u64;
+        for v in 0..=l_us.min(slimit) {
+            small[v] = ((prefix_phi[v] % M as i64 + M as i64) % M as i64) as u64;
         }
 
-        for x in (1..=l).rev() {
+        for x in (1..=l_us).rev() {
             let nv = n / x as u64;
-            if nv <= l as u64 {
+            if nv <= l {
                 large[x] = small[nv as usize];
                 continue;
             }
             if nv <= slimit as u64 {
-                large[x] = ((prefix_phi[nv as usize] % mod_val as i64 + mod_val as i64) % mod_val as i64) as u64;
+                large[x] = ((prefix_phi[nv as usize] % M as i64 + M as i64) % M as i64) as u64;
                 continue;
             }
 
@@ -87,32 +80,35 @@ fn main() {
             } else {
                 ((nv + 1) / 2, nv)
             };
-            let mut val = (half_n % mod_val) * (other % mod_val) % mod_val;
+            let init_val = (half_n % M) * (other % M) % M;
 
+            let mut sum_sub = 0u128;
             let mut d = 2u64;
             while d <= nv {
                 let q = nv / d;
                 let d_max = nv / q;
 
-                let s = if q <= l as u64 {
-                    small[q as usize]
+                let s = if q <= l {
+                    unsafe { *small.get_unchecked(q as usize) }
                 } else {
                     let xd = x as u64 * d;
-                    if xd <= l as u64 {
-                        large[xd as usize]
+                    if xd <= l {
+                        unsafe { *large.get_unchecked(xd as usize) }
                     } else if q <= slimit as u64 {
-                        ((prefix_phi[q as usize] % mod_val as i64 + mod_val as i64) % mod_val as i64) as u64
+                        ((prefix_phi[q as usize] % M as i64 + M as i64) % M as i64) as u64
                     } else {
-                        small[(n / xd) as usize]
+                        unsafe { *small.get_unchecked((n / xd) as usize) }
                     }
                 };
 
-                let count = (d_max - d + 1) % mod_val;
-                val = (val + mod_val - count * s % mod_val) % mod_val;
+                let count = d_max - d + 1;
+                sum_sub += count as u128 * s as u128;
 
                 d = d_max + 1;
             }
 
+            let sub = (sum_sub % M as u128) as u64;
+            let val = (init_val + M - sub) % M;
             large[x] = val;
         }
 
@@ -125,8 +121,8 @@ fn main() {
 
     let m1 = MOD - 1;
     let ((small1, large1), (small2, large2)) = rayon::join(
-        || compute_sum_phi(n, l, slimit, &prefix_phi, m1),
-        || compute_sum_phi(n, l, slimit, &prefix_phi, MOD),
+        || compute_sum_phi::<1_000_000_006>(n, l, slimit, &prefix_phi),
+        || compute_sum_phi::<1_000_000_007>(n, l, slimit, &prefix_phi),
     );
 
     let ndiv_l = (n / l) as usize;

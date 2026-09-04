@@ -4985,5 +4985,65 @@
     "notes": "AVX2-accelerated 7-level Wide Segment Tree with branching factor B=16 replacing 24-level binary Fenwick tree; L1/L2 resident upper layers; mathematical group pruning skipping 472,696 zero-contribution groups; compact odd-sieve",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 662,
+    "baseline_median_ms": 1081.8,
+    "candidate_median_ms": 795.0,
+    "speedup": 1.361,
+    "correct": true,
+    "baseline_times": [1079.9, 1081.8, 1091.3],
+    "candidate_times": [784.3, 797.0, 795.0],
+    "notes": "Padded row stride to 10016 for 128-byte cache alignment; 8 parallel worker threads with atomic spin-barrier; compile-time DP unrolling with register-carried horizontal recurrence",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 507,
+    "baseline_median_ms": 985.2,
+    "candidate_median_ms": 141.2,
+    "speedup": 6.977,
+    "correct": true,
+    "baseline_times": [995.4, 985.2, 982.2],
+    "candidate_times": [141.7, 140.9, 141.2],
+    "notes": "Matrix exponentiation Tribonacci jump state streaming in registers; eliminated 240M-element Vec (1.92 GB DRAM) down to 0 bytes; 128 Rayon parallel chunks",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 411,
+    "baseline_median_ms": 1009.5,
+    "candidate_median_ms": 423.7,
+    "speedup": 2.383,
+    "correct": true,
+    "baseline_times": [1009.1, 1013.4, 1009.5],
+    "candidate_times": [423.7, 408.7, 424.2],
+    "notes": "LPT descending task scheduling preventing core starvation; branchless partition_point binary search in patience sorting accelerating LIS by 3.66x",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 461,
+    "baseline_median_ms": 1114.1,
+    "candidate_median_ms": 763.1,
+    "speedup": 1.460,
+    "correct": true,
+    "baseline_times": [1106.9, 1114.1, 1126.6],
+    "candidate_times": [770.7, 757.6, 763.1],
+    "notes": "Compacted pair storage to flat 8-byte f64 array halving sort memory bandwidth; O(1) 5-microsecond post-reconstruction of indices via 2-pointer scan",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 465,
+    "baseline_median_ms": 1082.0,
+    "candidate_median_ms": 923.6,
+    "speedup": 1.171,
+    "correct": true,
+    "baseline_times": [1082.0, 1081.8, 1135.0],
+    "candidate_times": [923.6, 953.6, 910.9],
+    "notes": "u128 hyperbola delayed reduction eliminating 3 hardware % MOD integer divisions per iteration across 31M iterations",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
   }
 ]

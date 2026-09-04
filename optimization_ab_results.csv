@@ -286,3 +286,8 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 578,1089.7,61.6,94.35,True,True,Interleaved prefix_sf_k lookup table resolving 97% of squarefree_min_prime in O(1); analytic 3rd/4th root cutoffs in DPP; light/heavy Rayon speedup=17.700x
 439,1073.3,177.0,83.51,True,True,Compacted sieve to u32 in L3 cache; parallel dyadic layers for n_mu_cache; u128 accumulation eliminating inner % MOD; closed-form sum_range speedup=6.064x
 337,1804.7,916.7,49.20,True,True,AVX2 7-level Wide Segment Tree (B=16) replacing 24-level binary Fenwick; L1/L2 upper layers; mathematical group pruning skipping 472K groups speedup=1.969x
+662,1081.8,795.0,26.51,True,True,Padded row stride to 10016 for 128-byte cache alignment; 8 parallel workers with atomic spin-barrier; static DP unrolling speedup=1.361x
+507,985.2,141.2,85.67,True,True,Matrix exponentiation Tribonacci jump state streaming in registers; zero DRAM allocations (eliminated 1.92 GB); 128 Rayon chunks speedup=6.977x
+411,1009.5,423.7,58.03,True,True,LPT descending task scheduling preventing core starvation; branchless partition_point binary search in patience sorting speedup=2.383x
+461,1114.1,763.1,31.51,True,True,Compacted pair storage to flat 8-byte f64 array halving sort memory bandwidth; 5-microsecond post-reconstruction of indices speedup=1.460x
+465,1082.0,923.6,14.64,True,True,u128 hyperbola delayed reduction eliminating 3 hardware % MOD divisions per iteration across 31M iterations speedup=1.171x

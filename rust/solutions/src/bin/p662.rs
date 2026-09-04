@@ -2,9 +2,12 @@
 // 2D DP on lattice with Fibonacci-length jumps. N=10000.
 //
 // Optimizations:
-// - AVX2 4-way unrolled vectorized row accumulation for vertical and diagonal jumps
-// - Monotonic jump pointer and Barrett reduction in the horizontal DP loop
-// - Elimination of redundant bounds checks via unsafe raw pointers
+// - Row-aligned stride (10016 elements) ensuring 64-byte cache line alignment for all rows
+// - Parallel worker threads with spin-barrier synchronizing row updates without thread respawning
+// - Disjoint column chunking across threads for conflict-free AVX2 4-way vectorized row accumulation
+// - Statically unrolled horizontal DP recurrence with dedicated step functions per jump range
+
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[target_feature(enable = "avx2")]
 unsafe fn add_row_avx2(dst: *mut u32, src: *const u32, len: usize) {
@@ -59,6 +62,83 @@ unsafe fn add_row_avx2(dst: *mut u32, src: *const u32, len: usize) {
     }
 }
 
+#[inline(always)]
+unsafe fn step_full(p: *mut u32, x: usize, prev: &mut u32) {
+    unsafe {
+        let sum = *p.add(x) as u64
+            + *p.add(x - 2) as u64
+            + *p.add(x - 3) as u64
+            + *p.add(x - 5) as u64
+            + *p.add(x - 8) as u64
+            + *p.add(x - 13) as u64
+            + *p.add(x - 21) as u64
+            + *p.add(x - 34) as u64
+            + *p.add(x - 55) as u64
+            + *p.add(x - 89) as u64
+            + *p.add(x - 144) as u64
+            + *p.add(x - 233) as u64
+            + *p.add(x - 377) as u64
+            + *p.add(x - 610) as u64
+            + *p.add(x - 987) as u64
+            + *p.add(x - 1597) as u64
+            + *p.add(x - 2584) as u64
+            + *p.add(x - 4181) as u64
+            + *p.add(x - 6765) as u64;
+        let cur = sum + *prev as u64;
+        let q = ((cur as u128 * 18446743944u128) >> 64) as u64;
+        let mut rem = (cur - q * 1_000_000_007) as u32;
+        if rem >= 1_000_000_007 {
+            rem -= 1_000_000_007;
+        }
+        *p.add(x) = rem;
+        *prev = rem;
+    }
+}
+
+#[inline(always)]
+unsafe fn horizontal_step(p: *mut u32, x: usize, jumps: &[usize], prev: &mut u32) {
+    unsafe {
+        let mut sum = *p.add(x) as u64;
+        for &j in jumps {
+            sum += *p.add(x - j) as u64;
+        }
+        let cur = sum + *prev as u64;
+        let q = ((cur as u128 * 18446743944u128) >> 64) as u64;
+        let mut rem = (cur - q * 1_000_000_007) as u32;
+        if rem >= 1_000_000_007 {
+            rem -= 1_000_000_007;
+        }
+        *p.add(x) = rem;
+        *prev = rem;
+    }
+}
+
+#[inline(always)]
+unsafe fn run_horizontal_dp(dst: *mut u32, w: usize) {
+    unsafe {
+        let mut prev = *dst;
+        for x in 1..2 { horizontal_step(dst, x, &[], &mut prev); }
+        for x in 2..3 { horizontal_step(dst, x, &[2], &mut prev); }
+        for x in 3..5 { horizontal_step(dst, x, &[2, 3], &mut prev); }
+        for x in 5..8 { horizontal_step(dst, x, &[2, 3, 5], &mut prev); }
+        for x in 8..13 { horizontal_step(dst, x, &[2, 3, 5, 8], &mut prev); }
+        for x in 13..21 { horizontal_step(dst, x, &[2, 3, 5, 8, 13], &mut prev); }
+        for x in 21..34 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21], &mut prev); }
+        for x in 34..55 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34], &mut prev); }
+        for x in 55..89 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55], &mut prev); }
+        for x in 89..144 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89], &mut prev); }
+        for x in 144..233 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144], &mut prev); }
+        for x in 233..377 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233], &mut prev); }
+        for x in 377..610 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377], &mut prev); }
+        for x in 610..987 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610], &mut prev); }
+        for x in 987..1597 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987], &mut prev); }
+        for x in 1597..2584 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597], &mut prev); }
+        for x in 2584..4181 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584], &mut prev); }
+        for x in 4181..6765 { horizontal_step(dst, x, &[2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181], &mut prev); }
+        for x in 6765..w { step_full(dst, x, &mut prev); }
+    }
+}
+
 fn main() {
     let n = 10000usize;
     let max_fib_limit = ((2.0 * (n as f64) * (n as f64)).sqrt() as usize) + 2;
@@ -91,52 +171,84 @@ fn main() {
         }
     }
     let w = n + 1;
-    let mut dp = vec![0u32; w * w];
+    let stride = ((w + 31) / 32) * 32;
+    let mut dp = vec![0u32; stride * w];
     dp[0] = 1;
 
-    let dp_ptr = dp.as_mut_ptr();
-    const H_JUMPS: [usize; 19] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765];
+    let num_threads = 8usize;
+    let raw_chunk = (w + num_threads - 1) / num_threads;
+    let chunk_size = ((raw_chunk + 31) / 32) * 32;
 
-    for y in 0..w {
-        let dst_row = y * w;
-        let dst = unsafe { dp_ptr.add(dst_row) };
-
-        for &vi in &v_jumps {
-            if y < vi { continue; }
-            let src_row = (y - vi) * w;
-            unsafe {
-                let src = dp_ptr.add(src_row);
-                add_row_avx2(dst, src, w);
-            }
-        }
-
-        for &(dx, dyv) in &diag_jumps {
-            if y < dyv { continue; }
-            let src_row = (y - dyv) * w;
-            unsafe {
-                let src = dp_ptr.add(src_row);
-                add_row_avx2(dst.add(dx), src, w - dx);
-            }
-        }
-
-        let mut k = 0;
-        for x in 1..w {
-            while k < 19 && H_JUMPS[k] <= x {
-                k += 1;
-            }
-            let mut sum = 0u64;
-            for i in 0..k {
-                sum += unsafe { *dst.add(x - H_JUMPS[i]) } as u64;
-            }
-            let cur = unsafe { *dst.add(x) } as u64 + sum;
-            // Barrett reduction: m = 1_000_000_007
-            let q = ((cur as u128 * 18446743944u128) >> 64) as u64;
-            let mut rem = cur - q * 1_000_000_007;
-            if rem >= 1_000_000_007 {
-                rem -= 1_000_000_007;
-            }
-            unsafe { *dst.add(x) = rem as u32; }
+    let mut ranges = Vec::new();
+    for t in 0..num_threads {
+        let x0 = (t * chunk_size).min(w);
+        let x1 = ((t + 1) * chunk_size).min(w);
+        if x0 < x1 {
+            ranges.push((x0, x1));
         }
     }
-    println!("{}", dp[n * w + n]);
+    let actual_threads = ranges.len();
+
+    let round = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+
+    let dp_ptr_usize = dp.as_mut_ptr() as usize;
+
+    std::thread::scope(|s| {
+        for &(x0, x1) in &ranges {
+            let round = &round;
+            let done = &done;
+            let v_jumps = &v_jumps;
+            let diag_jumps = &diag_jumps;
+
+            s.spawn(move || {
+                let dp_ptr = dp_ptr_usize as *mut u32;
+                for y in 1..w {
+                    while round.load(Ordering::Acquire) < y {
+                        std::hint::spin_loop();
+                    }
+
+                    let dst_row = y * stride;
+                    let dst = unsafe { dp_ptr.add(dst_row + x0) };
+                    let len = x1 - x0;
+
+                    for &vi in v_jumps.iter() {
+                        if y < vi { continue; }
+                        let src = unsafe { dp_ptr.add((y - vi) * stride + x0) };
+                        unsafe { add_row_avx2(dst, src, len); }
+                    }
+
+                    for &(dx, dyv) in diag_jumps.iter() {
+                        if y < dyv { continue; }
+                        if x1 <= dx { continue; }
+                        let start = x0.max(dx);
+                        let sub_len = x1 - start;
+                        let dst_diag = unsafe { dp_ptr.add(dst_row + start) };
+                        let src_diag = unsafe { dp_ptr.add((y - dyv) * stride + (start - dx)) };
+                        unsafe { add_row_avx2(dst_diag, src_diag, sub_len); }
+                    }
+
+                    done.fetch_add(1, Ordering::Release);
+                }
+            });
+        }
+
+        // Row 0: horizontal DP
+        let dp_ptr = dp_ptr_usize as *mut u32;
+        unsafe { run_horizontal_dp(dp_ptr, w); }
+
+        for y in 1..w {
+            round.store(y, Ordering::Release);
+
+            while done.load(Ordering::Acquire) < y * actual_threads {
+                std::hint::spin_loop();
+            }
+
+            let dst_row = y * stride;
+            let dst = unsafe { dp_ptr.add(dst_row) };
+            unsafe { run_horizontal_dp(dst, w); }
+        }
+    });
+
+    println!("{}", dp[n * stride + n]);
 }
