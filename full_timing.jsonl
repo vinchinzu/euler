@@ -995,3 +995,6 @@
 {"problem": 995, "time_ms": 80.9, "status": "OK", "answer": "2.21322e536280", "old_ms": 2678.0, "xt_ms": 71.0, "stderr": ""}
 {"problem": 996, "time_ms": 117.9, "status": "OK", "answer": "137726405", "old_ms": 458.0, "xt_ms": 117.0, "stderr": ""}
 {"problem": 997, "time_ms": 1.0, "status": "OK", "answer": "5765993594880", "old_ms": 0.0, "xt_ms": 1.0, "stderr": ""}
+{"problem": 998, "time_ms": 59.1, "status": "OK", "answer": "4439835458570", "old_ms": 310.2, "xt_ms": 310.2, "stderr": ""}
+{"problem": 999, "time_ms": 0.8, "status": "OK", "answer": "801096743", "old_ms": 0.7, "xt_ms": 0.7, "stderr": ""}
+{"problem": 1000, "time_ms": 9.5, "status": "OK", "answer": "891213201", "old_ms": 14.4, "xt_ms": 14.4, "stderr": ""}

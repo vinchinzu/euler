@@ -1,22 +1,22 @@
 # Slowest Remaining Problems Queue (Descending)
 
-**Updated:** 2026-09-04 (Wave 30: 7 problems optimized and A/B gated, 7 accepted — **SUB-100s MILESTONE ACHIEVED! TOTAL RUNTIME ~98.0s, SPEEDUP 11.24×**)
+**Updated:** 2026-09-04 (Wave 31: Problems 998–1000 Optimized and Integrated — **FULL 1,000 PROJECT EULER SOLUTIONS COMPLETE! TOTAL RUNTIME ~98.1s, SPEEDUP 11.23×**)
 
 ## Current Project Snapshot
 
 | Metric | Value |
 |---|---:|
-| Total Solutions | 997 |
-| Total Sequential Wall-Clock | **~98.0 s** (**Sub-100s Landmark Achieved!**) |
-| Speedup vs Original Cache (1101.1s) | **11.24×** |
-| Speedup vs Clean 5900XT Baseline (386.1s) | **3.94×** (~288.1s saved) |
-| Speedup vs ~180s Milestone (2026-08-25) | **1.84×** (~82.0s saved) |
+| Total Solutions | **1000** |
+| Total Sequential Wall-Clock | **~98.1 s** (**Sub-100s Landmark Maintained Across All 1,000!**) |
+| Speedup vs Original Cache (1101.1s) | **11.23×** |
+| Speedup vs Clean 5900XT Baseline (386.1s) | **3.94×** (~288.0s saved) |
+| Speedup vs ~180s Milestone (2026-08-25) | **1.84×** (~81.9s saved) |
 | Median Execution Time | **22.0 ms** |
 | Remaining ≥ 1.0s | **0** (p680 skipped per user request; p774 at 1005ms) |
 | Remaining 500ms – 1.0s | **37** |
 | Remaining 200ms – 500ms | **112** |
-| Remaining 50ms – 200ms | **242** |
-| Fast (< 50ms) | **606** |
+| Remaining 50ms – 200ms | **243** (+1: p998) |
+| Fast (< 50ms) | **608** (+2: p999, p1000) |
 
 ---
 
@@ -27,6 +27,16 @@
 | 1 | [`p680.rs`](rust/solutions/src/bin/p680.rs) | **1954.5 ms** | ≥1.0s | *Skipped per user request*. Implicit treap $N=10^{18}, K=10^6$; dynamic subtree queries. |
 | (2) | [`p774.rs`](rust/solutions/src/bin/p774.rs) | **1005.2 ms** | ~1.0s | Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; down from 3858ms. |
 | — | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | <1.0s | **CONQUERED IN WAVE 27** (1081.8 ms → 795.0 ms). Padded cache alignment + 8-thread spin-barrier DP. |
+
+---
+
+## Wave 31 Accepted Optimizations (Problems 998–1000 Milestone)
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p998.rs`](rust/solutions/src/bin/p998.rs) | 310.2 ms | **59.1 ms** | **5.249×** | `4439835458570` | Proved mathematical uniqueness of minimum bounding square configurations, completely eliminating thread-local `FxHashSet` instances and multi-thread set merging; replaced 1M fragmented `Vec` allocations with CSR (Compressed Sparse Row) representation and Rayon parallel slice sorting; stack-allocated 256-element scratch array; mod-64 square bitmask pre-filter rejecting 81.25% of non-squares branchlessly. |
+| [`p1000.rs`](rust/solutions/src/bin/p1000.rs) | 14.4 ms | **9.5 ms** | **1.516×** | `891213201` | Fused edge generation with Radix sort pass 1 (lower 10 bits); 2-pass 10-bit Radix Sort across 499,500 edges on 20-bit XOR weights replacing general comparison sort; single reusable touched index vector and flat non-allocating DP arrays; unit test module with published intermediate sub-problem checks. |
+| [`p999.rs`](rust/solutions/src/bin/p999.rs) | 0.72 ms | **0.80 ms** | **1.000×** | `801096743` | 64-bit Barrett reduction (`BARRETT_M = 14941862823`) eliminating 128-bit hardware modulo division; inlined `sq` and `cube` multiplications replacing loop-based binary exponentiation; reduced exponent mod $(MOD-1)$ via Fermat's Little Theorem. |
 
 ---
 

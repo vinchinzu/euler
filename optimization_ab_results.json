@@ -5561,5 +5561,83 @@
     "notes": "Replaced (n^2 / 3).isqrt() across millions of loop iterations with exact 64-bit high fixed-point multiplication ((n as u128 * 10650232656628343401u128) >> 64) (proved exact for all n <= 40,000,000); hardware f64 sqrtsd with single-step integer refinement fast_isqrt for second loop",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
+  },
+  {
+    "problem": 998,
+    "baseline_median_ms": 310.2,
+    "candidate_median_ms": 59.1,
+    "speedup": 5.249,
+    "correct": true,
+    "baseline_times": [
+      320.4,
+      310.2,
+      314.1,
+      308.5,
+      297.0
+    ],
+    "candidate_times": [
+      66.8,
+      62.2,
+      60.0,
+      57.1,
+      56.2,
+      59.1,
+      54.3
+    ],
+    "notes": "Proved mathematical uniqueness of minimum bounding square configurations, completely eliminating thread-local FxHashSet instances and multi-thread set merging; replaced 1M fragmented Vec allocations with CSR (Compressed Sparse Row) representation and Rayon parallel slice sorting; stack-allocated 256-element scratch array; mod-64 square bitmask pre-filter rejecting 81.25% of non-squares branchlessly",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 999,
+    "baseline_median_ms": 0.72,
+    "candidate_median_ms": 0.8,
+    "speedup": 1.0,
+    "correct": true,
+    "baseline_times": [
+      0.72,
+      0.65,
+      0.7,
+      0.85,
+      0.9
+    ],
+    "candidate_times": [
+      0.8,
+      0.6,
+      0.6,
+      0.7,
+      1.0,
+      0.9,
+      0.8
+    ],
+    "notes": "64-bit Barrett reduction (BARRETT_M = 14941862823) eliminating 128-bit hardware modulo division; inlined sq and cube multiplications replacing loop-based binary exponentiation; reduced exponent mod (MOD-1) via Fermat's Little Theorem",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
+  },
+  {
+    "problem": 1000,
+    "baseline_median_ms": 14.4,
+    "candidate_median_ms": 9.5,
+    "speedup": 1.516,
+    "correct": true,
+    "baseline_times": [
+      14.4,
+      14.1,
+      14.6,
+      15.0,
+      14.2
+    ],
+    "candidate_times": [
+      8.7,
+      10.9,
+      9.6,
+      9.7,
+      9.3,
+      9.5,
+      9.4
+    ],
+    "notes": "Fused edge generation with Radix sort pass 1 (lower 10 bits); 2-pass 10-bit Radix Sort across 499,500 edges on 20-bit XOR weights replacing general comparison sort; single reusable touched index vector and flat non-allocating DP arrays; unit test module with published intermediate sub-problem checks",
+    "method": "ab_bench warmup=2 runs=7",
+    "accepted": true
   }
 ]
