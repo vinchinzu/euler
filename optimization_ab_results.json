@@ -5045,5 +5045,41 @@
     "notes": "u128 hyperbola delayed reduction eliminating 3 hardware % MOD integer divisions per iteration across 31M iterations",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 534,
+    "baseline_median_ms": 921.9,
+    "candidate_median_ms": 79.2,
+    "speedup": 11.641,
+    "correct": true,
+    "baseline_times": [921.9, 940.2, 897.2],
+    "candidate_times": [84.4, 79.2, 72.3],
+    "notes": "Incremental branchless bitmask DFS with O(1) expiration updates; row 0 horizontal symmetry halving search trees; compact 8-byte Config with FxHashMap; flattened 50-task LPT workload scheduling",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 937,
+    "baseline_median_ms": 944.4,
+    "candidate_median_ms": 89.0,
+    "speedup": 10.613,
+    "correct": true,
+    "baseline_times": [940.7, 944.4, 944.5],
+    "candidate_times": [88.6, 94.0, 89.0],
+    "notes": "Segmented odd-only sieve in 16KB L1d chunks; 128 parallel disjoint lock-free diff slices; O(1) Legendre tzcnt valuation tracking; dynamic Rayon medium-prime balancing; parallel 64-chunk factorial scan",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
+  },
+  {
+    "problem": 563,
+    "baseline_median_ms": 838.8,
+    "candidate_median_ms": 195.8,
+    "speedup": 4.285,
+    "correct": true,
+    "baseline_times": [850.1, 837.4, 838.8],
+    "candidate_times": [195.8, 200.4, 195.2],
+    "notes": "Tightened dimension bound to 50M via max M(n)=2.29e15; eliminated redundant partition_point lookups; parallel contiguous streaming multiplication; early scan termination",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true
   }
 ]

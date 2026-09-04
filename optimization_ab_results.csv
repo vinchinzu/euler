@@ -291,3 +291,6 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 411,1009.5,423.7,58.03,True,True,LPT descending task scheduling preventing core starvation; branchless partition_point binary search in patience sorting speedup=2.383x
 461,1114.1,763.1,31.51,True,True,Compacted pair storage to flat 8-byte f64 array halving sort memory bandwidth; 5-microsecond post-reconstruction of indices speedup=1.460x
 465,1082.0,923.6,14.64,True,True,u128 hyperbola delayed reduction eliminating 3 hardware % MOD divisions per iteration across 31M iterations speedup=1.171x
+534,921.9,79.2,91.41,True,True,Incremental branchless bitmask DFS; row 0 horizontal symmetry; compact 8-byte Config with FxHashMap; 50-task LPT scheduling speedup=11.641x
+937,944.4,89.0,90.58,True,True,Segmented odd-only sieve; 128 parallel disjoint lock-free diff slices; O(1) Legendre tzcnt valuation; parallel 64-chunk factorial scan speedup=10.613x
+563,838.8,195.8,76.66,True,True,Tightened dimension bound to 50M via max M(n)=2.29e15; eliminated redundant partition_point; parallel streaming mult; early scan exit speedup=4.285x
