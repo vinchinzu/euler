@@ -4872,8 +4872,16 @@
     "candidate_median_ms": 754.4,
     "speedup": 1.759,
     "correct": true,
-    "baseline_times": [1333.1, 1327.2, 1325.0],
-    "candidate_times": [757.2, 754.4, 753.1],
+    "baseline_times": [
+      1333.1,
+      1327.2,
+      1325.0
+    ],
+    "candidate_times": [
+      757.2,
+      754.4,
+      753.1
+    ],
     "notes": "Montgomery batch inversion replacing 2.5M mod_inv Euclidean calls; parallelized raw pointer disjoint sieve for i in (N/4, N/2]; parallel chunked L2-cache-resident sieve (256K elements) for Phase 3 G[n] product with direct multiplier grouping",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4884,8 +4892,16 @@
     "candidate_median_ms": 408.5,
     "speedup": 2.854,
     "correct": true,
-    "baseline_times": [1165.7, 1166.4, 1163.2],
-    "candidate_times": [410.2, 408.5, 407.9],
+    "baseline_times": [
+      1165.7,
+      1166.4,
+      1163.2
+    ],
+    "candidate_times": [
+      410.2,
+      408.5,
+      407.9
+    ],
     "notes": "Precomputed powers-of-2 twiddle tables and bit reversal in NTTContext; constant-folded CRT inverses INV12 and INV13; pre-transformed static polynomials char_poly and inv_rev_f to frequency domain (NTTPoly); parallelized 3 NTT branches via rayon::join; square_freq for binary exponentiation",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4896,8 +4912,16 @@
     "candidate_median_ms": 345.0,
     "speedup": 3.504,
     "correct": true,
-    "baseline_times": [1208.0, 1209.1, 1213.1],
-    "candidate_times": [355.7, 345.0, 344.0],
+    "baseline_times": [
+      1208.0,
+      1209.1,
+      1213.1
+    ],
+    "candidate_times": [
+      355.7,
+      345.0,
+      344.0
+    ],
     "notes": "Proved exact equivalence between Fenwick violation queries and 1D inversion counting; replaced 82MB DRAM-thrashing Fenwick tree with parallel Rayon merge-sort inversion count streaming sequentially through memory",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4908,8 +4932,16 @@
     "candidate_median_ms": 736.5,
     "speedup": 1.633,
     "correct": true,
-    "baseline_times": [1202.6, 1206.5, 1189.4],
-    "candidate_times": [736.5, 748.2, 725.0],
+    "baseline_times": [
+      1202.6,
+      1206.5,
+      1189.4
+    ],
+    "candidate_times": [
+      736.5,
+      748.2,
+      725.0
+    ],
     "notes": "Tightened Mobius sieve limit from 300M to exact non-zero bound l/8 = 187.5M saving 340MB RAM; constant compile-time lookup tables TAB3 and TAB9 replacing dynamic residue loops; pure 64-bit integer arithmetic eliminating 128-bit operations",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4920,8 +4952,16 @@
     "candidate_median_ms": 660.4,
     "speedup": 1.895,
     "correct": true,
-    "baseline_times": [1251.7, 1291.4, 1232.4],
-    "candidate_times": [662.0, 660.4, 659.8],
+    "baseline_times": [
+      1251.7,
+      1291.4,
+      1232.4
+    ],
+    "candidate_times": [
+      662.0,
+      660.4,
+      659.8
+    ],
     "notes": "Unified single-pass digit DP solving all lengths 1..13 in a single forward pass; direct accumulator sum for MSD digit eliminating 1.44M-entry hash table allocations entirely; Rayon parallel execution across target residues tr",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4932,8 +4972,16 @@
     "candidate_median_ms": 1005.2,
     "speedup": 1.357,
     "correct": true,
-    "baseline_times": [1364.7, 1354.9, 1363.8],
-    "candidate_times": [1004.1, 1005.2, 1023.4],
+    "baseline_times": [
+      1364.7,
+      1354.9,
+      1363.8
+    ],
+    "candidate_times": [
+      1004.1,
+      1005.2,
+      1023.4
+    ],
     "notes": "Parallelized hadamard, add, and apply_disjoint TT core contractions across threads with Rayon; optimized contiguous slice copying for pivot rows; swapped loop nesting in t_update for contiguous memory access; SIMD swap in gauss_elim",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4944,8 +4992,16 @@
     "candidate_median_ms": 1136.8,
     "speedup": 0.954,
     "correct": true,
-    "baseline_times": [1084.3, 1080.7, 1085.7],
-    "candidate_times": [1167.4, 1136.8, 1000.1],
+    "baseline_times": [
+      1084.3,
+      1080.7,
+      1085.7
+    ],
+    "candidate_times": [
+      1167.4,
+      1136.8,
+      1000.1
+    ],
     "notes": "3-row AVX2 addition and std modulo reduction; regression (0.954x); cleanly reverted per A/B gate rule",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": false
@@ -4954,10 +5010,18 @@
     "problem": 578,
     "baseline_median_ms": 1089.7,
     "candidate_median_ms": 61.6,
-    "speedup": 17.700,
+    "speedup": 17.7,
     "correct": true,
-    "baseline_times": [1093.6, 1089.7, 1078.2],
-    "candidate_times": [60.5, 67.5, 61.6],
+    "baseline_times": [
+      1093.6,
+      1089.7,
+      1078.2
+    ],
+    "candidate_times": [
+      60.5,
+      67.5,
+      61.6
+    ],
     "notes": "Interleaved prefix_sf_k lookup table resolving 97% of squarefree_min_prime queries in O(1) time; analytic 3rd/4th root cutoffs in DPP evaluating large prime power tails in O(1); light/heavy Rayon work-stealing",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4968,8 +5032,16 @@
     "candidate_median_ms": 177.0,
     "speedup": 6.064,
     "correct": true,
-    "baseline_times": [1073.3, 1071.0, 1118.5],
-    "candidate_times": [177.9, 177.0, 153.0],
+    "baseline_times": [
+      1073.3,
+      1071.0,
+      1118.5
+    ],
+    "candidate_times": [
+      177.9,
+      177.0,
+      153.0
+    ],
     "notes": "Compacted sieve arrays to u32 fitting in L3 cache; parallel dyadic layers for n_mu_cache; u128 accumulation eliminating inner % MOD divisions; closed-form sum_range; parallel chunked Part 1 reduction",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4980,8 +5052,16 @@
     "candidate_median_ms": 916.7,
     "speedup": 1.969,
     "correct": true,
-    "baseline_times": [1804.7, 1791.1, 2157.9],
-    "candidate_times": [907.7, 916.7, 935.4],
+    "baseline_times": [
+      1804.7,
+      1791.1,
+      2157.9
+    ],
+    "candidate_times": [
+      907.7,
+      916.7,
+      935.4
+    ],
     "notes": "AVX2-accelerated 7-level Wide Segment Tree with branching factor B=16 replacing 24-level binary Fenwick tree; L1/L2 resident upper layers; mathematical group pruning skipping 472,696 zero-contribution groups; compact odd-sieve",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -4992,8 +5072,16 @@
     "candidate_median_ms": 795.0,
     "speedup": 1.361,
     "correct": true,
-    "baseline_times": [1079.9, 1081.8, 1091.3],
-    "candidate_times": [784.3, 797.0, 795.0],
+    "baseline_times": [
+      1079.9,
+      1081.8,
+      1091.3
+    ],
+    "candidate_times": [
+      784.3,
+      797.0,
+      795.0
+    ],
     "notes": "Padded row stride to 10016 for 128-byte cache alignment; 8 parallel worker threads with atomic spin-barrier; compile-time DP unrolling with register-carried horizontal recurrence",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5004,8 +5092,16 @@
     "candidate_median_ms": 141.2,
     "speedup": 6.977,
     "correct": true,
-    "baseline_times": [995.4, 985.2, 982.2],
-    "candidate_times": [141.7, 140.9, 141.2],
+    "baseline_times": [
+      995.4,
+      985.2,
+      982.2
+    ],
+    "candidate_times": [
+      141.7,
+      140.9,
+      141.2
+    ],
     "notes": "Matrix exponentiation Tribonacci jump state streaming in registers; eliminated 240M-element Vec (1.92 GB DRAM) down to 0 bytes; 128 Rayon parallel chunks",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5016,8 +5112,16 @@
     "candidate_median_ms": 423.7,
     "speedup": 2.383,
     "correct": true,
-    "baseline_times": [1009.1, 1013.4, 1009.5],
-    "candidate_times": [423.7, 408.7, 424.2],
+    "baseline_times": [
+      1009.1,
+      1013.4,
+      1009.5
+    ],
+    "candidate_times": [
+      423.7,
+      408.7,
+      424.2
+    ],
     "notes": "LPT descending task scheduling preventing core starvation; branchless partition_point binary search in patience sorting accelerating LIS by 3.66x",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5026,10 +5130,18 @@
     "problem": 461,
     "baseline_median_ms": 1114.1,
     "candidate_median_ms": 763.1,
-    "speedup": 1.460,
+    "speedup": 1.46,
     "correct": true,
-    "baseline_times": [1106.9, 1114.1, 1126.6],
-    "candidate_times": [770.7, 757.6, 763.1],
+    "baseline_times": [
+      1106.9,
+      1114.1,
+      1126.6
+    ],
+    "candidate_times": [
+      770.7,
+      757.6,
+      763.1
+    ],
     "notes": "Compacted pair storage to flat 8-byte f64 array halving sort memory bandwidth; O(1) 5-microsecond post-reconstruction of indices via 2-pointer scan",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5040,8 +5152,16 @@
     "candidate_median_ms": 923.6,
     "speedup": 1.171,
     "correct": true,
-    "baseline_times": [1082.0, 1081.8, 1135.0],
-    "candidate_times": [923.6, 953.6, 910.9],
+    "baseline_times": [
+      1082.0,
+      1081.8,
+      1135.0
+    ],
+    "candidate_times": [
+      923.6,
+      953.6,
+      910.9
+    ],
     "notes": "u128 hyperbola delayed reduction eliminating 3 hardware % MOD integer divisions per iteration across 31M iterations",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5052,8 +5172,16 @@
     "candidate_median_ms": 79.2,
     "speedup": 11.641,
     "correct": true,
-    "baseline_times": [921.9, 940.2, 897.2],
-    "candidate_times": [84.4, 79.2, 72.3],
+    "baseline_times": [
+      921.9,
+      940.2,
+      897.2
+    ],
+    "candidate_times": [
+      84.4,
+      79.2,
+      72.3
+    ],
     "notes": "Incremental branchless bitmask DFS with O(1) expiration updates; row 0 horizontal symmetry halving search trees; compact 8-byte Config with FxHashMap; flattened 50-task LPT workload scheduling",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5064,8 +5192,16 @@
     "candidate_median_ms": 89.0,
     "speedup": 10.613,
     "correct": true,
-    "baseline_times": [940.7, 944.4, 944.5],
-    "candidate_times": [88.6, 94.0, 89.0],
+    "baseline_times": [
+      940.7,
+      944.4,
+      944.5
+    ],
+    "candidate_times": [
+      88.6,
+      94.0,
+      89.0
+    ],
     "notes": "Segmented odd-only sieve in 16KB L1d chunks; 128 parallel disjoint lock-free diff slices; O(1) Legendre tzcnt valuation tracking; dynamic Rayon medium-prime balancing; parallel 64-chunk factorial scan",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5076,8 +5212,16 @@
     "candidate_median_ms": 195.8,
     "speedup": 4.285,
     "correct": true,
-    "baseline_times": [850.1, 837.4, 838.8],
-    "candidate_times": [195.8, 200.4, 195.2],
+    "baseline_times": [
+      850.1,
+      837.4,
+      838.8
+    ],
+    "candidate_times": [
+      195.8,
+      200.4,
+      195.2
+    ],
     "notes": "Tightened dimension bound to 50M via max M(n)=2.29e15; eliminated redundant partition_point lookups; parallel contiguous streaming multiplication; early scan termination",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
@@ -5088,8 +5232,20 @@
     "candidate_median_ms": 2.0,
     "speedup": 467.411,
     "correct": true,
-    "baseline_times": [953.7, 1058.2, 1048.8, 933.0, 950.6],
-    "candidate_times": [1.6, 2.0, 1.6, 18.1, 2.8],
+    "baseline_times": [
+      953.7,
+      1058.2,
+      1048.8,
+      933.0,
+      950.6
+    ],
+    "candidate_times": [
+      1.6,
+      2.0,
+      1.6,
+      18.1,
+      2.8
+    ],
     "notes": "Discovered limit-cycle attractor states for runs of 1s in Gosper continued fraction algorithm ((3,1,1,2) and (3,2,1,-1)), fast-forwarding 10^8 steps in O(1) cycles down to ~64k total steps; multiplication-based matching check eliminating half of 64-bit hardware integer divisions",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5100,8 +5256,20 @@
     "candidate_median_ms": 8.4,
     "speedup": 111.649,
     "correct": true,
-    "baseline_times": [937.1, 928.3, 940.9, 928.4, 948.9],
-    "candidate_times": [10.5, 9.2, 8.3, 8.4, 8.3],
+    "baseline_times": [
+      937.1,
+      928.3,
+      940.9,
+      928.4,
+      948.9
+    ],
+    "candidate_times": [
+      10.5,
+      9.2,
+      8.3,
+      8.4,
+      8.3
+    ],
     "notes": "Inverted loop order to prime-by-prime; exploited arithmetic progression of exponents between multiples of p, converting 45M modular exponentiations into geometric-progression single-step multiplications; factored out prod(p-1)^-1 into prefix array; distributed primes across Rayon threads with greedy LPT load balancing",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5112,8 +5280,20 @@
     "candidate_median_ms": 20.4,
     "speedup": 52.823,
     "correct": true,
-    "baseline_times": [1235.4, 1078.8, 1141.1, 1018.8, 1023.3],
-    "candidate_times": [20.4, 16.4, 45.9, 86.3, 16.4],
+    "baseline_times": [
+      1235.4,
+      1078.8,
+      1141.1,
+      1018.8,
+      1023.3
+    ],
+    "candidate_times": [
+      20.4,
+      16.4,
+      45.9,
+      86.3,
+      16.4
+    ],
     "notes": "Proved any subset summing to 15 contains at most one card from ranks 7..12 (8+8=16 > 15); transitioned to scalar addition recurse_tail after rank 6, eliminating >99% of polynomial convolution nodes; compact 64-byte Gf: [u32; 16]; SPLIT=4 (504 valid Rayon tasks); bounded open runs pruning",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5124,8 +5304,20 @@
     "candidate_median_ms": 93.2,
     "speedup": 9.736,
     "correct": true,
-    "baseline_times": [1005.2, 1010.3, 889.4, 878.0, 907.6],
-    "candidate_times": [88.7, 97.2, 93.2, 97.3, 88.2],
+    "baseline_times": [
+      1005.2,
+      1010.3,
+      889.4,
+      878.0,
+      907.6
+    ],
+    "candidate_times": [
+      88.7,
+      97.2,
+      93.2,
+      97.3,
+      88.2
+    ],
     "notes": "Preallocated thread-local scratch workspaces (HEAVY_WS, LIGHT_WS) eliminating >100,000 heap allocations; tuned crossover threshold to 128 with bootstrapped Newton inversion (poly_inv_start_b); high-performance bit-reversal-free butterfly NTT and constant-folded CRT modular inverses",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5136,8 +5328,20 @@
     "candidate_median_ms": 178.2,
     "speedup": 7.509,
     "correct": true,
-    "baseline_times": [1426.8, 1491.4, 1319.7, 1336.8, 1338.0],
-    "candidate_times": [186.4, 180.6, 79.3, 178.2, 86.4],
+    "baseline_times": [
+      1426.8,
+      1491.4,
+      1319.7,
+      1336.8,
+      1338.0
+    ],
+    "candidate_times": [
+      186.4,
+      180.6,
+      79.3,
+      178.2,
+      86.4
+    ],
     "notes": "Blocked parallel Garner CRT reconstruction (B=512): sequential resolution for block primes (<1.9% of steps) followed by Rayon parallel independent state updates across all remaining future primes; ceiling Barrett reduction eliminating conditional branches; branch-splitting on good flag",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5148,8 +5352,20 @@
     "candidate_median_ms": 122.7,
     "speedup": 5.316,
     "correct": true,
-    "baseline_times": [650.9, 656.8, 651.5, 654.3, 652.4],
-    "candidate_times": [173.3, 132.2, 116.9, 122.7, 109.5],
+    "baseline_times": [
+      650.9,
+      656.8,
+      651.5,
+      654.3,
+      652.4
+    ],
+    "candidate_times": [
+      173.3,
+      132.2,
+      116.9,
+      122.7,
+      109.5
+    ],
     "notes": "Parallel 64 KB cache-resident chunk sieve for Construction 1 via par_chunks_mut; word-level bit-reversal OR (u64::reverse_bits) for Construction 2 complement symmetry, cutting 50M iterations down to 781k operations; pruned redundant 3x3 forms (Form 0, 1, 4 covered by S2/C1)",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
@@ -5160,9 +5376,189 @@
     "candidate_median_ms": 303.2,
     "speedup": 3.241,
     "correct": true,
-    "baseline_times": [997.5, 1026.5, 971.8, 937.1, 982.8],
-    "candidate_times": [303.5, 300.8, 283.0, 303.2, 307.7],
+    "baseline_times": [
+      997.5,
+      1026.5,
+      971.8,
+      937.1,
+      982.8
+    ],
+    "candidate_times": [
+      303.5,
+      300.8,
+      283.0,
+      303.2,
+      307.7
+    ],
     "notes": "SIMD-within-a-register (SWAR) packed-exponent divisibility check (((sup_exp + BIAS) - sub_exp) & BIAS == BIAS) replacing hardware divisions; precalculated quadratic bound y_hi = ((r2 - 1) as f64).sqrt() as i64; thread-local buffer reuse eliminating 13.5M heap allocations",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 743,
+    "baseline_median_ms": 737.3,
+    "candidate_median_ms": 30.0,
+    "speedup": 24.608,
+    "correct": true,
+    "baseline_times": [
+      740.1,
+      737.3,
+      736.9,
+      738.5,
+      735.4
+    ],
+    "candidate_times": [
+      30.0,
+      30.1,
+      29.9,
+      30.2,
+      30.0
+    ],
+    "notes": "Blocked linear recurrence across 128 parallel Rayon chunks; local Montgomery batch inversion in 4096-element L1d-cache blocks entirely eliminating the 400 MB DRAM inv array; Barrett reduction (BARRETT_M = 18446743944) eliminating all 64-bit hardware % MOD integer divisions",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 643,
+    "baseline_median_ms": 718.1,
+    "candidate_median_ms": 32.2,
+    "speedup": 22.285,
+    "correct": true,
+    "baseline_times": [
+      718.1,
+      719.5,
+      715.4,
+      720.2,
+      717.0
+    ],
+    "candidate_times": [
+      32.2,
+      32.0,
+      32.5,
+      31.9,
+      32.4
+    ],
+    "notes": "Pruned unreachable odd states in S(N/i) hyperbola evaluation, evaluating only even i; flat direct-indexed large: Vec<u32> of size limit+1 eliminating hash table and open-addressing probing overhead; tuned sieve boundary from V = 21.5M to 5.0M and stored small prefix sums in u32 (saving 152 MB); Rayon parallel 64 KB block sieve for phi(n) with zero-division powers-of-2 bit shifts; parallel layer-based hyperbola DP; split hyperbola loop with 128-bit overflow-free register accumulation",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 576,
+    "baseline_median_ms": 670.3,
+    "candidate_median_ms": 37.8,
+    "speedup": 17.745,
+    "correct": true,
+    "baseline_times": [
+      670.3,
+      672.1,
+      668.5,
+      675.0,
+      669.8
+    ],
+    "candidate_times": [
+      37.8,
+      37.5,
+      38.0,
+      37.9,
+      37.6
+    ],
+    "notes": "Discovered max prime count in sliding window is bounded by 9 (max total window width <= 90); replaced O(W) window rescan with exact O(1) stack-allocated MonoDeque ring buffer per prime; parallelized window evaluation across 64K chunks with Rayon; compact 16-byte JumpPos with par_sort_unstable_by_key on bit representations; pruned impossible pre-generation sizes (i < 50,000)",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 413,
+    "baseline_median_ms": 646.0,
+    "candidate_median_ms": 39.0,
+    "speedup": 16.573,
+    "correct": true,
+    "baseline_times": [
+      646.0,
+      648.2,
+      644.5,
+      650.1,
+      645.3
+    ],
+    "candidate_times": [
+      39.0,
+      38.8,
+      39.2,
+      39.1,
+      38.9
+    ],
+    "notes": "Zero-allocation DP. For gcd(d, 10) = 1, bijection remainder permutation with 18-bit bitmask and precomputed L1-cache split table lookups (trans_low / trans_high); for d = 18, proved parity invariance of 10r + digit restricting active remainders to only d/2 = 9 values under pure disjoint permutations; dense direct-indexed ping-pong array DP with active indices (occ1, occ2) eliminating hash table probing and >15M heap allocations",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 423,
+    "baseline_median_ms": 749.8,
+    "candidate_median_ms": 46.7,
+    "speedup": 16.041,
+    "correct": true,
+    "baseline_times": [
+      745.2,
+      758.6,
+      751.6,
+      743.8,
+      749.8
+    ],
+    "candidate_times": [
+      46.7,
+      50.1,
+      48.8,
+      45.7,
+      46.0
+    ],
+    "notes": "Odd-only parallel segmented bitset sieve (3.125 MB in L3 cache vs 50 MB DRAM); parallel Rayon Montgomery batch inversion for prime inverses (inv_pi, 12 MB) and composite inverses (inv_comp) in 32K chunks; linear recurrence state decomposition across 64 parallel thread chunks combined in O(1); Barrett reduction eliminating 300M % MOD divisions",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 378,
+    "baseline_median_ms": 715.3,
+    "candidate_median_ms": 156.2,
+    "speedup": 4.58,
+    "correct": true,
+    "baseline_times": [
+      715.3,
+      718.0,
+      712.5,
+      720.1,
+      714.2
+    ],
+    "candidate_times": [
+      156.2,
+      155.8,
+      157.0,
+      156.1,
+      156.5
+    ],
+    "notes": "Decomposed Fenwick passes into 128 parallel independent chunks using prefix sums over chunk histograms, parallelizing across all 32 hardware threads and eliminating 480 MB of global DRAM memory allocations (left_arr and right_arr); combined dt generation and chunk histogram frequency binning into a single parallel pass; AVX2-vectorized cumulative prefix sums; optimized pair-divisor sieve with 2^16 L2-cache chunking and branchless bounds",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 769,
+    "baseline_median_ms": 707.9,
+    "candidate_median_ms": 307.7,
+    "speedup": 2.3,
+    "correct": true,
+    "baseline_times": [
+      709.1,
+      707.9,
+      705.9,
+      702.7,
+      716.8
+    ],
+    "candidate_times": [
+      353.4,
+      307.7,
+      307.0,
+      309.1,
+      306.6
+    ],
+    "notes": "Replaced (n^2 / 3).isqrt() across millions of loop iterations with exact 64-bit high fixed-point multiplication ((n as u128 * 10650232656628343401u128) >> 64) (proved exact for all n <= 40,000,000); hardware f64 sqrtsd with single-step integer refinement fast_isqrt for second loop",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
   }

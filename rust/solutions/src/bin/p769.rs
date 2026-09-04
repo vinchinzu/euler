@@ -5,10 +5,23 @@ use rayon::prelude::*;
 
 const N: i64 = 100_000_000_000_000; // 10^14
 
+const INV_SQRT3: u128 = 10650232656628343401u128;
+
 /// floor(n / sqrt(3)) = isqrt(n^2 / 3) for n > 0.
 #[inline(always)]
 fn floor_n_div_sqrt3(n: i64) -> i64 {
-    (n as u64 * n as u64 / 3).isqrt() as i64
+    ((n as u128 * INV_SQRT3) >> 64) as i64
+}
+
+#[inline(always)]
+fn fast_isqrt(x: u64) -> i64 {
+    let mut s = (x as f64).sqrt() as u64;
+    if s * s > x {
+        s -= 1;
+    } else if (s + 1) * (s + 1) <= x {
+        s += 1;
+    }
+    s as i64
 }
 
 /// term1 <= term2 iff 25 (n g)^4 <= 3 (h N - 2 (n g)^2)^2.
@@ -87,7 +100,7 @@ fn inner<const MODE: u8>(g: i64, h: i64) -> i64 {
     let mut rem = (3 * (split + 1)).rem_euclid(13);
     let mut ng = (split + 1) * g;
     for _n in (split + 1)..=n_max {
-        let s = ((13 * ng * ng + c) as u64).isqrt() as i64;
+        let s = fast_isqrt((13 * ng * ng + c) as u64);
         let t2 = (s - 5 * ng) / six_g;
         add_mode::<MODE>(&mut acc, t2, rem);
         rem += 3;
@@ -141,11 +154,7 @@ fn main() {
             let g = sqrt_n - i;
             // SAFETY: g is in 1..=sqrt_n
             let mu = unsafe { *mobius.get_unchecked(g) } as i64;
-            if mu == 0 {
-                0
-            } else {
-                process_g(g as i64, mu)
-            }
+            if mu == 0 { 0 } else { process_g(g as i64, mu) }
         })
         .sum();
 
