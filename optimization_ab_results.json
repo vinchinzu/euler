@@ -5639,5 +5639,77 @@
     "notes": "Fused edge generation with Radix sort pass 1 (lower 10 bits); 2-pass 10-bit Radix Sort across 499,500 edges on 20-bit XOR weights replacing general comparison sort; single reusable touched index vector and flat non-allocating DP arrays; unit test module with published intermediate sub-problem checks",
     "method": "ab_bench warmup=2 runs=7",
     "accepted": true
+  },
+  {
+    "problem": 482,
+    "baseline_median_ms": 753.9,
+    "candidate_median_ms": 164.2,
+    "speedup": 4.592,
+    "correct": true,
+    "baseline_times": [
+      752.5,
+      751.0,
+      760.5,
+      767.2,
+      753.9
+    ],
+    "candidate_times": [
+      164.2,
+      144.4,
+      120.2,
+      165.9,
+      166.0
+    ],
+    "notes": "Replaced fragmented ~1,000,000-vector tri_map with flat Compressed Sparse Row (CSR: offsets, data); eliminated 100,000 heap-allocated divisor vectors with on-the-fly stack buffer [u32; 256]; parallel fold/reduce candidate collection; in-place sort/dedup; hardware isqrt()",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 521,
+    "baseline_median_ms": 850.1,
+    "candidate_median_ms": 331.7,
+    "speedup": 2.563,
+    "correct": true,
+    "baseline_times": [
+      812.6,
+      805.8,
+      850.1,
+      882.1,
+      906.0
+    ],
+    "candidate_times": [
+      335.5,
+      294.1,
+      331.7,
+      326.8,
+      357.1
+    ],
+    "notes": "Compacted modulo arrays from i64 to u32 (saving 16 MB DRAM); structured small into a cache-friendly packed SmallVal { cnt, sum }; replaced 140M-division inner loop with piecewise-constant quotient block stepping; raw pointer streaming arithmetic",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 459,
+    "baseline_median_ms": 900.1,
+    "candidate_median_ms": 599.8,
+    "speedup": 1.501,
+    "correct": true,
+    "baseline_times": [
+      886.7,
+      968.5,
+      900.1,
+      911.0,
+      895.9
+    ],
+    "candidate_times": [
+      601.9,
+      601.1,
+      599.8,
+      598.3,
+      599.2
+    ],
+    "notes": "Epoch-tracking (used[v] = current_j) in 1D game mex calculation eliminating repeated zero-clearing of 512-element table across 1,000,000 iterations; capped mex tracking to observed maximum (263)",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
   }
 ]

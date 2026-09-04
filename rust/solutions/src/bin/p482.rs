@@ -1,22 +1,35 @@
-use euler_utils::{gcd, lcm};
 use rayon::prelude::*;
 
 const N: i64 = 10_000_000;
 
 #[inline(always)]
-fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
-    if a < 0 { a = -a; }
-    if b < 0 { b = -b; }
-    while b != 0 { let t = b; b = a % b; a = t; }
-    a
+fn gcd_u32(mut a: u32, mut b: u32) -> u32 {
+    if a == 0 { return b; }
+    if b == 0 { return a; }
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    loop {
+        b >>= b.trailing_zeros();
+        if a > b { std::mem::swap(&mut a, &mut b); }
+        b -= a;
+        if b == 0 { break; }
+    }
+    a << shift
 }
 
-fn isqrt_func(n: i64) -> i64 {
-    if n <= 0 { return 0; }
-    let mut x = (n as f64).sqrt() as i64;
-    while x * x > n { x -= 1; }
-    while (x + 1) * (x + 1) <= n { x += 1; }
-    x
+#[inline(always)]
+fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
+    if a == 0 { return b; }
+    if b == 0 { return a; }
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    loop {
+        b >>= b.trailing_zeros();
+        if a > b { std::mem::swap(&mut a, &mut b); }
+        b -= a;
+        if b == 0 { break; }
+    }
+    a << shift
 }
 
 #[inline(always)]
@@ -24,99 +37,157 @@ fn tr(n: i64) -> i64 {
     n * (n + 1) / 2
 }
 
-// Compute gcd(r2 * (x+y), den) where r2 and den fit in i64 but r2*(x+y) may not
-// First reduce: gcd(a, b) = gcd(a % b, b) and compute (r2*(x+y)) % den using i128 for one mul
-#[inline(always)]
-fn gcd_special(r2: i64, xy_sum: i64, den: i64) -> i64 {
-    // num = r2 * xy_sum, compute num % den
-    let num_mod = ((r2 as i128 * xy_sum as i128) % den as i128) as i64;
-    gcd_i64(num_mod, den)
-}
+fn solve() -> i64 {
+    let l_val = (N as f64 / 108.0f64.sqrt()) as usize;
+    let map_size = l_val + 10;
 
-fn main() {
-    let l_val = (N as f64 / 108.0f64.sqrt()) as i64;
-    let map_size = (l_val + 10) as usize;
-
-    let mut tri_map: Vec<Vec<i64>> = vec![Vec::new(); map_size];
-
-    let mut m = 2i64;
-    while 2 * m * m <= N {
-        let mut n = 1i64;
-        while n < m && 2 * m * (m + n) <= N {
-            if (m + n) % 2 == 1 && gcd(m as u64, n as u64) == 1 {
-                let a = m * m - n * n;
-                let b = 2 * m * n;
-                if (a as usize) < map_size { tri_map[a as usize].push(b); }
-                if (b as usize) < map_size { tri_map[b as usize].push(a); }
+    // 1st pass: count entries per index for CSR representation
+    let mut counts = vec![0u32; map_size];
+    let mut m = 2u32;
+    while 2 * m * m <= N as u32 {
+        let mut n = 1 + (m & 1);
+        while n < m && 2 * m * (m + n) <= N as u32 {
+            if gcd_u32(m, n) == 1 {
+                let a = (m * m - n * n) as usize;
+                let b = (2 * m * n) as usize;
+                if a < map_size { counts[a] += 1; }
+                if b < map_size { counts[b] += 1; }
             }
-            n += 1;
+            n += 2;
         }
         m += 1;
     }
 
-    let mut keys: Vec<usize> = Vec::new();
-    for i in 1..map_size {
-        if !tri_map[i].is_empty() { keys.push(i); }
+    // Prefix sums for CSR offsets
+    let mut offsets = vec![0u32; map_size + 1];
+    for i in 0..map_size {
+        offsets[i + 1] = offsets[i] + counts[i];
+    }
+    let total_entries = offsets[map_size] as usize;
+    let mut data = vec![0u32; total_entries];
+    let mut pos = offsets.clone();
+
+    // 2nd pass: populate contiguous data buffer
+    let mut m = 2u32;
+    while 2 * m * m <= N as u32 {
+        let mut n = 1 + (m & 1);
+        while n < m && 2 * m * (m + n) <= N as u32 {
+            if gcd_u32(m, n) == 1 {
+                let a = (m * m - n * n) as usize;
+                let b = (2 * m * n) as u32;
+                if a < map_size {
+                    let p = pos[a] as usize;
+                    data[p] = b;
+                    pos[a] += 1;
+                }
+                let b_usize = b as usize;
+                if b_usize < map_size {
+                    let p = pos[b_usize] as usize;
+                    data[p] = (m * m - n * n) as u32;
+                    pos[b_usize] += 1;
+                }
+            }
+            n += 2;
+        }
+        m += 1;
     }
 
-    // Pre-compute divisors for each key
-    let key_divisors: Vec<Vec<i64>> = keys.iter().map(|&a1| {
-        let mut divs = Vec::new();
-        let mut i = 1i64;
-        let a = a1 as i64;
-        while i * i <= a {
-            if a % i == 0 {
-                divs.push(i);
-                if i != a / i { divs.push(a / i); }
-            }
-            i += 1;
+    // Collect non-empty keys
+    let mut keys: Vec<u32> = Vec::with_capacity(350_000);
+    for i in 1..map_size {
+        if offsets[i] != offsets[i + 1] {
+            keys.push(i as u32);
         }
-        divs
-    }).collect();
+    }
 
-    // Parallel: each key produces a list of candidate (x, y, z) triples
-    let all_candidates: Vec<Vec<(i64, i64, i64)>> = keys.par_iter().zip(key_divisors.par_iter())
-        .map(|(&a1, divs)| {
-            let mut local_candidates = Vec::new();
+    // Parallel search: on-the-fly divisor computation, zero vector allocations per key
+    let mut candidates: Vec<(u32, u32, u32)> = keys
+        .par_iter()
+        .with_min_len(1024)
+        .fold(Vec::new, |mut local_candidates, &a1| {
+            let a1_usize = a1 as usize;
+            let start1 = offsets[a1_usize] as usize;
+            let end1 = offsets[a1_usize + 1] as usize;
+
+            // Stack-allocated divisor buffer (numbers < 10^6 have at most 240 divisors)
+            let mut divs = [0u32; 256];
+            let mut num_divs = 0;
+            let step = 1 + (a1 & 1);
+            let mut i = 1u32;
+            while i * i <= a1 {
+                if a1 % i == 0 {
+                    divs[num_divs] = i;
+                    num_divs += 1;
+                    let d2 = a1 / i;
+                    if d2 != i {
+                        divs[num_divs] = d2;
+                        num_divs += 1;
+                    }
+                }
+                i += step;
+            }
+
             let a1_i64 = a1 as i64;
+            let max_mult_limit = ((map_size - 1) as u32) / a1;
 
-            for &d in divs {
-                let mut mult = 1i64;
-                while mult * a1_i64 < map_size as i64 && mult * d <= a1_i64 {
+            for &d in &divs[..num_divs] {
+                let q = a1 / d;
+                let max_mult = q.min(max_mult_limit);
+
+                for mult in 1..=max_mult {
+                    if mult > 1 && gcd_u32(q, mult) != 1 {
+                        continue;
+                    }
+
                     let a2 = (mult * d) as usize;
-                    if a2 >= map_size || tri_map[a2].is_empty() { mult += 1; continue; }
+                    let start2 = offsets[a2] as usize;
+                    let end2 = offsets[a2 + 1] as usize;
+                    if start2 == end2 {
+                        continue;
+                    }
 
-                    let r = lcm(a1 as u64, a2 as u64) as i64;
-                    if r > N { mult += 1; continue; }
+                    let r = a1_i64 * mult as i64;
+                    let r2 = r * r;
+                    let mult_i64 = mult as i64;
+                    let q_i64 = q as i64;
 
-                    let r2 = r * r; // fits in i64: r <= 10^7, r^2 <= 10^14
+                    for &b1 in &data[start1..end1] {
+                        let x = b1 as i64 * mult_i64;
+                        if 2 * x >= N {
+                            continue;
+                        }
 
-                    for bi in 0..tri_map[a1].len() {
-                        let b1 = tri_map[a1][bi];
-                        for bj in 0..tri_map[a2].len() {
-                            let b2 = tri_map[a2][bj];
-
-                            let x = b1 * r / a1_i64;
-                            let y = b2 * r / a2 as i64;
-                            let den = x * y - r2; // fits in i64
-
-                            if den <= 0 { continue; }
-
-                            // Quick check: num/den = r2*(x+y)/den, need 2*(x+y+num/den) <= N
-                            // num/den computed via i128 for one division
+                        for &b2 in &data[start2..end2] {
+                            let y = b2 as i64 * q_i64;
                             let xy_sum = x + y;
-                            let z_approx = (r2 as i128 * xy_sum as i128 / den as i128) as i64;
-                            if 2 * (xy_sum + z_approx) > N { continue; }
+                            if 2 * xy_sum >= N {
+                                continue;
+                            }
 
-                            // Compute gcd using optimized approach (one i128 mul then i64 gcd)
-                            let g = gcd_special(r2, xy_sum, den);
-                            let num_r = (r2 as i128 * xy_sum as i128 / g as i128) as i64;
+                            let den = x * y - r2;
+                            if den <= 0 {
+                                continue;
+                            }
+
+                            let num = (r2 as u64) * (xy_sum as u64);
+                            let z_approx = (num / den as u64) as i64;
+                            if 2 * (xy_sum + z_approx) > N {
+                                continue;
+                            }
+
+                            let num_mod = num % (den as u64);
+                            let g = gcd_u64(num_mod, den as u64) as i64;
                             let den_r = den / g;
-                            if 2 * (x as i128 * den_r as i128 + y as i128 * den_r as i128 + num_r as i128) <= N as i128 {
-                                let mut sx = (x as i128 * den_r as i128) as i64;
-                                let mut sy = (y as i128 * den_r as i128) as i64;
-                                let mut sz = num_r;
-                                // Sort
+                            if den_r > N / 2 {
+                                continue;
+                            }
+
+                            let num_r = (num / g as u64) as i64;
+                            let perim = 2 * (xy_sum * den_r + num_r);
+                            if perim <= N {
+                                let mut sx = (x * den_r) as u32;
+                                let mut sy = (y * den_r) as u32;
+                                let mut sz = num_r as u32;
                                 if sx > sy { std::mem::swap(&mut sx, &mut sy); }
                                 if sy > sz { std::mem::swap(&mut sy, &mut sz); }
                                 if sx > sy { std::mem::swap(&mut sx, &mut sy); }
@@ -124,47 +195,46 @@ fn main() {
                             }
                         }
                     }
-                    mult += 1;
                 }
             }
             local_candidates
         })
-        .collect();
+        .reduce(Vec::new, |mut a, b| {
+            a.extend(b);
+            a
+        });
 
-    // Merge and deduplicate using hash set
-    let mut sol_keys: Vec<(i64, i64, i64)> = vec![(0, 0, 0); 2_000_003];
-    let mut sol_used: Vec<bool> = vec![false; 2_000_003];
-    let mut solutions: Vec<(i64, i64, i64)> = Vec::new();
-    const HASH_SIZE: usize = 2_000_003;
+    // In-place sort and deduplicate candidates (~12k elements, < 1 ms)
+    candidates.sort_unstable();
+    candidates.dedup();
 
-    for candidates in &all_candidates {
-        for &(x, y, z) in candidates {
-            let h = ((x as u64).wrapping_mul(1_000_000_007).wrapping_add(y as u64)).wrapping_mul(1_000_000_007).wrapping_add(z as u64);
-            let mut idx = (h % HASH_SIZE as u64) as usize;
-            loop {
-                if !sol_used[idx] {
-                    sol_keys[idx] = (x, y, z);
-                    sol_used[idx] = true;
-                    solutions.push((x, y, z));
-                    break;
-                }
-                if sol_keys[idx] == (x, y, z) {
-                    break;
-                }
-                idx = (idx + 1) % HASH_SIZE;
-            }
-        }
-    }
-
+    // Accumulate total perimeter and incenter-to-vertex distances
     let mut ans: i64 = 0;
-    for &(x, y, z) in &solutions {
-        let r2 = (x * y * z) / (x + y + z);
-        let perim = 2 * (x + y + z);
-        let ia = isqrt_func(r2 + x * x);
-        let ib = isqrt_func(r2 + y * y);
-        let ic = isqrt_func(r2 + z * z);
+    for &(sx, sy, sz) in &candidates {
+        let x = sx as i64;
+        let y = sy as i64;
+        let z = sz as i64;
+        let sum_xyz = x + y + z;
+        let r2 = (x * y * z) / sum_xyz;
+        let perim = 2 * sum_xyz;
+        let ia = (r2 + x * x).isqrt();
+        let ib = (r2 + y * y).isqrt();
+        let ic = (r2 + z * z).isqrt();
         ans += tr(N / perim) * (perim + ia + ib + ic);
     }
+    ans
+}
 
-    println!("{}", ans);
+fn main() {
+    println!("{}", solve());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_answer() {
+        assert_eq!(solve(), 1400824879147);
+    }
 }

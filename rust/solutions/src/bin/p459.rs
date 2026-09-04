@@ -2,7 +2,6 @@ use rayon::prelude::*;
 
 const N: usize = 1_000_000;
 const L: usize = 512;
-const LBITS: usize = L / 64;
 
 fn nim_prod(a: i32, b: i32, cache: &mut [i32]) -> i32 {
     if a == 0 || b == 0 {
@@ -70,89 +69,57 @@ fn build_nim_table() -> Vec<i32> {
     cache
 }
 
-#[inline(always)]
-fn mark_bit(used: &mut [u64; LBITS], val: u16) {
-    let v = val as usize;
-    if v < L {
-        // SAFETY: v < 512 so v>>6 < 8 = used.len()
-        unsafe {
-            *used.get_unchecked_mut(v >> 6) |= 1u64 << (v & 63);
-        }
-    }
-}
-
-#[inline(always)]
-fn mex_of(used: &[u64; LBITS]) -> u16 {
-    for i in 0..LBITS {
-        let w = used[i];
-        if w != u64::MAX {
-            return (i as u16) * 64 + w.trailing_ones() as u16;
-        }
-    }
-    L as u16
-}
-
-/// Prefix-XOR of mex values for the 1D subtraction / flipping game.
 fn fill_rn(steps: &[usize]) -> Vec<u16> {
     let mut rn = vec![0u16; N + 1];
     let nst = steps.len();
     let mut kmax = 0usize;
+    let mut used = [0u32; 512];
     for j in 1..=N {
         while kmax < nst && unsafe { *steps.get_unchecked(kmax) } <= j {
             kmax += 1;
         }
+        let ju = j as u32;
         let prev = unsafe { *rn.get_unchecked(j - 1) };
-        let mut used = [0u64; LBITS];
-        // Squares and triangular numbers both include 1, which yields val = 0.
-        used[0] = 1;
+        // Squares and triangular numbers both include s=1, yielding val = 0.
+        used[0] = ju;
         let mut k = 1usize;
+        let rp = rn.as_ptr();
+        let sp = steps.as_ptr();
+        let up = used.as_mut_ptr();
         while k + 8 <= kmax {
             unsafe {
-                let rp = rn.as_ptr();
-                let sp = steps.as_ptr();
-                #[cfg(target_arch = "x86_64")]
-                {
-                    use std::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
-                    if k + 16 <= kmax {
-                        // SAFETY: k+15 < kmax, each step s <= j so j-s is in-range
-                        _mm_prefetch(rp.add(j - *sp.add(k + 8)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 9)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 10)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 11)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 12)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 13)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 14)) as *const i8, _MM_HINT_T0);
-                        _mm_prefetch(rp.add(j - *sp.add(k + 15)) as *const i8, _MM_HINT_T0);
-                    }
-                }
-                // SAFETY: k+7 < kmax, steps[k+i] <= j, rn.len() == N+1
-                let v0 = prev ^ *rp.add(j - *sp.add(k));
-                let v1 = prev ^ *rp.add(j - *sp.add(k + 1));
-                let v2 = prev ^ *rp.add(j - *sp.add(k + 2));
-                let v3 = prev ^ *rp.add(j - *sp.add(k + 3));
-                let v4 = prev ^ *rp.add(j - *sp.add(k + 4));
-                let v5 = prev ^ *rp.add(j - *sp.add(k + 5));
-                let v6 = prev ^ *rp.add(j - *sp.add(k + 6));
-                let v7 = prev ^ *rp.add(j - *sp.add(k + 7));
-                mark_bit(&mut used, v0);
-                mark_bit(&mut used, v1);
-                mark_bit(&mut used, v2);
-                mark_bit(&mut used, v3);
-                mark_bit(&mut used, v4);
-                mark_bit(&mut used, v5);
-                mark_bit(&mut used, v6);
-                mark_bit(&mut used, v7);
+                let v0 = (prev ^ *rp.add(j - *sp.add(k))) as usize;
+                let v1 = (prev ^ *rp.add(j - *sp.add(k + 1))) as usize;
+                let v2 = (prev ^ *rp.add(j - *sp.add(k + 2))) as usize;
+                let v3 = (prev ^ *rp.add(j - *sp.add(k + 3))) as usize;
+                let v4 = (prev ^ *rp.add(j - *sp.add(k + 4))) as usize;
+                let v5 = (prev ^ *rp.add(j - *sp.add(k + 5))) as usize;
+                let v6 = (prev ^ *rp.add(j - *sp.add(k + 6))) as usize;
+                let v7 = (prev ^ *rp.add(j - *sp.add(k + 7))) as usize;
+                *up.add(v0) = ju;
+                *up.add(v1) = ju;
+                *up.add(v2) = ju;
+                *up.add(v3) = ju;
+                *up.add(v4) = ju;
+                *up.add(v5) = ju;
+                *up.add(v6) = ju;
+                *up.add(v7) = ju;
             }
             k += 8;
         }
         while k < kmax {
-            let s = unsafe { *steps.get_unchecked(k) };
-            let val = prev ^ unsafe { *rn.get_unchecked(j - s) };
-            mark_bit(&mut used, val);
+            unsafe {
+                let s = *sp.add(k);
+                let val = (prev ^ *rp.add(j - s)) as usize;
+                *up.add(val) = ju;
+            }
             k += 1;
         }
-        let mex = mex_of(&used);
+        let mut mex = 0u16;
         unsafe {
+            while *up.add(mex as usize) == ju {
+                mex += 1;
+            }
             *rn.get_unchecked_mut(j) = prev ^ mex;
         }
     }
@@ -160,26 +127,48 @@ fn fill_rn(steps: &[usize]) -> Vec<u16> {
 }
 
 fn count_range(rn: &[u16], steps: &[usize], lo: usize, hi: usize) -> [i64; L] {
-    let mut cnt = [0i64; L];
+    let mut cnt = [0u32; L];
     if lo > hi {
-        return cnt;
+        return [0i64; L];
     }
+    let rp = rn.as_ptr();
+    let cp = cnt.as_mut_ptr();
     for &s in steps {
         if s > hi {
             break;
         }
         let start = lo.max(s);
-        for j in start..=hi {
-            // SAFETY: 1 <= start <= j <= hi <= N, j >= s, rn.len() == N+1
-            let val = unsafe { (*rn.get_unchecked(j) ^ *rn.get_unchecked(j - s)) as usize };
-            if val < L {
-                unsafe {
-                    *cnt.get_unchecked_mut(val) += 1;
-                }
+        let len = hi - start + 1;
+        let mut offset = 0usize;
+        let p_j = unsafe { rp.add(start) };
+        let p_js = unsafe { rp.add(start - s) };
+        let end4 = len / 4 * 4;
+        while offset < end4 {
+            unsafe {
+                let v0 = (*p_j.add(offset) ^ *p_js.add(offset)) as usize;
+                let v1 = (*p_j.add(offset + 1) ^ *p_js.add(offset + 1)) as usize;
+                let v2 = (*p_j.add(offset + 2) ^ *p_js.add(offset + 2)) as usize;
+                let v3 = (*p_j.add(offset + 3) ^ *p_js.add(offset + 3)) as usize;
+                *cp.add(v0) += 1;
+                *cp.add(v1) += 1;
+                *cp.add(v2) += 1;
+                *cp.add(v3) += 1;
             }
+            offset += 4;
+        }
+        while offset < len {
+            unsafe {
+                let v = (*p_j.add(offset) ^ *p_js.add(offset)) as usize;
+                *cp.add(v) += 1;
+            }
+            offset += 1;
         }
     }
-    cnt
+    let mut res = [0i64; L];
+    for i in 0..L {
+        res[i] = cnt[i] as i64;
+    }
+    res
 }
 
 fn count_xors(rn: &[u16], steps: &[usize]) -> [i64; L] {
@@ -203,7 +192,7 @@ fn count_xors(rn: &[u16], steps: &[usize]) -> [i64; L] {
         )
 }
 
-fn main() {
+fn solve() -> i64 {
     let mut sq_steps = Vec::new();
     let mut tr_steps = Vec::new();
     let mut i = 1i64;
@@ -244,6 +233,19 @@ fn main() {
             }
         }
     }
+    ans
+}
 
-    println!("{}", ans);
+fn main() {
+    println!("{}", solve());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_answer() {
+        assert_eq!(solve(), 3996390106631);
+    }
 }
