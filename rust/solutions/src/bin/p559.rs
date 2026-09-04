@@ -16,181 +16,203 @@ const P3: u64 = 754_974_721;
 
 const MAX_LOG: usize = 17;
 const MAX_NTT: usize = 1 << MAX_LOG; // 131072
-const DIRECT_THRESHOLD: usize = 256;
+const DIRECT_THRESHOLD: usize = 128;
 
-#[inline(always)]
-fn mul_mod_u(a: u64, b: u64, m: u64) -> u64 {
-    a * b % m
-}
+// Precomputed CRT modular inverse constants
+const INV_P1_MOD_P2: u64 = 657_107_549;
+const INV_M12_MOD_P3: u64 = 284_003_040;
+const M12_MOD_MOD: u64 = 424_598_615;
+const P1_MOD_P3: u64 = 243_269_632;
 
 fn pow_mod_u(mut base: u64, mut exp: u64, m: u64) -> u64 {
     let mut result = 1u64;
     base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = mul_mod_u(result, base, m);
+            result = (result * base) % m;
         }
-        base = mul_mod_u(base, base, m);
+        base = (base * base) % m;
         exp >>= 1;
     }
     result
 }
 
-struct NttPrime {
-    p: u64,
-    fwd_root: [u64; MAX_LOG + 1],
-    inv_root: [u64; MAX_LOG + 1],
+struct FastNtt<const P: u64> {
+    sum_e: [u64; 30],
+    sum_ie: [u64; 30],
     inv_pow2: [u64; MAX_LOG + 1],
 }
 
-impl NttPrime {
-    fn new(p: u64, g: u64) -> Self {
-        let mut fwd_root = [0u64; MAX_LOG + 1];
-        let mut inv_root = [0u64; MAX_LOG + 1];
-        let mut inv_pow2 = [0u64; MAX_LOG + 1];
-
-        let mut pm1 = p - 1;
+impl<const P: u64> FastNtt<P> {
+    fn new(g: u64) -> Self {
+        let mut pm1 = P - 1;
         let mut v2 = 0usize;
-        while pm1 % 2 == 0 {
+        while pm1 & 1 == 0 {
             pm1 /= 2;
             v2 += 1;
         }
 
-        let base = pow_mod_u(g, pm1, p);
-        for k in 0..=v2.min(MAX_LOG) {
-            fwd_root[k] = pow_mod_u(base, 1u64 << (v2 - k), p);
-            inv_root[k] = pow_mod_u(fwd_root[k], p - 2, p);
+        let mut sum_e = [0u64; 30];
+        let mut sum_ie = [0u64; 30];
+        let mut es = [0u64; 30];
+        let mut ies = [0u64; 30];
+        let cnt = v2;
+        let mut e = pow_mod_u(g, (P - 1) >> cnt, P);
+        let mut ie = pow_mod_u(e, P - 2, P);
+        for i in (0..cnt - 1).rev() {
+            es[i] = e;
+            ies[i] = ie;
+            e = (e * e) % P;
+            ie = (ie * ie) % P;
+        }
+        let mut now = 1u64;
+        for i in 0..cnt - 2 {
+            sum_e[i] = (es[i] * now) % P;
+            now = (now * ies[i]) % P;
+        }
+        let mut inow = 1u64;
+        for i in 0..cnt - 2 {
+            sum_ie[i] = (ies[i] * inow) % P;
+            inow = (inow * es[i]) % P;
         }
 
-        let inv2 = pow_mod_u(2, p - 2, p);
+        let inv2 = pow_mod_u(2, P - 2, P);
+        let mut inv_pow2 = [0u64; MAX_LOG + 1];
         inv_pow2[0] = 1;
         for k in 1..=MAX_LOG {
-            inv_pow2[k] = mul_mod_u(inv_pow2[k - 1], inv2, p);
+            inv_pow2[k] = (inv_pow2[k - 1] * inv2) % P;
         }
 
-        NttPrime {
-            p,
-            fwd_root,
-            inv_root,
+        FastNtt {
+            sum_e,
+            sum_ie,
             inv_pow2,
         }
     }
 
-    fn ntt(&self, a: &mut [u64], invert: bool) {
+    fn butterfly(&self, a: &mut [u64]) {
         let n = a.len();
-        if n == 1 {
+        if n <= 1 {
             return;
         }
-        let log_n = n.trailing_zeros() as usize;
-        let p = self.p;
-
-        let mut j = 0usize;
-        for i in 1..n {
-            let mut bit = n >> 1;
-            while j & bit != 0 {
-                j ^= bit;
-                bit >>= 1;
-            }
-            j ^= bit;
-            if i < j {
-                a.swap(i, j);
-            }
-        }
-
-        let roots = if invert { &self.inv_root } else { &self.fwd_root };
-
-        let mut half = 1usize;
-        for level in 1..=log_n {
-            let len = half << 1;
-            let w_base = roots[level];
-            let mut i = 0;
-            while i < n {
-                let mut wn = 1u64;
-                for jj in 0..half {
+        let h = n.trailing_zeros() as usize;
+        for ph in 1..=h {
+            let w = 1 << (ph - 1);
+            let p = 1 << (h - ph);
+            let mut now = 1u64;
+            for s in 0..w {
+                let offset = s << (h - ph + 1);
+                for i in 0..p {
                     unsafe {
-                        let u = *a.get_unchecked(i + jj);
-                        let v = mul_mod_u(*a.get_unchecked(i + jj + half), wn, p);
-                        *a.get_unchecked_mut(i + jj) = if u + v >= p { u + v - p } else { u + v };
-                        *a.get_unchecked_mut(i + jj + half) =
-                            if u >= v { u - v } else { u + p - v };
+                        let l = *a.get_unchecked(i + offset);
+                        let r = (*a.get_unchecked(i + offset + p) * now) % P;
+                        *a.get_unchecked_mut(i + offset) = if l + r >= P { l + r - P } else { l + r };
+                        *a.get_unchecked_mut(i + offset + p) = if l >= r { l - r } else { l + P - r };
                     }
-                    wn = mul_mod_u(wn, w_base, p);
                 }
-                i += len;
-            }
-            half = len;
-        }
-
-        if invert {
-            let inv_n = self.inv_pow2[log_n];
-            for x in a.iter_mut() {
-                *x = mul_mod_u(*x, inv_n, p);
+                let idx = (!s as u32).trailing_zeros() as usize;
+                now = (now * self.sum_e[idx]) % P;
             }
         }
     }
-}
 
-struct CrtCtx {
-    inv_p1_mod_p2: u64,
-    inv_m12_mod_p3: u64,
-    m12: u128,
-}
-
-impl CrtCtx {
-    fn new() -> Self {
-        let inv_p1_mod_p2 = pow_mod_u(P1 % P2, P2 - 2, P2);
-        let m12 = P1 as u128 * P2 as u128;
-        let m12_mod_p3 = (m12 % P3 as u128) as u64;
-        let inv_m12_mod_p3 = pow_mod_u(m12_mod_p3, P3 - 2, P3);
-        CrtCtx {
-            inv_p1_mod_p2,
-            inv_m12_mod_p3,
-            m12,
+    fn butterfly_inv(&self, a: &mut [u64]) {
+        let n = a.len();
+        if n <= 1 {
+            return;
+        }
+        let h = n.trailing_zeros() as usize;
+        for ph in (1..=h).rev() {
+            let w = 1 << (ph - 1);
+            let p = 1 << (h - ph);
+            let mut inow = 1u64;
+            for s in 0..w {
+                let offset = s << (h - ph + 1);
+                for i in 0..p {
+                    unsafe {
+                        let l = *a.get_unchecked(i + offset);
+                        let r = *a.get_unchecked(i + offset + p);
+                        *a.get_unchecked_mut(i + offset) = if l + r >= P { l + r - P } else { l + r };
+                        let diff = if l >= r { l - r } else { l + P - r };
+                        *a.get_unchecked_mut(i + offset + p) = (diff * inow) % P;
+                    }
+                }
+                let idx = (!s as u32).trailing_zeros() as usize;
+                inow = (inow * self.sum_ie[idx]) % P;
+            }
+        }
+        let inv_n = self.inv_pow2[h];
+        for x in a.iter_mut() {
+            *x = (*x * inv_n) % P;
         }
     }
-
-    #[inline]
-    fn crt3_mod(&self, r1: u64, r2: u64, r3: u64) -> u64 {
-        let r1p2 = r1 % P2;
-        let diff = if r2 >= r1p2 { r2 - r1p2 } else { r2 + P2 - r1p2 };
-        let k = mul_mod_u(diff, self.inv_p1_mod_p2, P2);
-        let x12 = r1 as u128 + k as u128 * P1 as u128;
-        let x12_mod_p3 = (x12 % P3 as u128) as u64;
-        let diff2 = if r3 >= x12_mod_p3 {
-            r3 - x12_mod_p3
-        } else {
-            r3 + P3 - x12_mod_p3
-        };
-        let k2 = mul_mod_u(diff2, self.inv_m12_mod_p3, P3);
-        ((x12 + k2 as u128 * self.m12) % MOD as u128) as u64
-    }
 }
 
-struct Workspace {
+#[inline(always)]
+fn fast_crt3(r1: u64, r2: u64, r3: u64) -> u64 {
+    let r1p2 = if r1 < P2 { r1 } else { r1 - P2 };
+    let diff = if r2 >= r1p2 { r2 - r1p2 } else { r2 + P2 - r1p2 };
+    let k = (diff * INV_P1_MOD_P2) % P2;
+
+    let r1p3 = if r1 < P3 { r1 } else { r1 - P3 };
+    let x12_mod_p3 = (r1p3 + (k * P1_MOD_P3) % P3) % P3;
+    let diff2 = if r3 >= x12_mod_p3 {
+        r3 - x12_mod_p3
+    } else {
+        r3 + P3 - x12_mod_p3
+    };
+    let k2 = (diff2 * INV_M12_MOD_P3) % P3;
+
+    let term1 = (k * P1) % MOD;
+    let term2 = (k2 * M12_MOD_MOD) % MOD;
+    (r1 + term1 + term2) % MOD
+}
+
+struct HeavyWorkspace {
     buf: Vec<u64>,
+    bk: Vec<u64>,
+    dp: Vec<u64>,
+    t: Vec<u64>,
+    r: Vec<u64>,
+    ng: Vec<u64>,
 }
 
-impl Workspace {
+impl HeavyWorkspace {
     fn new() -> Self {
-        Workspace {
+        HeavyWorkspace {
             buf: vec![0u64; 6 * MAX_NTT],
+            bk: vec![0u64; NVAL + 2],
+            dp: vec![0u64; NVAL + 2],
+            t: vec![0u64; MAX_NTT],
+            r: vec![0u64; MAX_NTT],
+            ng: vec![0u64; MAX_NTT],
         }
     }
+}
 
-    fn get_pair(&mut self, prime_idx: usize, ntt_len: usize) -> (&mut [u64], &mut [u64]) {
-        let base = prime_idx * 2 * MAX_NTT;
-        let (left, right) = self.buf[base..base + 2 * MAX_NTT].split_at_mut(MAX_NTT);
-        (&mut left[..ntt_len], &mut right[..ntt_len])
+struct LightWorkspace {
+    bk: Vec<u64>,
+    dp: Vec<u64>,
+}
+
+impl LightWorkspace {
+    fn new() -> Self {
+        LightWorkspace {
+            bk: vec![0u64; DIRECT_THRESHOLD + 2],
+            dp: vec![0u64; DIRECT_THRESHOLD + 2],
+        }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn poly_mul(
     a: &[u64],
     b: &[u64],
     out_len: usize,
-    ntts: &[NttPrime; 3],
-    crt: &CrtCtx,
-    ws: &mut Workspace,
+    ntt1: &FastNtt<P1>,
+    ntt2: &FastNtt<P2>,
+    ntt3: &FastNtt<P3>,
+    ntt_buf: &mut [u64],
     out: &mut [u64],
 ) {
     let na = a.len();
@@ -198,31 +220,64 @@ fn poly_mul(
     let need = na + nb - 1;
     let ntt_len = need.next_power_of_two();
 
-    for pi in 0..3 {
-        let p = ntts[pi].p;
-        let (fa, fb) = ws.get_pair(pi, ntt_len);
-        fa[..na].copy_from_slice(a);
-        fa[na..].fill(0);
-        fb[..nb].copy_from_slice(b);
-        fb[nb..].fill(0);
-        ntts[pi].ntt(fa, false);
-        ntts[pi].ntt(fb, false);
-        for i in 0..ntt_len {
-            unsafe {
-                *fa.get_unchecked_mut(i) =
-                    mul_mod_u(*fa.get_unchecked(i), *fb.get_unchecked(i), p);
-            }
+    // Prime 1
+    let (left1, right1) = ntt_buf[0..2 * MAX_NTT].split_at_mut(MAX_NTT);
+    let fa1 = &mut left1[..ntt_len];
+    let fb1 = &mut right1[..ntt_len];
+    fa1[..na].copy_from_slice(a);
+    fa1[na..].fill(0);
+    fb1[..nb].copy_from_slice(b);
+    fb1[nb..].fill(0);
+    ntt1.butterfly(fa1);
+    ntt1.butterfly(fb1);
+    for i in 0..ntt_len {
+        unsafe {
+            *fa1.get_unchecked_mut(i) = (*fa1.get_unchecked(i) * *fb1.get_unchecked(i)) % P1;
         }
-        ntts[pi].ntt(fa, true);
     }
+    ntt1.butterfly_inv(fa1);
+
+    // Prime 2
+    let (left2, right2) = ntt_buf[2 * MAX_NTT..4 * MAX_NTT].split_at_mut(MAX_NTT);
+    let fa2 = &mut left2[..ntt_len];
+    let fb2 = &mut right2[..ntt_len];
+    fa2[..na].copy_from_slice(a);
+    fa2[na..].fill(0);
+    fb2[..nb].copy_from_slice(b);
+    fb2[nb..].fill(0);
+    ntt2.butterfly(fa2);
+    ntt2.butterfly(fb2);
+    for i in 0..ntt_len {
+        unsafe {
+            *fa2.get_unchecked_mut(i) = (*fa2.get_unchecked(i) * *fb2.get_unchecked(i)) % P2;
+        }
+    }
+    ntt2.butterfly_inv(fa2);
+
+    // Prime 3
+    let (left3, right3) = ntt_buf[4 * MAX_NTT..6 * MAX_NTT].split_at_mut(MAX_NTT);
+    let fa3 = &mut left3[..ntt_len];
+    let fb3 = &mut right3[..ntt_len];
+    fa3[..na].copy_from_slice(a);
+    fa3[na..].fill(0);
+    fb3[..nb].copy_from_slice(b);
+    fb3[nb..].fill(0);
+    ntt3.butterfly(fa3);
+    ntt3.butterfly(fb3);
+    for i in 0..ntt_len {
+        unsafe {
+            *fa3.get_unchecked_mut(i) = (*fa3.get_unchecked(i) * *fb3.get_unchecked(i)) % P3;
+        }
+    }
+    ntt3.butterfly_inv(fa3);
 
     let take = out_len.min(need);
     for i in 0..take {
         unsafe {
-            let r1 = *ws.buf.get_unchecked(i);
-            let r2 = *ws.buf.get_unchecked(2 * MAX_NTT + i);
-            let r3 = *ws.buf.get_unchecked(4 * MAX_NTT + i);
-            *out.get_unchecked_mut(i) = crt.crt3_mod(r1, r2, r3);
+            let r1 = *ntt_buf.get_unchecked(i);
+            let r2 = *ntt_buf.get_unchecked(2 * MAX_NTT + i);
+            let r3 = *ntt_buf.get_unchecked(4 * MAX_NTT + i);
+            *out.get_unchecked_mut(i) = fast_crt3(r1, r2, r3);
         }
     }
     if take < out_len {
@@ -230,35 +285,7 @@ fn poly_mul(
     }
 }
 
-fn poly_inv(
-    f: &[u64],
-    n: usize,
-    ntts: &[NttPrime; 3],
-    crt: &CrtCtx,
-    ws: &mut Workspace,
-) -> Vec<u64> {
-    let mut g = vec![0u64; n];
-    g[0] = 1;
-    let mut t = vec![0u64; n];
-    let mut r = vec![0u64; n];
-    let mut ng = vec![0u64; n];
-    let mut m = 1usize;
-    while m < n {
-        let want = (2 * m).min(n);
-        poly_mul(&f[..want], &g[..m], want, ntts, crt, ws, &mut t[..want]);
-        r[0] = (2 + MOD - t[0]) % MOD;
-        for i in 1..want {
-            r[i] = if t[i] == 0 { 0 } else { MOD - t[i] };
-        }
-        poly_mul(&g[..m], &r[..want], want, ntts, crt, ws, &mut ng[..want]);
-        g[..want].copy_from_slice(&ng[..want]);
-        m = want;
-    }
-    g
-}
-
-fn naive_inverse(bk: &[u64], q: usize) -> Vec<u64> {
-    let mut dp = vec![0u64; q + 1];
+fn naive_inverse_into(bk: &[u64], q: usize, dp: &mut [u64]) {
     dp[0] = 1;
     unsafe {
         let bk_p = bk.as_ptr();
@@ -281,34 +308,120 @@ fn naive_inverse(bk: &[u64], q: usize) -> Vec<u64> {
             *dp_p.add(i) = if v == 0 { 0 } else { MOD - v };
         }
     }
-    dp
 }
 
-fn compute_pk(
+fn poly_inv_start_b(
+    n: usize,
+    b: usize,
+    ntt1: &FastNtt<P1>,
+    ntt2: &FastNtt<P2>,
+    ntt3: &FastNtt<P3>,
+    ws: &mut HeavyWorkspace,
+) {
+    let HeavyWorkspace {
+        buf,
+        bk,
+        dp,
+        t,
+        r,
+        ng,
+    } = ws;
+    let start_m = b.min(n);
+    naive_inverse_into(&bk[..start_m], start_m - 1, &mut dp[..start_m]);
+    let mut m = start_m;
+    while m < n {
+        let want = (2 * m).min(n);
+        poly_mul(
+            &bk[..want],
+            &dp[..m],
+            want,
+            ntt1,
+            ntt2,
+            ntt3,
+            buf,
+            &mut t[..want],
+        );
+        r[0] = (2 + MOD - t[0]) % MOD;
+        for i in 1..want {
+            r[i] = if t[i] == 0 { 0 } else { MOD - t[i] };
+        }
+        poly_mul(
+            &dp[..m],
+            &r[..want],
+            want,
+            ntt1,
+            ntt2,
+            ntt3,
+            buf,
+            &mut ng[..want],
+        );
+        dp[..want].copy_from_slice(&ng[..want]);
+        m = want;
+    }
+}
+
+fn compute_pk_heavy(
     k: usize,
     n: usize,
     pif: &[u64],
-    ntts: &[NttPrime; 3],
-    crt: &CrtCtx,
-    ws: &mut Option<Workspace>,
+    ntt1: &FastNtt<P1>,
+    ntt2: &FastNtt<P2>,
+    ntt3: &FastNtt<P3>,
+    ws: &mut HeavyWorkspace,
 ) -> u64 {
     let q = n / k;
     let r = n % k;
 
-    let mut bk = vec![0u64; q + 1];
+    ws.bk[0] = 1;
     unsafe {
-        *bk.get_unchecked_mut(0) = 1;
+        for j in 1..=q {
+            *ws.bk.get_unchecked_mut(j) = *pif.get_unchecked(j * k);
+        }
+    }
+
+    poly_inv_start_b(q + 1, DIRECT_THRESHOLD, ntt1, ntt2, ntt3, ws);
+
+    let last = if r == 0 {
+        ws.dp[q]
+    } else {
+        let mut acc = 0u128;
+        unsafe {
+            for s in 0..=q {
+                acc += *pif.get_unchecked(n - s * k) as u128 * *ws.dp.get_unchecked(s) as u128;
+            }
+        }
+        let v = (acc % MOD as u128) as u64;
+        if v == 0 {
+            0
+        } else {
+            MOD - v
+        }
+    };
+
+    let np = if r == 0 { q + 1 } else { q + 2 };
+    if (np + 1) % 2 == 0 {
+        last
+    } else if last == 0 {
+        0
+    } else {
+        MOD - last
+    }
+}
+
+fn compute_pk_light(k: usize, n: usize, pif: &[u64], ws: &mut LightWorkspace) -> u64 {
+    let q = n / k;
+    let r = n % k;
+
+    let bk = &mut ws.bk[..=q];
+    let dp = &mut ws.dp[..=q];
+    bk[0] = 1;
+    unsafe {
         for j in 1..=q {
             *bk.get_unchecked_mut(j) = *pif.get_unchecked(j * k);
         }
     }
 
-    let dp = if q <= DIRECT_THRESHOLD {
-        naive_inverse(&bk, q)
-    } else {
-        let ws = ws.get_or_insert_with(Workspace::new);
-        poly_inv(&bk, q + 1, ntts, crt, ws)
-    };
+    naive_inverse_into(bk, q, dp);
 
     let last = if r == 0 {
         dp[q]
@@ -320,7 +433,11 @@ fn compute_pk(
             }
         }
         let v = (acc % MOD as u128) as u64;
-        if v == 0 { 0 } else { MOD - v }
+        if v == 0 {
+            0
+        } else {
+            MOD - v
+        }
     };
 
     let np = if r == 0 { q + 1 } else { q + 2 };
@@ -331,6 +448,11 @@ fn compute_pk(
     } else {
         MOD - last
     }
+}
+
+thread_local! {
+    static HEAVY_WS: std::cell::RefCell<HeavyWorkspace> = std::cell::RefCell::new(HeavyWorkspace::new());
+    static LIGHT_WS: std::cell::RefCell<LightWorkspace> = std::cell::RefCell::new(LightWorkspace::new());
 }
 
 fn main() {
@@ -356,22 +478,36 @@ fn main() {
             *slot = pow_mod_u(inv_factorials[i], n as u64, MOD);
         });
 
-    let ntts = [
-        NttPrime::new(P1, 3),
-        NttPrime::new(P2, 3),
-        NttPrime::new(P3, 11),
-    ];
-    let crt = CrtCtx::new();
+    let ntt1 = FastNtt::<P1>::new(3);
+    let ntt2 = FastNtt::<P2>::new(3);
+    let ntt3 = FastNtt::<P3>::new(11);
     let pif = &pow_inv_fact[..];
 
-    let pk_sum: u64 = (1..n + 1)
+    let k_heavy = n / DIRECT_THRESHOLD;
+
+    let pk_sum_heavy: u64 = (1..k_heavy + 1)
         .into_par_iter()
-        .map_init(
-            || None::<Workspace>,
-            |ws, k| compute_pk(k, n, pif, &ntts, &crt, ws),
-        )
+        .with_min_len(1)
+        .with_max_len(1)
+        .map(|k| {
+            HEAVY_WS.with(|cell| {
+                let mut ws = cell.borrow_mut();
+                compute_pk_heavy(k, n, pif, &ntt1, &ntt2, &ntt3, &mut ws)
+            })
+        })
         .sum();
 
+    let pk_sum_light: u64 = ((k_heavy + 1)..=n)
+        .into_par_iter()
+        .map(|k| {
+            LIGHT_WS.with(|cell| {
+                let mut ws = cell.borrow_mut();
+                compute_pk_light(k, n, pif, &mut ws)
+            })
+        })
+        .sum();
+
+    let pk_sum = (pk_sum_heavy + pk_sum_light) % MOD;
     let ans = (pk_sum % MOD) * pow_mod_u(factorials[n], n as u64, MOD) % MOD;
     println!("{ans}");
 }

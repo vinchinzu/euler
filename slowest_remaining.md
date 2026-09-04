@@ -1,22 +1,22 @@
 # Slowest Remaining Problems Queue (Descending)
 
-**Updated:** 2026-09-03 (Wave 28: 3 problems optimized and A/B gated, 3 accepted — **TOTAL RUNTIME < 110s, SPEEDUP > 10×**)
+**Updated:** 2026-09-04 (Wave 29: 7 problems optimized and A/B gated, 7 accepted — **TOTAL RUNTIME ~102.3s, SPEEDUP 10.76×**)
 
 ## Current Project Snapshot
 
 | Metric | Value |
 |---|---:|
 | Total Solutions | 997 |
-| Total Sequential Wall-Clock | **~108.4 s** |
-| Speedup vs Original Cache (1101.1s) | **10.16×** |
-| Speedup vs Clean 5900XT Baseline (386.1s) | **3.56×** (~277.7s saved) |
-| Speedup vs ~180s Milestone (2026-08-25) | **1.66×** (~71.6s saved) |
-| Median Execution Time | **22.8 ms** |
+| Total Sequential Wall-Clock | **~102.3 s** |
+| Speedup vs Original Cache (1101.1s) | **10.76×** |
+| Speedup vs Clean 5900XT Baseline (386.1s) | **3.77×** (~283.8s saved) |
+| Speedup vs ~180s Milestone (2026-08-25) | **1.76×** (~77.7s saved) |
+| Median Execution Time | **22.5 ms** |
 | Remaining ≥ 1.0s | **0** (p680 skipped per user request; p774 at 1005ms) |
-| Remaining 500ms – 1.0s | **51** |
-| Remaining 200ms – 500ms | **110** |
-| Remaining 50ms – 200ms | **238** |
-| Fast (< 50ms) | **598** |
+| Remaining 500ms – 1.0s | **44** |
+| Remaining 200ms – 500ms | **111** |
+| Remaining 50ms – 200ms | **241** |
+| Fast (< 50ms) | **601** |
 
 ---
 
@@ -27,6 +27,20 @@
 | 1 | [`p680.rs`](rust/solutions/src/bin/p680.rs) | **1954.5 ms** | ≥1.0s | *Skipped per user request*. Implicit treap $N=10^{18}, K=10^6$; dynamic subtree queries. |
 | (2) | [`p774.rs`](rust/solutions/src/bin/p774.rs) | **1005.2 ms** | ~1.0s | Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; down from 3858ms. |
 | — | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | <1.0s | **CONQUERED IN WAVE 27** (1081.8 ms → 795.0 ms). Padded cache alignment + 8-thread spin-barrier DP. |
+
+---
+
+## Wave 29 Accepted Optimizations
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p946.rs`](rust/solutions/src/bin/p946.rs) | 953.7 ms | **2.0 ms** | **467.411×** | `585787007` | Discovered limit-cycle attractor states for runs of 1s in Gosper's continued fraction algorithm (`(3,1,1,2)` and `(3,2,1,-1)`), fast-forwarding $10^8$ steps in $O(1)$ cycles down to $\sim 64\text{k}$ total steps; multiplication-based matching check eliminating half of 64-bit hardware integer divisions. |
+| [`p650.rs`](rust/solutions/src/bin/p650.rs) | 937.1 ms | **8.4 ms** | **111.649×** | `538319652` | Inverted loop order to prime-by-prime; exploited arithmetic progression of exponents between multiples of $p$, converting 45 million modular exponentiations into geometric-progression single-step multiplications; factored out $\prod_{p \le n}(p-1)^{-1}$ into a prefix array; distributed primes across Rayon threads with greedy LPT load balancing. |
+| [`p928.rs`](rust/solutions/src/bin/p928.rs) | 1,078.8 ms | **20.4 ms** | **52.823×** | `81108001093` | Proved any subset summing to 15 contains at most ONE card from ranks 7..12 ($8+8=16 > 15$); transitioned to scalar addition `recurse_tail` after rank 6, eliminating $>99\%$ of polynomial convolution nodes; compact 64-byte `Gf: [u32; 16]`; `SPLIT = 4` (504 valid Rayon tasks); bounded open runs pruning. |
+| [`p559.rs`](rust/solutions/src/bin/p559.rs) | 907.6 ms | **93.2 ms** | **9.736×** | `684724920` | Preallocated thread-local scratch workspaces (`HEAVY_WS`, `LIGHT_WS`) eliminating $>100,000$ heap allocations; tuned crossover threshold to 128 with bootstrapped Newton inversion (`poly_inv_start_b`); high-performance bit-reversal-free butterfly NTT and constant-folded CRT modular inverses. |
+| [`p552.rs`](rust/solutions/src/bin/p552.rs) | 1,338.0 ms | **178.2 ms** | **7.509×** | `326227335` | Blocked parallel Garner CRT reconstruction ($B = 512$): sequential resolution for block primes ($<1.9\%$ of steps) followed by Rayon parallel independent state updates across all remaining future primes; ceiling Barrett reduction eliminating conditional branches; branch-splitting on `good` flag. |
+| [`p782.rs`](rust/solutions/src/bin/p782.rs) | 652.4 ms | **122.7 ms** | **5.316×** | `318313204` | Parallel 64 KB cache-resident chunk sieve for Construction 1 via `par_chunks_mut`; word-level bit-reversal OR (`u64::reverse_bits`) for Construction 2 complement symmetry, cutting 50M iterations down to 781k operations; pruned redundant 3x3 forms (Form 0, 1, 4 covered by S2/C1). |
+| [`p681.rs`](rust/solutions/src/bin/p681.rs) | 982.8 ms | **303.2 ms** | **3.241×** | `2611227421428` | SIMD-within-a-register (SWAR) packed-exponent divisibility check (`((sup_exp + BIAS) - sub_exp) & BIAS == BIAS`) replacing hardware divisions; precalculated quadratic bound $y_{hi} = \lfloor\sqrt{r_2 - 1}\rfloor$; thread-local buffer reuse eliminating 13.5M heap allocations. |
 
 ---
 
@@ -73,40 +87,41 @@
 | Rank | Problem | Current Time | Historical Notes & Optimization Angles |
 |:---:|:---:|:---:|:---|
 | 1 | [`p614.rs`](rust/solutions/src/bin/p614.rs) | **936.0 ms** | Phase-2 small offsets stay serial; transpose/accumulate thread_temps to cut merge traffic. |
-| 2 | [`p681.rs`](rust/solutions/src/bin/p681.rs) | **927.0 ms** | Work flattening exists but heavy highly-composite K still starve; split those K by divisor-pair chunks. |
-| 3 | [`p465.rs`](rust/solutions/src/bin/p465.rs) | **923.6 ms** | Optimized in Wave 27 (1082.0 ms → 923.6 ms); u128 hyperbola accumulation. |
-| 4 | [`p337.rs`](rust/solutions/src/bin/p337.rs) | **916.7 ms** | Optimized in Wave 26 (1804.7 ms → 916.7 ms); AVX2 Wide Segment Tree B=16. |
-| 5 | [`p650.rs`](rust/solutions/src/bin/p650.rs) | **912.2 ms** | wave2 i128->u64 power/D(n) accepted |
-| 6 | [`p552.rs`](rust/solutions/src/bin/p552.rs) | **909.9 ms** | O(L^2) Garner with loop-carried a/prod; C identical; no rayon/i128 play. |
-| 7 | [`p459.rs`](rust/solutions/src/bin/p459.rs) | **876.5 ms** | O(N sqrt N) mex DP is sequential; fuse loops would be a small memory-pass tweak. |
-| 8 | [`p559.rs`](rust/solutions/src/bin/p559.rs) | **874.7 ms** | rayon over independent k (each owns dp/parts); precompute pow_inv_fact once. |
-| 9 | [`p946.rs`](rust/solutions/src/bin/p946.rs) | **824.0 ms** | wave2 i128->i32 CF still 4.3s cand; 1e8 sequential steps |
-| 10 | [`p928.rs`](rust/solutions/src/bin/p928.rs) | **823.0 ms** | already 125 parallel tasks; tighten pruning |
-| 11 | [`p782.rs`](rust/solutions/src/bin/p782.rs) | **802.5 ms** | A/B 18761→18055ms (1.039×, within noise); non-atomic bitset already in tree. |
-| 12 | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | Optimized in Wave 27 (1081.8 ms → 795.0 ms); 128-byte aligned AVX2 spin-barrier DP. |
-| 13 | [`p521.rs`](rust/solutions/src/bin/p521.rs) | **787.6 ms** | Lucy SPF-sum O(N^{2/3}) is loop-carried; only inlining left. |
-| 14 | [`p482.rs`](rust/solutions/src/bin/p482.rs) | **778.0 ms** | already parallel; i128 only for one gcd mul |
-| 15 | [`p850.rs`](rust/solutions/src/bin/p850.rs) | **774.7 ms** | coprime-pair product; Möbius hyperbola? |
-| 16 | [`p461.rs`](rust/solutions/src/bin/p461.rs) | **763.1 ms** | Optimized in Wave 27 (1114.1 ms → 763.1 ms); flat f64 pairs + 2-pointer reconstruction. |
-| 17 | [`p910.rs`](rust/solutions/src/bin/p910.rs) | **755.6 ms** | wave1 3.5x still ~7s; streaming tables+rayon already vs C 45-line phi |
-| 18 | [`p797.rs`](rust/solutions/src/bin/p797.rs) | **754.4 ms** | Optimized in Wave 26 (1327.2 ms → 754.4 ms); Montgomery batch inv + L2 chunked sieve. |
-| 19 | [`p743.rs`](rust/solutions/src/bin/p743.rs) | **752.8 ms** | wave3 u64 mulmod still serial 1.6s recurrence over k/2 |
-| 20 | [`p735.rs`](rust/solutions/src/bin/p735.rs) | **751.9 ms** | Chunked rayon + fused inner isqrt already present; leftover CHUNK tuning is noise-level. |
-| 21 | [`p931.rs`](rust/solutions/src/bin/p931.rs) | **743.6 ms** | Lucy prime-sum DP is loop-carried O(N^{2/3}); two-array get_idx is a small cache tweak only. |
-| 22 | [`p423.rs`](rust/solutions/src/bin/p423.rs) | **742.3 ms** | profiles memory-bound; consecutive-binomial sum |
-| 23 | [`p643.rs`](rust/solutions/src/bin/p643.rs) | **741.6 ms** | profiles memory-bound 2-smooth-ish gcd sums |
-| 24 | [`p786.rs`](rust/solutions/src/bin/p786.rs) | **736.5 ms** | Optimized in Wave 26 (1202.6 ms → 736.5 ms); 187.5M Mobius bound + TAB3/TAB9 LUTs. |
-| 25 | [`p378.rs`](rust/solutions/src/bin/p378.rs) | **714.6 ms** | Shrink right_arr to i32 (counts < 6e7), drop SPF after dt, keep Fenwick sequential; optional rayon over independent dt[i] given SPF. |
-| 26 | [`p769.rs`](rust/solutions/src/bin/p769.rs) | **707.9 ms** | rayon over independent g; integer isqrt instead of f64 sqrt in the inner n_idx loop. |
-| 27 | [`p576.rs`](rust/solutions/src/bin/p576.rs) | **685.5 ms** |  |
-| 28 | [`p413.rs`](rust/solutions/src/bin/p413.rs) | **678.1 ms** |  |
-| 29 | [`p954.rs`](rust/solutions/src/bin/p954.rs) | **660.4 ms** | Optimized in Wave 26 (1251.7 ms → 660.4 ms); single-pass digit DP. |
-| 30 | [`p411.rs`](rust/solutions/src/bin/p411.rs) | **423.7 ms** | Optimized in Wave 27 (1009.5 ms → 423.7 ms); LPT work schedule + branchless partition_point LIS. |
-| 31 | [`p654.rs`](rust/solutions/src/bin/p654.rs) | **408.5 ms** | Optimized in Wave 26 (1165.7 ms → 408.5 ms); frequency-domain NTT. |
-| 32 | [`p464.rs`](rust/solutions/src/bin/p464.rs) | **345.0 ms** | Optimized in Wave 26 (1209.1 ms → 345.0 ms); merge-sort inversion counting. |
-| 33 | [`p563.rs`](rust/solutions/src/bin/p563.rs) | **195.8 ms** | Optimized in Wave 28 (838.8 ms → 195.8 ms); 50M bound + parallel streaming mult. |
-| 34 | [`p439.rs`](rust/solutions/src/bin/p439.rs) | **177.0 ms** | Optimized in Wave 26 (1073.3 ms → 177.0 ms); L3 cache u32 sieve + dyadic layers. |
-| 35 | [`p507.rs`](rust/solutions/src/bin/p507.rs) | **141.2 ms** | Optimized in Wave 27 (985.2 ms → 141.2 ms); zero-alloc Tribonacci matrix exponentiation. |
-| 36 | [`p937.rs`](rust/solutions/src/bin/p937.rs) | **89.0 ms** | Optimized in Wave 28 (944.4 ms → 89.0 ms); odd-only 16KB sieve + lock-free diff. |
-| 37 | [`p534.rs`](rust/solutions/src/bin/p534.rs) | **79.2 ms** | Optimized in Wave 28 (921.9 ms → 79.2 ms); incremental DFS bitmasks + symmetry. |
-| 38 | [`p578.rs`](rust/solutions/src/bin/p578.rs) | **61.6 ms** | Optimized in Wave 26 (1089.7 ms → 61.6 ms); O(1) table + analytic root cutoffs. |
+| 2 | [`p465.rs`](rust/solutions/src/bin/p465.rs) | **923.6 ms** | Optimized in Wave 27 (1082.0 ms → 923.6 ms); u128 hyperbola accumulation. |
+| 3 | [`p337.rs`](rust/solutions/src/bin/p337.rs) | **916.7 ms** | Optimized in Wave 26 (1804.7 ms → 916.7 ms); AVX2 Wide Segment Tree B=16. |
+| 4 | [`p459.rs`](rust/solutions/src/bin/p459.rs) | **876.5 ms** | O(N sqrt N) mex DP is sequential; fuse loops would be a small memory-pass tweak. |
+| 5 | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | Optimized in Wave 27 (1081.8 ms → 795.0 ms); 128-byte aligned AVX2 spin-barrier DP. |
+| 6 | [`p521.rs`](rust/solutions/src/bin/p521.rs) | **787.6 ms** | Lucy SPF-sum O(N^{2/3}) is loop-carried; only inlining left. |
+| 7 | [`p482.rs`](rust/solutions/src/bin/p482.rs) | **778.0 ms** | already parallel; i128 only for one gcd mul |
+| 8 | [`p850.rs`](rust/solutions/src/bin/p850.rs) | **774.7 ms** | coprime-pair product; Möbius hyperbola? |
+| 9 | [`p461.rs`](rust/solutions/src/bin/p461.rs) | **763.1 ms** | Optimized in Wave 27 (1114.1 ms → 763.1 ms); flat f64 pairs + 2-pointer reconstruction. |
+| 10 | [`p910.rs`](rust/solutions/src/bin/p910.rs) | **755.6 ms** | wave1 3.5x still ~7s; streaming tables+rayon already vs C 45-line phi |
+| 11 | [`p797.rs`](rust/solutions/src/bin/p797.rs) | **754.4 ms** | Optimized in Wave 26 (1327.2 ms → 754.4 ms); Montgomery batch inv + L2 chunked sieve. |
+| 12 | [`p743.rs`](rust/solutions/src/bin/p743.rs) | **752.8 ms** | wave3 u64 mulmod still serial 1.6s recurrence over k/2 |
+| 13 | [`p735.rs`](rust/solutions/src/bin/p735.rs) | **751.9 ms** | Chunked rayon + fused inner isqrt already present; leftover CHUNK tuning is noise-level. |
+| 14 | [`p931.rs`](rust/solutions/src/bin/p931.rs) | **743.6 ms** | Lucy prime-sum DP is loop-carried O(N^{2/3}); two-array get_idx is a small cache tweak only. |
+| 15 | [`p423.rs`](rust/solutions/src/bin/p423.rs) | **742.3 ms** | profiles memory-bound; consecutive-binomial sum |
+| 16 | [`p643.rs`](rust/solutions/src/bin/p643.rs) | **741.6 ms** | profiles memory-bound 2-smooth-ish gcd sums |
+| 17 | [`p786.rs`](rust/solutions/src/bin/p786.rs) | **736.5 ms** | Optimized in Wave 26 (1202.6 ms → 736.5 ms); 187.5M Mobius bound + TAB3/TAB9 LUTs. |
+| 18 | [`p378.rs`](rust/solutions/src/bin/p378.rs) | **714.6 ms** | Shrink right_arr to i32 (counts < 6e7), drop SPF after dt, keep Fenwick sequential; optional rayon over independent dt[i] given SPF. |
+| 19 | [`p769.rs`](rust/solutions/src/bin/p769.rs) | **707.9 ms** | rayon over independent g; integer isqrt instead of f64 sqrt in the inner n_idx loop. |
+| 20 | [`p576.rs`](rust/solutions/src/bin/p576.rs) | **685.5 ms** |  |
+| 21 | [`p413.rs`](rust/solutions/src/bin/p413.rs) | **678.1 ms** |  |
+| 22 | [`p954.rs`](rust/solutions/src/bin/p954.rs) | **660.4 ms** | Optimized in Wave 26 (1251.7 ms → 660.4 ms); single-pass digit DP. |
+| — | [`p411.rs`](rust/solutions/src/bin/p411.rs) | **423.7 ms** | Optimized in Wave 27 (1009.5 ms → 423.7 ms); LPT work schedule + branchless partition_point LIS. |
+| — | [`p654.rs`](rust/solutions/src/bin/p654.rs) | **408.5 ms** | Optimized in Wave 26 (1165.7 ms → 408.5 ms); frequency-domain NTT. |
+| — | [`p464.rs`](rust/solutions/src/bin/p464.rs) | **345.0 ms** | Optimized in Wave 26 (1209.1 ms → 345.0 ms); merge-sort inversion counting. |
+| — | [`p681.rs`](rust/solutions/src/bin/p681.rs) | **303.2 ms** | **Optimized in Wave 29** (982.8 ms → 303.2 ms, **3.241×**); SWAR packed exponents + quadratic bound + thread-local buffer reuse. |
+| — | [`p563.rs`](rust/solutions/src/bin/p563.rs) | **195.8 ms** | Optimized in Wave 28 (838.8 ms → 195.8 ms); 50M bound + parallel streaming mult. |
+| — | [`p552.rs`](rust/solutions/src/bin/p552.rs) | **178.2 ms** | **Optimized in Wave 29** (1338.0 ms → 178.2 ms, **7.509×**); blocked parallel Garner CRT + ceiling Barrett reduction. |
+| — | [`p439.rs`](rust/solutions/src/bin/p439.rs) | **177.0 ms** | Optimized in Wave 26 (1073.3 ms → 177.0 ms); L3 cache u32 sieve + dyadic layers. |
+| — | [`p507.rs`](rust/solutions/src/bin/p507.rs) | **141.2 ms** | Optimized in Wave 27 (985.2 ms → 141.2 ms); zero-alloc Tribonacci matrix exponentiation. |
+| — | [`p782.rs`](rust/solutions/src/bin/p782.rs) | **122.7 ms** | **Optimized in Wave 29** (652.4 ms → 122.7 ms, **5.316×**); parallel chunked C1 sieve + word-level reverse_bits complement OR. |
+| — | [`p559.rs`](rust/solutions/src/bin/p559.rs) | **93.2 ms** | **Optimized in Wave 29** (907.6 ms → 93.2 ms, **9.736×**); thread-local workspaces + threshold 128 Newton inversion + butterfly NTT. |
+| — | [`p937.rs`](rust/solutions/src/bin/p937.rs) | **89.0 ms** | Optimized in Wave 28 (944.4 ms → 89.0 ms); odd-only 16KB sieve + lock-free diff. |
+| — | [`p534.rs`](rust/solutions/src/bin/p534.rs) | **79.2 ms** | Optimized in Wave 28 (921.9 ms → 79.2 ms); incremental DFS bitmasks + symmetry. |
+| — | [`p578.rs`](rust/solutions/src/bin/p578.rs) | **61.6 ms** | Optimized in Wave 26 (1089.7 ms → 61.6 ms); O(1) table + analytic root cutoffs. |
+| — | [`p928.rs`](rust/solutions/src/bin/p928.rs) | **20.4 ms** | **Optimized in Wave 29** (1078.8 ms → 20.4 ms, **52.823×**); scalar recurse_tail after rank 6 + 64-byte Gf + depth-4 split. |
+| — | [`p650.rs`](rust/solutions/src/bin/p650.rs) | **8.4 ms** | **Optimized in Wave 29** (937.1 ms → 8.4 ms, **111.649×**); inverted prime loop order + geometric progression multiplications. |
+| — | [`p946.rs`](rust/solutions/src/bin/p946.rs) | **2.0 ms** | **Optimized in Wave 29** (953.7 ms → 2.0 ms, **467.411×**); limit-cycle attractor fast-forwarding 10^8 steps in O(1) cycles. |
+

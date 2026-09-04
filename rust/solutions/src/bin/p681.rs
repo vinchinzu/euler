@@ -4,47 +4,36 @@
 // pair chunks so they cannot starve the pool. Do not nest rayon.
 
 use rayon::prelude::*;
+use std::cell::RefCell;
 
-const PAIR_ND: usize = 192;
-const X_CHUNK: usize = 16;
-const LIGHT_CHUNK: usize = 32;
-const LIGHT_BUF: usize = 256;
+const PAIR_ND: usize = 512;
+const LIGHT_CHUNK: usize = 128;
+const BIAS: u64 = 0x8080808080808080;
 
-struct KData {
-    k2: i64,
-    divs: Vec<i64>,
+#[derive(Clone, Copy)]
+struct Div {
+    val: i64,
+    exp: u64,
 }
 
-struct Work {
-    ki: u32,
-    i: u32,
-    j_lo: u32,
-    j_hi: u32,
+thread_local! {
+    static BUF: RefCell<Vec<Div>> = RefCell::new(vec![Div { val: 0, exp: 0 }; 4096]);
 }
 
 #[inline(always)]
-fn isqrt(n: i64) -> i64 {
-    if n <= 0 {
-        return 0;
-    }
-    // disc = (w+x)^2 + 4 r2 <= ~4e12; f64 mantissa is exact below 2^53.
-    let mut s = (n as f64).sqrt() as i64;
-    if s * s > n {
-        s -= 1;
-    } else if (s + 1) * (s + 1) <= n {
-        s += 1;
-    }
-    s
+fn divides(sub_exp: u64, sup_exp: u64) -> bool {
+    let diff = (sup_exp + BIAS) - sub_exp;
+    (diff & BIAS) == BIAS
 }
 
 fn k2_nd(k: usize, spf: &[u32]) -> usize {
     let mut tmp = k;
     let mut nd = 1usize;
     while tmp > 1 {
-        let p = spf[tmp] as usize;
+        let p = spf[tmp];
         let mut e = 0u32;
-        while tmp % p == 0 {
-            tmp /= p;
+        while tmp > 1 && spf[tmp] == p {
+            tmp /= p as usize;
             e += 1;
         }
         nd *= (2 * e as usize) + 1;
@@ -52,16 +41,16 @@ fn k2_nd(k: usize, spf: &[u32]) -> usize {
     nd
 }
 
-fn fill_divs(k: usize, spf: &[u32], out: &mut [i64]) -> (i64, usize) {
-    let mut prms = [0i64; 16];
-    let mut exps = [0u32; 16];
+fn fill_divs(k: usize, spf: &[u32], out: &mut [Div]) -> (i64, usize, u64) {
+    let mut prms = [0i64; 8];
+    let mut exps = [0u32; 8];
     let mut np = 0usize;
     let mut tmp = k;
     while tmp > 1 {
-        let p = spf[tmp] as usize;
+        let p = spf[tmp];
         let mut e = 0u32;
-        while tmp % p == 0 {
-            tmp /= p;
+        while tmp > 1 && spf[tmp] == p {
+            tmp /= p as usize;
             e += 1;
         }
         prms[np] = p as i64;
@@ -69,114 +58,85 @@ fn fill_divs(k: usize, spf: &[u32], out: &mut [i64]) -> (i64, usize) {
         np += 1;
     }
     let k2 = (k as i64) * (k as i64);
-    out[0] = 1;
+    let mut e_k2 = 0u64;
+    for (i, &exp) in exps.iter().take(np).enumerate() {
+        e_k2 |= (exp as u64) << (i * 8);
+    }
+    out[0] = Div { val: 1, exp: 0 };
     let mut nd = 1usize;
     for i in 0..np {
         let old = nd;
         let mut pp = 1i64;
-        for _ in 0..exps[i] {
+        for e in 1..=exps[i] {
             pp *= prms[i];
+            let exp_inc = (e as u64) << (i * 8);
             for j in 0..old {
-                out[nd] = out[j] * pp;
+                out[nd] = Div {
+                    val: out[j].val * pp,
+                    exp: out[j].exp + exp_inc,
+                };
                 nd += 1;
             }
         }
     }
-    out[..nd].sort_unstable();
-    (k2, nd)
+    out[..nd].sort_unstable_by_key(|d| d.val);
+    (k2, nd, e_k2)
 }
 
-fn k2_divisors(k: usize, spf: &[u32]) -> (i64, Vec<i64>) {
-    let nd = k2_nd(k, spf);
-    let mut divs = vec![0i64; nd];
-    let (k2, got) = fill_divs(k, spf, &mut divs);
-    debug_assert_eq!(got, nd);
-    (k2, divs)
-}
-
-fn split_pair_units(ki: u32, k2: i64, ds: &[i64]) -> Vec<Work> {
+fn process_pairs(k2: i64, e_k2: u64, ds: &[Div]) -> i64 {
     let nd = ds.len();
-    let mut units = Vec::new();
-    for i in 0..nd {
-        let w = ds[i];
-        // w^4 > k2 <=> w > k^{1/2} <= 1000 for k <= 1e6.
-        if w > 1000 || w * w * w * w > k2 {
-            break;
-        }
-        let r1 = k2 / w;
-        let mut x_lim = i;
-        while x_lim < nd {
-            let x = ds[x_lim];
-            if x > 10_000 || x * x * x > r1 {
-                break;
-            }
-            x_lim += 1;
-        }
-        let mut j = i;
-        while j < x_lim {
-            let j_hi = (j + X_CHUNK).min(x_lim);
-            units.push(Work {
-                ki,
-                i: i as u32,
-                j_lo: j as u32,
-                j_hi: j_hi as u32,
-            });
-            j = j_hi;
-        }
-    }
-    units
-}
-
-fn process_pairs(k2: i64, ds: &[i64], i_lo: usize, i_hi: usize, j_lo: usize, j_hi: usize) -> i64 {
-    let nd = ds.len();
-    let i_hi = i_hi.min(nd);
     let mut sum = 0i64;
-    for i in i_lo..i_hi {
-        // SAFETY: i < nd by loop bound.
-        let w = unsafe { *ds.get_unchecked(i) };
+    for i in 0..nd {
+        let dw = unsafe { *ds.get_unchecked(i) };
+        let w = dw.val;
         if w > 1000 || w * w * w * w > k2 {
             break;
         }
         let r1 = k2 / w;
-        let js = i.max(j_lo);
-        let je = j_hi.min(nd);
-        for j in js..je {
-            // SAFETY: j < nd.
-            let x = unsafe { *ds.get_unchecked(j) };
+        let e_r1 = e_k2 - dw.exp;
+        for j in i..nd {
+            let dx = unsafe { *ds.get_unchecked(j) };
+            let x = dx.val;
             if x > 10_000 || x * x * x > r1 {
                 break;
             }
-            if r1 % x != 0 {
+            if !divides(dx.exp, e_r1) {
                 continue;
             }
             let r2 = r1 / x;
             let b = w + x;
-            // z < w+x+y <=> y > (-b + sqrt(b^2 + 4 r2)) / 2.
-            let sdisc = isqrt(b * b + 4 * r2);
-            let y_min = ((sdisc - b) >> 1) + 1;
-            let y_lo = if y_min > x { y_min } else { x };
-            if y_lo > r2 / y_lo {
+            if (r2 & 1) != 0 && (b & 1) != 0 {
                 continue;
             }
-            let mut l0 = j;
-            if y_lo > x {
-                l0 = j + ds[j..].partition_point(|&yy| yy < y_lo);
+
+            // Fast quadratic bound: y_min > x <=> r2 >= x * (b + x)
+            let (l0, y_lo) = if r2 < x * (b + x) {
+                (j, x)
+            } else {
+                let sdisc = ((b * b + 4 * r2) as f64).sqrt() as i64;
+                let y_min = ((sdisc - b) >> 1) + 1;
+                let l0 = j + ds[j..].partition_point(|d| d.val < y_min);
+                (l0, y_min)
+            };
+
+            let y_hi = ((r2 - 1) as f64).sqrt() as i64;
+            if y_lo > y_hi {
+                continue;
             }
+
+            let e_r2 = e_r1 - dx.exp;
+
             for l in l0..nd {
-                // SAFETY: l < nd.
-                let y = unsafe { *ds.get_unchecked(l) };
-                if y > r2 / y {
+                let dy = unsafe { *ds.get_unchecked(l) };
+                let y = dy.val;
+                if y > y_hi {
                     break;
                 }
-                if r2 % y != 0 {
+                if !divides(dy.exp, e_r2) {
                     continue;
                 }
                 let z = r2 / y;
-                let s = b + y;
-                if z <= y || z >= s {
-                    continue;
-                }
-                let total = s + z;
+                let total = b + y + z;
                 if total & 1 == 0 {
                     sum += total;
                 }
@@ -186,21 +146,12 @@ fn process_pairs(k2: i64, ds: &[i64], i_lo: usize, i_hi: usize, j_lo: usize, j_h
     sum
 }
 
-fn process_light_k(k: usize, spf: &[u32]) -> i64 {
-    let mut buf = [0i64; LIGHT_BUF];
-    let (k2, nd) = fill_divs(k, spf, &mut buf);
-    process_pairs(k2, &buf[..nd], 0, nd, 0, nd)
-}
-
 fn main() {
     let n: i64 = 1_000_000;
     let n2 = n * n;
 
     let maxn = (n as usize) + 1;
-    let mut spf = vec![0u32; maxn];
-    for i in 0..maxn {
-        spf[i] = i as u32;
-    }
+    let mut spf: Vec<u32> = (0..maxn as u32).collect();
     let mut i = 2;
     while i * i < maxn {
         if spf[i] == i as u32 {
@@ -260,48 +211,38 @@ fn main() {
             light_ks.push(k as u32);
         }
     }
-    // Start the longest heavy K first so stealers pick up remaining pair chunks.
-    heavy_ks.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    heavy_ks.sort_unstable_by_key(|a| std::cmp::Reverse(a.1));
 
-    let kdatas: Vec<KData> = heavy_ks
-        .par_iter()
-        .map(|&(k, _)| {
-            let (k2, divs) = k2_divisors(k as usize, &spf);
-            KData { k2, divs }
-        })
-        .collect();
-
-    let work: Vec<Work> = kdatas
-        .par_iter()
-        .enumerate()
-        .flat_map(|(ki, kd)| split_pair_units(ki as u32, kd.k2, &kd.divs))
-        .collect();
-
-    let ans_heavy: i64 = work
-        .par_iter()
-        .map(|u| {
-            let kd = &kdatas[u.ki as usize];
-            process_pairs(
-                kd.k2,
-                &kd.divs,
-                u.i as usize,
-                u.i as usize + 1,
-                u.j_lo as usize,
-                u.j_hi as usize,
-            )
-        })
-        .sum();
-
-    let ans_light: i64 = light_ks
-        .par_chunks(LIGHT_CHUNK)
-        .map(|chunk| {
-            let mut local = 0i64;
-            for &k in chunk {
-                local += process_light_k(k as usize, &spf);
-            }
-            local
-        })
-        .sum();
+    let (ans_heavy, ans_light) = rayon::join(
+        || {
+            heavy_ks
+                .par_iter()
+                .map(|&(k, _)| {
+                    BUF.with(|cell| {
+                        let mut buf = cell.borrow_mut();
+                        let (k2, nd, e_k2) = fill_divs(k as usize, &spf, &mut buf);
+                        process_pairs(k2, e_k2, &buf[..nd])
+                    })
+                })
+                .sum::<i64>()
+        },
+        || {
+            light_ks
+                .par_chunks(LIGHT_CHUNK)
+                .map(|chunk| {
+                    BUF.with(|cell| {
+                        let mut buf = cell.borrow_mut();
+                        let mut local = 0i64;
+                        for &k in chunk {
+                            let (k2, nd, e_k2) = fill_divs(k as usize, &spf, &mut buf);
+                            local += process_pairs(k2, e_k2, &buf[..nd]);
+                        }
+                        local
+                    })
+                })
+                .sum::<i64>()
+        },
+    );
 
     println!("{}", ans + ans_heavy + ans_light);
 }

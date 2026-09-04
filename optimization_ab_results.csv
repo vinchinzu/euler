@@ -294,3 +294,10 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 534,921.9,79.2,91.41,True,True,Incremental branchless bitmask DFS; row 0 horizontal symmetry; compact 8-byte Config with FxHashMap; 50-task LPT scheduling speedup=11.641x
 937,944.4,89.0,90.58,True,True,Segmented odd-only sieve; 128 parallel disjoint lock-free diff slices; O(1) Legendre tzcnt valuation; parallel 64-chunk factorial scan speedup=10.613x
 563,838.8,195.8,76.66,True,True,Tightened dimension bound to 50M via max M(n)=2.29e15; eliminated redundant partition_point; parallel streaming mult; early scan exit speedup=4.285x
+946,953.7,2.0,99.79,True,True,limit-cycle attractor states fast-forwarding 10^8 steps; division elimination speedup=467.411x
+650,937.1,8.4,99.10,True,True,inverted prime loop order; geometric progression multiplication; LPT Rayon balancing speedup=111.649x
+928,1078.8,20.4,98.11,True,True,scalar recurse_tail after rank 6; compact 64-byte Gf; depth-4 Rayon split speedup=52.823x
+559,907.6,93.2,89.73,True,True,thread-local workspaces; threshold 128 bootstrapped Newton inversion; butterfly NTT speedup=9.736x
+552,1338.0,178.2,86.68,True,True,blocked parallel Garner CRT; ceiling Barrett reduction; branch-splitting speedup=7.509x
+782,652.4,122.7,81.19,True,True,cache-chunked C1 sieve; word-level reverse_bits complement OR; pruned C3 forms speedup=5.316x
+681,982.8,303.2,69.15,True,True,SWAR packed-exponent divisibility check; thread-local buffer reuse; quadratic bounds speedup=3.241x

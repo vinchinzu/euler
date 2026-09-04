@@ -5081,5 +5081,89 @@
     "notes": "Tightened dimension bound to 50M via max M(n)=2.29e15; eliminated redundant partition_point lookups; parallel contiguous streaming multiplication; early scan termination",
     "method": "ab_bench warmup=1 runs=3",
     "accepted": true
+  },
+  {
+    "problem": 946,
+    "baseline_median_ms": 953.7,
+    "candidate_median_ms": 2.0,
+    "speedup": 467.411,
+    "correct": true,
+    "baseline_times": [953.7, 1058.2, 1048.8, 933.0, 950.6],
+    "candidate_times": [1.6, 2.0, 1.6, 18.1, 2.8],
+    "notes": "Discovered limit-cycle attractor states for runs of 1s in Gosper continued fraction algorithm ((3,1,1,2) and (3,2,1,-1)), fast-forwarding 10^8 steps in O(1) cycles down to ~64k total steps; multiplication-based matching check eliminating half of 64-bit hardware integer divisions",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 650,
+    "baseline_median_ms": 937.1,
+    "candidate_median_ms": 8.4,
+    "speedup": 111.649,
+    "correct": true,
+    "baseline_times": [937.1, 928.3, 940.9, 928.4, 948.9],
+    "candidate_times": [10.5, 9.2, 8.3, 8.4, 8.3],
+    "notes": "Inverted loop order to prime-by-prime; exploited arithmetic progression of exponents between multiples of p, converting 45M modular exponentiations into geometric-progression single-step multiplications; factored out prod(p-1)^-1 into prefix array; distributed primes across Rayon threads with greedy LPT load balancing",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 928,
+    "baseline_median_ms": 1078.8,
+    "candidate_median_ms": 20.4,
+    "speedup": 52.823,
+    "correct": true,
+    "baseline_times": [1235.4, 1078.8, 1141.1, 1018.8, 1023.3],
+    "candidate_times": [20.4, 16.4, 45.9, 86.3, 16.4],
+    "notes": "Proved any subset summing to 15 contains at most one card from ranks 7..12 (8+8=16 > 15); transitioned to scalar addition recurse_tail after rank 6, eliminating >99% of polynomial convolution nodes; compact 64-byte Gf: [u32; 16]; SPLIT=4 (504 valid Rayon tasks); bounded open runs pruning",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 559,
+    "baseline_median_ms": 907.6,
+    "candidate_median_ms": 93.2,
+    "speedup": 9.736,
+    "correct": true,
+    "baseline_times": [1005.2, 1010.3, 889.4, 878.0, 907.6],
+    "candidate_times": [88.7, 97.2, 93.2, 97.3, 88.2],
+    "notes": "Preallocated thread-local scratch workspaces (HEAVY_WS, LIGHT_WS) eliminating >100,000 heap allocations; tuned crossover threshold to 128 with bootstrapped Newton inversion (poly_inv_start_b); high-performance bit-reversal-free butterfly NTT and constant-folded CRT modular inverses",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 552,
+    "baseline_median_ms": 1338.0,
+    "candidate_median_ms": 178.2,
+    "speedup": 7.509,
+    "correct": true,
+    "baseline_times": [1426.8, 1491.4, 1319.7, 1336.8, 1338.0],
+    "candidate_times": [186.4, 180.6, 79.3, 178.2, 86.4],
+    "notes": "Blocked parallel Garner CRT reconstruction (B=512): sequential resolution for block primes (<1.9% of steps) followed by Rayon parallel independent state updates across all remaining future primes; ceiling Barrett reduction eliminating conditional branches; branch-splitting on good flag",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 782,
+    "baseline_median_ms": 652.4,
+    "candidate_median_ms": 122.7,
+    "speedup": 5.316,
+    "correct": true,
+    "baseline_times": [650.9, 656.8, 651.5, 654.3, 652.4],
+    "candidate_times": [173.3, 132.2, 116.9, 122.7, 109.5],
+    "notes": "Parallel 64 KB cache-resident chunk sieve for Construction 1 via par_chunks_mut; word-level bit-reversal OR (u64::reverse_bits) for Construction 2 complement symmetry, cutting 50M iterations down to 781k operations; pruned redundant 3x3 forms (Form 0, 1, 4 covered by S2/C1)",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
+  },
+  {
+    "problem": 681,
+    "baseline_median_ms": 982.8,
+    "candidate_median_ms": 303.2,
+    "speedup": 3.241,
+    "correct": true,
+    "baseline_times": [997.5, 1026.5, 971.8, 937.1, 982.8],
+    "candidate_times": [303.5, 300.8, 283.0, 303.2, 307.7],
+    "notes": "SIMD-within-a-register (SWAR) packed-exponent divisibility check (((sup_exp + BIAS) - sub_exp) & BIAS == BIAS) replacing hardware divisions; precalculated quadratic bound y_hi = ((r2 - 1) as f64).sqrt() as i64; thread-local buffer reuse eliminating 13.5M heap allocations",
+    "method": "ab_bench warmup=2 runs=5",
+    "accepted": true
   }
 ]
