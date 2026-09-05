@@ -3,6 +3,7 @@
 
 use rayon::prelude::*;
 
+#[derive(Clone, Copy)]
 struct Frame {
     min_idx: usize,
     n: i64,
@@ -13,6 +14,7 @@ struct Frame {
 struct Ctx<'a> {
     primes: &'a [i64],
     p2s: &'a [i64],
+    p_k: &'a [u8],
     adj: &'a [i64],
     small0: &'a [i64],
     big0: &'a [i64],
@@ -44,7 +46,7 @@ fn node_contrib(f: &Frame, nlim: i64, ctx: &Ctx) -> i64 {
 #[inline(always)]
 fn push_powers(idx: usize, n: i64, nlim: i64, p_val: i64, ctx: &Ctx, stack: &mut Vec<Frame>) {
     let p = unsafe { *ctx.primes.get_unchecked(idx) };
-    let k = p & 3;
+    let k = unsafe { *ctx.p_k.get_unchecked(idx) };
     let next = idx + 1;
     if k == 3 {
         let pp = unsafe { *ctx.p2s.get_unchecked(idx) };
@@ -105,80 +107,6 @@ fn dfs_seq(start: Frame, ctx: &Ctx) -> i64 {
     ans
 }
 
-fn add_powers(idx: usize, n: i64, nlim: i64, p_val: i64, ctx: &Ctx, par: bool) -> i64 {
-    let p = unsafe { *ctx.primes.get_unchecked(idx) };
-    let k = p & 3;
-    let next = idx + 1;
-    let mut local = 0i64;
-    if k == 3 {
-        let pp = unsafe { *ctx.p2s.get_unchecked(idx) };
-        let mut pe = pp;
-        loop {
-            let fr = Frame { min_idx: next, n: n * pe, p_val, skip: false };
-            local += if par { dfs_par(fr, ctx) } else { dfs_seq(fr, ctx) };
-            if pe > nlim / pp {
-                break;
-            }
-            pe *= pp;
-        }
-    } else if k == 1 {
-        let mut pe = p;
-        let mut e = 1i64;
-        loop {
-            let fr = Frame {
-                min_idx: next,
-                n: n * pe,
-                p_val: p_val * (e + 1),
-                skip: e == 1,
-            };
-            local += if par { dfs_par(fr, ctx) } else { dfs_seq(fr, ctx) };
-            if pe > nlim / p {
-                break;
-            }
-            pe *= p;
-            e += 1;
-        }
-    } else {
-        let mut pe = 2i64;
-        loop {
-            let fr = Frame { min_idx: next, n: n * pe, p_val, skip: false };
-            local += if par { dfs_par(fr, ctx) } else { dfs_seq(fr, ctx) };
-            if pe > nlim / 2 {
-                break;
-            }
-            pe *= 2;
-        }
-    }
-    local
-}
-
-fn dfs_par(f: Frame, ctx: &Ctx) -> i64 {
-    let nlim = ctx.n_val / f.n;
-    let mut ans = node_contrib(&f, nlim, ctx);
-    let mut end = f.min_idx;
-    while end < ctx.last {
-        let pp = unsafe { *ctx.p2s.get_unchecked(end) };
-        if pp > nlim {
-            break;
-        }
-        end += 1;
-    }
-    if end <= f.min_idx {
-        return ans;
-    }
-    // Nested split only for tiny n (heavy subtrees). n=1 handled at root.
-    if f.n <= 16 && end - f.min_idx > 32 {
-        ans += (f.min_idx..end)
-            .into_par_iter()
-            .map(|idx| add_powers(idx, f.n, nlim, f.p_val, ctx, false))
-            .sum::<i64>();
-    } else {
-        for idx in f.min_idx..end {
-            ans += add_powers(idx, f.n, nlim, f.p_val, ctx, false);
-        }
-    }
-    ans
-}
 
 fn main() {
     let n_val: i64 = 1_000_000_000_000;
@@ -214,6 +142,7 @@ fn main() {
 
     let last = primes.len() - 1;
     let p2s: Vec<i64> = primes.iter().map(|&p| p * p).collect();
+    let p_k: Vec<u8> = primes.iter().map(|&p| (p & 3) as u8).collect();
 
     let big_size = (n_val / l + 1) as usize;
     let mut big = vec![[0i64; 2]; big_size];
@@ -236,15 +165,16 @@ fn main() {
         let p2 = p2s[pi];
         let sp0 = small[(p - 1) as usize][0];
         let sp1 = small[(p - 1) as usize][1];
-        let mod1 = p & 3 == 1;
+        let mod1 = p_k[pi] == 1;
         let pu = p as usize;
 
-        let i_max = (n_val / p2).min(bs_m1);
+        let m = n_val / p;
+        let i_max = (m / p).min(bs_m1);
         if i_max >= 1 {
             let i_mid = (bs_m1 / p).min(i_max);
             unsafe {
+                let mut ip = pu;
                 if mod1 {
-                    let mut ip = pu;
                     for i in 1..=i_mid as usize {
                         let v0 = big.get_unchecked(ip)[0] - sp0;
                         let v1 = big.get_unchecked(ip)[1] - sp1;
@@ -252,7 +182,6 @@ fn main() {
                         big.get_unchecked_mut(i)[1] -= v1;
                         ip += pu;
                     }
-                    let m = n_val / p;
                     let mut i = i_mid + 1;
                     while i <= i_max {
                         let q = m / i;
@@ -269,7 +198,6 @@ fn main() {
                         }
                     }
                 } else {
-                    let mut ip = pu;
                     for i in 1..=i_mid as usize {
                         let v0 = big.get_unchecked(ip)[0] - sp0;
                         let v1 = big.get_unchecked(ip)[1] - sp1;
@@ -277,7 +205,6 @@ fn main() {
                         big.get_unchecked_mut(i)[1] -= v0;
                         ip += pu;
                     }
-                    let m = n_val / p;
                     let mut i = i_mid + 1;
                     while i <= i_max {
                         let q = m / i;
@@ -347,6 +274,7 @@ fn main() {
     let ctx = Ctx {
         primes: &primes,
         p2s: &p2s,
+        p_k: &p_k,
         adj: &adj,
         small0: &small0,
         big0: &big0,
@@ -355,21 +283,45 @@ fn main() {
         last,
     };
 
-    // Root frame (n=1, skip): qv contribution + parallel prime-power subtrees
+    // Flatten top-level prime-power frames
     let root = Frame { min_idx: 0, n: 1, p_val: 1, skip: true };
-    let nlim = n_val;
-    let mut ans = node_contrib(&root, nlim, &ctx);
-    ans += (0..last)
-        .into_par_iter()
-        .map(|idx| {
-            let pp = p2s[idx];
-            if pp > nlim {
-                return 0;
+    let mut initial_frames = Vec::with_capacity(100_000);
+
+    // Expand level 1 (from root)
+    let mut top_frames = Vec::new();
+    for idx in 0..last {
+        let pp = p2s[idx];
+        if pp > n_val {
+            break;
+        }
+        push_powers(idx, 1, n_val, 1, &ctx, &mut top_frames);
+    }
+
+    // For heavy frames (e.g. powers of 2 or small n), expand one more level into initial_frames
+    let mut direct_contrib = node_contrib(&root, n_val, &ctx);
+    for f in top_frames {
+        let nlim = n_val / f.n;
+        if f.n <= 128 {
+            direct_contrib += node_contrib(&f, nlim, &ctx);
+            let mut idx = f.min_idx;
+            while idx < ctx.last {
+                let pp = unsafe { *ctx.p2s.get_unchecked(idx) };
+                if pp > nlim {
+                    break;
+                }
+                push_powers(idx, f.n, nlim, f.p_val, &ctx, &mut initial_frames);
+                idx += 1;
             }
-            // p=2 (idx 0) subtree is huge: split its small-n frames further
-            add_powers(idx, 1, nlim, 1, &ctx, idx == 0)
-        })
-        .sum::<i64>();
+        } else {
+            initial_frames.push(f);
+        }
+    }
+
+    let ans_parallel: i64 = initial_frames
+        .into_par_iter()
+        .map(|f| dfs_seq(f, &ctx))
+        .sum();
+    let ans = direct_contrib + ans_parallel;
 
     println!("{}", ans);
 }

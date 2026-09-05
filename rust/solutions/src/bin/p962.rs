@@ -8,16 +8,20 @@ use rayon::prelude::*;
 use std::cell::RefCell;
 
 const N: u64 = 1_000_000;
-const MAX_Z: usize = (N / 3) as usize;
 
 #[inline(always)]
 fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+    if a == 0 { return b; }
+    if b == 0 { return a; }
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    loop {
+        b >>= b.trailing_zeros();
+        if a > b { std::mem::swap(&mut a, &mut b); }
+        b -= a;
+        if b == 0 { break; }
     }
-    a
+    a << shift
 }
 
 /// Build smallest-prime-factor sieve up to max_val
@@ -199,6 +203,17 @@ fn count_for_z(z: u64, spf: &[u32], primes: &[u32]) -> u64 {
                     continue;
                 }
                 let t = v * w;
+                if (t & 3) == 2 {
+                    continue;
+                }
+                let uv_sum = u + v;
+                let q_min = (t * uv_sum + N - 1) / N;
+                let q_max_sq = (t * u) / (2 * v + u);
+                let q_max = q_max_sq.isqrt();
+                if q_min > q_max {
+                    continue;
+                }
+
                 // Factor t: use SPF if small enough, otherwise trial division
                 if (t as usize) < spf.len() {
                     factor_spf(t, spf, t_factors);
@@ -206,36 +221,13 @@ fn count_for_z(z: u64, spf: &[u32], primes: &[u32]) -> u64 {
                     factor_trial(t, primes, t_factors);
                 }
                 divisors_from_factors_buf(t_factors, divisors);
-                let uv_sum = u + v;
-                for didx in 0..divisors.len() {
-                    // SAFETY: didx < divisors.len()
-                    let p_div = unsafe { *divisors.get_unchecked(didx) };
-                    let q = t / p_div;
-                    if p_div <= q {
-                        continue;
+                for &q in divisors.iter() {
+                    if q >= q_min && q <= q_max {
+                        let p_div = t / q;
+                        if (p_div ^ q) & 1 == 0 {
+                            total += 1;
+                        }
                     }
-                    if (p_div ^ q) & 1 != 0 {
-                        continue;
-                    }
-                    let g = (p_div + q) / 2;
-                    let m = (p_div - q) / 2;
-                    if m == 0 || g <= m {
-                        continue;
-                    }
-                    let a = g * u;
-                    let b = g * v;
-                    let c = m * uv_sum;
-                    let perimeter = a + b + c;
-                    if perimeter > N {
-                        continue;
-                    }
-                    if !(a <= b && b <= c) {
-                        continue;
-                    }
-                    if a + b <= c {
-                        continue;
-                    }
-                    total += 1;
                 }
             }
         }
@@ -252,7 +244,7 @@ fn count_triangles(spf: &[u32], primes: &[u32]) -> u64 {
 }
 
 fn main() {
-    let spf = build_spf(MAX_Z);
+    let spf = build_spf(1_000_000);
     let primes = primes_up_to_u32(1_000_000);
     println!("{}", count_triangles(&spf, &primes));
 }

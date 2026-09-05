@@ -50,13 +50,7 @@ struct PrimePi {
 
 impl PrimePi {
     fn new(n: u64, primes: &[u32]) -> Self {
-        let mut isqrt = (n as f64).sqrt() as u64;
-        while (isqrt + 1).saturating_mul(isqrt + 1) <= n {
-            isqrt += 1;
-        }
-        while isqrt.saturating_mul(isqrt) > n {
-            isqrt -= 1;
-        }
+        let isqrt = n.isqrt();
 
         let m = isqrt as usize;
         let mut s_small = vec![0i32; m + 1];
@@ -204,14 +198,7 @@ fn integer_root(n: u64, k: u8) -> u64 {
         return n;
     }
     if k == 2 {
-        let mut r = (n as f64).sqrt() as u64;
-        while (r + 1).saturating_mul(r + 1) <= n {
-            r += 1;
-        }
-        while r.saturating_mul(r) > n {
-            r -= 1;
-        }
-        return r;
+        return n.isqrt();
     }
     if k == 3 {
         let mut r = (n as f64).cbrt() as u64;
@@ -422,12 +409,22 @@ impl Counter {
             end += 1;
         }
 
-        let mut total = 0u64;
-        for idx in 0..end {
-            let rem = self.n / self.pow_at(exp0, idx);
-            total += self.dfs(exps, 1, idx + 1, rem);
+        if end > 16 {
+            (0..end)
+                .into_par_iter()
+                .map(|idx| {
+                    let rem = self.n / self.pow_at(exp0, idx);
+                    self.dfs(exps, 1, idx + 1, rem)
+                })
+                .sum()
+        } else {
+            let mut total = 0u64;
+            for idx in 0..end {
+                let rem = self.n / self.pow_at(exp0, idx);
+                total += self.dfs(exps, 1, idx + 1, rem);
+            }
+            total
         }
-        total
     }
 
     fn dfs(&self, exps: &[u8], pos: usize, start_idx: usize, rem: u64) -> u64 {

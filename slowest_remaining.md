@@ -1,22 +1,22 @@
 # Slowest Remaining Problems Queue (Descending)
 
-**Updated:** 2026-09-04 (Wave 32: Problems 482, 521, 459 Optimized and Integrated — **FULL 1,000 PROJECT EULER SOLUTIONS RUNNING IN ~96.7s, SPEEDUP 11.39×**)
+**Updated:** 2026-09-04 (Wave 34: Batch C DFS — **~92.6 s**)
 
 ## Current Project Snapshot
 
 | Metric | Value |
 |---|---:|
 | Total Solutions | **1000** |
-| Total Sequential Wall-Clock | **~96.7 s** (**Sub-100s Landmark Maintained Across All 1,000!**) |
-| Speedup vs Original Cache (1101.1s) | **11.39×** |
-| Speedup vs Clean 5900XT Baseline (386.1s) | **3.99×** (~289.4s saved) |
-| Speedup vs ~180s Milestone (2026-08-25) | **1.86×** (~83.3s saved) |
+| Total Sequential Wall-Clock | **~92.6 s** (Wave 34 saved **~0.66 s** vs Wave 33 ~93.3 s) |
+| Speedup vs Original Cache (1101.1s) | **11.89×** |
+| Speedup vs Clean 5900XT Baseline (386.1s) | **4.17×** (~293.5s saved) |
+| Speedup vs ~180s Milestone (2026-08-25) | **1.94×** (~87.4s saved) |
 | Median Execution Time | **22.0 ms** |
 | Remaining ≥ 1.0s | **0** (p680 skipped per user request; p774 at 1005ms) |
-| Remaining 500ms – 1.0s | **35** (-2: p482, p521) |
-| Remaining 200ms – 500ms | **113** (+1: p521) |
-| Remaining 50ms – 200ms | **244** (+1: p482) |
-| Fast (< 50ms) | **608** |
+| Remaining 500ms – 1.0s | **28** (p850 805→528 still in-band; p829 574→544 still in-band) |
+| Remaining 200ms – 500ms | **118** (−1 vs Wave 33: p962 410→107 left the band) |
+| Remaining 50ms – 200ms | **246** |
+| Fast (< 50ms) | **609** |
 
 ---
 
@@ -27,6 +27,53 @@
 | 1 | [`p680.rs`](rust/solutions/src/bin/p680.rs) | **1954.5 ms** | ≥1.0s | *Skipped per user request*. Implicit treap $N=10^{18}, K=10^6$; dynamic subtree queries. |
 | (2) | [`p774.rs`](rust/solutions/src/bin/p774.rs) | **1005.2 ms** | ~1.0s | Tensor-Train / MPS left-sweep Gaussian elimination; optimized core contraction and hadamard product routines; down from 3858ms. |
 | — | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | <1.0s | **CONQUERED IN WAVE 27** (1081.8 ms → 795.0 ms). Padded cache alignment + 8-thread spin-barrier DP. |
+
+---
+
+## Wave 34 Batch C Accepted Optimizations (agy DFS / factor trees)
+
+agy `--print` in worktree `agy/batch-c-dfs`. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **5/6 accepted**; p636 rejected.
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p962.rs`](rust/solutions/src/bin/p962.rs) | 410.0 ms | **106.9 ms** | **3.835×** | `7259046` | Binary tzcnt gcd; skip $t\equiv 2\pmod 4$; algebraic $q$ bounds so $t$ is not factored |
+| [`p850.rs`](rust/solutions/src/bin/p850.rs) | 804.6 ms | **527.7 ms** | **1.525×** | `878255725` | Compile-time $T_1$/$T_2$ tables; fast-path `contribute` when $m\le\mathrm{SMALL\_P2}$; reuse `lower_p` |
+| [`p245.rs`](rust/solutions/src/bin/p245.rs) | 261.3 ms | **225.9 ms** | **1.157×** | `288084712410001` | CSR `pf_data` replacing 447k heap `Vec`s; stack divisor buffer; `Copy` Factors in DFS |
+| [`p861.rs`](rust/solutions/src/bin/p861.rs) | 282.9 ms | **264.2 ms** | **1.071×** | `672623540591` | Hardware isqrt in `PrimePi` / `integer_root`; nested rayon on fat permutation roots |
+| [`p829.rs`](rust/solutions/src/bin/p829.rs) | 574.0 ms | **544.3 ms** | **1.054×** | `41768797657018024` | `u64::isqrt`; CacheOA $2^{21}\to 2^{18}$; LPT reverse outer $n$ |
+
+Wave 34 Batch C net: **~0.66 s**. Rejected: p636 (0.997×; TLS DP pool smoke 195 ms did not hold).
+
+## Wave 33 Batch B Accepted Optimizations (Möbius subagent)
+
+Worktree-isolated subagent. Parent A/B-gated (`python3 ab_bench.py NNN 1 3`). **5 accepted**, 2 skipped (p464, p478).
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p854.rs`](rust/solutions/src/bin/p854.rs) | 444.8 ms | **207.1 ms** | **2.147×** | `29894398` | Dense `Vec` period table replacing `HashMap`; rayon independent z(p) ranks. |
+| [`p797.rs`](rust/solutions/src/bin/p797.rs) | 553.5 ms | **288.4 ms** | **1.919×** | `47722272` | Doubling-wave parallel F-sieve after 256-wide bootstrap; per-wave batch invert; deferred i128 Mertens·G sum. |
+| [`p735.rs`](rust/solutions/src/bin/p735.rs) | 744.7 ms | **390.4 ms** | **1.908×** | `174848216767932` | Fused lattice loops 0+1+3+4 and 2+5 sharing `n/(xy)` / `n/(xz)`; integer `isqrt`. |
+| [`p632.rs`](rust/solutions/src/bin/p632.rs) | 670.7 ms | **465.8 ms** | **1.440×** | `728378714` | Segmented parallel ω/squarefree sieve; drop 200MB u16 SPF; `max_k=8`; u64 product. |
+| [`p786.rs`](rust/solutions/src/bin/p786.rs) | 754.6 ms | **693.9 ms** | **1.088×** | `45594532839912702` | Segmented μ + fused lattice_count; 187.5M array dropped. Smoke 195ms did not reproduce under A/B. |
+
+Wave 33 Batch B net: **~1.12 s**.
+
+---
+
+## Wave 33 Batch A Accepted Optimizations (agy Lucy / Dirichlet)
+
+agy `--print` in worktree `agy/batch-a-lucy`. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **6/6 accepted.**
+
+| Problem | Baseline Median | Candidate Median | Speedup | Answer Verified | Key Techniques Applied |
+|:---:|:---:|:---:|:---:|:---:|:---|
+| [`p338.rs`](rust/solutions/src/bin/p338.rs) | 535.6 ms | **34.7 ms** | **15.431×** | `15614292` | 3D Dirichlet hyperbola for `num_triplets_mod` ($K=\lfloor n^{1/3}\rfloor$); 4-accumulator `sum_floor_quotients`; drop inner `% M` and `i128`. |
+| [`p501.rs`](rust/solutions/src/bin/p501.rs) | 616.8 ms | **155.5 ms** | **3.968×** | `197912312715` | Pre-sieve primes to $\sqrt{N}$; quotient-block Lucy fill; vectorized slice subtractions; 32-bit div when $N/p$ fits `u32`. |
+| [`p379.rs`](rust/solutions/src/bin/p379.rs) | 904.1 ms | **401.3 ms** | **2.253×** | `132314136838185` | `t_func` via 3D Dirichlet hyperbola $K=m^{1/3}$; symmetric term-2 fold; 32-bit division when $q$ fits `u32`. |
+| [`p931.rs`](rust/solutions/src/bin/p931.rs) | 736.0 ms | **333.6 ms** | **2.206×** | `128856311` | Block-step small Lucy sieve; contiguous `sub_mod_slice` large updates; drop duplicate 64-bit div in `s_main`. |
+| [`p448.rs`](rust/solutions/src/bin/p448.rs) | 649.6 ms | **366.5 ms** | **1.772×** | `106467648` | Single `u32` linear sieve of $k\cdot\phi(k)\bmod\mathrm{MOD}$; higher sieve limit; `compute_s` quotient blocks + `u128` deferred reduction. |
+| [`p611.rs`](rust/solutions/src/bin/p611.rs) | 665.8 ms | **517.6 ms** | **1.286×** | `49283233900` | Reuse $N/p$ instead of $N/p^2$; cache $p\bmod 4$; flatten top-level prime-power DFS frames before rayon. |
+
+Wave 33 Batch A net (sum of accepted medians): **~2.30 s**.
 
 ---
 
@@ -124,7 +171,7 @@
 | 2 | [`p465.rs`](rust/solutions/src/bin/p465.rs) | **923.6 ms** | Optimized in Wave 27 (1082.0 ms → 923.6 ms); u128 hyperbola accumulation. |
 | 3 | [`p337.rs`](rust/solutions/src/bin/p337.rs) | **916.7 ms** | Optimized in Wave 26 (1804.7 ms → 916.7 ms); AVX2 Wide Segment Tree B=16. |
 | 4 | [`p662.rs`](rust/solutions/src/bin/p662.rs) | **795.0 ms** | Optimized in Wave 27 (1081.8 ms → 795.0 ms); 128-byte aligned AVX2 spin-barrier DP. |
-| 5 | [`p850.rs`](rust/solutions/src/bin/p850.rs) | **774.7 ms** | coprime-pair product; Möbius hyperbola? |
+| 5 | [`p850.rs`](rust/solutions/src/bin/p850.rs) | **527.7 ms** | **Wave 34** (804.6 → 527.7, **1.525×**); $T_1$/$T_2$ tables + tail fast-path. Still in 500 ms band. |
 | 6 | [`p461.rs`](rust/solutions/src/bin/p461.rs) | **763.1 ms** | Optimized in Wave 27 (1114.1 ms → 763.1 ms); flat f64 pairs + 2-pointer reconstruction. |
 | 7 | [`p910.rs`](rust/solutions/src/bin/p910.rs) | **755.6 ms** | wave1 3.5x still ~7s; streaming tables+rayon already vs C 45-line phi |
 | 8 | [`p797.rs`](rust/solutions/src/bin/p797.rs) | **754.4 ms** | Optimized in Wave 26 (1327.2 ms → 754.4 ms); Montgomery batch inv + L2 chunked sieve. |

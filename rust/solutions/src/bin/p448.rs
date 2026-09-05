@@ -39,14 +39,6 @@ fn sub_mod(a: u64, b: u64) -> u64 {
     if a >= b { a - b } else { a + MOD - b }
 }
 
-/// n(n+1)/2 mod MOD.
-#[inline(always)]
-fn p1(n: u64) -> u64 {
-    let n = n % MOD;
-    let np1 = n + 1;
-    let np1 = if np1 >= MOD { 0 } else { np1 };
-    (n * np1 / 2) % MOD
-}
 
 /// n(n+1)(2n+1)/6 mod MOD.
 #[inline(always)]
@@ -60,107 +52,104 @@ fn p2(n: u64, inv6: u64) -> u64 {
 /// S(x) = sum_{k<=x} k phi(k) from the identity
 /// sum_{d<=x} d S(floor(x/d)) = P2(x).
 fn compute_s(x: u64, limit: u64, small: &[u32], large: &[u64], parent: u64, inv6: u64) -> u64 {
-    let mut f = p2(x, inv6);
-    // Skip d=1 (that term is S(x) itself). prev_p1 = p1(1) = 1.
-    let mut prev_p1 = 1u64;
+    let s = x.isqrt();
+    let mut sum_terms = 0u128;
+
+    // Part 1: l <= s where r == l
     let mut l = 2u64;
-    while l <= x {
+    while l <= s {
         let q = x / l;
-        let r = x / q;
-        let pr1 = p1(r);
-        let sum_d = sub_mod(pr1, prev_p1);
         let sq = if q <= limit {
-            // SAFETY: q <= limit and small.len() == limit+1.
             unsafe { *small.get_unchecked(q as usize) as u64 }
         } else {
-            // SAFETY: q > limit ⇒ parent/q <= parent/(limit+1) = max_i < large.len().
             unsafe { *large.get_unchecked((parent / q) as usize) }
         };
-        f = sub_mod(f, mul_mod(sum_d, sq));
-        prev_p1 = pr1;
-        l = r + 1;
+        sum_terms += (l as u128) * (sq as u128);
+        l += 1;
     }
-    f
+
+    // Part 2: q decreases from x / l down to 1
+    // In this range, q <= s <= limit, so sq ALWAYS comes from small!
+    let mut prev_r = s;
+    let q_start = x / l;
+    for q in (1..=q_start).rev() {
+        let r = x / q;
+        let cur_l = prev_r + 1;
+        if cur_l <= r {
+            let count = r - cur_l + 1;
+            let sum_ends = cur_l + r;
+            let (a, b) = if count % 2 == 0 {
+                (count / 2, sum_ends)
+            } else {
+                (count, sum_ends / 2)
+            };
+            let sum_d = ((a % MOD) * (b % MOD)) % MOD;
+            let sq = unsafe { *small.get_unchecked(q as usize) as u64 };
+            sum_terms += (sum_d as u128) * (sq as u128);
+            prev_r = r;
+        }
+    }
+
+    let total_sub = (sum_terms % (MOD as u128)) as u64;
+    sub_mod(p2(x, inv6), total_sub)
 }
 
 fn main() {
     let inv6 = mod_inv(6, MOD as i64) as u64;
 
-    // Sieve ~ N^{2/3} so Du Jiao work is O(N^{2/3}) rather than O(N^{3/4}).
-    let cbrt_n = {
-        let mut x = (N as f64).cbrt() as u64;
-        while x.saturating_mul(x).saturating_mul(x) > N {
-            x -= 1;
-        }
-        while (x + 1).saturating_mul(x + 1).saturating_mul(x + 1) <= N {
-            x += 1;
-        }
-        x
-    };
-    let limit = (cbrt_n * cbrt_n) as usize;
+    let limit: usize = 35_000_000;
     let limit_u = limit as u64;
 
-    let mut phi = vec![0u32; limit + 1];
-    let mut lp = vec![0u32; limit + 1];
-    let mut primes: Vec<u32> = Vec::with_capacity(limit / 16);
-    phi[1] = 1;
+    // Direct linear sieve of k * phi(k) mod MOD into a single u32 array
+    let mut f = vec![0u32; limit + 1];
+    let mut primes: Vec<u32> = Vec::with_capacity(limit / 14);
+    f[1] = 1;
+    let f_ptr = f.as_mut_ptr();
     for i in 2..=limit {
-        // SAFETY: i <= limit; lp/phi have length limit+1.
-        let lpi = unsafe { *lp.get_unchecked(i) };
-        if lpi == 0 {
-            unsafe {
-                *lp.get_unchecked_mut(i) = i as u32;
-                *phi.get_unchecked_mut(i) = (i - 1) as u32;
-            }
+        let fi = unsafe { *f_ptr.add(i) };
+        if fi == 0 {
+            let i64_val = i as u64;
+            let val = (i64_val * (i64_val - 1) % MOD) as u32;
+            unsafe { *f_ptr.add(i) = val; }
             primes.push(i as u32);
         }
-        let lpi = unsafe { *lp.get_unchecked(i) };
-        let phi_i = unsafe { *phi.get_unchecked(i) };
+        let fi = unsafe { *f_ptr.add(i) } as u64;
         for &p in &primes {
-            let ip = i as u64 * p as u64;
-            if ip > limit_u || p > lpi {
+            let j = i * p as usize;
+            if j > limit {
                 break;
             }
-            let j = ip as usize;
-            // SAFETY: j = i*p <= limit.
-            unsafe {
-                *lp.get_unchecked_mut(j) = p;
-                *phi.get_unchecked_mut(j) = if p == lpi {
-                    phi_i.wrapping_mul(p)
-                } else {
-                    phi_i.wrapping_mul(p - 1)
-                };
-            }
-            if p == lpi {
+            let p64 = p as u64;
+            if i % p as usize == 0 {
+                let p2 = (p64 * p64) % MOD;
+                unsafe { *f_ptr.add(j) = (fi * p2 % MOD) as u32; }
                 break;
+            } else {
+                let fp = unsafe { *f_ptr.add(p as usize) } as u64;
+                unsafe { *f_ptr.add(j) = (fi * fp % MOD) as u32; }
             }
         }
     }
-    drop(lp);
     drop(primes);
 
     let mut acc = 0u64;
     for k in 1..=limit {
-        // SAFETY: 1 <= k <= limit.
-        let ph = unsafe { *phi.get_unchecked(k) } as u64;
-        acc += ph * k as u64;
-        acc %= MOD;
-        unsafe {
-            *phi.get_unchecked_mut(k) = acc as u32;
+        acc += unsafe { *f_ptr.add(k) } as u64;
+        if acc >= MOD {
+            acc -= MOD;
         }
+        unsafe { *f_ptr.add(k) = acc as u32; }
     }
-    let small = phi;
+    let small = f;
 
     let max_i = (N / (limit_u + 1)) as usize;
     let mut large = vec![0u64; max_i + 1];
-    // Increasing floors: i = max_i .. 1 ⇒ x = N/i runs from just above the
-    // sieve through N, so every S(x/d) is already in `small` or `large`.
+    let large_ptr = large.as_mut_ptr();
     for i in (1..=max_i).rev() {
         let x = N / i as u64;
         let val = compute_s(x, limit_u, &small, &large, N, inv6);
-        // SAFETY: i in 1..=max_i.
         unsafe {
-            *large.get_unchecked_mut(i) = val;
+            *large_ptr.add(i) = val;
         }
     }
 
@@ -168,15 +157,14 @@ fn main() {
     let mut ans = 0u64;
     let mut l = 1u64;
     let mut sprev = 0u64;
+    let small_ptr = small.as_ptr();
     while l <= N {
         let q = N / l;
         let r = N / q;
         let sr = if r <= limit_u {
-            // SAFETY: r <= limit.
-            unsafe { *small.get_unchecked(r as usize) as u64 }
+            unsafe { *small_ptr.add(r as usize) as u64 }
         } else {
-            // SAFETY: r > limit ⇒ q = N/l <= N/(limit+1) = max_i.
-            unsafe { *large.get_unchecked(q as usize) }
+            unsafe { *large_ptr.add(q as usize) }
         };
         ans = add_mod(ans, mul_mod(q % MOD, sub_mod(sr, sprev)));
         sprev = sr;

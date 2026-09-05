@@ -12,19 +12,11 @@ fn isqrt(n: u64) -> u64 {
 }
 
 fn icbrt(n: u64) -> u64 {
-    if n == 0 {
-        return 0;
-    }
     let mut x = (n as f64).cbrt() as u64;
-    while x > 0 && x.saturating_mul(x).saturating_mul(x) > n {
+    if (x + 1).saturating_mul(x + 1).saturating_mul(x + 1) <= n {
+        x += 1;
+    } else if x.saturating_mul(x).saturating_mul(x) > n {
         x -= 1;
-    }
-    loop {
-        let nxt = x + 1;
-        match nxt.checked_mul(nxt).and_then(|s| s.checked_mul(nxt)) {
-            Some(c) if c <= n => x = nxt,
-            _ => break,
-        }
     }
     x
 }
@@ -130,27 +122,66 @@ fn d_func(n: u64, small: &[u32]) -> u64 {
 }
 
 /// T(m) = number of ordered triples (a,b,c) with a*b*c <= m
-/// Sequential on purpose: nested par_iter contends with the outer d pool.
+/// Uses the 3-variable Dirichlet hyperbola identity:
+/// T(m) = 3 * sum_{a=1}^K D(m/a) - 3 * sum_{a=1}^K sum_{b=1}^K floor(m/(a*b)) + K^3
+/// where K = floor(m^(1/3)).
 fn t_func(m: u64, small: &[u32]) -> i64 {
     if m == 0 {
         return 0;
     }
-
-    let cbrt_m = icbrt(m);
-    let mut total: u64 = 0;
-    for a in 1..=cbrt_m {
-        total += d_func(m / a, small);
+    let k = icbrt(m);
+    let mut term1: u64 = 0;
+    for a in 1..=k {
+        term1 += d_func(m / a, small);
     }
 
-    let mut a = cbrt_m + 1;
-    while a <= m {
-        let v = m / a;
-        let a_max = m / v;
-        total += d_func(v, small) * (a_max - a + 1);
-        a = a_max + 1;
+    let mut term2_diag = 0u64;
+    for a in 1..=k {
+        term2_diag += m / (a * a);
     }
+    let mut term2_off = 0u64;
+    for a in 1..k {
+        let q = m / a;
+        let b = a + 1;
+        let mut s0 = 0u64;
+        let mut s1 = 0u64;
+        let mut s2 = 0u64;
+        let mut s3 = 0u64;
+        if q <= u32::MAX as u64 {
+            let q32 = q as u32;
+            let mut b32 = b as u32;
+            let k32 = k as u32;
+            while b32 + 3 <= k32 {
+                s0 += (q32 / b32) as u64;
+                s1 += (q32 / (b32 + 1)) as u64;
+                s2 += (q32 / (b32 + 2)) as u64;
+                s3 += (q32 / (b32 + 3)) as u64;
+                b32 += 4;
+            }
+            while b32 <= k32 {
+                s0 += (q32 / b32) as u64;
+                b32 += 1;
+            }
+        } else {
+            let mut b64 = b;
+            while b64 + 3 <= k {
+                s0 += q / b64;
+                s1 += q / (b64 + 1);
+                s2 += q / (b64 + 2);
+                s3 += q / (b64 + 3);
+                b64 += 4;
+            }
+            while b64 <= k {
+                s0 += q / b64;
+                b64 += 1;
+            }
+        }
+        term2_off += s0 + s1 + s2 + s3;
+    }
+    let term2 = term2_diag + 2 * term2_off;
 
-    total as i64
+    let term3 = k * k * k;
+    (3 * term1 - 3 * term2 + term3) as i64
 }
 
 fn main() {

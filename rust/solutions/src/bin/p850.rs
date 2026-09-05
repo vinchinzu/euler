@@ -10,7 +10,6 @@ const SQRT_N_MAX: usize = 5_900_000;
 const SMALL_PRIME_LIMIT: usize = 32_000;
 const SMALL_P2: i64 = (SMALL_PRIME_LIMIT as i64) * (SMALL_PRIME_LIMIT as i64);
 const NUM_K: usize = 22;
-const PAR_D_MAX: i64 = 16;
 const MOD2_I128: i128 = MOD2 as i128;
 
 const SMALL_ODD_KS: [i32; NUM_K] = {
@@ -23,6 +22,36 @@ const SMALL_ODD_KS: [i32; NUM_K] = {
         i += 1;
     }
     a
+};
+
+const T1_TABLE: [[u8; NUM_K]; 48] = {
+    let mut tab = [[0u8; NUM_K]; 48];
+    let mut e = 2;
+    while e < 48 {
+        let mut ki = 0;
+        while ki < NUM_K {
+            let k = SMALL_ODD_KS[ki];
+            tab[e][ki] = (e as i32 - (e as i32 + k - 1) / k) as u8;
+            ki += 1;
+        }
+        e += 1;
+    }
+    tab
+};
+
+const T2_TABLE: [[u8; NUM_K]; 48] = {
+    let mut tab = [[0u8; NUM_K]; 48];
+    let mut e = 2;
+    while e < 48 {
+        let mut ki = 0;
+        while ki < NUM_K {
+            let k = SMALL_ODD_KS[ki];
+            tab[e][ki] = (e as i32 - 1 - (e as i32 + k - 2) / k) as u8;
+            ki += 1;
+        }
+        e += 1;
+    }
+    tab
 };
 
 struct Ctx<'a> {
@@ -77,8 +106,8 @@ fn calc_tail_sum(m: i64, is_prime: &[u8], p_sum: &[i64]) -> i64 {
     let mut res = m;
     let min_p_bound = SMALL_PRIME_LIMIT;
     let mut k = 1i64;
+    let mut upper_p = isqrt(m);
     loop {
-        let upper_p = isqrt(m / k);
         let lower_p = isqrt(m / (k + 1));
         let eff_upper = upper_p as usize;
         let eff_lower = if lower_p as usize > min_p_bound {
@@ -93,9 +122,10 @@ fn calc_tail_sum(m: i64, is_prime: &[u8], p_sum: &[i64]) -> i64 {
             res += term_sum * k;
         }
 
-        if eff_upper <= min_p_bound {
+        if lower_p as usize <= min_p_bound {
             break;
         }
+        upper_p = lower_p;
         k += 1;
     }
 
@@ -123,15 +153,19 @@ fn contribute(
     out_inf: &mut i128,
 ) {
     let m = N_VAL / current_d;
-    let tail = calc_tail_sum(m, ctx.is_prime, ctx.p_sum);
-    let tm = (tail % MOD2) as i128;
+    let tm = if m <= SMALL_P2 {
+        m as i128
+    } else {
+        (calc_tail_sum(m, ctx.is_prime, ctx.p_sum) % MOD2) as i128
+    };
+    let tm_u64 = tm as u64;
     for ki in 0..NUM_K {
-        // SAFETY: ki < NUM_K, arrays have length NUM_K.
         unsafe {
-            *out_k.get_unchecked_mut(ki) += *curr_k.get_unchecked(ki) as i128 * tm;
+            let prod = (*curr_k.get_unchecked(ki) as u64 * tm_u64) as i128;
+            *out_k.get_unchecked_mut(ki) += prod;
         }
     }
-    *out_inf += curr_inf as i128 * tm;
+    *out_inf += (curr_inf as u64 * tm_u64) as i128;
 }
 
 #[inline(always)]
@@ -146,6 +180,8 @@ fn merge_acc(
     }
     *a_inf += b_inf;
 }
+
+const PAR_D_MAX: i64 = 2000;
 
 fn apply_prime(
     i: usize,
@@ -163,23 +199,25 @@ fn apply_prime(
     pows[1] = p;
     let mut pe = p;
     let mut term_inf = p - 1;
-    let mut e = 2i32;
+    let mut e = 2usize;
     loop {
         if p > mlim / pe {
             break;
         }
         pe *= p;
-        let eu = e as usize;
-        pows[eu] = pe;
+        pows[e] = pe;
         let new_d = current_d * pe;
 
         let mut new_k = [0i64; NUM_K];
         for ki in 0..NUM_K {
-            let k = SMALL_ODD_KS[ki];
-            let t1 = (e - (e + k - 1) / k) as usize;
-            let t2 = (e - 1 - (e + k - 2) / k) as usize;
-            let term = pows[t1] - pows[t2];
-            new_k[ki] = (curr_k[ki] * (term % MOD2)) % MOD2;
+            let t1 = T1_TABLE[e][ki] as usize;
+            let t2 = T2_TABLE[e][ki] as usize;
+            if t1 == t2 {
+                new_k[ki] = 0;
+            } else {
+                let term = pows[t1] - pows[t2];
+                new_k[ki] = (curr_k[ki] * (term % MOD2)) % MOD2;
+            }
         }
         let new_inf = (curr_inf * (term_inf % MOD2)) % MOD2;
 
@@ -303,6 +341,7 @@ fn main() {
     let mut total_k = [0i128; NUM_K];
     let mut total_inf = 0i128;
     dfs(0, 1, &init_k, 1, &ctx, &mut total_k, &mut total_inf, true);
+
 
     let mut total_sums_k = [0i64; NUM_K];
     for ki in 0..NUM_K {

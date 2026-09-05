@@ -24,6 +24,20 @@ const MOD: u64 = 715827883;
 const LIMIT: u64 = 1_000_000_000_000;
 const K: usize = 1_000_000;
 
+#[inline(always)]
+unsafe fn sub_mod_slice(ptr: *mut u32, len: usize, sub: u32, m: u32) {
+    if sub == 0 {
+        return;
+    }
+    let diff = m - sub;
+    unsafe {
+        for i in 0..len {
+            let cur = *ptr.add(i);
+            *ptr.add(i) = if cur >= sub { cur - sub } else { cur + diff };
+        }
+    }
+}
+
 fn main() {
     let inv2 = (MOD + 1) / 2;
 
@@ -62,6 +76,8 @@ fn main() {
         s1_large[k] = ((qm * ((qm + 1) % MOD) % MOD * inv2 % MOD + MOD - 1) % MOD) as u32;
         s0_large[k] = ((qm + MOD - 1) % MOD) as u32;
     }
+
+    let mod_u32 = MOD as u32;
 
     // Lucy DP
     for &p_u32 in &primes {
@@ -114,7 +130,6 @@ fn main() {
             let mut k = split_k + 1;
             while k <= mid_k {
                 let v = (m_u32 / k as u32) as usize;
-                // SAFETY: v <= K
                 let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
                 let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
 
@@ -131,33 +146,28 @@ fn main() {
                 k += 1;
             }
 
-            while k <= max_k {
-                let v = (m_u32 / k as u32) as usize;
-                let k_last = (m_u32 / v as u32) as usize;
-                let k_end = k_last.min(max_k);
+            if k <= max_k {
+                let v_start = (m_u32 / k as u32) as usize;
+                let v_end = ((m_u32 / max_k as u32) as usize).max(1);
+                for v in (v_end..=v_start).rev() {
+                    let k_end = ((m_u32 / v as u32) as usize).min(max_k);
+                    if k > k_end {
+                        continue;
+                    }
+                    let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                    let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
 
-                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
-                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+                    let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                    let prod = (pm * sub1 % MOD) as u32;
+                    let sub0 = if idx_s0 >= s0_pm1 { (idx_s0 - s0_pm1) as u32 } else { (idx_s0 + MOD - s0_pm1) as u32 };
 
-                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
-                let prod = pm * sub1 % MOD;
-                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
-
-                let prod_u32 = prod as u32;
-                let sub0_u32 = sub0 as u32;
-                let mod_u32 = MOD as u32;
-
-                for ki in k..=k_end {
-                    let cur_s1 = unsafe { *s1_l_ptr.add(ki) };
-                    let new_s1 = if cur_s1 >= prod_u32 { cur_s1 - prod_u32 } else { cur_s1 + mod_u32 - prod_u32 };
-                    unsafe { *s1_l_ptr.add(ki) = new_s1; }
-
-                    let cur_s0 = unsafe { *s0_l_ptr.add(ki) };
-                    let new_s0 = if cur_s0 >= sub0_u32 { cur_s0 - sub0_u32 } else { cur_s0 + mod_u32 - sub0_u32 };
-                    unsafe { *s0_l_ptr.add(ki) = new_s0; }
+                    let len = k_end - k + 1;
+                    unsafe {
+                        sub_mod_slice(s1_l_ptr.add(k), len, prod, mod_u32);
+                        sub_mod_slice(s0_l_ptr.add(k), len, sub0, mod_u32);
+                    }
+                    k = k_end + 1;
                 }
-
-                k = k_end + 1;
             }
         } else {
             let isqrt_m = (lim_div_p as f64).sqrt() as usize;
@@ -166,7 +176,6 @@ fn main() {
             let mut k = split_k + 1;
             while k <= mid_k {
                 let v = (lim_div_p / k as u64) as usize;
-                // SAFETY: v <= K
                 let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
                 let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
 
@@ -183,53 +192,51 @@ fn main() {
                 k += 1;
             }
 
-            while k <= max_k {
-                let v = (lim_div_p / k as u64) as usize;
-                let k_last = (lim_div_p / v as u64) as usize;
-                let k_end = k_last.min(max_k);
+            if k <= max_k {
+                let v_start = (lim_div_p / k as u64) as usize;
+                let v_end = ((lim_div_p / max_k as u64) as usize).max(1);
+                for v in (v_end..=v_start).rev() {
+                    let k_end = ((lim_div_p / v as u64) as usize).min(max_k);
+                    if k > k_end {
+                        continue;
+                    }
+                    let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
+                    let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
 
-                let idx_s1 = unsafe { *s1_s_ptr.add(v) } as u64;
-                let idx_s0 = unsafe { *s0_s_ptr.add(v) } as u64;
+                    let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
+                    let prod = (pm * sub1 % MOD) as u32;
+                    let sub0 = if idx_s0 >= s0_pm1 { (idx_s0 - s0_pm1) as u32 } else { (idx_s0 + MOD - s0_pm1) as u32 };
 
-                let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
-                let prod = pm * sub1 % MOD;
-                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
-
-                let prod_u32 = prod as u32;
-                let sub0_u32 = sub0 as u32;
-                let mod_u32 = MOD as u32;
-
-                for ki in k..=k_end {
-                    let cur_s1 = unsafe { *s1_l_ptr.add(ki) };
-                    let new_s1 = if cur_s1 >= prod_u32 { cur_s1 - prod_u32 } else { cur_s1 + mod_u32 - prod_u32 };
-                    unsafe { *s1_l_ptr.add(ki) = new_s1; }
-
-                    let cur_s0 = unsafe { *s0_l_ptr.add(ki) };
-                    let new_s0 = if cur_s0 >= sub0_u32 { cur_s0 - sub0_u32 } else { cur_s0 + mod_u32 - sub0_u32 };
-                    unsafe { *s0_l_ptr.add(ki) = new_s0; }
+                    let len = k_end - k + 1;
+                    unsafe {
+                        sub_mod_slice(s1_l_ptr.add(k), len, prod, mod_u32);
+                        sub_mod_slice(s0_l_ptr.add(k), len, sub0, mod_u32);
+                    }
+                    k = k_end + 1;
                 }
-
-                k = k_end + 1;
             }
         }
 
         if p2 <= K as u64 {
-            let p2_u = p2 as usize;
-            for v in (p2_u..=K).rev() {
-                let qp = v / p_u;
-                let idx_s1 = unsafe { *s1_small.get_unchecked(qp) } as u64;
-                let idx_s0 = unsafe { *s0_small.get_unchecked(qp) } as u64;
+            let max_qp = K / p_u;
+            let min_qp = p_u;
+            let s1_ptr = s1_small.as_mut_ptr();
+            let s0_ptr = s0_small.as_mut_ptr();
+            for qp in (min_qp..=max_qp).rev() {
+                let idx_s1 = unsafe { *s1_ptr.add(qp) } as u64;
+                let idx_s0 = unsafe { *s0_ptr.add(qp) } as u64;
 
                 let sub1 = if idx_s1 >= s1_pm1 { idx_s1 - s1_pm1 } else { idx_s1 + MOD - s1_pm1 };
-                let prod = pm * sub1 % MOD;
-                let cur_s1 = unsafe { *s1_small.get_unchecked(v) } as u64;
-                let new_s1 = if cur_s1 >= prod { cur_s1 - prod } else { cur_s1 + MOD - prod };
-                unsafe { *s1_small.get_unchecked_mut(v) = new_s1 as u32; }
+                let prod = (pm * sub1 % MOD) as u32;
+                let sub0 = if idx_s0 >= s0_pm1 { (idx_s0 - s0_pm1) as u32 } else { (idx_s0 + MOD - s0_pm1) as u32 };
 
-                let sub0 = if idx_s0 >= s0_pm1 { idx_s0 - s0_pm1 } else { idx_s0 + MOD - s0_pm1 };
-                let cur_s0 = unsafe { *s0_small.get_unchecked(v) } as u64;
-                let new_s0 = if cur_s0 >= sub0 { cur_s0 - sub0 } else { cur_s0 + MOD - sub0 };
-                unsafe { *s0_small.get_unchecked_mut(v) = new_s0 as u32; }
+                let start = qp * p_u;
+                let end = (start + p_u - 1).min(K);
+                let len = end - start + 1;
+                unsafe {
+                    sub_mod_slice(s1_ptr.add(start), len, prod, mod_u32);
+                    sub_mod_slice(s0_ptr.add(start), len, sub0, mod_u32);
+                }
             }
         }
     }

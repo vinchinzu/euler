@@ -1,10 +1,54 @@
 # Optimization Applied Summary
 
-Updated: 2026-09-03 (Wave 25 batch: p433, p953, p870, p994, p468, p505, p989)
+Updated: 2026-09-04 (Wave 34 Batch C: p850, p829, p962, p861, p245; p636 rejected)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
 `optimization_status.md` is the 5900XT re-time **before** waves 4–7. Remaining counts after wave 7 are in this file.
+
+## Wave 34 Batch C — Parallel DFS / factor trees (agy `--print`)
+
+Worktree `agy/batch-c-dfs`. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **5/6 accepted**; p636 rejected (0.997× noise). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p962 | 410.0 | 106.9 | 3.835× | binary tzcnt gcd; skip $t\equiv 2\pmod 4$; algebraic $q$ bounds skip $t$ factorization |
+| p850 | 804.6 | 527.7 | 1.525× | precomputed $T_1$/$T_2$ tables; fast-path `contribute` $m\le\mathrm{SMALL\_P2}$; reuse `lower_p` |
+| p245 | 261.3 | 225.9 | 1.157× | CSR `pf_data` (drop 447k `Vec`s); stack divisors; `Copy` Factors in DFS |
+| p861 | 282.9 | 264.2 | 1.071× | hardware isqrt; nested `par_iter` on fat permutation roots |
+| p829 | 574.0 | 544.3 | 1.054× | `u64::isqrt`; CacheOA $2^{21}\to 2^{18}$; LPT reverse outer $n$ |
+| p636 | 265.6 | 266.4 | 0.997× | **REJECT** TLS DP pool + LPT; smoke 195 ms did not hold |
+
+Wave 34 Batch C net: **~0.66 s**. Rejected: p636.
+
+## Wave 33 Batch A — Lucy / Dirichlet (agy `--print`)
+
+Worktree `agy/batch-a-lucy`. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **6/6 accepted**, all stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p338 | 535.6 | 34.7 | 15.431× | 3D Dirichlet hyperbola `num_triplets_mod`; unrolled floor-sum; drop i128 |
+| p501 | 616.8 | 155.5 | 3.968× | prime-only Lucy fill; quotient blocks; vectorized slice sub |
+| p379 | 904.1 | 401.3 | 2.253× | `t_func` 3D hyperbola $K=m^{1/3}$; 32-bit div |
+| p931 | 736.0 | 333.6 | 2.206× | block-step small sieve; `sub_mod_slice`; hoist `s_main` div |
+| p448 | 649.6 | 366.5 | 1.772× | u32 $k\phi(k)$ sieve; fewer Du Jiao fills; deferred u128 |
+| p611 | 665.8 | 517.6 | 1.286× | reuse $N/p$; cache $p\bmod 4$; flatten DFS frames |
+
+Wave 33 Batch A net: **~2.30 s**. p379 (missed ≥1s leftover) now 401 ms.
+
+## Wave 33 Batch B — Möbius lattice (worktree subagent)
+
+Worktree-isolated subagent. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`). **5/5 changed accepted**; p464 and p478 skipped (already-opt).
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p854 | 444.8 | 207.1 | 2.147× | Vec period table (drop HashMap); rayon z(p) |
+| p797 | 553.5 | 288.4 | 1.919× | doubling-wave parallel F-sieve; deferred i128 sum |
+| p735 | 744.7 | 390.4 | 1.908× | fused lattice inner passes; integer isqrt |
+| p632 | 670.7 | 465.8 | 1.440× | segmented ω/sqfree sieve; drop 200MB SPF |
+| p786 | 754.6 | 693.9 | 1.088× | segmented μ + fused lattice; smoke 195ms did not hold |
+
+Wave 33 Batch B net: **~1.12 s**. Skipped: p464, p478.
 
 ## 2026-08-22 re-time (this machine)
 

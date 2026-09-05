@@ -314,3 +314,20 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 482,753.9,164.2,78.22,True,True,"Replaced fragmented ~1,000,000-vector tri_map with flat Compressed Sparse Row (CSR: offsets, data); eliminated 100,000 heap-allocated divisor vectors with on-the-fly stack buffer [u32; 256]; parallel fold/reduce candidate collection; in-place sort/dedup; hardware isqrt() speedup=4.592x"
 521,850.1,331.7,60.98,True,True,"Compacted modulo arrays from i64 to u32 (saving 16 MB DRAM); structured small into a cache-friendly packed SmallVal { cnt, sum }; replaced 140M-division inner loop with piecewise-constant quotient block stepping; raw pointer streaming arithmetic speedup=2.563x"
 459,900.1,599.8,33.36,True,True,"Epoch-tracking (used[v] = current_j) in 1D game mex calculation eliminating repeated zero-clearing of 512-element table across 1,000,000 iterations; capped mex tracking to observed maximum (263) speedup=1.501x"
+338,535.6,34.7,93.52,True,True,speedup=15.431x
+501,616.8,155.5,74.79,True,True,speedup=3.968x
+448,649.6,366.5,43.58,True,True,speedup=1.772x
+931,736.0,333.6,54.67,True,True,speedup=2.206x
+611,665.8,517.6,22.26,True,True,speedup=1.286x
+379,904.1,401.3,55.61,True,True,speedup=2.253x
+786,754.6,693.9,8.04,True,True,speedup=1.088x
+854,444.8,207.1,53.44,True,True,speedup=2.147x
+632,670.7,465.8,30.55,True,True,speedup=1.440x
+797,553.5,288.4,47.9,True,True,speedup=1.919x
+735,744.7,390.4,47.58,True,True,speedup=1.908x
+850,804.6,527.7,34.41,True,True,Precomputed T1/T2 exponent tables; fast-path contribute m<=SMALL_P2; reuse lower_p as upper_p in calc_tail_sum speedup=1.525x
+829,574.0,544.3,5.17,True,True,u64::isqrt; CacheOA 2^21->2^18 (24MB->3MB); LPT reverse outer n=31..2 speedup=1.054x
+962,410.0,106.9,73.93,True,True,binary tzcnt gcd; skip t==2 mod 4; algebraic q bounds skip t factorization speedup=3.835x
+861,282.9,264.2,6.61,True,True,hardware isqrt in PrimePi/integer_root; nested par_iter fat permutation roots speedup=1.071x
+636,265.6,266.4,-0.3,False,True,TLS DP buffer pool + LPT root children; smoke 195ms did not hold (noise) speedup=0.997x
+245,261.3,225.9,13.55,True,True,CSR pf_data replacing 447k Vecs; stack divisor buffer; Copy Factors in DFS speedup=1.157x

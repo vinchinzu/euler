@@ -1,111 +1,155 @@
 // Project Euler 735 - Divisors of 2n^2
 //
 // Mobius function sieve + counting lattice points.
-// All work is flattened into fine-grained chunks and processed in one rayon pool.
+// Loops 0+1+3+4 share outer x and isqrt(n/x); loops 2+5 share outer z.
+// Each pair/group is fused so the inner division runs once.
 
 use rayon::prelude::*;
 
 #[inline(always)]
-fn isq(n: i64) -> i64 { n * n }
+fn isq(n: i64) -> i64 {
+    n * n
+}
 #[inline(always)]
-fn icb(n: i64) -> i64 { n * n * n }
+fn icb(n: i64) -> i64 {
+    n * n * n
+}
 
 #[inline(always)]
 fn isqrt_f(n: i64) -> i64 {
     if n <= 0 {
-        return 0;
+        0
+    } else {
+        (n as u64).isqrt() as i64
     }
-    // f64 sqrt is exact for integers up to 2^53; big_n=1e12 so n/x fits.
-    let mut sq = (n as f64).sqrt() as i64;
-    // Single adjust is almost always enough; keep safety loops cheap.
-    if sq * sq > n {
-        sq -= 1;
-    } else if (sq + 1) * (sq + 1) <= n {
-        sq += 1;
-    }
-    sq
 }
 
 fn cbrt_f(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
     let mut c = (n as f64).cbrt() as i64;
-    if c < 0 { c = 0; }
-    while icb(c + 1) <= n { c += 1; }
-    while icb(c) > n { c -= 1; }
+    if c < 0 {
+        c = 0;
+    }
+    while icb(c + 1) <= n {
+        c += 1;
+    }
+    while icb(c) > n {
+        c -= 1;
+    }
     c
 }
 
-// Fused sub-loops: share isqrt_f(n/x) across related inner passes.
+/// Fused loops 0,1,3,4 over y in [y_lo, y_hi).
+/// 0: n/(x y) - y
+/// 1: n/(x y) - (y-1)
+/// 3: n/(x y) - y          if y >= 2x+1
+/// 4: n/(x y) - max(2x, y-1) if y <= n/(2 x^2)
+#[inline(always)]
+fn fused_x_range(n_val: i64, x: i64, y_lo: i64, y_hi: i64) -> i64 {
+    if y_lo >= y_hi {
+        return 0;
+    }
+    let two_x = 2 * x;
+    let z4 = n_val / (2 * isq(x));
+    let split_3 = two_x + 1; // loop 3 starts
+    let split_4 = z4 + 1; // loop 4 ends (exclusive)
+
+    let mut r = 0i64;
+    let mut y = y_lo;
+
+    // y < 2x+1 and y <= z4: loops 0+1+4 → 3q - 2y + 1 - 2x
+    let e = y_hi.min(split_3).min(split_4);
+    while y < e {
+        let q = n_val / (x * y);
+        r += 3 * q - 2 * y + 1 - two_x;
+        y += 1;
+    }
+    // y < 2x+1 and y > z4: loops 0+1 → 2q - 2y + 1
+    let e = y_hi.min(split_3);
+    while y < e {
+        let q = n_val / (x * y);
+        r += 2 * q - 2 * y + 1;
+        y += 1;
+    }
+    // y >= 2x+1 and y <= z4: loops 0+1+3+4 → 4q - 4y + 2
+    let e = y_hi.min(split_4);
+    while y < e {
+        let q = n_val / (x * y);
+        r += 4 * q - 4 * y + 2;
+        y += 1;
+    }
+    // y >= 2x+1 and y > z4: loops 0+1+3 → 3q - 3y + 1
+    while y < y_hi {
+        let q = n_val / (x * y);
+        r += 3 * q - 3 * y + 1;
+        y += 1;
+    }
+    r
+}
+
+/// Fused loops 2+5 over x in [x_lo, x_hi).
+/// 2: n/(x z) - x
+/// 5: n/(x z) - 2x  if x <= sqrt(n/(2z))
+#[inline(always)]
+fn fused_z_range(n_val: i64, z: i64, x_lo: i64, x_hi: i64) -> i64 {
+    if x_lo >= x_hi {
+        return 0;
+    }
+    let x_max5 = isqrt_f(n_val / (2 * z));
+    let mut r = 0i64;
+    let mut x = x_lo;
+    let e = x_hi.min(x_max5 + 1);
+    while x < e {
+        let q = n_val / (x * z);
+        r += 2 * q - 3 * x;
+        x += 1;
+    }
+    while x < x_hi {
+        let q = n_val / (x * z);
+        r += q - x;
+        x += 1;
+    }
+    r
+}
+
 fn compute_inner(n_val: i64) -> i64 {
     let mut res: i64 = 0;
     let cbrt_n = cbrt_f(n_val);
 
-    // Loops 0+1+3+4 share outer x and isqrt(n/x)
     for x in 1..=cbrt_n {
         let sq_nox = isqrt_f(n_val / x);
-        // loop 0: y in (x+1)..sq
-        let mut y = x + 1;
-        while y <= sq_nox {
-            res += n_val / (x * y) - y;
-            y += 1;
-        }
-        // loop 1: z in (x+1)..sq → n/(x*z) - (z-1)
-        let mut z = x + 1;
-        while z <= sq_nox {
-            res += n_val / (x * z) - (z - 1);
-            z += 1;
-        }
-        // loop 3: y in (2x+1)..sq
-        y = 2 * x + 1;
-        while y <= sq_nox {
-            res += n_val / (x * y) - y;
-            y += 1;
-        }
-        // loop 4: z in (x+1)..min(sq, n/(2x^2))
-        let z_max_cap = n_val / (2 * isq(x));
-        let hi = sq_nox.min(z_max_cap);
-        z = x + 1;
-        while z <= hi {
-            res += n_val / (x * z) - (2 * x).max(z - 1);
-            z += 1;
+        let lo = x + 1;
+        if lo <= sq_nox {
+            res += fused_x_range(n_val, x, lo, sq_nox + 1);
         }
     }
 
-    // Loops 2+5 share outer z
     for z in 1..=cbrt_n {
         let sq_noz = isqrt_f(n_val / z);
-        // loop 2: x in z..sq
-        let mut x = z;
-        while x <= sq_noz {
-            res += n_val / (x * z) - x;
-            x += 1;
-        }
-        // loop 5: x in z..sqrt(n/(2z))
-        let x_max = isqrt_f(n_val / (2 * z));
-        x = z;
-        while x <= x_max {
-            res += n_val / (x * z) - 2 * x;
-            x += 1;
+        if z <= sq_noz {
+            res += fused_z_range(n_val, z, z, sq_noz + 1);
         }
     }
     res
 }
 
-// Work unit: (sign: i8, loop_id: u8, n_val: i64, outer: i64, inner_lo: i64, inner_hi: i64)
-// loop_id 255 = run compute_inner on n_val (outer/inner_lo/inner_hi unused)
+// Work unit: (sign, loop_id, n_val, outer, inner_lo, inner_hi)
+// loop_id 0 = fused x-outer, 2 = fused z-outer, 255 = compute_inner
 type WorkUnit = (i8, u8, i64, i64, i64, i64);
 
-// Larger chunks reduce rayon scheduling overhead; 50k keeps units ~ms-scale.
 const CHUNK: i64 = 50_000;
 
 fn build_sub_loop_units(sign: i8, n_val: i64, work: &mut Vec<WorkUnit>) {
     let cbrt_n = cbrt_f(n_val);
 
-    // Sub-loop 0: outer=x, inner=y in (x+1)..sqrt(n/x)
     for x in 1..=cbrt_n {
         let sq = isqrt_f(n_val / x);
         let lo = x + 1;
-        if lo > sq { continue; }
+        if lo > sq {
+            continue;
+        }
         let mut y_lo = lo;
         while y_lo <= sq {
             let y_hi = (y_lo + CHUNK).min(sq + 1);
@@ -114,23 +158,11 @@ fn build_sub_loop_units(sign: i8, n_val: i64, work: &mut Vec<WorkUnit>) {
         }
     }
 
-    // Sub-loop 1: outer=x, inner=z in (x+1)..sqrt(n/x)
-    for x in 1..=cbrt_n {
-        let sq = isqrt_f(n_val / x);
-        let lo = x + 1;
-        if lo > sq { continue; }
-        let mut z_lo = lo;
-        while z_lo <= sq {
-            let z_hi = (z_lo + CHUNK).min(sq + 1);
-            work.push((sign, 1, n_val, x, z_lo, z_hi));
-            z_lo = z_hi;
-        }
-    }
-
-    // Sub-loop 2: outer=z, inner=x in z..sqrt(n/z)
     for z in 1..=cbrt_n {
         let sq = isqrt_f(n_val / z);
-        if z > sq { continue; }
+        if z > sq {
+            continue;
+        }
         let mut x_lo = z;
         while x_lo <= sq {
             let x_hi = (x_lo + CHUNK).min(sq + 1);
@@ -138,83 +170,38 @@ fn build_sub_loop_units(sign: i8, n_val: i64, work: &mut Vec<WorkUnit>) {
             x_lo = x_hi;
         }
     }
-
-    // Sub-loop 3: outer=x, inner=y in (2x+1)..sqrt(n/x)
-    for x in 1..=cbrt_n {
-        let sq = isqrt_f(n_val / x);
-        let lo = 2 * x + 1;
-        if lo > sq { continue; }
-        let mut y_lo = lo;
-        while y_lo <= sq {
-            let y_hi = (y_lo + CHUNK).min(sq + 1);
-            work.push((sign, 3, n_val, x, y_lo, y_hi));
-            y_lo = y_hi;
-        }
-    }
-
-    // Sub-loop 4: outer=x, inner=z in (x+1)..min(sqrt(n/x), n/(2x^2))
-    for x in 1..=cbrt_n {
-        let sq = isqrt_f(n_val / x);
-        let z_max_cap = n_val / (2 * isq(x));
-        let hi_bound = sq.min(z_max_cap);
-        let lo = x + 1;
-        if lo > hi_bound { continue; }
-        let mut z_lo = lo;
-        while z_lo <= hi_bound {
-            let z_hi = (z_lo + CHUNK).min(hi_bound + 1);
-            work.push((sign, 4, n_val, x, z_lo, z_hi));
-            z_lo = z_hi;
-        }
-    }
-
-    // Sub-loop 5: outer=z, inner=x in z..sqrt(n/(2z))
-    for z in 1..=cbrt_n {
-        let x_max = isqrt_f(n_val / (2 * z));
-        if z > x_max { continue; }
-        let mut x_lo = z;
-        while x_lo <= x_max {
-            let x_hi = (x_lo + CHUNK).min(x_max + 1);
-            work.push((sign, 5, n_val, z, x_lo, x_hi));
-            x_lo = x_hi;
-        }
-    }
 }
 
 fn exec_work_unit(wu: &WorkUnit) -> i64 {
     let &(sign, loop_id, n_val, outer, lo, hi) = wu;
-    if loop_id == 255 {
-        return sign as i64 * compute_inner(n_val);
-    }
-    let mut r = 0i64;
-    match loop_id {
-        0 => { let x = outer; let mut y = lo; while y < hi { r += n_val / (x * y) - y; y += 1; } }
-        1 => { let x = outer; let mut z = lo; while z < hi { r += n_val / (x * z) - (z - 1); z += 1; } }
-        2 => { let z = outer; let mut x = lo; while x < hi { r += n_val / (x * z) - x; x += 1; } }
-        3 => { let x = outer; let mut y = lo; while y < hi { r += n_val / (x * y) - y; y += 1; } }
-        4 => { let x = outer; let mut z = lo; while z < hi { if 2 * z * isq(x) > n_val { break; } r += n_val / (x * z) - (2 * x).max(z - 1); z += 1; } }
-        5 => { let z = outer; let mut x = lo; while x < hi { if 2 * z * isq(x) > n_val { break; } r += n_val / (x * z) - 2 * x; x += 1; } }
-        _ => {}
-    }
+    let r = match loop_id {
+        255 => compute_inner(n_val),
+        0 => fused_x_range(n_val, outer, lo, hi),
+        2 => fused_z_range(n_val, outer, lo, hi),
+        _ => 0,
+    };
     sign as i64 * r
 }
 
 fn main() {
     let big_n: i64 = 1_000_000_000_000;
-    let mut l = (big_n as f64).sqrt() as i64;
-    if l * l > big_n { l -= 1; }
-    while (l + 1) * (l + 1) <= big_n { l += 1; }
+    let l = isqrt_f(big_n);
 
     // Sieve Mobius
     let lim = l as usize;
     let mut mobius = vec![1i32; lim + 1];
     let mut is_prime = vec![true; lim + 1];
     is_prime[0] = false;
-    if lim >= 1 { is_prime[1] = false; }
+    if lim >= 1 {
+        is_prime[1] = false;
+    }
 
     for i in 2..=lim {
         if is_prime[i] {
             for j in (i..=lim).step_by(i) {
-                if j != i { is_prime[j] = false; }
+                if j != i {
+                    is_prime[j] = false;
+                }
                 mobius[j] *= -1;
             }
             let sq = i as u64 * i as u64;
@@ -228,21 +215,26 @@ fn main() {
         }
     }
 
-    // Split threshold for fine-grained parallelism
-    let split_threshold: i64 = 10_000_000; // 10^7
+    let split_threshold: i64 = 10_000_000;
 
-    // Build all work units
-    let mut work: Vec<WorkUnit> = Vec::new();
+    let mut work: Vec<WorkUnit> = Vec::with_capacity(1 << 20);
 
     for g in 1..=lim {
-        if mobius[g] == 0 { continue; }
+        if mobius[g] == 0 {
+            continue;
+        }
         let g_sq = isq(g as i64);
-        if g_sq >= big_n { break; }
+        if g_sq >= big_n {
+            break;
+        }
         let sign: i8 = if mobius[g] > 0 { 1 } else { -1 };
         let mut t = 0u32;
         while g_sq <= (big_n >> t) {
             let n_val = (big_n / g_sq) >> t;
-            if n_val < 1 { t += 1; continue; }
+            if n_val < 1 {
+                t += 1;
+                continue;
+            }
 
             let parity: i8 = if t % 2 == 0 { 1 } else { -1 };
             let combined_sign: i8 = sign * parity;

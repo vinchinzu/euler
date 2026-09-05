@@ -5711,5 +5711,379 @@
     "notes": "Epoch-tracking (used[v] = current_j) in 1D game mex calculation eliminating repeated zero-clearing of 512-element table across 1,000,000 iterations; capped mex tracking to observed maximum (263)",
     "method": "ab_bench warmup=2 runs=5",
     "accepted": true
+  },
+  {
+    "problem": 338,
+    "baseline_median_ms": 535.6,
+    "candidate_median_ms": 34.7,
+    "speedup": 15.431,
+    "correct": true,
+    "baseline_times": [
+      535.6,
+      531.2,
+      536.6
+    ],
+    "candidate_times": [
+      35.3,
+      34.7,
+      34.4
+    ],
+    "notes": "3D Dirichlet hyperbola identity for num_triplets_mod (K=cbrt(n)); unrolled 4-accumulator sum_floor_quotients; drop inner %M and i128 (M^2<2^63)",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=15.431x"
+  },
+  {
+    "problem": 501,
+    "baseline_median_ms": 616.8,
+    "candidate_median_ms": 155.5,
+    "speedup": 3.968,
+    "correct": true,
+    "baseline_times": [
+      616.8,
+      617.1,
+      613.1
+    ],
+    "candidate_times": [
+      152.3,
+      157.1,
+      155.5
+    ],
+    "notes": "Pre-sieve primes to sqrt(N); quotient-block Lucy fill; vectorized slice subtractions; 32-bit div when N/p fits u32",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.968x"
+  },
+  {
+    "problem": 448,
+    "baseline_median_ms": 649.6,
+    "candidate_median_ms": 366.5,
+    "speedup": 1.772,
+    "correct": true,
+    "baseline_times": [
+      655.5,
+      623.5,
+      649.6
+    ],
+    "candidate_times": [
+      364.3,
+      367.7,
+      366.5
+    ],
+    "notes": "Single u32 linear sieve of k*phi(k) mod MOD (drop 86MB lp); higher sieve limit; compute_s quotient blocks + u128 deferred reduction",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.772x"
+  },
+  {
+    "problem": 931,
+    "baseline_median_ms": 736.0,
+    "candidate_median_ms": 333.6,
+    "speedup": 2.206,
+    "correct": true,
+    "baseline_times": [
+      736.0,
+      733.8,
+      740.8
+    ],
+    "candidate_times": [
+      333.2,
+      337.1,
+      333.6
+    ],
+    "notes": "Block-step small Lucy sieve; contiguous sub_mod_slice large updates; drop duplicate 64-bit div in s_main",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.206x"
+  },
+  {
+    "problem": 611,
+    "baseline_median_ms": 665.8,
+    "candidate_median_ms": 517.6,
+    "speedup": 1.286,
+    "correct": true,
+    "baseline_times": [
+      674.1,
+      665.8,
+      657.8
+    ],
+    "candidate_times": [
+      517.6,
+      517.0,
+      548.5
+    ],
+    "notes": "Reuse N/p instead of N/p^2; cache p%4; flatten top-level prime-power DFS frames before rayon",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.286x"
+  },
+  {
+    "problem": 379,
+    "baseline_median_ms": 904.1,
+    "candidate_median_ms": 401.3,
+    "speedup": 2.253,
+    "correct": true,
+    "baseline_times": [
+      911.8,
+      904.1,
+      903.8
+    ],
+    "candidate_times": [
+      401.3,
+      396.4,
+      404.7
+    ],
+    "notes": "t_func via 3D Dirichlet hyperbola K=m^{1/3}; symmetric term2 fold; 32-bit division when q fits u32",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.253x"
+  },
+  {
+    "problem": 786,
+    "baseline_median_ms": 754.6,
+    "candidate_median_ms": 693.9,
+    "speedup": 1.088,
+    "correct": true,
+    "baseline_times": [
+      747.2,
+      770.5,
+      754.6
+    ],
+    "candidate_times": [
+      703.6,
+      678.6,
+      693.9
+    ],
+    "notes": "Segmented parallel mu + fused lattice_count_3/9; drop 187.5M mu array. Smoke 195ms did not hold under A/B (694ms) but still +8.8%.",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.088x"
+  },
+  {
+    "problem": 854,
+    "baseline_median_ms": 444.8,
+    "candidate_median_ms": 207.1,
+    "speedup": 2.147,
+    "correct": true,
+    "baseline_times": [
+      444.8,
+      440.7,
+      447.9
+    ],
+    "candidate_times": [
+      206.5,
+      207.1,
+      217.4
+    ],
+    "notes": "Vec period table replacing HashMap; rayon independent z(p) ranks",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.147x"
+  },
+  {
+    "problem": 632,
+    "baseline_median_ms": 670.7,
+    "candidate_median_ms": 465.8,
+    "speedup": 1.44,
+    "correct": true,
+    "baseline_times": [
+      670.7,
+      733.4,
+      585.5
+    ],
+    "candidate_times": [
+      446.1,
+      466.4,
+      465.8
+    ],
+    "notes": "Segmented parallel omega/sqfree sieve; drop 200MB u16 SPF; max_k=8; u64 product",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.440x"
+  },
+  {
+    "problem": 797,
+    "baseline_median_ms": 553.5,
+    "candidate_median_ms": 288.4,
+    "speedup": 1.919,
+    "correct": true,
+    "baseline_times": [
+      626.6,
+      520.1,
+      553.5
+    ],
+    "candidate_times": [
+      288.4,
+      271.0,
+      301.6
+    ],
+    "notes": "Doubling-wave parallel F-sieve after 256 bootstrap; batch invert per wave; deferred i128 Mertens*G sum",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.919x"
+  },
+  {
+    "problem": 735,
+    "baseline_median_ms": 744.7,
+    "candidate_median_ms": 390.4,
+    "speedup": 1.908,
+    "correct": true,
+    "baseline_times": [
+      744.7,
+      736.0,
+      783.2
+    ],
+    "candidate_times": [
+      350.8,
+      399.3,
+      390.4
+    ],
+    "notes": "Fused lattice loops 0+1+3+4 and 2+5 sharing n/(xy) and n/(xz); integer isqrt",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.908x"
+  },
+  {
+    "problem": 850,
+    "baseline_median_ms": 804.6,
+    "candidate_median_ms": 527.7,
+    "speedup": 1.525,
+    "correct": true,
+    "baseline_times": [
+      804.3,
+      804.6,
+      806.5
+    ],
+    "candidate_times": [
+      528.6,
+      526.5,
+      527.7
+    ],
+    "notes": "Precomputed T1/T2 exponent tables; fast-path contribute m<=SMALL_P2; reuse lower_p as upper_p in calc_tail_sum",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.525x"
+  },
+  {
+    "problem": 829,
+    "baseline_median_ms": 574.0,
+    "candidate_median_ms": 544.3,
+    "speedup": 1.054,
+    "correct": true,
+    "baseline_times": [
+      573.0,
+      609.7,
+      574.0
+    ],
+    "candidate_times": [
+      544.3,
+      531.0,
+      546.8
+    ],
+    "notes": "u64::isqrt; CacheOA 2^21->2^18 (24MB->3MB); LPT reverse outer n=31..2",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.054x"
+  },
+  {
+    "problem": 962,
+    "baseline_median_ms": 410.0,
+    "candidate_median_ms": 106.9,
+    "speedup": 3.835,
+    "correct": true,
+    "baseline_times": [
+      408.3,
+      410.0,
+      441.9
+    ],
+    "candidate_times": [
+      106.9,
+      107.1,
+      103.6
+    ],
+    "notes": "binary tzcnt gcd; skip t==2 mod 4; algebraic q bounds skip t factorization",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.835x"
+  },
+  {
+    "problem": 861,
+    "baseline_median_ms": 282.9,
+    "candidate_median_ms": 264.2,
+    "speedup": 1.071,
+    "correct": true,
+    "baseline_times": [
+      282.9,
+      283.1,
+      279.2
+    ],
+    "candidate_times": [
+      263.0,
+      265.6,
+      264.2
+    ],
+    "notes": "hardware isqrt in PrimePi/integer_root; nested par_iter fat permutation roots",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.071x"
+  },
+  {
+    "problem": 636,
+    "baseline_median_ms": 265.6,
+    "candidate_median_ms": 266.4,
+    "speedup": 0.997,
+    "correct": true,
+    "baseline_times": [
+      262.8,
+      265.6,
+      268.7
+    ],
+    "candidate_times": [
+      266.4,
+      279.6,
+      261.1
+    ],
+    "notes": "TLS DP buffer pool + LPT root children; smoke 195ms did not hold (noise)",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false,
+    "decision": "REJECT",
+    "reason": "speedup=0.997x"
+  },
+  {
+    "problem": 245,
+    "baseline_median_ms": 261.3,
+    "candidate_median_ms": 225.9,
+    "speedup": 1.157,
+    "correct": true,
+    "baseline_times": [
+      261.3,
+      255.9,
+      269.4
+    ],
+    "candidate_times": [
+      223.1,
+      225.9,
+      237.0
+    ],
+    "notes": "CSR pf_data replacing 447k Vecs; stack divisor buffer; Copy Factors in DFS",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.157x"
   }
 ]

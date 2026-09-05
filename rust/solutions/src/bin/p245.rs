@@ -196,29 +196,59 @@ fn check_prime(n: i64, is_prime: &[u8]) -> bool {
     is_prime_mr(n as u64)
 }
 
-fn all_divisors(n: i64, prime_factors: &[i64]) -> Vec<i64> {
-    let mut divs = vec![1i64];
+#[derive(Clone, Copy)]
+struct Factors {
+    data: [i64; 16],
+    len: usize,
+}
+
+impl Factors {
+    #[inline(always)]
+    fn new() -> Self {
+        Factors { data: [0; 16], len: 0 }
+    }
+    #[inline(always)]
+    fn push(&mut self, val: i64) {
+        self.data[self.len] = val;
+        self.len += 1;
+    }
+    #[inline(always)]
+    fn pop(&mut self) {
+        self.len -= 1;
+    }
+    #[inline(always)]
+    fn as_slice(&self) -> &[i64] {
+        &self.data[..self.len]
+    }
+}
+
+#[inline(always)]
+fn all_divisors_stack(n: i64, prime_factors: &[i64], divs: &mut [i64; 512]) -> usize {
+    divs[0] = 1;
+    let mut len = 1;
     let mut temp = n;
     for &p in prime_factors {
         if temp % p == 0 {
-            let size = divs.len();
+            let size = len;
             let mut power = 1i64;
             while temp % p == 0 {
                 temp /= p;
                 power *= p;
                 for i in 0..size {
-                    divs.push(divs[i] * power);
+                    divs[len] = divs[i] * power;
+                    len += 1;
                 }
             }
         }
     }
     if temp > 1 {
-        let size = divs.len();
+        let size = len;
         for i in 0..size {
-            divs.push(divs[i] * temp);
+            divs[len] = divs[i] * temp;
+            len += 1;
         }
     }
-    divs
+    len
 }
 
 fn scan_k(big_p: i64, phi: i64, factors: &[i64], is_prime: &[u8]) -> i64 {
@@ -248,13 +278,13 @@ fn dfs(
     index: usize,
     big_p: i64,
     phi: i64,
-    factors: &mut Vec<i64>,
+    factors: &mut Factors,
     primes: &[i64],
     is_prime: &[u8],
 ) -> i64 {
     let mut ans = 0i64;
-    if factors.len() >= 2 {
-        ans += scan_k(big_p, phi, factors, is_prime);
+    if factors.len >= 2 {
+        ans += scan_k(big_p, phi, factors.as_slice(), is_prime);
     }
     let lo = index;
     let mut hi = index;
@@ -275,7 +305,7 @@ fn add_primes(
     hi: usize,
     big_p: i64,
     phi: i64,
-    factors: &mut Vec<i64>,
+    factors: &mut Factors,
     primes: &[i64],
     is_prime: &[u8],
 ) -> i64 {
@@ -283,12 +313,18 @@ fn add_primes(
     if n == 0 {
         return 0;
     }
-    if n >= 16 && factors.len() <= 4 {
-        let snap = factors.clone();
+    if n >= 16 && factors.len <= 4 {
+        let snap = *factors;
         let mid = lo + n / 2;
         let (a, b) = rayon::join(
-            || add_primes_owned(lo, mid, big_p, phi, &snap, primes, is_prime),
-            || add_primes_owned(mid, hi, big_p, phi, &snap, primes, is_prime),
+            || {
+                let mut f = snap;
+                add_primes(lo, mid, big_p, phi, &mut f, primes, is_prime)
+            },
+            || {
+                let mut f = snap;
+                add_primes(mid, hi, big_p, phi, &mut f, primes, is_prime)
+            },
         );
         return a + b;
     }
@@ -302,34 +338,6 @@ fn add_primes(
     ans
 }
 
-fn add_primes_owned(
-    lo: usize,
-    hi: usize,
-    big_p: i64,
-    phi: i64,
-    factors: &[i64],
-    primes: &[i64],
-    is_prime: &[u8],
-) -> i64 {
-    let mut f = Vec::with_capacity(factors.len() + 8);
-    f.extend_from_slice(factors);
-    add_primes(lo, hi, big_p, phi, &mut f, primes, is_prime)
-}
-
-fn two_prime_contrib(p: i64, pf: &[i64], is_prime: &[u8]) -> i64 {
-    let val = p * (p - 1) + 1;
-    let divs = all_divisors(val, pf);
-    let mut local = 0i64;
-    for d in divs {
-        if d >= p {
-            let q = d - (p - 1);
-            if q > p && p <= N / q && check_prime(q, is_prime) {
-                local += p * q;
-            }
-        }
-    }
-    local
-}
 
 fn main() {
     let mut is_prime = vec![1u8; LIMIT + 1];
@@ -356,7 +364,8 @@ fn main() {
         }
     }
 
-    let mut pf_data: Vec<Vec<i64>> = vec![Vec::new(); L + 1];
+    // Pass 1: count occurrences per p
+    let mut counts = vec![0u32; L + 1];
     for &q in &primes {
         let qu = q as u64;
         if is_sq(q - 3, qu) {
@@ -366,14 +375,50 @@ fn main() {
             let s1 = if s1_raw == 0 { q } else { s1_raw };
             let mut p = s1;
             while p <= L as i64 {
-                pf_data[p as usize].push(q);
+                counts[p as usize] += 1;
                 p += q;
             }
             let s2_raw = (1 - r1 + q) * inv2 % q;
             let s2 = if s2_raw == 0 { q } else { s2_raw };
             let mut p = s2;
             while p <= L as i64 {
-                pf_data[p as usize].push(q);
+                counts[p as usize] += 1;
+                p += q;
+            }
+        }
+    }
+
+    let mut offsets = vec![0u32; L + 2];
+    for i in 0..=L {
+        offsets[i + 1] = offsets[i] + counts[i];
+    }
+    let total_elements = offsets[L + 1] as usize;
+    let mut pf_data = vec![0i64; total_elements];
+    let mut write_pos = offsets.clone();
+
+    for &q in &primes {
+        let qu = q as u64;
+        if is_sq(q - 3, qu) {
+            let r1 = sqrt_mod(q - 3, qu) as i64;
+            let inv2 = (q + 1) / 2;
+            let s1_raw = (1 + r1) * inv2 % q;
+            let s1 = if s1_raw == 0 { q } else { s1_raw };
+            let mut p = s1;
+            while p <= L as i64 {
+                let pu = p as usize;
+                let pos = write_pos[pu] as usize;
+                pf_data[pos] = q;
+                write_pos[pu] += 1;
+                p += q;
+            }
+            let s2_raw = (1 - r1 + q) * inv2 % q;
+            let s2 = if s2_raw == 0 { q } else { s2_raw };
+            let mut p = s2;
+            while p <= L as i64 {
+                let pu = p as usize;
+                let pos = write_pos[pu] as usize;
+                pf_data[pos] = q;
+                write_pos[pu] += 1;
                 p += q;
             }
         }
@@ -386,10 +431,24 @@ fn main() {
                 .into_par_iter()
                 .map(|tid| {
                     let mut local = 0i64;
+                    let mut divs = [0i64; 512];
                     let mut i = tid;
                     while i < primes.len() {
                         let p = primes[i];
-                        local += two_prime_contrib(p, &pf_data[p as usize], &is_prime);
+                        let pu = p as usize;
+                        let start = offsets[pu] as usize;
+                        let end = offsets[pu + 1] as usize;
+                        let pf = &pf_data[start..end];
+                        let val = p * (p - 1) + 1;
+                        let num_divs = all_divisors_stack(val, pf, &mut divs);
+                        for &d in &divs[..num_divs] {
+                            if d >= p {
+                                let q = d - (p - 1);
+                                if q > p && p <= N / q && check_prime(q, &is_prime) {
+                                    local += p * q;
+                                }
+                            }
+                        }
                         i += nt;
                     }
                     local
@@ -397,7 +456,7 @@ fn main() {
                 .sum::<i64>()
         },
         || {
-            let mut factors = Vec::new();
+            let mut factors = Factors::new();
             dfs(0, 1, 1, &mut factors, &primes, &is_prime)
         },
     );

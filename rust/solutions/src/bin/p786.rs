@@ -1,6 +1,7 @@
 // Project Euler 786 - Billiard Ball Bounces
 // Mobius function sieve and lattice point counting.
-// Optimized: linear Mobius sieve up to exact non-zero bound, const lookup table, i64 math.
+// Segmented parallel Möbius (primes to sqrt(g_limit) + leftover cofactor)
+// fused with the lattice accumulation so the 187.5M μ array is never stored.
 
 use rayon::prelude::*;
 
@@ -24,7 +25,9 @@ const TAB9: [i64; 81] = [
 
 #[inline(always)]
 fn lattice_count_3(t: i64) -> i64 {
-    if t < 8 { return 0; }
+    if t < 8 {
+        return 0;
+    }
     let n = (t - 3) / 5;
     let sum_y = n * t - 5 * n * (n + 1) / 2;
     let q = n / 3;
@@ -36,7 +39,9 @@ fn lattice_count_3(t: i64) -> i64 {
 
 #[inline(always)]
 fn lattice_count_9(t: i64) -> i64 {
-    if t < 14 { return 0; }
+    if t < 14 {
+        return 0;
+    }
     let n = (t - 9) / 5;
     let sum_y = n * t - 5 * n * (n + 1) / 2;
     let q = n / 9;
@@ -46,6 +51,25 @@ fn lattice_count_9(t: i64) -> i64 {
     (sum_y - sum_mod) / 9
 }
 
+fn sieve_primes(limit: usize) -> Vec<u32> {
+    if limit < 2 {
+        return Vec::new();
+    }
+    let mut is_comp = vec![false; limit + 1];
+    let mut primes = Vec::with_capacity(limit / 10);
+    for i in 2..=limit {
+        if !is_comp[i] {
+            primes.push(i as u32);
+            let mut j = i * i;
+            while j <= limit {
+                is_comp[j] = true;
+                j += i;
+            }
+        }
+    }
+    primes
+}
+
 fn main() {
     let l = (3 * BIG_N + 5) / 2;
     // For d=3 (g % 3 == 0), t >= 8 => g <= l / 8.
@@ -53,51 +77,92 @@ fn main() {
     let g_limit = (l / 8) as usize;
     let g_lim_9 = (l / 14) as usize;
 
-    let mut mobius = vec![0i8; g_limit + 1];
-    let mut is_composite = vec![false; g_limit + 1];
-    let mut primes: Vec<usize> = Vec::with_capacity(g_limit / 10);
+    let sqrt_l = (g_limit as u64).isqrt() as usize;
+    let primes = sieve_primes(sqrt_l);
 
-    mobius[1] = 1;
+    const SEG: usize = 1 << 20;
+    let n_seg = (g_limit + SEG) / SEG; // covers 0..=g_limit
 
-    for i in 2..=g_limit {
-        if !is_composite[i] {
-            primes.push(i);
-            unsafe { *mobius.get_unchecked_mut(i) = -1; }
-        }
-        let mi = unsafe { *mobius.get_unchecked(i) };
-        for &p in &primes {
-            let ip = i * p;
-            if ip > g_limit { break; }
-            is_composite[ip] = true;
-            if i % p == 0 {
-                break;
-            } else {
-                unsafe { *mobius.get_unchecked_mut(ip) = -mi; }
+    let ans: i64 = (0..n_seg)
+        .into_par_iter()
+        .map(|si| {
+            let lo = si * SEG;
+            let hi = (lo + SEG).min(g_limit + 1);
+            if hi <= 1 {
+                return 0i64;
             }
-        }
-    }
+            let len = hi - lo;
+            let mut rem = vec![0u32; len];
+            let mut mu = vec![1i8; len];
+            for i in 0..len {
+                rem[i] = (lo + i) as u32;
+            }
+            if lo == 0 {
+                mu[0] = 0;
+                rem[0] = 1;
+            }
 
-    drop(is_composite);
-    drop(primes);
+            for &p_u in &primes {
+                let p = p_u as usize;
+                let start = if lo <= p {
+                    p
+                } else {
+                    let r = lo % p;
+                    if r == 0 { lo } else { lo + (p - r) }
+                };
+                let mut j = start;
+                while j < hi {
+                    let idx = j - lo;
+                    unsafe {
+                        *rem.get_unchecked_mut(idx) /= p_u;
+                        *mu.get_unchecked_mut(idx) = -*mu.get_unchecked(idx);
+                    }
+                    j += p;
+                }
+                let p2 = p.saturating_mul(p);
+                if p2 != 0 && p2 < hi {
+                    let start2 = if lo <= p2 {
+                        p2
+                    } else {
+                        let r = lo % p2;
+                        if r == 0 { lo } else { lo + (p2 - r) }
+                    };
+                    let mut j = start2;
+                    while j < hi {
+                        unsafe {
+                            *mu.get_unchecked_mut(j - lo) = 0;
+                        }
+                        j += p2;
+                    }
+                }
+            }
 
-    let mut ans: i64 = (1..=g_limit).into_par_iter().map(|g| {
-        let m = unsafe { *mobius.get_unchecked(g) };
-        if m == 0 { return 0; }
-        let is_mod3 = g % 3 == 0;
-        if !is_mod3 && g > g_lim_9 {
-            return 0;
-        }
-        let t = l / g as i64;
-        let count = if is_mod3 {
-            lattice_count_3(t)
-        } else {
-            lattice_count_9(t)
-        };
-        m as i64 * count
-    }).sum::<i64>();
+            let mut local = 0i64;
+            let start_n = if lo < 1 { 1 } else { lo };
+            for n in start_n..hi {
+                let idx = n - lo;
+                let mut m = unsafe { *mu.get_unchecked(idx) } as i64;
+                if m == 0 {
+                    continue;
+                }
+                if unsafe { *rem.get_unchecked(idx) } > 1 {
+                    m = -m;
+                }
+                if n > g_lim_9 && n % 3 != 0 {
+                    continue;
+                }
+                let t = l / n as i64;
+                let count = if n % 3 == 0 {
+                    lattice_count_3(t)
+                } else {
+                    lattice_count_9(t)
+                };
+                local += m * count;
+            }
+            local
+        })
+        .sum();
 
-    ans *= 4;
-    ans += 2;
-
+    let ans = ans * 4 + 2;
     println!("{}", ans);
 }

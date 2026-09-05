@@ -22,14 +22,9 @@ const NPRIMES: usize = 11;
 const SPLIT_K: i32 = 10;
 const SPLIT_PI: usize = 4;
 
-#[inline]
+#[inline(always)]
 fn isqrt_ull(n: u64) -> u64 {
-    if n == 0 { return 0; }
-    let x = (n as f64).sqrt() as u64;
-    let mut r = x;
-    while (r + 1) as u128 * (r + 1) as u128 <= n as u128 { r += 1; }
-    while (r as u128) * (r as u128) > n as u128 { r -= 1; }
-    r
+    n.isqrt()
 }
 
 fn best_divisor(n: u64) -> u64 {
@@ -176,7 +171,7 @@ struct ShapeSystem {
 impl ShapeSystem {
     fn new() -> Self {
         ShapeSystem {
-            cache: CacheOA::new(21),
+            cache: CacheOA::new(18),
             pairs: HashMap::with_capacity(512),
             next_id: 1,
         }
@@ -314,6 +309,6 @@ fn main() {
         }
     }
 
-    let ans: u64 = (2..NN + 1).into_par_iter().map(|n| m_of_n(n, &pows)).sum();
+    let ans: u64 = (2..NN + 1).into_par_iter().rev().map(|n| m_of_n(n, &pows)).sum();
     println!("{}", ans);
 }
