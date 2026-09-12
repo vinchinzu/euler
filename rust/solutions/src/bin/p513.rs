@@ -3,268 +3,251 @@
 // Count triangles with integer sides a <= b <= c <= N where the median to c
 // has integer length.
 //
-// Key identity: 2a^2 + 2b^2 - c^2 = 4m^2. Let s=(a+b)/2, d=(b-a)/2, t=c/2.
-// Then s^2 + d^2 = t^2 + m^2. Let u = s - t >= 1. Then:
-//   P = u(2t+u) = (m-d)(m+d) = v*w
-// where v and w have same parity as u. For each (u,v) with v > u, same parity,
-// and v | P for some valid t, the values of t form an arithmetic progression
-// with step = v' = v/gcd(u,v) (or related via CRT when v divisible by 4 and u even).
-//
-// The answer is f_count(N) -- no Mobius inversion needed.
-// Optimized: iterate over divisors g of u to avoid per-v GCD computation.
+// Primitive (s,t) / (u,v) lattice regions are counted with Euclidean floor-sum
+// trapezoid queries (O(log) per rational line). Full F(n) is recovered from
+// the primitive count by the odd-scaling recurrence
+//   F(n) = f(n) - sum_{k odd, k>=3} F(floor(n/k)).
 
-use rayon::prelude::*;
+use std::collections::HashMap;
 
 const NN: i64 = 100_000;
 
 #[inline(always)]
-fn gcd32(mut a: u32, mut b: u32) -> u32 {
-    if a == 0 { return b; }
-    if b == 0 { return a; }
-    let shift = (a | b).trailing_zeros();
-    a >>= a.trailing_zeros();
+fn floor_div(a: i64, b: i64) -> i64 {
+    a.div_euclid(b)
+}
+
+fn trapezoid_floor_sum(
+    mut slope: i64,
+    mut intercept: i64,
+    mut denominator: i64,
+    mut lower_x: i64,
+    mut upper_x: i64,
+    mut include_boundary: bool,
+) -> i64 {
+    let mut total = 0i64;
     loop {
-        b >>= b.trailing_zeros();
-        if a > b { let t = a; a = b; b = t; }
-        b -= a;
-        if b == 0 { return a << shift; }
-    }
-}
-
-#[inline(always)]
-fn neg_mod32(val: u32, m: u32) -> u32 {
-    let r = val % m;
-    if r == 0 { 0 } else { m - r }
-}
-
-/// Process a single (u, v) pair for the odd u case.
-/// Returns the count contribution.
-#[inline(always)]
-fn process_odd(u: u32, v: u32, g: u32, half_n_i64: i64) -> i64 {
-    let vp = v / g;
-
-    let (step, t0): (u32, u32);
-    if vp == 1 {
-        step = 1;
-        t0 = 1;
-    } else {
-        // vp always odd when u odd
-        let inv2 = (vp + 1) / 2;
-        let r = neg_mod32(u, vp);
-        let mut t0_ = ((r as u64 * inv2 as u64) % vp as u64) as u32;
-        if t0_ == 0 { t0_ = vp; }
-        step = vp;
-        t0 = t0_;
-    }
-
-    let u64_ = u as i64;
-    let v64_ = v as i64;
-    let mut t_min = u64_;
-
-    let vv_uu = v64_ * v64_ - u64_ * u64_;
-    let t_min2 = (vv_uu + 2 * u64_ - 1) / (2 * u64_);
-    if t_min2 > t_min { t_min = t_min2; }
-
-    let num = (u64_ + v64_) * (u64_ + v64_) - 2 * v64_ * v64_;
-    if num > 0 {
-        let denom = 2 * (v64_ - u64_);
-        let t_min3 = (num + denom - 1) / denom;
-        if t_min3 > t_min { t_min = t_min3; }
-    }
-
-    let step64 = step as i64;
-    let t064 = t0 as i64;
-    if t_min <= t064 {
-        t_min = t064;
-    } else {
-        let k = (t_min - t064 + step64 - 1) / step64;
-        t_min = t064 + k * step64;
-    }
-
-    if t_min <= half_n_i64 {
-        (half_n_i64 - t_min) / step64 + 1
-    } else {
-        0
-    }
-}
-
-/// For a given u, count all valid triangles by iterating over v.
-#[inline(never)]
-fn count_for_u(u: u32, half_n: u32) -> i64 {
-    let mut count: i64 = 0;
-    let p_max: u64 = u as u64 * (2 * half_n as u64 + u as u64);
-
-    let mut v_max = (p_max as f64).sqrt() as u32 + 1;
-    while (v_max as u64) * (v_max as u64) > p_max {
-        v_max -= 1;
-    }
-
-    let u_odd = u & 1 == 1;
-    let half_n_i64 = half_n as i64;
-
-    let b = half_n as i64 - u as i64;
-    let disc = (half_n as i64) * (half_n as i64) + 2 * (u as i64) * (u as i64);
-    let mut root = (disc as f64).sqrt() as i64;
-    while (root + 1) * (root + 1) <= disc {
-        root += 1;
-    }
-    while root * root > disc {
-        root -= 1;
-    }
-    let v_bound = (if root * root == disc { root } else { root + 1 }) - b;
-    let mut v_start = (u as i64 + 2).max(v_bound) as u32;
-    if (v_start ^ u) & 1 == 1 {
-        v_start += 1;
-    }
-
-    if v_start > v_max {
-        return 0;
-    }
-
-    if u_odd {
-        // For odd u, iterate v from v_start (odd values)
-        let mut v: u32 = v_start;
-        while v <= v_max {
-            let g = gcd32(u, v);
-            count += process_odd(u, v, g, half_n_i64);
-            v += 2;
-        }
-    } else {
-        let hu = u / 2;
-        let mut v: u32 = v_start;
-        while v <= v_max {
-            let g = gcd32(u, v);
-            let vp = v / g;
-
-            let (mut step, mut t0): (u32, u32);
-            if vp == 1 {
-                step = 1;
-                t0 = 1;
-            } else if vp & 1 == 1 {
-                let inv2 = (vp + 1) / 2;
-                let r = neg_mod32(u, vp);
-                t0 = ((r as u64 * inv2 as u64) % vp as u64) as u32;
-                if t0 == 0 { t0 = vp; }
-                step = vp;
+        if (upper_x - lower_x).abs() <= 8 {
+            let adjustment = if include_boundary { 0 } else { 1 };
+            if upper_x > lower_x {
+                let mut x = lower_x + 1;
+                while x <= upper_x {
+                    total += floor_div(slope * x + intercept - adjustment, denominator);
+                    x += 1;
+                }
             } else {
-                let half_vp = vp / 2;
-                t0 = neg_mod32(hu, half_vp);
-                if t0 == 0 { t0 = half_vp; }
-                step = half_vp;
+                let mut subtotal = 0i64;
+                let mut x = upper_x + 1;
+                while x <= lower_x {
+                    subtotal += floor_div(slope * x + intercept - adjustment, denominator);
+                    x += 1;
+                }
+                total -= subtotal;
             }
+            return total;
+        }
 
-            // CRT when v divisible by 4
-            let v1 = v >> 1;
-            if v1 & 1 == 0 {
-                let g2 = gcd32(hu, v1);
-                let r2 = v1 / g2;
-                if r2 > 1 {
-                    let t0_2 = neg_mod32(hu, r2);
-                    let g3 = gcd32(step, r2);
-                    let diff_raw = t0_2 as i64 - t0 as i64;
-                    if diff_raw.rem_euclid(g3 as i64) != 0 {
-                        v += 2;
-                        continue;
-                    }
-                    let lcm = (step / g3) as u64 * r2 as u64;
-                    if lcm > half_n as u64 * 2 {
-                        v += 2;
-                        continue;
-                    }
-                    let lcm = lcm as u32;
-                    let m1g = step / g3;
-                    let m2g = r2 / g3;
-                    let diff = (t0_2 as i64 - t0 as i64) / g3 as i64;
-                    let (mut x, mut x1) = (0i64, 1i64);
-                    let (mut tm, mut ta) = (m2g as i64, m1g as i64);
-                    while ta > 0 {
-                        let q = tm / ta;
-                        let tmp = ta; ta = tm - q * ta; tm = tmp;
-                        let tmp = x1; x1 = x - q * x1; x = tmp;
-                    }
-                    let kk = ((diff % m2g as i64) * (x % m2g as i64) % m2g as i64 + m2g as i64)
-                        .rem_euclid(m2g as i64);
-                    let mut t0_64 = t0 as i64 + kk * step as i64;
-                    t0_64 = ((t0_64 % lcm as i64) + lcm as i64) % lcm as i64;
-                    if t0_64 == 0 { t0_64 = lcm as i64; }
-                    t0 = t0_64 as u32;
-                    step = lcm;
+        let whole_intercept = floor_div(intercept, denominator);
+        if whole_intercept != 0 {
+            total += (upper_x - lower_x) * whole_intercept;
+            intercept -= whole_intercept * denominator;
+        }
+
+        let whole_slope = floor_div(slope, denominator);
+        if whole_slope != 0 {
+            total += (upper_x - lower_x) * (upper_x + lower_x + 1) / 2 * whole_slope;
+            slope -= whole_slope * denominator;
+        }
+
+        if slope == 0 {
+            if intercept == 0 && !include_boundary {
+                total -= upper_x - lower_x;
+            }
+            return total;
+        }
+
+        let upper_y = floor_div(slope * upper_x + intercept, denominator);
+        let lower_y = floor_div(slope * lower_x + intercept, denominator);
+        total += upper_x * upper_y - lower_x * lower_y;
+
+        let (nl, nu) = (upper_y, lower_y);
+        lower_x = nl;
+        upper_x = nu;
+        let nd = slope;
+        slope = denominator;
+        denominator = nd;
+        intercept = -intercept;
+        include_boundary = !include_boundary;
+    }
+}
+
+fn trapezoid_floor_sum_mod2(
+    slope: i64,
+    mut intercept: i64,
+    denominator: i64,
+    mut lower_x: i64,
+    mut upper_x: i64,
+    include_boundary: bool,
+    x_residue: i64,
+    y_residue: i64,
+) -> i64 {
+    if y_residue & 1 != 0 {
+        intercept += denominator;
+    }
+    if x_residue & 1 != 0 {
+        intercept -= slope;
+        lower_x += 1;
+        upper_x += 1;
+    }
+    trapezoid_floor_sum(
+        2 * slope,
+        intercept,
+        2 * denominator,
+        lower_x.div_euclid(2),
+        upper_x.div_euclid(2),
+        include_boundary,
+    )
+}
+
+fn primitive_count(n: i64) -> i64 {
+    let mut total = 0i64;
+    let three_halves_n = n + n / 2;
+    let root = three_halves_n.isqrt();
+
+    let parity_cases = [(0i64, 1i64), (1, 0), (1, 1)];
+    for &(i_residue, j_residue) in &parity_cases {
+        let mut max_t = 1i64;
+        for s in 2..root {
+            if 3 * (max_t + 1) * (max_t + 1) <= s * s {
+                max_t += 1;
+            }
+            if i_residue == j_residue || (s & 1) == 0 {
+                let start_t = ((s - 1) & 1) + 1;
+                let mut t = start_t;
+                while t <= max_t {
+                    let v_mid = t * n / ((s - t) * (s + t));
+                    let v_max = n * (s + t) / (s * s + 2 * s * t - t * t);
+                    total += trapezoid_floor_sum_mod2(s, 0, t, 0, v_mid, true, j_residue, i_residue);
+                    total += trapezoid_floor_sum_mod2(
+                        t, n, s, v_mid, v_max, true, j_residue, i_residue,
+                    );
+                    total -= trapezoid_floor_sum_mod2(
+                        s + 3 * t,
+                        0,
+                        s + t,
+                        0,
+                        v_max,
+                        false,
+                        j_residue,
+                        i_residue,
+                    );
+                    t += 2;
                 }
             }
+        }
 
-            if t0 == 0 { t0 = step; }
-
-            let u64_ = u as i64;
-            let v64_ = v as i64;
-            let mut t_min = u64_;
-
-            let vv_uu = v64_ * v64_ - u64_ * u64_;
-            let t_min2 = (vv_uu + 2 * u64_ - 1) / (2 * u64_);
-            if t_min2 > t_min { t_min = t_min2; }
-
-            let num = (u64_ + v64_) * (u64_ + v64_) - 2 * v64_ * v64_;
-            if num > 0 {
-                let denom = 2 * (v64_ - u64_);
-                let t_min3 = (num + denom - 1) / denom;
-                if t_min3 > t_min { t_min = t_min3; }
+        let max_u = three_halves_n / root;
+        let start_u = 1 + ((i_residue + 1) & 1);
+        let mut u = start_u;
+        while u <= max_u {
+            let max_v_outer = (n / 2).min(u - 1);
+            let start_v = 1 + ((j_residue + 1) & 1);
+            let mut v = start_v;
+            while v <= max_v_outer {
+                let split_s = (v + n) / u;
+                let residue_count = if i_residue == j_residue { 2 } else { 1 };
+                for mut s_residue in 0..residue_count {
+                    if i_residue != j_residue {
+                        s_residue = 0;
+                    }
+                    let (min_s, max_s, slope0, slope1);
+                    if u * u < 3 * v * v {
+                        min_s = root;
+                        max_s = n * (3 * v - u) / (2 * u * v + v * v - u * u);
+                        slope0 = u - v;
+                        slope1 = 3 * v - u;
+                    } else {
+                        min_s = root.max((u + v - 1) / v);
+                        max_s = n * u / ((u - v) * (u + v));
+                        slope0 = v;
+                        slope1 = u;
+                    }
+                    if max_s < min_s {
+                        continue;
+                    }
+                    let a = trapezoid_floor_sum_mod2(
+                        slope0,
+                        0,
+                        slope1,
+                        min_s - 1,
+                        max_s,
+                        true,
+                        s_residue,
+                        s_residue,
+                    );
+                    let mut b = 0i64;
+                    if split_s < max_s {
+                        b = trapezoid_floor_sum_mod2(
+                            u,
+                            -n,
+                            v,
+                            split_s.max(min_s - 1),
+                            max_s,
+                            false,
+                            s_residue,
+                            s_residue,
+                        );
+                    }
+                    total += a - b;
+                }
+                v += 2;
             }
-
-            let step64 = step as i64;
-            let t064 = t0 as i64;
-            if t_min <= t064 {
-                t_min = t064;
-            } else {
-                let k = (t_min - t064 + step64 - 1) / step64;
-                t_min = t064 + k * step64;
-            }
-
-            if t_min <= half_n_i64 {
-                count += (half_n_i64 - t_min) / step64 + 1;
-            }
-
-            v += 2;
+            u += 2;
         }
     }
+    total
+}
 
-    count
+fn f_rec(n: i64, cache: &mut HashMap<i64, i64>) -> i64 {
+    if n <= 0 {
+        return 0;
+    }
+    if let Some(&c) = cache.get(&n) {
+        return c;
+    }
+    let mut result = primitive_count(n);
+
+    let mut k = 3i64;
+    let mut quotient = n / k;
+    while k <= quotient {
+        result -= f_rec(quotient, cache);
+        k += 2;
+        quotient = n / k;
+    }
+
+    let mut min_k = if quotient + 1 > 0 {
+        n / (quotient + 1)
+    } else {
+        n
+    };
+    while quotient > 0 {
+        let max_k = n / quotient;
+        let left = (min_k + 1) + (min_k & 1);
+        let right = max_k - ((max_k + 1) & 1);
+        if right >= left {
+            result -= f_rec(quotient, cache) * ((right - left) / 2 + 1);
+        }
+        quotient -= 1;
+        min_k = max_k;
+    }
+
+    cache.insert(n, result);
+    result
 }
 
 fn f_count(n: i64) -> i64 {
-    let half_n = (n / 2) as u32;
-
-    // Work is quadratic in (half_n - u): large u is light, small u is heavy.
-    // Emit fixed-cost-ish chunks by growing chunk size as u grows, and schedule
-    // heavy (small-u) chunks first for better rayon balance.
-    let mut ranges: Vec<(u32, u32)> = Vec::new();
-    let mut u = 1u32;
-    while u <= half_n {
-        // Rough cost ~ (half_n/u)^2; keep ~similar work per chunk
-        let span = if u < 100 {
-            4
-        } else if u < 1000 {
-            16
-        } else if u < 5000 {
-            64
-        } else {
-            256
-        };
-        let u_end = (u + span - 1).min(half_n);
-        ranges.push((u, u_end));
-        u = u_end + 1;
-    }
-    // Heavy first
-    ranges.reverse();
-
-    ranges
-        .into_par_iter()
-        .map(|(u_start, u_end)| {
-            let mut total = 0i64;
-            for uu in u_start..=u_end {
-                total += count_for_u(uu, half_n);
-            }
-            total
-        })
-        .sum()
+    let mut cache = HashMap::with_capacity(4096);
+    f_rec(n, &mut cache)
 }
 
 fn main() {

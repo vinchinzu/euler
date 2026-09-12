@@ -1,5 +1,6 @@
 // Project Euler 440: GCD and Tiling
 use euler_utils::gcd;
+use rayon::prelude::*;
 
 const NN: usize = 2000;
 const KK: i64 = 10;
@@ -14,7 +15,7 @@ fn mat_mul(x: [i64; 4], y: [i64; 4]) -> [i64; 4] {
     ]
 }
 
-fn mat_pow(mut base: [i64; 4], mut exp: i32) -> [i64; 4] {
+fn mat_pow(mut base: [i64; 4], mut exp: u32) -> [i64; 4] {
     let mut result = [1, 0, 0, 1];
     while exp > 0 {
         if exp & 1 != 0 { result = mat_mul(result, base); }
@@ -37,16 +38,18 @@ fn main() {
         }
     }
 
-    let mut ans: i64 = 0;
-    for c in 1..=NN as i32 {
-        ans = (ans + mults[0] * if c % 2 == 0 { 1 } else { KK }) % M;
+    let ans: i64 = (1..NN + 1)
+        .into_par_iter()
+        .map(|c| {
+            let mut local = mults[0] * if c % 2 == 0 { 1 } else { KK };
+            let mut a = [KK, 1, 1, 0i64];
+            for g in 1..=NN {
+                a = mat_pow(a, c as u32);
+                local = (local + mults[g] * a[0]) % M;
+            }
+            local % M
+        })
+        .sum();
 
-        let mut a = [KK, 1, 1, 0i64];
-        for g in 1..=NN {
-            a = mat_pow(a, c);
-            ans = (ans + mults[g] * a[0]) % M;
-        }
-    }
-
-    println!("{ans}");
+    println!("{}", ans % M);
 }

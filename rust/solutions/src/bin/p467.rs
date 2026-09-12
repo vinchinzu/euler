@@ -4,8 +4,12 @@
 // of primes and composites. Return its digits interpreted as base-10
 // number mod 10^9+7.
 
+use rayon::prelude::*;
+
 const NN: usize = 10000;
 const MOD: i64 = 1_000_000_007;
+// Block size for anti-diagonal wavefront. NN is divisible by 100.
+const B: usize = 100;
 
 fn digital_root(n: usize) -> i32 {
     if n == 0 {
@@ -67,24 +71,65 @@ fn main() {
         move_i[i * stride + NN] = 1;
     }
 
-    for i in (0..NN).rev() {
-        let pi = p[i];
-        for j in (0..NN).rev() {
-            if pi == c[j] {
-                dp[i * stride + j] = 1 + dp[(i + 1) * stride + (j + 1)];
-            } else {
-                let val_i = dp[(i + 1) * stride + j];
-                let val_j = dp[i * stride + (j + 1)];
-                if val_i <= val_j {
-                    dp[i * stride + j] = 1 + val_i;
-                    if val_i < val_j || pi < c[j] {
-                        move_i[i * stride + j] = 1;
+    let nblocks = (NN + B - 1) / B;
+    let dp_addr = dp.as_mut_ptr() as usize;
+    let mv_addr = move_i.as_mut_ptr() as usize;
+    let p_addr = p.as_ptr() as usize;
+    let c_addr = c.as_ptr() as usize;
+
+    // Cells with equal i+j are independent. Wave by block anti-diagonal so
+    // each rayon task has B*B cells (cell-level tasks are too cheap).
+    for diag in (0..2 * nblocks - 1).rev() {
+        let bi_lo = if diag + 1 > nblocks {
+            diag + 1 - nblocks
+        } else {
+            0
+        };
+        let bi_hi = if diag < nblocks { diag } else { nblocks - 1 };
+        (bi_lo..bi_hi + 1).into_par_iter().for_each(|bi| {
+            let bj = diag - bi;
+            let i_start = bi * B;
+            let i_end = (i_start + B).min(NN);
+            let j_start = bj * B;
+            let j_end = (j_start + B).min(NN);
+            let dp_ptr = dp_addr as *mut i32;
+            let mv_ptr = mv_addr as *mut u8;
+            let p_ptr = p_addr as *const i32;
+            let c_ptr = c_addr as *const i32;
+
+            // SAFETY: blocks on one anti-diagonal cover disjoint (i,j) so
+            // writes do not alias. Reads of (i+1,*) / (*,j+1) / (i+1,j+1)
+            // hit already-finished higher diagonals or earlier cells in this
+            // block. i,j < NN and stride = NN+1 keep all indices in-bounds.
+            unsafe {
+                let mut i = i_end;
+                while i > i_start {
+                    i -= 1;
+                    let pi = *p_ptr.add(i);
+                    let row = i * stride;
+                    let row1 = row + stride;
+                    let mut j = j_end;
+                    while j > j_start {
+                        j -= 1;
+                        let idx = row + j;
+                        if pi == *c_ptr.add(j) {
+                            *dp_ptr.add(idx) = 1 + *dp_ptr.add(row1 + j + 1);
+                        } else {
+                            let val_i = *dp_ptr.add(row1 + j);
+                            let val_j = *dp_ptr.add(idx + 1);
+                            if val_i <= val_j {
+                                *dp_ptr.add(idx) = 1 + val_i;
+                                if val_i < val_j || pi < *c_ptr.add(j) {
+                                    *mv_ptr.add(idx) = 1;
+                                }
+                            } else {
+                                *dp_ptr.add(idx) = 1 + val_j;
+                            }
+                        }
                     }
-                } else {
-                    dp[i * stride + j] = 1 + val_j;
                 }
             }
-        }
+        });
     }
 
     // Reconstruct

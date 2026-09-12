@@ -1,42 +1,39 @@
 // Project Euler 339: Peredur fab Efrawg
-fn main() {
-    let n = 10_000usize;
-    let k = 2 * n;
+//
+// Optimal stopping on the birth-death chain of black-sheep counts. The
+// Snell envelope is linear in the binomial scale function, so the DP
+// collapses to an O(n) recurrence on the midpoint values B[b] = S_{2b}(b)
+// driven by central binomial probabilities.
 
-    let mut e = vec![0.0f64; k + 1];
-    e[1] = 1.0;
-    e[2] = 1.0;
+fn expected_black(n: usize) -> f64 {
+    // B[b] = S_{2b}(b). Only B[n] and B[n-1] are needed at the end.
+    let mut b_cur = 0.0f64;
+    let mut b_prev = 0.0f64;
+    // p = C(N, N/2) / 2^N for even N, starting at N = 0.
+    let mut p = 1.0f64;
+    // q = C(N, n) / 2^N for odd N = 2n-1, starting at N = 1.
+    let mut q = 0.5f64;
 
-    let mut cp = vec![0.0f64; n];
-    let mut dp = vec![0.0f64; n];
-    let mut x = vec![0.0f64; n];
-
-    for kk in 3..=k {
-        let ni = (kk - 1) / 2;
-        let inv_k = 1.0 / kk as f64;
-
-        cp[0] = -inv_k;
-        dp[0] = 1.0 - inv_k;
-
-        for i in 1..ni {
-            let ai = (i + 1) as f64 * inv_k - 1.0;
-            let ci = -((i + 1) as f64) * inv_k;
-            let m = 1.0 - ai * cp[i - 1];
-            let inv_m = 1.0 / m;
-            cp[i] = ci * inv_m;
-            dp[i] = (-ai * dp[i - 1]) * inv_m;
+    for b in 1..=n {
+        let r = (2.0 * p) / (1.0 + p);
+        let m = (2 * b - 1) as f64;
+        b_prev = b_cur;
+        b_cur += (m - b_cur) * r;
+        let bf = b as f64;
+        p *= (2.0 * bf - 1.0) / (2.0 * bf);
+        if b < n {
+            q *= (2.0 * bf + 1.0) / (2.0 * bf + 2.0);
         }
-
-        x[ni - 1] = dp[ni - 1];
-        for i in (0..ni - 1).rev() {
-            x[i] = dp[i] - cp[i] * x[i + 1];
-        }
-
-        let xn = x[ni - 1];
-        let idx = (kk / 2) * 2 - 1;
-        e[kk] = xn * kk as f64 + (1.0 - xn) * e[idx];
     }
 
-    let ans = (e[k] + e[k - 3]) / 2.0;
-    println!("{:.6}", ans);
+    let r2 = 2.0 * q;
+    let m2 = (2 * n) as f64;
+    let s_n_plus_1 = b_cur + (m2 - b_cur) * r2;
+    // E(n) = (S_{2n}(n-1) + S_{2n}(n+1)) / 2, and S_{2n}(n-1) = B[n-1].
+    0.5 * (b_prev + s_n_plus_1)
+}
+
+fn main() {
+    debug_assert!((expected_black(5) - 6.871346).abs() < 5e-7);
+    println!("{:.6}", expected_black(10_000));
 }

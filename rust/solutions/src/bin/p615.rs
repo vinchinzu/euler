@@ -1,94 +1,106 @@
 // Project Euler 615 - The millionth number with at least one million prime factors
-// Priority queue approach: enumerate numbers with Omega(n) >= 1,000,000 in ascending order.
 //
-// Key insight: each such number = 2^(1000000 - k) * m, where m has k prime factors (>= 2).
-// We track a "variable part" with ~27 factors in a min-heap, ordered by integer value.
-// Since all candidates get multiplied by the same power of 2 (when factor count matches),
-// ordering by the variable-part value correctly orders the full numbers.
-// At the end, multiply by 2^(1000000 - 27) mod 123454321.
+// Numbers with Omega >= 1e6 are 2^{1e6-c} times a c-almost-prime core.
+// Enumerate cores with Omega >= THRESHOLD below 3^THRESHOLD (the first
+// threshold that yields >= 1e6 candidates), take the millionth, lift by
+// 2^{1e6-THRESHOLD} mod 123454321.
 
-use std::collections::BinaryHeap;
-use std::cmp::Reverse;
+const TARGET: usize = 1_000_000;
+const MOD: u64 = 123_454_321;
+const THRESHOLD: u32 = 29;
+const PRIME_LIMIT: usize = 300_000;
 
-const NUM_CANDIDATES: usize = 1_000_000;
-const MODULO: u64 = 123_454_321;
+fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut r = 1u64;
+    base %= m;
+    while exp > 0 {
+        if exp & 1 == 1 {
+            r = r * base % m;
+        }
+        base = base * base % m;
+        exp >>= 1;
+    }
+    r
+}
 
-fn main() {
-    // Sieve primes up to empirical bound (15770th prime = 173207 suffices)
-    let max_prime: usize = 173_207;
-    let mut is_prime = vec![true; max_prime + 1];
+fn sieve_primes(limit: usize) -> Vec<u32> {
+    let mut is_prime = vec![true; limit + 1];
     is_prime[0] = false;
     is_prime[1] = false;
-    {
-        let mut i = 2;
-        while i * i <= max_prime {
-            if is_prime[i] {
-                let mut j = i * i;
-                while j <= max_prime {
-                    is_prime[j] = false;
-                    j += i;
-                }
-            }
-            i += 1;
-        }
-    }
-    let primes: Vec<u64> = (2..=max_prime as u64).filter(|&x| is_prime[x as usize]).collect();
-
-    let num_var_factors: u32 = 27;
-    let seed: u64 = 1u64 << num_var_factors; // 2^27
-
-    // Min-heap of (value, largest_prime_factor)
-    let mut heap: BinaryHeap<Reverse<(u64, u64)>> = BinaryHeap::new();
-    heap.push(Reverse((seed, 2)));
-
-    // Upper bound on variable-part values we need to consider
-    let too_large: u64 = (seed / 2) * (*primes.last().unwrap());
-
-    let mut previous: u64 = 0;
-
-    for _ in 0..NUM_CANDIDATES {
-        // Pop next candidate, skipping duplicates
-        let Reverse((mut current, mut max_factor)) = heap.pop().expect("heap empty");
-        while current == previous {
-            let Reverse((v, mf)) = heap.pop().expect("heap empty");
-            current = v;
-            max_factor = mf;
-        }
-        previous = current;
-
-        // Generate successors:
-        // 1. "Append" a prime p >= max_factor: variable_part * p (increases factor count by 1)
-        for &p in &primes {
-            if p < max_factor { continue; }
-            match current.checked_mul(p) {
-                Some(nv) if nv < too_large => heap.push(Reverse((nv, p))),
-                _ => break,
+    let mut i = 2usize;
+    while i * i <= limit {
+        if is_prime[i] {
+            let mut j = i * i;
+            while j <= limit {
+                is_prime[j] = false;
+                j += i;
             }
         }
+        i += 1;
+    }
+    (2..=limit as u32).filter(|&p| is_prime[p as usize]).collect()
+}
 
-        // 2. "Replace a 2" with prime p > 2, p >= max_factor: (variable_part / 2) * p
-        //    C++ code does integer division current/2 even for odd numbers
-        {
-            let half = current / 2;
-            for &p in &primes {
-                let nv = half.checked_mul(p);
-                match nv {
-                    Some(nv) if nv >= too_large => break,
-                    None => break,
-                    _ => {}
-                }
-                if p >= max_factor && p > 2 {
-                    heap.push(Reverse((nv.unwrap(), p)));
-                }
-            }
+fn search(
+    primes: &[u32],
+    logs: &[f64],
+    start_index: usize,
+    product: u64,
+    used: u32,
+    log_product: f64,
+    limit: u64,
+    log_limit: f64,
+    out: &mut Vec<u64>,
+) {
+    if used >= THRESHOLD {
+        out.push(product);
+    }
+    let remaining = THRESHOLD.saturating_sub(used);
+    for index in start_index..primes.len() {
+        let p = primes[index] as u64;
+        let next_product = match product.checked_mul(p) {
+            Some(x) if x <= limit => x,
+            _ => break,
+        };
+        if remaining > 0 && log_product + remaining as f64 * logs[index] > log_limit + 1e-12 {
+            break;
         }
+        search(
+            primes,
+            logs,
+            index,
+            next_product,
+            used + 1,
+            log_product + logs[index],
+            limit,
+            log_limit,
+            out,
+        );
     }
+}
 
-    // The millionth number: previous * 2^(1000000 - 27) mod MODULO
-    let mut result = previous % MODULO;
-    for _ in num_var_factors as usize..NUM_CANDIDATES {
-        result = (result * 2) % MODULO;
-    }
+fn main() {
+    let primes = sieve_primes(PRIME_LIMIT);
+    let logs: Vec<f64> = primes.iter().map(|&p| (p as f64).ln()).collect();
+    let limit = 3u64.pow(THRESHOLD);
+    let log_limit = THRESHOLD as f64 * 3f64.ln();
 
-    println!("{}", result);
+    let mut values = Vec::with_capacity(TARGET + TARGET / 4);
+    search(
+        &primes,
+        &logs,
+        0,
+        1,
+        0,
+        0.0,
+        limit,
+        log_limit,
+        &mut values,
+    );
+
+    let k = TARGET - 1;
+    values.select_nth_unstable(k);
+    let core = values[k];
+    let ans = (core % MOD) * pow_mod(2, TARGET as u64 - THRESHOLD as u64, MOD) % MOD;
+    println!("{}", ans);
 }

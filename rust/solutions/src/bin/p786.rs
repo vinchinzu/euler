@@ -76,34 +76,38 @@ fn main() {
     // For d=9 (g % 3 != 0), t >= 14 => g <= l / 14.
     let g_limit = (l / 8) as usize;
     let g_lim_9 = (l / 14) as usize;
+    // μ is only stored up to g_lim_9. For g = 3k ∈ (g_lim_9, g_limit],
+    // μ(3k) = -μ(k) when 3 ∤ k, and k ≤ g_limit/3 < g_lim_9.
+    let k3_max = g_limit / 3;
+    let k3_min = g_lim_9 / 3 + 1;
 
-    let sqrt_l = (g_limit as u64).isqrt() as usize;
+    let sqrt_l = (g_lim_9 as u64).isqrt() as usize;
     let primes = sieve_primes(sqrt_l);
 
     const SEG: usize = 1 << 20;
-    let n_seg = (g_limit + SEG) / SEG; // covers 0..=g_limit
+    let n_seg = (g_lim_9 + SEG) / SEG; // covers 0..=g_lim_9
 
     let ans: i64 = (0..n_seg)
         .into_par_iter()
         .map(|si| {
             let lo = si * SEG;
-            let hi = (lo + SEG).min(g_limit + 1);
+            let hi = (lo + SEG).min(g_lim_9 + 1);
             if hi <= 1 {
                 return 0i64;
             }
             let len = hi - lo;
-            let mut rem = vec![0u32; len];
-            let mut mu = vec![1i8; len];
+            // Packed: sign = running μ, abs = remaining cofactor. 0 = not square-free.
+            let mut rm = vec![0i32; len];
             for i in 0..len {
-                rem[i] = (lo + i) as u32;
+                rm[i] = (lo + i) as i32;
             }
             if lo == 0 {
-                mu[0] = 0;
-                rem[0] = 1;
+                rm[0] = 0;
             }
 
             for &p_u in &primes {
                 let p = p_u as usize;
+                let p_i = p_u as i32;
                 let start = if lo <= p {
                     p
                 } else {
@@ -114,8 +118,8 @@ fn main() {
                 while j < hi {
                     let idx = j - lo;
                     unsafe {
-                        *rem.get_unchecked_mut(idx) /= p_u;
-                        *mu.get_unchecked_mut(idx) = -*mu.get_unchecked(idx);
+                        let r = *rm.get_unchecked(idx);
+                        *rm.get_unchecked_mut(idx) = -(r / p_i);
                     }
                     j += p;
                 }
@@ -130,7 +134,7 @@ fn main() {
                     let mut j = start2;
                     while j < hi {
                         unsafe {
-                            *mu.get_unchecked_mut(j - lo) = 0;
+                            *rm.get_unchecked_mut(j - lo) = 0;
                         }
                         j += p2;
                     }
@@ -141,16 +145,14 @@ fn main() {
             let start_n = if lo < 1 { 1 } else { lo };
             for n in start_n..hi {
                 let idx = n - lo;
-                let mut m = unsafe { *mu.get_unchecked(idx) } as i64;
-                if m == 0 {
+                let mut s = unsafe { *rm.get_unchecked(idx) };
+                if s == 0 {
                     continue;
                 }
-                if unsafe { *rem.get_unchecked(idx) } > 1 {
-                    m = -m;
+                if s.unsigned_abs() > 1 {
+                    s = -s;
                 }
-                if n > g_lim_9 && n % 3 != 0 {
-                    continue;
-                }
+                let m = s.signum() as i64;
                 let t = l / n as i64;
                 let count = if n % 3 == 0 {
                     lattice_count_3(t)
@@ -158,6 +160,11 @@ fn main() {
                     lattice_count_9(t)
                 };
                 local += m * count;
+
+                // g = 3n > g_lim_9 uses lattice_3 and μ(3n) = -μ(n) (3 ∤ n).
+                if n >= k3_min && n <= k3_max && n % 3 != 0 {
+                    local += -m * lattice_count_3(l / (3 * n as i64));
+                }
             }
             local
         })

@@ -1,9 +1,10 @@
 // Project Euler 741 - Binary Grid Colourings
 //
 // Burnside's lemma with rotation/reflection symmetries on grid colourings.
+// g(n) is a sum of 5 independent recurrences; N2 dominates, so those run in parallel.
 
 const M: u64 = 1_000_000_007;
-const N1: i32 = 823543;   // 7^7
+const N1: i32 = 823543; // 7^7
 const N2: i32 = 16777216; // 8^8
 
 #[inline]
@@ -117,12 +118,19 @@ fn flip_diagonal(n: i32) -> u64 {
     f_arr[n]
 }
 
-fn g(n: i32) -> u64 {
-    let val = (f(n) + 2 * rotate90(n) % M + rotate180(n) + 2 * flip_y(n) % M + 2 * flip_diagonal(n) % M) % M;
+fn g_parts(n: i32) -> u64 {
+    // Four heavy recurrences in parallel; flip_y is a cheap factorial.
+    let ((f_n, r90), (r180, fd)) = rayon::join(
+        || rayon::join(|| f(n), || rotate90(n)),
+        || rayon::join(|| rotate180(n), || flip_diagonal(n)),
+    );
+    let fy = flip_y(n);
+    let val = (f_n + 2 * r90 % M + r180 + 2 * fy % M + 2 * fd % M) % M;
     mul(val, mod_inv(8))
 }
 
 fn main() {
-    let (a, b) = rayon::join(|| g(N1), || g(N2));
+    // N2 (~16.8M) dominates; N1 is ~20× smaller and overlaps the N2 recurrences.
+    let (a, b) = rayon::join(|| g_parts(N1), || g_parts(N2));
     println!("{}", (a + b) % M);
 }

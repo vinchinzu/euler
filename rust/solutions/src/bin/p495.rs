@@ -1,7 +1,7 @@
 // Project Euler 495 - Writing n! as product of k distinct integers
 // Inclusion-exclusion over partitions of K=30.
 
-use euler_utils::mod_pow;
+use rayon::prelude::*;
 
 const N: usize = 10000;
 const K: usize = 30;
@@ -17,11 +17,24 @@ fn vp_factorial(n: usize, p: usize) -> usize {
     count
 }
 
+fn gen_partitions(min_val: u8, remaining: u8, cur: &mut Vec<u8>, out: &mut Vec<Vec<u8>>) {
+    if remaining == 0 {
+        out.push(cur.clone());
+        return;
+    }
+    for c in min_val..=remaining {
+        cur.push(c);
+        gen_partitions(c, remaining - c, cur, out);
+        cur.pop();
+    }
+}
+
 fn main() {
-    // Sieve primes up to N
     let mut is_prime = vec![true; N + 1];
     is_prime[0] = false;
-    if N >= 1 { is_prime[1] = false; }
+    if N >= 1 {
+        is_prime[1] = false;
+    }
     let mut i = 2;
     while i * i <= N {
         if is_prime[i] {
@@ -36,108 +49,80 @@ fn main() {
     let primes: Vec<usize> = (2..=N).filter(|&i| is_prime[i]).collect();
     let nprimes = primes.len();
 
-    // Compute exponents[i] = v_p(N!) for each prime
     let exponents: Vec<usize> = primes.iter().map(|&p| vp_factorial(N, p)).collect();
 
-    // Precompute modular inverses
     let mut inv_val = vec![0u64; K + 1];
     inv_val[1] = 1;
     for i in 2..=K {
         inv_val[i] = (MOD - MOD / i as u64) % MOD * inv_val[(MOD % i as u64) as usize] % MOD;
     }
 
-    // Precompute inverse factorials
     let mut fact = 1u64;
     for i in 1..=K {
         fact = fact * i as u64 % MOD;
     }
     let mut inv_fact = vec![0u64; K + 1];
-    inv_fact[K] = mod_pow(fact, MOD - 2, MOD);
+    {
+        let mut base = fact;
+        let mut exp = MOD - 2;
+        let mut result = 1u64;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                result = result * base % MOD;
+            }
+            base = base * base % MOD;
+            exp >>= 1;
+        }
+        inv_fact[K] = result;
+    }
     for i in (0..K).rev() {
         inv_fact[i] = inv_fact[i + 1] * (i + 1) as u64 % MOD;
     }
 
-    // DP over partitions
-    // dp[depth][e] = number of ways to represent exponent e using coins so far
-    let mut dp = vec![vec![0u64; N + 1]; K + 2];
-    dp[0][0] = 1;
+    let mut partitions = Vec::with_capacity(6000);
+    let mut cur = Vec::with_capacity(K);
+    gen_partitions(1, K as u8, &mut cur, &mut partitions);
 
-    let mut coins = vec![0usize; K + 1];
-    let mut ans = 0u64;
-
-    fn helper(
-        min_val: usize,
-        remaining: usize,
-        depth: usize,
-        dp: &mut Vec<Vec<u64>>,
-        coins: &mut Vec<usize>,
-        exponents: &[usize],
-        nprimes: usize,
-        inv_val: &[u64],
-        inv_fact: &[u64],
-        ans: &mut u64,
-    ) {
-        if remaining == 0 {
-            let mut res = 1u64;
-            for i in 0..nprimes {
-                res = res * dp[depth][exponents[i]] % MOD;
-            }
-            for i in 0..depth {
-                let c = coins[i];
-                if c % 2 == 0 {
-                    res = res * (MOD - 1) % MOD;
+    let ans = partitions
+        .par_iter()
+        .fold(
+            || (vec![0u64; N + 1], 0u64),
+            |(mut dp, acc), part| {
+                dp.fill(0);
+                dp[0] = 1;
+                for &coeff in part.iter() {
+                    let c = coeff as usize;
+                    for e in c..=N {
+                        let s = dp[e] + dp[e - c];
+                        dp[e] = if s >= MOD { s - MOD } else { s };
+                    }
                 }
-                res = res * inv_val[c] % MOD;
-            }
-            let mut i = 0;
-            while i < depth {
-                let mut j = i;
-                while j < depth && coins[j] == coins[i] {
-                    j += 1;
+                let mut res = 1u64;
+                for i in 0..nprimes {
+                    res = res * dp[exponents[i]] % MOD;
                 }
-                let cnt = j - i;
-                res = res * inv_fact[cnt] % MOD;
-                i = j;
-            }
-            *ans = (*ans + res) % MOD;
-            return;
-        }
-
-        for coeff in min_val..=remaining {
-            let max_exp = N;
-            let (left, right) = dp.split_at_mut(depth + 1);
-            right[0][..=max_exp].copy_from_slice(&left[depth][..=max_exp]);
-            for e in coeff..=max_exp {
-                right[0][e] = (right[0][e] + right[0][e - coeff]) % MOD;
-            }
-            coins[depth] = coeff;
-            helper(
-                coeff,
-                remaining - coeff,
-                depth + 1,
-                dp,
-                coins,
-                exponents,
-                nprimes,
-                inv_val,
-                inv_fact,
-                ans,
-            );
-        }
-    }
-
-    helper(
-        1,
-        K,
-        0,
-        &mut dp,
-        &mut coins,
-        &exponents,
-        nprimes,
-        &inv_val,
-        &inv_fact,
-        &mut ans,
-    );
+                for &c in part.iter() {
+                    if c % 2 == 0 {
+                        res = res * (MOD - 1) % MOD;
+                    }
+                    res = res * inv_val[c as usize] % MOD;
+                }
+                let depth = part.len();
+                let mut i = 0;
+                while i < depth {
+                    let mut j = i;
+                    while j < depth && part[j] == part[i] {
+                        j += 1;
+                    }
+                    res = res * inv_fact[j - i] % MOD;
+                    i = j;
+                }
+                (dp, acc + res)
+            },
+        )
+        .map(|(_, acc)| acc)
+        .reduce(|| 0, |a, b| a + b)
+        % MOD;
 
     println!("{}", ans);
 }

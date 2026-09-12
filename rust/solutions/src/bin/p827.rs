@@ -2,6 +2,7 @@
 // Q(n) = smallest number occurring in exactly n Pythagorean triples.
 // Find sum_{k=1}^{18} Q(10^k) mod 409120391.
 
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 const MOD: i64 = 409120391;
@@ -215,89 +216,88 @@ fn min_number_for_shape(
     if found { Some((best_log, best_mod)) } else { None }
 }
 
-fn run() {
-    let pd = init_primes();
-
-    let mut total: i64 = 0;
+fn q_for_k(k: u32, pd: &PrimeData) -> i64 {
     let mut caches = Caches::new();
+    let mut t: i64 = 1;
+    for _ in 0..k { t *= 10; }
+    let target = 2 * t + 2;
 
-    for k in 1..=18 {
-        let mut t: i64 = 1;
-        for _ in 0..k { t *= 10; }
-        let target = 2 * t + 2;
+    let mut best_log = 1e30f64;
+    let mut best_mod: i64 = 0;
 
-        let mut best_log = 1e30f64;
-        let mut best_mod: i64 = 0;
+    let odd_divs = caches.get_odd_divisors(target, &pd.primes);
 
-        let odd_divs = caches.get_odd_divisors(target, &pd.primes);
+    for &a_val in &odd_divs {
+        let d_val = target / a_val;
+        let dm1 = d_val - 1;
 
-        for &a_val in &odd_divs {
-            let d_val = target / a_val;
-            let dm1 = d_val - 1;
+        let (log_a, mod_a) = if a_val == 1 {
+            (0.0, 1i64)
+        } else {
+            match min_number_for_shape(a_val, &pd.log_p1, &pd.p1mod4, best_log, &mut caches, &pd.primes) {
+                Some(v) => v,
+                None => continue,
+            }
+        };
 
-            let (log_a, mod_a) = if a_val == 1 {
-                (0.0, 1i64)
-            } else {
-                match min_number_for_shape(a_val, &pd.log_p1, &pd.p1mod4, best_log, &mut caches, &pd.primes) {
-                    Some(v) => v,
-                    None => continue,
-                }
-            };
+        if log_a >= best_log { continue; }
 
-            if log_a >= best_log { continue; }
-
-            // Case 1: odd m, B = dm1
-            if dm1 == 1 {
-                if log_a < best_log { best_log = log_a; best_mod = mod_a; }
-            } else if dm1 % 2 == 1 {
-                let remaining = best_log - log_a;
-                if let Some((log_b, mod_b)) = min_number_for_shape(dm1, &pd.log_p3, &pd.p3mod4, remaining, &mut caches, &pd.primes) {
-                    let tl = log_a + log_b;
-                    if tl < best_log {
-                        best_log = tl;
-                        best_mod = (mod_a as i128 * mod_b as i128 % MOD as i128) as i64;
-                    }
+        // Case 1: odd m, B = dm1
+        if dm1 == 1 {
+            if log_a < best_log { best_log = log_a; best_mod = mod_a; }
+        } else if dm1 % 2 == 1 {
+            let remaining = best_log - log_a;
+            if let Some((log_b, mod_b)) = min_number_for_shape(dm1, &pd.log_p3, &pd.p3mod4, remaining, &mut caches, &pd.primes) {
+                let tl = log_a + log_b;
+                if tl < best_log {
+                    best_log = tl;
+                    best_mod = (mod_a as i128 * mod_b as i128 % MOD as i128) as i64;
                 }
             }
+        }
 
-            // Case 2: even m
-            if dm1 >= 1 && dm1 % 2 == 1 {
-                let c_divs = caches.get_all_divisors(dm1, &pd.primes);
-                for &c in &c_divs {
-                    let b_val = dm1 / c;
-                    let a0 = (c + 1) / 2;
-                    let log2_part = a0 as f64 * pd.log2;
+        // Case 2: even m
+        if dm1 >= 1 && dm1 % 2 == 1 {
+            let c_divs = caches.get_all_divisors(dm1, &pd.primes);
+            for &c in &c_divs {
+                let b_val = dm1 / c;
+                let a0 = (c + 1) / 2;
+                let log2_part = a0 as f64 * pd.log2;
 
-                    if log_a + log2_part >= best_log { continue; }
+                if log_a + log2_part >= best_log { continue; }
 
-                    let remaining = best_log - log_a - log2_part;
-                    let mod2 = pow_mod(2, a0, MOD);
+                let remaining = best_log - log_a - log2_part;
+                let mod2 = pow_mod(2, a0, MOD);
 
-                    if b_val == 1 {
-                        let tl = log_a + log2_part;
+                if b_val == 1 {
+                    let tl = log_a + log2_part;
+                    if tl < best_log {
+                        best_log = tl;
+                        best_mod = (mod_a as i128 * mod2 as i128 % MOD as i128) as i64;
+                    }
+                } else if b_val % 2 == 1 {
+                    if let Some((log_b, mod_b)) = min_number_for_shape(b_val, &pd.log_p3, &pd.p3mod4, remaining, &mut caches, &pd.primes) {
+                        let tl = log_a + log2_part + log_b;
                         if tl < best_log {
                             best_log = tl;
-                            best_mod = (mod_a as i128 * mod2 as i128 % MOD as i128) as i64;
-                        }
-                    } else if b_val % 2 == 1 {
-                        if let Some((log_b, mod_b)) = min_number_for_shape(b_val, &pd.log_p3, &pd.p3mod4, remaining, &mut caches, &pd.primes) {
-                            let tl = log_a + log2_part + log_b;
-                            if tl < best_log {
-                                best_log = tl;
-                                let mut bm = (mod_a as i128 * mod2 as i128 % MOD as i128) as i64;
-                                bm = (bm as i128 * mod_b as i128 % MOD as i128) as i64;
-                                best_mod = bm;
-                            }
+                            let mut bm = (mod_a as i128 * mod2 as i128 % MOD as i128) as i64;
+                            bm = (bm as i128 * mod_b as i128 % MOD as i128) as i64;
+                            best_mod = bm;
                         }
                     }
                 }
             }
         }
-
-        total = (total + best_mod) % MOD;
     }
 
-    println!("{}", total);
+    best_mod
+}
+
+fn run() {
+    let pd = init_primes();
+    // Each k is an independent Q(10^k); caches are thread-local (HashMaps are mutated).
+    let total: i64 = (1..=18u32).into_par_iter().map(|k| q_for_k(k, &pd)).sum();
+    println!("{}", total % MOD);
 }
 
 fn main() {

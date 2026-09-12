@@ -11,7 +11,6 @@
 // - Parallelize with rayon in chunks
 
 use rayon::prelude::*;
-use std::collections::HashSet;
 
 const N_VAL: i64 = 1_000_000_000_000_000_000; // 10^18
 
@@ -28,8 +27,7 @@ fn isqrt_i64(n: i64) -> i64 {
 #[inline]
 fn is_sq(n: i64) -> bool {
     if n < 0 { return false; }
-    let r = isqrt_i64(n);
-    (r as i128) * (r as i128) == n as i128
+    is_sq_small(n)
 }
 
 /// Fast perfect square test for values known to fit in ~10^13 range
@@ -162,14 +160,16 @@ fn sums_of_two_squares(factors: &[PrimePower], f_mult: i32, gauss_cache: &[GI]) 
         }
     }
 
-    let mut pairs_set: HashSet<(i64, i64)> = HashSet::new();
+    let mut pairs: Vec<(i64, i64)> = Vec::with_capacity(results.len());
     for r in &results {
         let x = r.re.abs();
         let y = r.im.abs();
         let (lo, hi) = if x <= y { (x, y) } else { (y, x) };
-        pairs_set.insert((lo, hi));
+        pairs.push((lo, hi));
     }
-    pairs_set.into_iter().collect()
+    pairs.sort_unstable();
+    pairs.dedup();
+    pairs
 }
 
 fn get_divisors(factors: &[PrimePower], f_mult: i32) -> Vec<i64> {
@@ -265,11 +265,13 @@ fn main() {
     }
 
     // Precompute Gaussian factors for all primes p = 1 mod 4 up to limit
+    let p14: Vec<usize> = (2..=limit)
+        .filter(|&p| ff[p] == p as u32 && p % 4 == 1)
+        .collect();
+    let gf_vals: Vec<GI> = p14.par_iter().map(|&p| find_gaussian_factor(p as i32)).collect();
     let mut gauss_cache = vec![GI { re: 0, im: 0 }; limit + 1];
-    for p in 2..=limit {
-        if ff[p] == p as u32 && p % 4 == 1 {
-            gauss_cache[p] = find_gaussian_factor(p as i32);
-        }
+    for (i, &p) in p14.iter().enumerate() {
+        gauss_cache[p] = gf_vals[i];
     }
 
     // Precompute sums a^e + b^e for e >= 5 using sorted Vec for binary search

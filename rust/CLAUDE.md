@@ -223,4 +223,4 @@ Features:
 4. **`pow_mod` in a loop over the exponent**: `for i in 0..ord { pow_mod(2, i, k) }` is N binary exps. Keep a running `acc = acc * 2 % k` (p486: 2.3s → 0.11s).
 5. **Naive multiplicative order**: do not multiply until 1. Compute `φ(m)`, factor it, peel primes. Same for `order(2, k)` style loops.
 
-Wave-3 2s→<1s playbook (also `.grok/skills/euler-rust-speed/SKILL.md`): pick 1.5–3s binaries from `validated.json`, scan for no-rayon + `i128` / `pow_mod` loops, A/B with `python3 ab_bench.py NNN`.
+Speed waves: `.grok/skills/euler-rust-speed/SKILL.md` (never-A/B and >50ms; skip last-31-day touches; parent A/B).

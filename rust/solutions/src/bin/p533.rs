@@ -1,27 +1,28 @@
 // Project Euler 533 - Carmichael Lambda Function
 //
 // Sieve-based computation of lambda values mod 10^9.
-// For each prime p, update multiples of (p-1) and prime powers.
+// Segmented into disjoint chunks processed in parallel with Rayon.
 
 use rayon::prelude::*;
 
 const N: usize = 20_000_000;
 const MOD: u64 = 1_000_000_000;
 
+#[derive(Clone, Copy)]
+struct PrimeData {
+    p: u32,
+    d: u32,
+    logp: f64,
+}
+
 fn main() {
-    // Odd-only sieve
-    let mut is_prime = vec![false; N + 1];
-    if N >= 2 {
-        is_prime[2] = true;
-    }
+    // Sieve odd primes up to N
     let n_odds = (N + 1) / 2;
     let mut odd = vec![true; n_odds];
     odd[0] = false;
-    let mut i = 1usize;
-    while {
-        let p = 2 * i + 1;
-        p * p <= N
-    } {
+    let limit = ((N as f64).sqrt() as usize) | 1;
+    let limit_idx = limit / 2;
+    for i in 1..=limit_idx {
         if odd[i] {
             let p = 2 * i + 1;
             let mut j = (p * p) / 2;
@@ -30,88 +31,115 @@ fn main() {
                 j += p;
             }
         }
-        i += 1;
     }
+
+    let mut odd_primes = Vec::with_capacity(1_300_000);
     for i in 1..n_odds {
         if odd[i] {
-            let p = 2 * i + 1;
-            if p <= N {
-                is_prime[p] = true;
-            }
+            let p = (2 * i + 1) as u32;
+            odd_primes.push(PrimeData {
+                p,
+                d: p - 1,
+                logp: (p as f64).ln(),
+            });
         }
     }
     drop(odd);
 
-    let mut logs = vec![0.0f64; N];
-    let mut mods = vec![1u32; N];
-
-    // Handle p = 2 separately
     let log2v = 2.0f64.ln();
-    for n in 1..N {
-        logs[n] += log2v;
-        mods[n] = ((mods[n] as u64 * 2) % MOD) as u32;
-    }
-    let mut n = 2;
-    while n < N {
-        logs[n] += log2v;
-        mods[n] = ((mods[n] as u64 * 2) % MOD) as u32;
-        n += 2;
-    }
-    let mut pe = 2usize;
-    while pe < N {
-        let mut n = pe;
-        while n < N {
-            logs[n] += log2v;
-            mods[n] = ((mods[n] as u64 * 2) % MOD) as u32;
-            n += pe;
-        }
-        pe <<= 1;
-    }
+    const NUM_CHUNKS: usize = 128;
+    let chunk_size = (N - 1 + NUM_CHUNKS - 1) / NUM_CHUNKS;
 
-    // Odd primes: collect then process in parallel chunks into local buffers, merge
-    let odd_primes: Vec<usize> = (3..=N).step_by(2).filter(|&p| is_prime[p]).collect();
-
-    // Chunk primes; each chunk builds full local logs/mods updates is too much memory
-    // Instead: sequential but with unsafe and tighter loops
-    for &p in &odd_primes {
-        let d = p - 1;
-        let logp = (p as f64).ln();
-        let pu = p as u64;
-
-        let mut n = d;
-        while n < N {
-            unsafe {
-                *logs.get_unchecked_mut(n) += logp;
-                let m = mods.get_unchecked_mut(n);
-                *m = ((*m as u64 * pu) % MOD) as u32;
-            }
-            n += d;
-        }
-
-        let mut pe_val = p as u64;
-        while (d as u64) * pe_val < N as u64 {
-            let step = d as u64 * pe_val;
-            let mut n = step;
-            while n < N as u64 {
-                let nu = n as usize;
-                unsafe {
-                    *logs.get_unchecked_mut(nu) += logp;
-                    let m = mods.get_unchecked_mut(nu);
-                    *m = ((*m as u64 * pu) % MOD) as u32;
-                }
-                n += step;
-            }
-            if pe_val > (N as u64 - 1) / pu {
-                break;
-            }
-            pe_val *= pu;
-        }
-    }
-
-    // Parallel find max
-    let (best_log, best_mod) = (1..N)
+    let (best_log, best_mod) = (0..NUM_CHUNKS)
         .into_par_iter()
-        .map(|n| (logs[n], mods[n]))
+        .map(|chunk_idx| {
+            let start = 1 + chunk_idx * chunk_size;
+            let end = (start + chunk_size).min(N);
+            if start >= end {
+                return (-1.0f64, 0u32);
+            }
+            let len = end - start;
+
+            let mut logs = vec![0.0f64; len];
+            let mut mods = vec![1u32; len];
+
+            // Initialize p = 2 contribution
+            for i in 0..len {
+                let n = start + i;
+                let e = if n & 1 == 1 { 1 } else { n.trailing_zeros() + 2 };
+                unsafe {
+                    *logs.get_unchecked_mut(i) = e as f64 * log2v;
+                    *mods.get_unchecked_mut(i) = 1u32 << e;
+                }
+            }
+
+            // Odd primes
+            for prime in &odd_primes {
+                let d = prime.d as usize;
+                if d >= end {
+                    break;
+                }
+                let pu = prime.p as u64;
+                let logp = prime.logp;
+
+                let first = if start <= d {
+                    d
+                } else {
+                    ((start + d - 1) / d) * d
+                };
+
+                let mut n = first;
+                while n < end {
+                    let idx = n - start;
+                    unsafe {
+                        *logs.get_unchecked_mut(idx) += logp;
+                        let m = mods.get_unchecked_mut(idx);
+                        *m = ((*m as u64 * pu) % MOD) as u32;
+                    }
+                    n += d;
+                }
+
+                // Prime powers: only primes with (p-1)*p < N can contribute
+                if prime.p <= 4472 {
+                    let mut pe_val = pu;
+                    while (prime.d as u64) * pe_val < N as u64 {
+                        let step = (prime.d as u64 * pe_val) as usize;
+                        let first_pe = if start <= step {
+                            step
+                        } else {
+                            ((start + step - 1) / step) * step
+                        };
+                        let mut n_pe = first_pe;
+                        while n_pe < end {
+                            let idx = n_pe - start;
+                            unsafe {
+                                *logs.get_unchecked_mut(idx) += logp;
+                                let m = mods.get_unchecked_mut(idx);
+                                *m = ((*m as u64 * pu) % MOD) as u32;
+                            }
+                            n_pe += step;
+                        }
+                        if pe_val > (N as u64 - 1) / pu {
+                            break;
+                        }
+                        pe_val *= pu;
+                    }
+                }
+            }
+
+            // Find local maximum in chunk
+            let mut chunk_best_log = -1.0f64;
+            let mut chunk_best_mod = 0u32;
+            for i in 0..len {
+                let l = logs[i];
+                if l > chunk_best_log {
+                    chunk_best_log = l;
+                    chunk_best_mod = mods[i];
+                }
+            }
+
+            (chunk_best_log, chunk_best_mod)
+        })
         .reduce(
             || (-1.0f64, 0u32),
             |(l1, m1), (l2, m2)| {

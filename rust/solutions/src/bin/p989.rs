@@ -5,9 +5,34 @@
 use rayon::prelude::*;
 
 const MOD: i64 = 1_000_000_009;
+const MOD_U: u64 = 1_000_000_009;
 const TARGET_LIMIT: i64 = 100_000_000_000_000; // 10^14
 const SMALL_NONPRIMITIVE_LIMIT: usize = 8;
 const PARALLEL_G_MAX: usize = 10_000;
+
+#[inline(always)]
+fn mulm(a: u64, b: u64) -> u64 {
+    (a * b) % MOD_U
+}
+
+#[inline(always)]
+fn addm(a: u64, b: u64) -> u64 {
+    let s = a + b;
+    if s >= MOD_U {
+        s - MOD_U
+    } else {
+        s
+    }
+}
+
+#[inline(always)]
+fn subm(a: u64, b: u64) -> u64 {
+    if a >= b {
+        a - b
+    } else {
+        a + MOD_U - b
+    }
+}
 
 #[inline(always)]
 fn pow_mod(mut base: u64, mut exp: u64) -> i64 {
@@ -251,29 +276,33 @@ impl Powers {
 }
 
 fn nonprimitive_even(limit: i64, pw: &Powers) -> (i64, i64) {
-    let mod_ = MOD;
-    let mut total1 = 0i64;
-    let mut total2 = 0i64;
+    let z1_sq = pw.z1_sq as u64;
+    let z2_sq = pw.z2_sq as u64;
+    let z1_inv_10 = pw.z1_inv_10 as u64;
+    let z2_inv_10 = pw.z2_inv_10 as u64;
 
-    let mut even_weight1 = pw.z1_inv_5;
-    let mut even_weight2 = pw.z2_inv_5;
-    let mut even_delta1 = pw.z1_inv_15;
-    let mut even_delta2 = pw.z2_inv_15;
+    let mut total1 = 0u64;
+    let mut total2 = 0u64;
+
+    let mut even_weight1 = pw.z1_inv_5 as u64;
+    let mut even_weight2 = pw.z2_inv_5 as u64;
+    let mut even_delta1 = pw.z1_inv_15 as u64;
+    let mut even_delta2 = pw.z2_inv_15 as u64;
 
     let mut add_index = 0i64;
-    let mut add_term1 = 1i64;
-    let mut add_term2 = 1i64;
-    let mut add_step1 = pw.z1;
-    let mut add_step2 = pw.z2;
+    let mut add_term1 = 1u64;
+    let mut add_term2 = 1u64;
+    let mut add_step1 = pw.z1 as u64;
+    let mut add_step2 = pw.z2 as u64;
 
     let mut drop_index = 0i64;
-    let mut drop_term1 = 1i64;
-    let mut drop_term2 = 1i64;
-    let mut drop_step1 = pw.z1;
-    let mut drop_step2 = pw.z2;
+    let mut drop_term1 = 1u64;
+    let mut drop_term2 = 1u64;
+    let mut drop_step1 = pw.z1 as u64;
+    let mut drop_step2 = pw.z2 as u64;
 
-    let mut window1 = 0i64;
-    let mut window2 = 0i64;
+    let mut window1 = 0u64;
+    let mut window2 = 0u64;
     let mut t = 1i64;
     let mut lower = 3i64;
     let mut upper = 0i64;
@@ -286,46 +315,55 @@ fn nonprimitive_even(limit: i64, pw: &Powers) -> (i64, i64) {
 
     while lower <= upper {
         while add_index <= upper {
-            window1 += add_term1;
-            if window1 >= mod_ {
-                window1 -= mod_;
-            }
-            window2 += add_term2;
-            if window2 >= mod_ {
-                window2 -= mod_;
-            }
-
-            add_term1 = add_term1 * add_step1 % mod_;
-            add_step1 = add_step1 * pw.z1_sq % mod_;
-            add_term2 = add_term2 * add_step2 % mod_;
-            add_step2 = add_step2 * pw.z2_sq % mod_;
+            window1 = addm(window1, add_term1);
+            window2 = addm(window2, add_term2);
+            add_term1 = mulm(add_term1, add_step1);
+            add_step1 = mulm(add_step1, z1_sq);
+            add_term2 = mulm(add_term2, add_step2);
+            add_step2 = mulm(add_step2, z2_sq);
             add_index += 1;
         }
 
-        while drop_index < lower {
-            window1 -= drop_term1;
-            if window1 < 0 {
-                window1 += mod_;
-            }
-            window2 -= drop_term2;
-            if window2 < 0 {
-                window2 += mod_;
-            }
+        while drop_index + 3 <= lower {
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
 
-            drop_term1 = drop_term1 * drop_step1 % mod_;
-            drop_step1 = drop_step1 * pw.z1_sq % mod_;
-            drop_term2 = drop_term2 * drop_step2 % mod_;
-            drop_step2 = drop_step2 * pw.z2_sq % mod_;
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
+
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
+            drop_index += 3;
+        }
+        while drop_index < lower {
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
             drop_index += 1;
         }
 
-        total1 = (total1 + window1 * even_weight1) % mod_;
-        total2 = (total2 + window2 * even_weight2) % mod_;
+        total1 = addm(total1, mulm(window1, even_weight1));
+        total2 = addm(total2, mulm(window2, even_weight2));
 
-        even_weight1 = even_weight1 * even_delta1 % mod_;
-        even_delta1 = even_delta1 * pw.z1_inv_10 % mod_;
-        even_weight2 = even_weight2 * even_delta2 % mod_;
-        even_delta2 = even_delta2 * pw.z2_inv_10 % mod_;
+        even_weight1 = mulm(even_weight1, even_delta1);
+        even_delta1 = mulm(even_delta1, z1_inv_10);
+        even_weight2 = mulm(even_weight2, even_delta2);
+        even_delta2 = mulm(even_delta2, z2_inv_10);
 
         rhs += 10 * t + 5;
         t += 1;
@@ -336,33 +374,37 @@ fn nonprimitive_even(limit: i64, pw: &Powers) -> (i64, i64) {
         }
     }
 
-    (total1, total2)
+    (total1 as i64, total2 as i64)
 }
 
 fn nonprimitive_odd(limit: i64, pw: &Powers) -> (i64, i64) {
-    let mod_ = MOD;
-    let mut total1 = 0i64;
-    let mut total2 = 0i64;
+    let z1_sq = pw.z1_sq as u64;
+    let z2_sq = pw.z2_sq as u64;
+    let z1_inv_10 = pw.z1_inv_10 as u64;
+    let z2_inv_10 = pw.z2_inv_10 as u64;
 
-    let mut odd_weight1 = pw.z1_inv;
-    let mut odd_weight2 = pw.z2_inv;
-    let mut odd_delta1 = pw.z1_inv_10;
-    let mut odd_delta2 = pw.z2_inv_10;
+    let mut total1 = 0u64;
+    let mut total2 = 0u64;
+
+    let mut odd_weight1 = pw.z1_inv as u64;
+    let mut odd_weight2 = pw.z2_inv as u64;
+    let mut odd_delta1 = pw.z1_inv_10 as u64;
+    let mut odd_delta2 = pw.z2_inv_10 as u64;
 
     let mut add_index = 0i64;
-    let mut add_term1 = 1i64;
-    let mut add_term2 = 1i64;
-    let mut add_step1 = pw.z1_sq;
-    let mut add_step2 = pw.z2_sq;
+    let mut add_term1 = 1u64;
+    let mut add_term2 = 1u64;
+    let mut add_step1 = z1_sq;
+    let mut add_step2 = z2_sq;
 
     let mut drop_index = 0i64;
-    let mut drop_term1 = 1i64;
-    let mut drop_term2 = 1i64;
-    let mut drop_step1 = pw.z1_sq;
-    let mut drop_step2 = pw.z2_sq;
+    let mut drop_term1 = 1u64;
+    let mut drop_term2 = 1u64;
+    let mut drop_step1 = z1_sq;
+    let mut drop_step2 = z2_sq;
 
-    let mut window1 = 0i64;
-    let mut window2 = 0i64;
+    let mut window1 = 0u64;
+    let mut window2 = 0u64;
     let mut t = 0i64;
     let mut lower = 1i64;
     let mut upper = 0i64;
@@ -375,46 +417,55 @@ fn nonprimitive_odd(limit: i64, pw: &Powers) -> (i64, i64) {
 
     while lower <= upper {
         while add_index <= upper {
-            window1 += add_term1;
-            if window1 >= mod_ {
-                window1 -= mod_;
-            }
-            window2 += add_term2;
-            if window2 >= mod_ {
-                window2 -= mod_;
-            }
-
-            add_term1 = add_term1 * add_step1 % mod_;
-            add_step1 = add_step1 * pw.z1_sq % mod_;
-            add_term2 = add_term2 * add_step2 % mod_;
-            add_step2 = add_step2 * pw.z2_sq % mod_;
+            window1 = addm(window1, add_term1);
+            window2 = addm(window2, add_term2);
+            add_term1 = mulm(add_term1, add_step1);
+            add_step1 = mulm(add_step1, z1_sq);
+            add_term2 = mulm(add_term2, add_step2);
+            add_step2 = mulm(add_step2, z2_sq);
             add_index += 1;
         }
 
-        while drop_index < lower {
-            window1 -= drop_term1;
-            if window1 < 0 {
-                window1 += mod_;
-            }
-            window2 -= drop_term2;
-            if window2 < 0 {
-                window2 += mod_;
-            }
+        while drop_index + 3 <= lower {
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
 
-            drop_term1 = drop_term1 * drop_step1 % mod_;
-            drop_step1 = drop_step1 * pw.z1_sq % mod_;
-            drop_term2 = drop_term2 * drop_step2 % mod_;
-            drop_step2 = drop_step2 * pw.z2_sq % mod_;
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
+
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
+            drop_index += 3;
+        }
+        while drop_index < lower {
+            window1 = subm(window1, drop_term1);
+            window2 = subm(window2, drop_term2);
+            drop_term1 = mulm(drop_term1, drop_step1);
+            drop_step1 = mulm(drop_step1, z1_sq);
+            drop_term2 = mulm(drop_term2, drop_step2);
+            drop_step2 = mulm(drop_step2, z2_sq);
             drop_index += 1;
         }
 
-        total1 = (total1 + window1 * odd_weight1) % mod_;
-        total2 = (total2 + window2 * odd_weight2) % mod_;
+        total1 = addm(total1, mulm(window1, odd_weight1));
+        total2 = addm(total2, mulm(window2, odd_weight2));
 
-        odd_weight1 = odd_weight1 * odd_delta1 % mod_;
-        odd_delta1 = odd_delta1 * pw.z1_inv_10 % mod_;
-        odd_weight2 = odd_weight2 * odd_delta2 % mod_;
-        odd_delta2 = odd_delta2 * pw.z2_inv_10 % mod_;
+        odd_weight1 = mulm(odd_weight1, odd_delta1);
+        odd_delta1 = mulm(odd_delta1, z1_inv_10);
+        odd_weight2 = mulm(odd_weight2, odd_delta2);
+        odd_delta2 = mulm(odd_delta2, z2_inv_10);
 
         rhs += 10 * t + 10;
         t += 1;
@@ -425,7 +476,7 @@ fn nonprimitive_odd(limit: i64, pw: &Powers) -> (i64, i64) {
         }
     }
 
-    (total1, total2)
+    (total1 as i64, total2 as i64)
 }
 
 fn nonprimitive_pair(
@@ -517,96 +568,120 @@ fn contrib_for_g(
     (np_phi * sign, np_psi * sign)
 }
 
+fn large_g_ranges(par_max: usize, root: usize) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut g = par_max + 1;
+    while g <= root {
+        let sz = if g < 30_000 {
+            128
+        } else if g < 80_000 {
+            256
+        } else if g < 200_000 {
+            512
+        } else if g < 800_000 {
+            2_048
+        } else {
+            16_384
+        };
+        let end = (g + sz - 1).min(root);
+        ranges.push((g, end));
+        g = end + 1;
+    }
+    ranges
+}
+
 fn solve(limit: i64, c: &Constants) -> i64 {
     let root = isqrt(limit) as usize;
     let mu = mobius_sieve(root);
 
     let par_max = PARALLEL_G_MAX.min(root);
 
-    // --- Parallel region: small g (expensive nonprimitive_pair) ---
     let (heavy_gs, light_gs): (Vec<usize>, Vec<usize>) = (1..=par_max)
         .filter(|&g| mu[g] != 0)
         .partition(|&g| g <= 30);
 
-    let ((h_phi, h_psi), (l_phi, l_psi)) = rayon::join(
+    let ranges = if par_max < root {
+        large_g_ranges(par_max, root)
+    } else {
+        Vec::new()
+    };
+
+    // small-g nonprimitive sums and large-g incremental powers are independent
+    let ((h_phi, h_psi, l_phi, l_psi), (c_phi, c_psi)) = rayon::join(
         || {
-            heavy_gs
-                .into_par_iter()
-                .with_min_len(1)
-                .map(|g| {
-                    let g_square = (g as i64) * (g as i64);
-                    let phi_pow_g2 = pow_mod(c.phi as u64, g_square as u64);
-                    let phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, g_square as u64);
-                    contrib_for_g(g, limit, phi_pow_g2, phi_inv_pow_g2, mu[g], &c.small_terms)
-                })
-                .reduce(|| (0i64, 0i64), |a, b| (a.0 + b.0, a.1 + b.1))
+            let ((h_phi, h_psi), (l_phi, l_psi)) = rayon::join(
+                || {
+                    heavy_gs
+                        .into_par_iter()
+                        .with_min_len(1)
+                        .map(|g| {
+                            let g_square = (g as i64) * (g as i64);
+                            let phi_pow_g2 = pow_mod(c.phi as u64, g_square as u64);
+                            let phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, g_square as u64);
+                            contrib_for_g(g, limit, phi_pow_g2, phi_inv_pow_g2, mu[g], &c.small_terms)
+                        })
+                        .reduce(|| (0i64, 0i64), |a, b| (a.0 + b.0, a.1 + b.1))
+                },
+                || {
+                    light_gs
+                        .into_par_iter()
+                        .map(|g| {
+                            let g_square = (g as i64) * (g as i64);
+                            let phi_pow_g2 = pow_mod(c.phi as u64, g_square as u64);
+                            let phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, g_square as u64);
+                            contrib_for_g(g, limit, phi_pow_g2, phi_inv_pow_g2, mu[g], &c.small_terms)
+                        })
+                        .reduce(|| (0i64, 0i64), |a, b| (a.0 + b.0, a.1 + b.1))
+                },
+            );
+            (h_phi, h_psi, l_phi, l_psi)
         },
         || {
-            light_gs
+            if ranges.is_empty() {
+                return (0i64, 0i64);
+            }
+            let phi_sq = c.phi_sq as u64;
+            let phi_inv_sq = c.phi_inv_sq as u64;
+            ranges
                 .into_par_iter()
-                .map(|g| {
-                    let g_square = (g as i64) * (g as i64);
-                    let phi_pow_g2 = pow_mod(c.phi as u64, g_square as u64);
-                    let phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, g_square as u64);
-                    contrib_for_g(g, limit, phi_pow_g2, phi_inv_pow_g2, mu[g], &c.small_terms)
+                .map(|(g_start, g_end)| {
+                    let g0 = (g_start - 1) as i64;
+                    let mut phi_pow_g2 = pow_mod(c.phi as u64, (g0 * g0) as u64) as u64;
+                    let mut phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, (g0 * g0) as u64) as u64;
+                    let mut forward_step = pow_mod(c.phi as u64, (2 * g0 + 1) as u64) as u64;
+                    let mut backward_step = pow_mod(c.phi_inv as u64, (2 * g0 + 1) as u64) as u64;
+
+                    let mut chunk_phi = 0i64;
+                    let mut chunk_psi = 0i64;
+
+                    for g in g_start..=g_end {
+                        phi_pow_g2 = mulm(phi_pow_g2, forward_step);
+                        forward_step = mulm(forward_step, phi_sq);
+                        phi_inv_pow_g2 = mulm(phi_inv_pow_g2, backward_step);
+                        backward_step = mulm(backward_step, phi_inv_sq);
+
+                        let mu_g = mu[g];
+                        if mu_g != 0 {
+                            let (dphi, dpsi) = contrib_for_g(
+                                g,
+                                limit,
+                                phi_pow_g2 as i64,
+                                phi_inv_pow_g2 as i64,
+                                mu_g,
+                                &c.small_terms,
+                            );
+                            chunk_phi += dphi;
+                            chunk_psi += dpsi;
+                        }
+                    }
+                    (chunk_phi % MOD, chunk_psi % MOD)
                 })
-                .reduce(|| (0i64, 0i64), |a, b| (a.0 + b.0, a.1 + b.1))
+                .reduce(|| (0i64, 0i64), |a, b| ((a.0 + b.0) % MOD, (a.1 + b.1) % MOD))
         },
     );
-    let mut p_phi = h_phi + l_phi;
-    let mut p_psi = h_psi + l_psi;
 
-    // --- Parallel chunked region: large g with incremental powers ---
-    if par_max < root {
-        let chunk_size = 20_000usize;
-        let num_chunks = (root - par_max).div_ceil(chunk_size);
-
-        let (c_phi, c_psi) = (0..num_chunks)
-            .into_par_iter()
-            .map(|chunk_idx| {
-                let g_start = par_max + 1 + chunk_idx * chunk_size;
-                let g_end = (g_start + chunk_size - 1).min(root);
-
-                let g0 = (g_start - 1) as i64;
-                let mut phi_pow_g2 = pow_mod(c.phi as u64, (g0 * g0) as u64);
-                let mut phi_inv_pow_g2 = pow_mod(c.phi_inv as u64, (g0 * g0) as u64);
-                let mut forward_step = pow_mod(c.phi as u64, (2 * g0 + 1) as u64);
-                let mut backward_step = pow_mod(c.phi_inv as u64, (2 * g0 + 1) as u64);
-
-                let mut chunk_phi = 0i64;
-                let mut chunk_psi = 0i64;
-
-                #[allow(clippy::needless_range_loop)]
-                for g in g_start..=g_end {
-                    phi_pow_g2 = (phi_pow_g2 * forward_step) % MOD;
-                    forward_step = (forward_step * c.phi_sq) % MOD;
-                    phi_inv_pow_g2 = (phi_inv_pow_g2 * backward_step) % MOD;
-                    backward_step = (backward_step * c.phi_inv_sq) % MOD;
-
-                    let mu_g = mu[g];
-                    if mu_g != 0 {
-                        let (dphi, dpsi) = contrib_for_g(
-                            g,
-                            limit,
-                            phi_pow_g2,
-                            phi_inv_pow_g2,
-                            mu_g,
-                            &c.small_terms,
-                        );
-                        chunk_phi += dphi;
-                        chunk_psi += dpsi;
-                    }
-                }
-                (chunk_phi % MOD, chunk_psi % MOD)
-            })
-            .reduce(|| (0i64, 0i64), |a, b| ((a.0 + b.0) % MOD, (a.1 + b.1) % MOD));
-
-        p_phi = (p_phi + c_phi) % MOD;
-        p_psi = (p_psi + c_psi) % MOD;
-    }
-
-    let p_phi = p_phi.rem_euclid(MOD);
-    let p_psi = p_psi.rem_euclid(MOD);
+    let p_phi = (h_phi + l_phi + c_phi).rem_euclid(MOD);
+    let p_psi = (h_psi + l_psi + c_psi).rem_euclid(MOD);
 
     ((p_phi - p_psi).rem_euclid(MOD) * c.inv_sqrt5) % MOD
 }

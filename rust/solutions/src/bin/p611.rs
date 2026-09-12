@@ -15,8 +15,8 @@ struct Ctx<'a> {
     primes: &'a [i64],
     p2s: &'a [i64],
     p_k: &'a [u8],
-    adj: &'a [i64],
-    small0: &'a [i64],
+    adj: &'a [i32],
+    small0: &'a [i32],
     big0: &'a [i64],
     n_val: i64,
     l: i64,
@@ -36,9 +36,9 @@ fn node_contrib(f: &Frame, nlim: i64, ctx: &Ctx) -> i64 {
         let pi1 = if f.n <= ctx.l {
             unsafe { *ctx.big0.get_unchecked(f.n as usize) }
         } else {
-            unsafe { *ctx.small0.get_unchecked(nlim as usize) }
+            unsafe { *ctx.small0.get_unchecked(nlim as usize) as i64 }
         };
-        ans += pi1 + unsafe { *ctx.adj.get_unchecked(f.min_idx) };
+        ans += pi1 + unsafe { *ctx.adj.get_unchecked(f.min_idx) as i64 };
     }
     ans
 }
@@ -83,6 +83,53 @@ fn push_powers(idx: usize, n: i64, nlim: i64, p_val: i64, ctx: &Ctx, stack: &mut
                 break;
             }
             pe *= 2;
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn sub_range_i64(a: &mut [i64], b: &mut [i64], mut i: i64, i_last: i64, va: i64, vb: i64) -> i64 {
+    unsafe {
+        while i + 4 <= i_last {
+            let iu = i as usize;
+            *a.get_unchecked_mut(iu) -= va;
+            *b.get_unchecked_mut(iu) -= vb;
+            *a.get_unchecked_mut(iu + 1) -= va;
+            *b.get_unchecked_mut(iu + 1) -= vb;
+            *a.get_unchecked_mut(iu + 2) -= va;
+            *b.get_unchecked_mut(iu + 2) -= vb;
+            *a.get_unchecked_mut(iu + 3) -= va;
+            *b.get_unchecked_mut(iu + 3) -= vb;
+            i += 4;
+        }
+        while i <= i_last {
+            *a.get_unchecked_mut(i as usize) -= va;
+            *b.get_unchecked_mut(i as usize) -= vb;
+            i += 1;
+        }
+    }
+    i
+}
+
+#[inline(always)]
+unsafe fn sub_range_i32(a: &mut [i32], b: &mut [i32], mut j: i64, i: i64, va: i32, vb: i32) {
+    unsafe {
+        while j + 4 <= i {
+            let ju = j as usize;
+            *a.get_unchecked_mut(ju) -= va;
+            *b.get_unchecked_mut(ju) -= vb;
+            *a.get_unchecked_mut(ju + 1) -= va;
+            *b.get_unchecked_mut(ju + 1) -= vb;
+            *a.get_unchecked_mut(ju + 2) -= va;
+            *b.get_unchecked_mut(ju + 2) -= vb;
+            *a.get_unchecked_mut(ju + 3) -= va;
+            *b.get_unchecked_mut(ju + 3) -= vb;
+            j += 4;
+        }
+        while j <= i {
+            *a.get_unchecked_mut(j as usize) -= va;
+            *b.get_unchecked_mut(j as usize) -= vb;
+            j += 1;
         }
     }
 }
@@ -145,17 +192,19 @@ fn main() {
     let p_k: Vec<u8> = primes.iter().map(|&p| (p & 3) as u8).collect();
 
     let big_size = (n_val / l + 1) as usize;
-    let mut big = vec![[0i64; 2]; big_size];
-    let mut small = vec![[0i64; 2]; lu + 1];
+    let mut big0 = vec![0i64; big_size];
+    let mut big1 = vec![0i64; big_size];
+    let mut small0 = vec![0i32; lu + 1];
+    let mut small1 = vec![0i32; lu + 1];
 
     for i in 1..big_size {
         let v = n_val / i as i64;
-        big[i][0] = (v + 3) / 4;
-        big[i][1] = (v + 1) / 4;
+        big0[i] = (v + 3) / 4;
+        big1[i] = (v + 1) / 4;
     }
     for i in 1..=lu {
-        small[i][0] = (i as i64 + 3) / 4;
-        small[i][1] = (i as i64 + 1) / 4;
+        small0[i] = ((i as i64 + 3) / 4) as i32;
+        small1[i] = ((i as i64 + 1) / 4) as i32;
     }
 
     // Lucy DP: loop-carried over primes; inner i-updates use old larger indices.
@@ -163,8 +212,10 @@ fn main() {
     for pi in 1..primes.len() {
         let p = primes[pi];
         let p2 = p2s[pi];
-        let sp0 = small[(p - 1) as usize][0];
-        let sp1 = small[(p - 1) as usize][1];
+        let sp0 = small0[(p - 1) as usize];
+        let sp1 = small1[(p - 1) as usize];
+        let sp0_64 = sp0 as i64;
+        let sp1_64 = sp1 as i64;
         let mod1 = p_k[pi] == 1;
         let pu = p as usize;
 
@@ -176,10 +227,10 @@ fn main() {
                 let mut ip = pu;
                 if mod1 {
                     for i in 1..=i_mid as usize {
-                        let v0 = big.get_unchecked(ip)[0] - sp0;
-                        let v1 = big.get_unchecked(ip)[1] - sp1;
-                        big.get_unchecked_mut(i)[0] -= v0;
-                        big.get_unchecked_mut(i)[1] -= v1;
+                        let v0 = *big0.get_unchecked(ip) - sp0_64;
+                        let v1 = *big1.get_unchecked(ip) - sp1_64;
+                        *big0.get_unchecked_mut(i) -= v0;
+                        *big1.get_unchecked_mut(i) -= v1;
                         ip += pu;
                     }
                     let mut i = i_mid + 1;
@@ -189,20 +240,16 @@ fn main() {
                         if i_last > i_max {
                             i_last = i_max;
                         }
-                        let v0 = small.get_unchecked(q as usize)[0] - sp0;
-                        let v1 = small.get_unchecked(q as usize)[1] - sp1;
-                        while i <= i_last {
-                            big.get_unchecked_mut(i as usize)[0] -= v0;
-                            big.get_unchecked_mut(i as usize)[1] -= v1;
-                            i += 1;
-                        }
+                        let v0 = *small0.get_unchecked(q as usize) as i64 - sp0_64;
+                        let v1 = *small1.get_unchecked(q as usize) as i64 - sp1_64;
+                        i = sub_range_i64(&mut big0, &mut big1, i, i_last, v0, v1);
                     }
                 } else {
                     for i in 1..=i_mid as usize {
-                        let v0 = big.get_unchecked(ip)[0] - sp0;
-                        let v1 = big.get_unchecked(ip)[1] - sp1;
-                        big.get_unchecked_mut(i)[0] -= v1;
-                        big.get_unchecked_mut(i)[1] -= v0;
+                        let v0 = *big0.get_unchecked(ip) - sp0_64;
+                        let v1 = *big1.get_unchecked(ip) - sp1_64;
+                        *big0.get_unchecked_mut(i) -= v1;
+                        *big1.get_unchecked_mut(i) -= v0;
                         ip += pu;
                     }
                     let mut i = i_mid + 1;
@@ -212,13 +259,9 @@ fn main() {
                         if i_last > i_max {
                             i_last = i_max;
                         }
-                        let v0 = small.get_unchecked(q as usize)[0] - sp0;
-                        let v1 = small.get_unchecked(q as usize)[1] - sp1;
-                        while i <= i_last {
-                            big.get_unchecked_mut(i as usize)[0] -= v1;
-                            big.get_unchecked_mut(i as usize)[1] -= v0;
-                            i += 1;
-                        }
+                        let v0 = *small0.get_unchecked(q as usize) as i64 - sp0_64;
+                        let v1 = *small1.get_unchecked(q as usize) as i64 - sp1_64;
+                        i = sub_range_i64(&mut big0, &mut big1, i, i_last, v1, v0);
                     }
                 }
             }
@@ -230,22 +273,12 @@ fn main() {
                 while i >= p2 {
                     let q = i / p;
                     let lo = (q * p).max(p2);
-                    let v0 = small.get_unchecked(q as usize)[0] - sp0;
-                    let v1 = small.get_unchecked(q as usize)[1] - sp1;
+                    let v0 = *small0.get_unchecked(q as usize) - sp0;
+                    let v1 = *small1.get_unchecked(q as usize) - sp1;
                     if mod1 {
-                        let mut j = lo;
-                        while j <= i {
-                            small.get_unchecked_mut(j as usize)[0] -= v0;
-                            small.get_unchecked_mut(j as usize)[1] -= v1;
-                            j += 1;
-                        }
+                        sub_range_i32(&mut small0, &mut small1, lo, i, v0, v1);
                     } else {
-                        let mut j = lo;
-                        while j <= i {
-                            small.get_unchecked_mut(j as usize)[0] -= v1;
-                            small.get_unchecked_mut(j as usize)[1] -= v0;
-                            j += 1;
-                        }
+                        sub_range_i32(&mut small0, &mut small1, lo, i, v1, v0);
                     }
                     i = lo - 1;
                 }
@@ -255,18 +288,15 @@ fn main() {
 
     // Remove count of 1
     for i in 1..big_size {
-        big[i][0] -= 1;
+        big0[i] -= 1;
     }
     for i in 1..=lu {
-        small[i][0] -= 1;
+        small0[i] -= 1;
     }
+    drop(big1);
+    drop(small1);
 
-    let small0: Vec<i64> = small.iter().map(|s| s[0]).collect();
-    let big0: Vec<i64> = big.iter().map(|s| s[0]).collect();
-    drop(small);
-    drop(big);
-
-    let adj: Vec<i64> = primes
+    let adj: Vec<i32> = primes
         .iter()
         .map(|&p| -small0[p as usize] + if p & 3 == 1 { 1 } else { 0 })
         .collect();

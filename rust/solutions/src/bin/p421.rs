@@ -1,19 +1,7 @@
 // Project Euler 421 - Prime factors of n^15+1
 // For each prime p <= K, contribution is p * (number of n in [1,N] with p | n^15+1).
-// Optimized: local u64 modpow (p <= 1e8 so products fit u64), fast order check,
-// and rayon over the prime list.
 
 use rayon::prelude::*;
-
-#[inline(always)]
-fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
-}
 
 /// Modular exponentiation with pure u64 arithmetic.
 /// SAFETY: modulus m <= 1e8, so (m-1)*(m-1) fits in u64.
@@ -31,37 +19,47 @@ fn mod_pow_u64(mut base: u64, mut exp: u64, m: u64) -> u64 {
     result
 }
 
-/// True iff `x` has multiplicative order exactly `g_val` modulo `p`.
-/// `g_val` is always in {1, 3, 5, 15} = divisors of 15.
 #[inline(always)]
-fn has_order(x: u64, g_val: u64, p: u64) -> bool {
-    if mod_pow_u64(x, g_val, p) != 1 {
-        return false;
-    }
-    // Reject proper divisors of g_val.
-    if g_val % 3 == 0 && mod_pow_u64(x, g_val / 3, p) == 1 {
-        return false;
-    }
-    if g_val % 5 == 0 && mod_pow_u64(x, g_val / 5, p) == 1 {
-        return false;
-    }
-    true
-}
+fn contrib(p: u64, n: u64) -> i64 {
+    let p_minus_1 = p - 1;
+    let m3 = p_minus_1 % 3 == 0;
+    let m5 = p_minus_1 % 5 == 0;
+    let g_val = match (m3, m5) {
+        (false, false) => 1,
+        (true, false) => 3,
+        (false, true) => 5,
+        (true, true) => 15,
+    };
 
-#[inline(always)]
-fn contrib(p: u64, n: u64, r: u64) -> i64 {
-    let g_val = gcd(p - 1, r);
     if g_val == 1 {
         // Only root of unity is 1.
         return p as i64 * ((n + 1) / p) as i64;
     }
 
     // Find a primitive g_val-th root of unity mod p.
-    let exp = (p - 1) / g_val;
+    let exp = p_minus_1 / g_val;
     let mut nth_root = 1u64;
     for g in 2..p {
         let cand = mod_pow_u64(g, exp, p);
-        if has_order(cand, g_val, p) {
+        if cand == 1 {
+            continue;
+        }
+        if g_val == 3 || g_val == 5 {
+            nth_root = cand;
+            break;
+        } else {
+            // g_val == 15
+            // cand != 1 already checked.
+            // Check if cand has order 15: cand^3 != 1 and cand^5 != 1
+            let c2 = cand * cand % p;
+            let c3 = c2 * cand % p;
+            if c3 == 1 {
+                continue;
+            }
+            let c5 = c3 * c2 % p;
+            if c5 == 1 {
+                continue;
+            }
             nth_root = cand;
             break;
         }
@@ -79,30 +77,34 @@ fn contrib(p: u64, n: u64, r: u64) -> i64 {
 fn main() {
     let n: u64 = 100_000_000_000; // 10^11
     let k: usize = 100_000_000; // 10^8
-    let r: u64 = 15;
 
-    // Sieve
-    let mut is_composite = vec![false; k + 1];
-    is_composite[0] = true;
-    if k >= 1 {
-        is_composite[1] = true;
-    }
-    let mut i = 2usize;
-    while i * i <= k {
-        if !is_composite[i] {
-            let mut j = i * i;
-            while j <= k {
-                is_composite[j] = true;
-                j += i;
+    // Fast odd-only bit sieve (6.25 MB total bitmap)
+    let n_odds = k / 2;
+    let num_words = (n_odds + 63) / 64;
+    let mut composite_bits = vec![0u64; num_words];
+    composite_bits[0] |= 1; // 1 is not prime
+
+    let sqrt_k = (k as f64).sqrt() as usize;
+    for i in 1..=(sqrt_k / 2) {
+        if (composite_bits[i >> 6] & (1u64 << (i & 63))) == 0 {
+            let p = 2 * i + 1;
+            let mut j = (p * p) / 2;
+            while j < n_odds {
+                composite_bits[j >> 6] |= 1u64 << (j & 63);
+                j += p;
             }
         }
-        i += 1;
     }
 
-    let primes: Vec<u64> = (2..=k as u64)
-        .filter(|&p| !is_composite[p as usize])
-        .collect();
+    let mut primes: Vec<u32> = Vec::with_capacity(5_761_455);
+    primes.push(2u32);
+    for i in 1..n_odds {
+        if (composite_bits[i >> 6] & (1u64 << (i & 63))) == 0 {
+            primes.push((2 * i + 1) as u32);
+        }
+    }
+    drop(composite_bits);
 
-    let ans: i64 = primes.into_par_iter().map(|p| contrib(p, n, r)).sum();
+    let ans: i64 = primes.into_par_iter().map(|p| contrib(p as u64, n)).sum();
     println!("{}", ans);
 }

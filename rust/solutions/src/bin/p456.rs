@@ -2,6 +2,8 @@
 // Generate 2M points using PRNG. Count triangles containing origin.
 // Group by angle ray, sliding window subtraction.
 
+use rayon::prelude::*;
+
 const NPOINTS: usize = 2_000_000;
 
 fn quadrant(x: i32, y: i32) -> i32 {
@@ -26,9 +28,9 @@ fn main() {
         py[i] = n2 - 15051;
     }
 
-    // Sort indices by angle
+    // Sort indices by angle (unstable is fine: collinear rays group by cross==0)
     let mut idx: Vec<usize> = (0..NPOINTS).collect();
-    idx.sort_by(|&a, &b| {
+    idx.par_sort_unstable_by(|&a, &b| {
         let qa = quadrant(px[a], py[a]);
         let qb = quadrant(px[b], py[b]);
         if qa != qb { return qa.cmp(&qb); }

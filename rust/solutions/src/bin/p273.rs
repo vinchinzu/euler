@@ -2,8 +2,30 @@
 // Find primes p < 150 with p = 1 mod 4. Express each as p = a^2 + b^2.
 // Recursively form all products of Gaussian integers, sum min(|x|,|y|).
 
+use rayon::prelude::*;
+
+const SPLIT: usize = 5;
+
+fn helper(idx: usize, x: i128, y: i128, ga: &[i128], gb: &[i128], n: usize, ans: &mut i128) {
+    if idx == n {
+        if y > 0 {
+            let ax = x.abs();
+            let ay = y.abs();
+            *ans += ax.min(ay);
+        }
+        return;
+    }
+    helper(idx + 1, x, y, ga, gb, n, ans);
+    let (a, b) = (ga[idx], gb[idx]);
+    let nx = x * a - y * b;
+    let ny = x * b + y * a;
+    helper(idx + 1, nx, ny, ga, gb, n, ans);
+    let nx2 = x * a + y * b;
+    let ny2 = -x * b + y * a;
+    helper(idx + 1, nx2, ny2, ga, gb, n, ans);
+}
+
 fn main() {
-    // Sieve primes < 150 that are 1 mod 4
     let mut is_prime = [true; 150];
     is_prime[0] = false;
     is_prime[1] = false;
@@ -26,7 +48,6 @@ fn main() {
         }
     }
 
-    // Find Gaussian integer decomposition for each prime
     let mut ga = vec![0i128; primes.len()];
     let mut gb = vec![0i128; primes.len()];
     for (k, &p) in primes.iter().enumerate() {
@@ -44,31 +65,36 @@ fn main() {
     }
 
     let num_primes = primes.len();
-    let mut ans: i128 = 0;
-
-    // Recursive helper using stack-based approach
-    fn helper(idx: usize, x: i128, y: i128, ga: &[i128], gb: &[i128], n: usize, ans: &mut i128) {
-        if idx == n {
-            if y > 0 {
-                let ax = x.abs();
-                let ay = y.abs();
-                *ans += ax.min(ay);
+    let n_pref = 3usize.pow(SPLIT as u32);
+    let ans: i128 = (0..n_pref)
+        .into_par_iter()
+        .map(|mut code| {
+            let mut x = 1i128;
+            let mut y = 0i128;
+            for idx in 0..SPLIT {
+                let choice = code % 3;
+                code /= 3;
+                let (a, b) = (ga[idx], gb[idx]);
+                match choice {
+                    0 => {}
+                    1 => {
+                        let nx = x * a - y * b;
+                        let ny = x * b + y * a;
+                        x = nx;
+                        y = ny;
+                    }
+                    _ => {
+                        let nx = x * a + y * b;
+                        let ny = -x * b + y * a;
+                        x = nx;
+                        y = ny;
+                    }
+                }
             }
-            return;
-        }
-        // Skip this prime
-        helper(idx + 1, x, y, ga, gb, n, ans);
-        // Multiply by (ga[idx] + gb[idx]*i)
-        let (a, b) = (ga[idx], gb[idx]);
-        let nx = x * a - y * b;
-        let ny = x * b + y * a;
-        helper(idx + 1, nx, ny, ga, gb, n, ans);
-        // Multiply by (ga[idx] - gb[idx]*i)
-        let nx2 = x * a + y * b;
-        let ny2 = -x * b + y * a;
-        helper(idx + 1, nx2, ny2, ga, gb, n, ans);
-    }
-
-    helper(0, 1, 0, &ga, &gb, num_primes, &mut ans);
+            let mut local = 0i128;
+            helper(SPLIT, x, y, &ga, &gb, num_primes, &mut local);
+            local
+        })
+        .sum();
     println!("{}", ans);
 }

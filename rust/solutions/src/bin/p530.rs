@@ -10,105 +10,193 @@ const N: i64 = 1_000_000_000_000_000;
 
 #[inline]
 fn isqrt(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
     let mut x = (n as f64).sqrt() as i64;
-    while x > 0 && x * x > n { x -= 1; }
-    while (x + 1) * (x + 1) <= n { x += 1; }
+    while x > 0 && x * x > n {
+        x -= 1;
+    }
+    while (x + 1) * (x + 1) <= n {
+        x += 1;
+    }
     x
 }
 
 #[inline]
 fn icbrt(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
     let mut x = (n as f64).cbrt() as i64;
-    while x > 0 && x * x * x > n { x -= 1; }
-    while (x + 1) * (x + 1) * (x + 1) <= n { x += 1; }
+    while x > 0 && x * x * x > n {
+        x -= 1;
+    }
+    while (x + 1) * (x + 1) * (x + 1) <= n {
+        x += 1;
+    }
     x
 }
 
 #[inline]
-fn sq(x: i64) -> i64 { x * x }
+fn sq(x: i64) -> i64 {
+    x * x
+}
 
 /// sum_{i=1}^{n} floor(n/i) using the identity:
 /// S = 2 * sum_{i=1}^{floor(sqrt(n))} floor(n/i) - floor(sqrt(n))^2
-/// Sequential version for small n.
+/// Four independent accumulators so the CPU can overlap idiv latency.
 #[inline]
 fn sum_floor_quotients(n: i64) -> i64 {
-    if n <= 0 { return 0; }
-    let s = isqrt(n);
-    let mut result = 0i64;
-    let mut i = 1i64;
-    while i <= s {
-        result += n / i;
-        i += 1;
+    if n <= 0 {
+        return 0;
     }
-    2 * result - s * s
+    let s = isqrt(n);
+    let mut s0 = 0i64;
+    let mut s1 = 0i64;
+    let mut s2 = 0i64;
+    let mut s3 = 0i64;
+    let mut k = 1i64;
+    while k + 3 <= s {
+        s0 += n / k;
+        s1 += n / (k + 1);
+        s2 += n / (k + 2);
+        s3 += n / (k + 3);
+        k += 4;
+    }
+    while k <= s {
+        s0 += n / k;
+        k += 1;
+    }
+    2 * (s0 + s1 + s2 + s3) - s * s
 }
 
 /// Parallel version of sum_floor_quotients for large n.
-/// Splits [1, sqrt(n)] into chunks and sums n/i in parallel.
 fn sum_floor_quotients_par(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
     let s = isqrt(n);
-    if s <= 100_000 { return sum_floor_quotients(n); }
+    if s <= 100_000 {
+        return sum_floor_quotients(n);
+    }
 
     let chunk_size = 500_000i64;
     let n_chunks = ((s - 1) / chunk_size + 1) as usize;
 
-    let partial: i64 = (0..n_chunks).into_par_iter().map(|c| {
-        let lo = c as i64 * chunk_size + 1;
-        let hi = std::cmp::min(lo + chunk_size - 1, s);
-        let mut acc = 0i64;
-        let mut i = lo;
-        while i <= hi {
-            acc += n / i;
-            i += 1;
-        }
-        acc
-    }).sum();
+    let partial: i64 = (0..n_chunks)
+        .into_par_iter()
+        .map(|c| {
+            let lo = c as i64 * chunk_size + 1;
+            let hi = std::cmp::min(lo + chunk_size - 1, s);
+            let mut s0 = 0i64;
+            let mut s1 = 0i64;
+            let mut s2 = 0i64;
+            let mut s3 = 0i64;
+            let mut i = lo;
+            while i + 3 <= hi {
+                s0 += n / i;
+                s1 += n / (i + 1);
+                s2 += n / (i + 2);
+                s3 += n / (i + 3);
+                i += 4;
+            }
+            while i <= hi {
+                s0 += n / i;
+                i += 1;
+            }
+            s0 + s1 + s2 + s3
+        })
+        .sum();
 
     2 * partial - s * s
 }
 
 #[inline]
 fn sum_powers_1(n: i64) -> i64 {
-    if n <= 0 { return 0; }
+    if n <= 0 {
+        return 0;
+    }
     n * (n + 1) / 2
+}
+
+fn mobius_sieve_par(n: usize) -> Vec<i8> {
+    let slimit = {
+        let mut s = (n as f64).sqrt() as usize;
+        while s * s > n {
+            s -= 1;
+        }
+        while (s + 1) * (s + 1) <= n {
+            s += 1;
+        }
+        s
+    };
+    let mut is_prime = vec![true; slimit + 1];
+    is_prime[0] = false;
+    if slimit >= 1 {
+        is_prime[1] = false;
+    }
+    let mut i = 2;
+    while i * i <= slimit {
+        if is_prime[i] {
+            let mut j = i * i;
+            while j <= slimit {
+                is_prime[j] = false;
+                j += i;
+            }
+        }
+        i += 1;
+    }
+    let primes: Vec<u32> = (2..=slimit)
+        .filter(|&p| is_prime[p])
+        .map(|p| p as u32)
+        .collect();
+
+    let mut mu = vec![0i8; n + 1];
+    mu[1] = 1;
+    if n < 2 {
+        return mu;
+    }
+
+    let chunk = 262_144usize;
+    mu[2..].par_chunks_mut(chunk).enumerate().for_each(|(ci, sl)| {
+        let lo = 2 + ci * chunk;
+        let hi = lo + sl.len() - 1;
+        for x in sl.iter_mut() {
+            *x = 1;
+        }
+        let mut rem = vec![0u32; sl.len()];
+        for i in 0..sl.len() {
+            rem[i] = (lo + i) as u32;
+        }
+        for &p in &primes {
+            let pu = p as usize;
+            let mut m = ((lo + pu - 1) / pu) * pu;
+            while m <= hi {
+                let i = m - lo;
+                sl[i] = -sl[i];
+                rem[i] /= p;
+                while rem[i] % p == 0 {
+                    rem[i] /= p;
+                    sl[i] = 0;
+                }
+                m += pu;
+            }
+        }
+        for i in 0..sl.len() {
+            if rem[i] > 1 && sl[i] != 0 {
+                sl[i] = -sl[i];
+            }
+        }
+    });
+    mu
 }
 
 fn main() {
     let l = icbrt(N);
     let sqrt_n = isqrt(N) as usize;
 
-    // Pre-compute Mobius function using linear sieve - O(N).
-    let mobius: Vec<i8> = {
-        let n = sqrt_n;
-        let mut mu = vec![0i8; n + 1];
-        let mut spf = vec![0u32; n + 1];
-        let mut primes = Vec::with_capacity(2_200_000);
-
-        mu[1] = 1;
-
-        for i in 2..=n {
-            if spf[i] == 0 {
-                spf[i] = i as u32;
-                mu[i] = -1;
-                primes.push(i);
-            }
-            for &p in &primes {
-                let ip = i * p;
-                if ip > n { break; }
-                spf[ip] = p as u32;
-                if i % p == 0 {
-                    mu[ip] = 0;
-                    break;
-                } else {
-                    mu[ip] = -mu[i];
-                }
-            }
-        }
-        mu
-    };
+    let mobius = mobius_sieve_par(sqrt_n);
 
     // Precompute small[]
     let small: Vec<i64> = {
@@ -120,26 +208,16 @@ fn main() {
     };
 
     // Precompute big[] with parallel computation.
-    // big[i] = sum_floor_quotients(N/i^2).
-    // For small i, use sum_floor_quotients_par (parallelizes within each call).
-    // For large i, use outer parallelism across i values.
     let big: Vec<i64> = {
         let mut b = vec![0i64; (l + 2) as usize];
         let l_usize = l as usize;
 
-        // Threshold: below this, N/i^2 is large enough for inner parallelism.
-        // N/i^2 has sqrt(N/i^2) = sqrt(N)/i iterations.
-        // Inner parallelism beneficial when sqrt(N)/i > ~100K, i.e., i < sqrt(N)/100K ~ 316.
-        let inner_threshold = 3usize; // Only parallelize the heaviest few
+        let inner_threshold = 3usize;
 
-        // Use std::thread to overlap inner-parallel big[1..3] with outer-parallel big[4..L]
-        // Since rayon uses a global thread pool, inner parallel calls will use available threads.
-        // Process big[1..inner_threshold] with inner parallelism
         for i in 1..=std::cmp::min(inner_threshold, l_usize) {
             b[i] = sum_floor_quotients_par(N / sq(i as i64));
         }
 
-        // Process remaining with outer parallelism using load-balanced groups
         if l_usize > inner_threshold {
             let start = inner_threshold + 1;
             let num_groups = rayon::current_num_threads() * 8;
@@ -161,7 +239,8 @@ fn main() {
                 groups.push((grp_start, l_usize));
             }
 
-            let results: Vec<Vec<(usize, i64)>> = groups.into_par_iter()
+            let results: Vec<Vec<(usize, i64)>> = groups
+                .into_par_iter()
                 .map(|(lo, hi)| {
                     let mut local = Vec::with_capacity(hi - lo + 1);
                     for i in lo..=hi {
@@ -182,13 +261,14 @@ fn main() {
     };
 
     let h_max = isqrt(N);
+    let h_max_us = h_max as usize;
 
-    // Main sum: parallelize over h values
-    let ans: i64 = (1..=h_max).into_par_iter()
-        .filter(|&h| {
-            unsafe { *mobius.get_unchecked(h as usize) != 0 }
-        })
+    let ans: i64 = (1..h_max_us + 1)
+        .into_par_iter()
+        .with_min_len(64)
+        .filter(|&h| unsafe { *mobius.get_unchecked(h) != 0 })
         .map(|h| {
+            let h = h as i64;
             let mu_h = unsafe { *mobius.get_unchecked(h as usize) } as i64;
             let n_h = N / sq(h);
             let l_local = icbrt(n_h) / 10 + 1;

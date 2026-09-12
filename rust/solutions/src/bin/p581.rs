@@ -4,6 +4,7 @@
 // Uses Stormer's theorem: solve Pell equations x^2 - 2q*y^2 = 1
 // for each product q of a subset of odd primes <= 47.
 
+use rayon::prelude::*;
 use std::collections::HashSet;
 
 const PRIMES: [i64; 15] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
@@ -74,34 +75,40 @@ fn solve_pell(d: i64) -> Vec<i128> {
 }
 
 fn main() {
-    let mut found: HashSet<i128> = HashSet::new();
-
-    for subset in 0..(1u32 << 15) {
-        if subset == 1 { continue; } // skip subset containing only 2
-
-        let mut q: i64 = 1;
-        let mut overflow = false;
-        for i in 0..15 {
-            if subset & (1 << i) != 0 {
-                q *= PRIMES[i];
-                if q > 1_000_000_000_000_000 {
-                    overflow = true;
-                    break;
+    let found: HashSet<i128> = (0u32..(1u32 << 15))
+        .into_par_iter()
+        .filter(|&subset| subset != 1) // skip subset containing only 2
+        .fold(HashSet::new, |mut local, subset| {
+            let mut q: i64 = 1;
+            let mut overflow = false;
+            for i in 0..15 {
+                if subset & (1 << i) != 0 {
+                    q *= PRIMES[i];
+                    if q > 1_000_000_000_000_000 {
+                        overflow = true;
+                        break;
+                    }
                 }
             }
-        }
-        if overflow { continue; }
-
-        let d = 2 * q;
-        let xs = solve_pell(d);
-
-        for x in xs {
-            let b = x >> 1;
-            if b > 0 && is_smooth(b) && is_smooth(b + 1) {
-                found.insert(b);
+            if overflow {
+                return local;
             }
-        }
-    }
+
+            let d = 2 * q;
+            let xs = solve_pell(d);
+
+            for x in xs {
+                let b = x >> 1;
+                if b > 0 && is_smooth(b) && is_smooth(b + 1) {
+                    local.insert(b);
+                }
+            }
+            local
+        })
+        .reduce(HashSet::new, |mut a, b| {
+            a.extend(b);
+            a
+        });
 
     let total: i128 = found.iter().sum();
     println!("{}", total);

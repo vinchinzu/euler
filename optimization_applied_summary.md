@@ -1,10 +1,357 @@
 # Optimization Applied Summary
 
-Updated: 2026-09-04 (Wave 34 Batch C: p850, p829, p962, p861, p245; p636 rejected)
+Updated: 2026-09-11 (Wave 40 complete. Next: never-A/B >50ms; skip last-31-day touches)
 
 A/B gate: accept only if median is **≥5% faster** and answer matches `data/answers.txt`.
 Playbook: `.grok/skills/euler-rust-speed/SKILL.md`.
 `optimization_status.md` is the 5900XT re-time **before** waves 4–7. Remaining counts after wave 7 are in this file.
+
+## Wave 37A — 300–400ms band (worktree subagent)
+
+Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p647 | 318.6 | 22.9 | 13.912× | par_iter odd sqrt_a via k |
+| p418 | 375.7 | 28.6 | 13.15× | par split 2/3; binary BigNum exp |
+| p440 | 343.2 | 101.9 | 3.369× | par_iter over c; mat_pow u32 exp |
+| p891 | 351.8 | 125.5 | 2.804× | par_iter 6 perms + FxHashSet |
+| p728 | 326.0 | 180.5 | 1.806× | u64 mulmod; par_iter over i |
+
+Wave 37A net: **~1.26 s**.
+
+## Wave 37B — 200–460ms band (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p620 | 247.3 | 14.7 | 16.86× | par_iter outer s in triple loop |
+| p457 | 333.5 | 33.4 | 9.976× | u64 Tonelli; par_iter primes |
+| p717 | 215.4 | 29.1 | 7.392× | u64 pow_mod; par_iter odd primes |
+| p456 | 271.9 | 141.8 | 1.917× | par_sort_unstable by angle |
+| p827 | 462.1 | 410.2 | 1.126× | par_iter over k=1..18 Q(10^k) |
+
+Wave 37B net: **~0.90 s**.
+
+## Wave 37C — 200–450ms leftovers (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p567 | 307.2 | 0.7 | 432.491× | Euler-Maclaurin H_n vs Kahan loop |
+| p562 | 229.7 | 10.9 | 21.033× | chunked par x1 + atomic prune |
+| p805 | 289.3 | 20.1 | 14.36× | u64 mulmod; par_iter over v |
+| p824 | 447.0 | 103.0 | 4.34× | join fac/invp; par_iter over t |
+| p792 | 244.2 | 149.9 | 1.629× | par_iter over m=1..10000 ncr |
+
+Wave 37C net: **~1.23 s**.
+
+## Wave 37D — 200–350ms leftovers (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p581 | 300.7 | 15.1 | 19.943× | par_iter 2^15 Pell subsets |
+| p255 | 306.0 | 23.5 | 13.033× | par remaining walk of sum_iterations |
+| p840 | 348.9 | 115.1 | 3.031× | u64 mulmod; join 3 NTT primes |
+| p690 | 211.6 | 72.7 | 2.912× | u64 mulmod; par gf_mul + DP |
+| p560 | 257.4 | 105.8 | 2.434× | u64 FWHT par_chunks; par pow |
+
+Wave 37D net: **~1.09 s**.
+
+Wave 37 total (A–D accepted medians): **~4.48 s**. 20/20 A/B accepted, 0 rejected.
+
+## Wave 38A — 430–550ms band (worktree subagent)
+
+Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **4/4 changed accepted**; p730 skipped (already `par_iter` over k). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p615 | 484.1 | 11.0 | 44.196× | DFS Omega≥29 cores below 3^29; nth_element; modpow lift |
+| p665 | 551.0 | 228.4 | 2.413× | Vec<u32> next-free; iterative path-halving; unchecked hot path |
+| p720 | 430.7 | 201.2 | 2.14× | i32 arrays; drop i128; rayon doubling + chunked sum |
+| p663 | 512.1 | 349.0 | 1.467× | packed AoS nodes; rayon leaf-init and per-level build |
+
+Wave 38A net: **~1.19 s**. Skipped: p730 (~490 ms smoke).
+
+## Wave 38B — 350–450ms band (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p495 | 365.0 | 28.2 | 12.92× | par_iter partitions of 30; delayed-mod knapsack |
+| p320 | 442.3 | 56.0 | 7.896× | skip advance when lower bound ≤ max_n; SPF last-only; u32 pidx |
+| p550 | 402.5 | 177.5 | 2.268× | DFS factor-list divisors; mex bitset+ctz; u64 mulmod |
+| p275 | 350.2 | 195.3 | 1.793× | stack Sculpture bitset; Vec buckets; nested par large groups |
+| p958 | 356.6 | 265.2 | 1.345× | AtomicI64 best_m; rayon::join; i64 bounds |
+
+Wave 38B net: **~1.19 s**.
+
+## Wave 38C — 300–360ms band (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p857 | 310.1 | 94.6 | 3.278× | drop rem_euclid; unroll k=1..5; u64 mulmod |
+| p545 | 306.5 | 116.2 | 2.637× | sieve 12 APs g\|308; rayon over g |
+| p584 | 311.3 | 174.4 | 1.786× | no matrix clone; MAX_N=85; skip zero-k rows |
+| p790 | 307.6 | 193.8 | 1.588× | lazy shifts 0..11; wrap by subtract-12 |
+| p718 | 313.3 | 198.7 | 1.577× | packed (q,r) queues; no i64 div; bitset visited; u64 ncr2 |
+
+Wave 38C net: **~0.77 s**.
+
+## Wave 38D — 270–310ms leftovers (worktree subagent)
+
+Parent A/B-gated. **4/4 changed accepted**; p283 skipped (already par over r; factor/sq_le tries <5%). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p726 | 300.6 | 7.3 | 41.447× | u64 mulmod; incremental 2^i; par prefix factorial |
+| p621 | 310.6 | 101.0 | 3.076× | segmented remaining walk + par Tonelli; u64 pow_mod |
+| p530 | 278.9 | 200.8 | 1.389× | par segmented μ sieve; 4-acc idiv unroll; Range+with_min_len |
+| p678 | 301.7 | 273.9 | 1.102× | par gauss_cache; HashSet→sort+dedup; is_sq_small |
+
+Wave 38D net: **~0.61 s**. Skipped: p283 (~282 ms smoke).
+
+Wave 38 total (A–D accepted medians): **~3.76 s**. 18/18 A/B accepted, 0 rejected. 2 skipped (p730, p283).
+
+## Wave 39A — 270–500ms sequential/math (worktree subagent)
+
+Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **2/2 changed accepted**; p730 skipped (already `par_iter` over k; Barning `used[a,b<L]` already unique-ifies). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p791 | 275.2 | 12.4 | 22.108× | par_iter over g; u64 mulmod |
+| p775 | 278.2 | 22.7 | 12.227× | u64 mulmod; precomputed inv2/inv6; closed C(d2+2,3) |
+
+Wave 39A net: **~0.52 s**. Skipped: p730 (~499 ms smoke).
+
+## Wave 39B — 250–280ms (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**; p283 skipped (already `par_iter` over r; u64 `sq_le` not ≥5%). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p803 | 249.1 | 83.2 | 2.996× | 32 disjoint L-step affine streams; first-char reject |
+| p565 | 281.1 | 98.5 | 2.854× | u8 segmented par sieve; first-level IE par_iter |
+
+Wave 39B net: **~0.35 s**. Skipped: p283 (~278 ms smoke).
+
+## Wave 39C — 200–240ms (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p302 | 223.8 | 74.7 | 2.995× | stack Dict; strided first-level rayon; thread-local HashSet |
+| p888 | 243.2 | 85.3 | 2.851× | reused mex bitset; flat DP; u128 deferred mod; par xor |
+
+Wave 39C net: **~0.31 s**.
+
+## Wave 39D — leftovers (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p443 | 249.3 | 2.5 | 100.223× | Pollard Rho factor jumps; drop 1000-step gcd scan |
+| p983 | 275.1 | 249.2 | 1.104× | u16 gen-counter grid; hoisted offsets; m=s^2+1 filter |
+
+Wave 39D net: **~0.27 s**.
+
+Wave 39 total (A–D accepted medians): **~1.45 s**. 8/8 A/B accepted, 0 rejected. 2 skipped (p730, p283; second skip).
+
+## Wave 40A — 230–240ms DP (worktree subagent)
+
+Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p849 | 241.1 | 126.5 | 1.906× | par_iter over h; disjoint nxt writes |
+| p467 | 234.1 | 123.3 | 1.898× | blocked anti-diagonal wavefront B=100; rayon per block-diagonal |
+
+Wave 40A net: **~0.23 s**.
+
+## Wave 40B — 210–270ms NTT / recursion (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p537 | 271.4 | 73.2 | 3.71× | u64 mulmod; par_chunks large NTT; join two forward NTTs |
+| p273 | 209.8 | 22.0 | 9.529× | par_iter 3^5 prefixes; remaining Gaussian subtrees |
+
+Wave 40B net: **~0.39 s**.
+
+## Wave 40C — 210–220ms mulmod / sieve (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p808 | 222.3 | 57.2 | 3.888× | odd-only u64 bit sieve; par segmented fill |
+| p638 | 217.5 | 58.8 | 3.702× | u64 mulmod; drop loop-carried qfact vec; const-generic K |
+
+Wave 40C net: **~0.32 s**.
+
+## Wave 40D — 195–210ms interval DP / closed form (worktree subagent)
+
+Parent A/B-gated. **2/2 changed accepted**. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p750 | 211.4 | 51.9 | 4.073× | par_iter independent s per length; transposed dp |
+| p724 | 196.3 | 0.7 | 265.097× | closed (H_n^2 + H_n^{(2)})/2; Euler-Maclaurin |
+
+Wave 40D net: **~0.36 s**.
+
+Wave 40 total (A–D accepted medians): **~1.29 s**. 8/8 A/B accepted, 0 rejected.
+
+## Next wave (41) — never-A/B, >50ms, untouched 31 days
+
+Rule: `.grok/skills/euler-rust-speed/SKILL.md`. Snapshot 2026-09-10 (`git log --since=2026-08-10`): never-A/B ∩ untouched ∩ `validated.json` >50ms was **181**. Waves 37–40 accepted 54 from that overlay; they leave the pool. Remaining overlay: **127** (**2 ≥200ms skipped twice: p730 / p283**, **125 in 51–199ms**). Stale overlay — smoke first. Skip last-31-day git touches (Wave 35–40 dirty set included), p680, already in `optimization_ab_results.json`. Last-month leftovers p337/p614/p465/p662/p461/p459 are out of pool. Leave p730/p283 unless a genuinely new approach appears.
+
+Wave 40 smoke leftovers still >50ms (not in this 8): p793 224.3, p475 206.5, p917 202.3, p796 198.2, p511 197.0, p700 184.6, p930 184.4, p944 165.1 (already `par_iter`). Start there.
+
+51–199ms overlay top remaining (stale `validated.json` ms, descending): p793 197, p796 186, p700 179, p917 178, p511 177, p475 176, p930 176, p944 175, p795 174, p871 174, p487 171, p875 171, p434 169, p429 167, p352 166, p839 163, p400 162, p851 162, p324 161, p572 161.
+
+## Wave 36A — Hard 500ms–1s leftovers (worktree subagent)
+
+Parent copied `p774.rs` and A/B-gated (`python3 ab_bench.py 774 1 3`, `RAYON_NUM_THREADS=32`). **1/1 changed accepted**; p337, p662, p461 skipped (no ≥5% idea). Stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p774 | 1039.5 | 4.5 | 233.154× | bit-stripping combinatorics DP replacing MPS left-sweep GE |
+
+Wave 36A net: **~1.04 s**. Skipped: p337 (~856 ms), p662 (~710 ms), p461 (~690 ms).
+
+## Wave 36B — 500–700ms leftovers (worktree subagent)
+
+Parent A/B-gated. **4/4 changed accepted**; p459 skipped (`fill_rn` serial \(N^{3/2}\)). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p513 | 530.4 | 20.0 | 26.464× | floor-sum trapezoids + odd scaling |
+| p714 | 629.5 | 360.9 | 1.744× | thread-local scratch + `%10` `{0,d}` prune |
+| p954 | 660.3 | 448.7 | 1.471× | interned OA DP; drop FxHashMap |
+| p870 | 551.2 | 465.4 | 1.184× | `KMAX` 2500 + hoisted \(P_m\cdot r_d\) |
+
+Wave 36B net: **~1.08 s**. Skipped: p459.
+
+## Wave 36C — Remaining 500ms band (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**. All stdout match `data/answers.txt`. p786 Wave-35B ~299 ms smoke did not hold (parent baseline 609 ms).
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p829 | 555.4 | 115.5 | 4.810× | MITM best-divisor + Ω prune |
+| p786 | 608.7 | 261.8 | 2.325× | sieve only to \(g_{\lim 9}\) |
+| p850 | 534.4 | 250.5 | 2.133× | `SMALL_PRIME_LIMIT` \(32000\to 2500\) (\(\ge N^{1/4}\)) |
+| p989 | 542.0 | 316.9 | 1.710× | join g-phases; variable chunks; u64 mulmod |
+| p611 | 490.9 | 351.7 | 1.396× | Lucy SoA + i32 small (stale 518 ms A/B) |
+
+Wave 36C net: **~1.44 s**.
+
+## Wave 36D — 200–500ms band (worktree subagent)
+
+Parent A/B-gated. **5/5 changed accepted**; p411 skipped (patience LIS on k=29). All stdout match `data/answers.txt`. p691 last-A/B 495 ms was stale (~259 ms).
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p632 | 455.0 | 56.0 | 8.121× | odd-only packed sieve |
+| p660 | 476.9 | 80.8 | 5.905× | digital-root \(k\) stride |
+| p259 | 487.2 | 251.7 | 1.936× | vec + `par_sort` dedup |
+| p505 | 412.8 | 329.7 | 1.252× | 8-way speculative frontier |
+| p691 | 258.5 | 240.2 | 1.076× | packed UF + 16-byte LCP |
+
+Wave 36D net: **~1.13 s**. Skipped: p411.
+
+Wave 36 total (A–D accepted medians): **~4.68 s**. 15/15 A/B accepted, 0 rejected.
+
+## Wave 35 harvest — leftover Batch D (primes) + Batch E (partition)
+
+Worktrees `agy/batch-d-primes` and `agy/batch-e-partition` from 2026-09-04 were never parent-A/B-gated. Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **8/8 accepted**, all stdout match `data/answers.txt`. p614 in Batch E skipped (already accepted 2026-09-08).
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p533 | 595.2 | 69.0 | 8.630× | segmented Carmichael λ, 128 chunks; O(1) p=2 tzcnt |
+| p421 | 474.6 | 150.2 | 3.159× | odd-only bit sieve 100MB→6.25MB; mod3/mod5 vs gcd |
+| p801 | 319.9 | 103.7 | 3.083× | CSR factor lists; rayon only primes in [A+1,A+B] |
+| p738 | 683.2 | 276.1 | 2.474× | packed OA table replacing FxHashMap memo |
+| p658 | 379.5 | 164.4 | 2.308× | i128→u64 mulmod; pows/invs u32 |
+| p437 | 425.0 | 190.6 | 2.230× | drop 400MB SPF; odd-only bit sieve; iterative fib_pair |
+| p927 | 640.5 | 290.2 | 2.207× | skip q≡3 (mod 4); test exp=2 before factoring φ(q) |
+| p483 | 715.1 | 476.8 | 1.500× | CSR `by_lpf`; packed OA hash |
+
+Wave 35 harvest net: **~2.51 s**.
+
+## Wave 35A — Hard 750–1000ms leftovers (worktree subagent)
+
+Parent copied candidates and A/B-gated (`python3 ab_bench.py NNN 1 3`, `RAYON_NUM_THREADS=32`). **2/2 changed accepted**; p774, p337, p662, p461 skipped (no ≥5% idea). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p910 | 558.4 | 423.3 | 1.319× | AVX2 i32 gather; ping-pong jump buffers; join pow-table sieves |
+| p465 | 846.6 | 734.2 | 1.153× | u32 φ sieve; pre-reduced prefix mods; 32-bit hyperbola div |
+
+Wave 35A net: **~0.25 s**. Skipped: p774, p337, p662, p461.
+
+## Wave 35B — Early-wave leftovers (worktree subagent)
+
+Smoke-timed unmodified first (several last-A/B times were stale). Parent A/B-gated. **7/7 changed accepted**; p786 skipped (already 299 ms). All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p747 | 471.5 | 100.8 | 4.679× | chunked (a,b) work units + `u64::isqrt` |
+| p544 | 465.3 | 175.6 | 2.650× | `F_SIZE=RC+3`; delayed `% MOD` |
+| p741 | 636.1 | 247.2 | 2.573× | parallelize 4 heavy `g()` recurrences |
+| p558 | 239.9 | 96.2 | 2.494× | compact U192 limbs + greedy skip-3 |
+| p211 | 684.2 | 311.4 | 2.198× | odd-only SPF/σ₂ + parallel 2-adic square scan |
+| p785 | 89.3 | 76.2 | 1.172× | incremental z; u32 gcd (stale 942 ms A/B was already ~89 ms) |
+| p557 | 96.2 | 88.5 | 1.088× | skip `gcd(a,S)==1`; `i64::isqrt` (stale 889 ms A/B was already ~96 ms) |
+
+Wave 35B net: **~1.64 s**. Skipped: p786.
+
+## Wave 35C — 500–700ms DP leftovers (worktree subagent)
+
+Parent A/B-gated. **4/4 changed accepted**; p954, p459, p714 skipped. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p815 | 700.4 | 157.4 | 4.450× | entire E(c,·) row per composition; u8 occupancy vs 310MB NaN cache |
+| p589 | 123.5 | 57.9 | 2.132× | closed-form \|t1−t2\| range updates + integer min-sum |
+| p890 | 596.3 | 377.4 | 1.580× | even/odd split + Karatsuba above n=64 |
+| p655 | 541.0 | 399.6 | 1.354× | i32 dest-chunk while counts ≤10^9, then promote i64 |
+
+Wave 35C net: **~1.37 s**. Skipped: p954, p459, p714.
+
+## Wave 35D — Remaining ~500ms band (worktree subagent)
+
+Parent A/B-gated. **3/4 changed accepted**; p784 rejected (1.015×, already ~62 ms). Skipped: p870, p513, p989, p611. All stdout match `data/answers.txt`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p339 | 611.8 | 0.8 | 754.5× | O(n) Snell/scale recurrence replacing O(n²) Thomas |
+| p977 | 612.3 | 229.5 | 2.668× | rayon independent L=2..256; incremental a^L tail |
+| p447 | 181.7 | 152.3 | 1.193× | `u64::isqrt`; 4-way `rayon::join` on heaviest q=N |
+| p784 | 61.6 | 60.6 | 1.015× | **REJECT** odd-only SPF; already ~62 ms |
+
+Wave 35D net: **~1.02 s**. Rejected: p784.
+
+Wave 35 total (harvest + A–D accepted medians): **~6.8 s**.
+
+## 2026-09-08 — p614 muse-spark leftover (parent-fixed)
+
+`meta/muse-spark-1.3-contributor` ran out of harness turns with a wrong answer (`141460481`). Parent kept BLOCK=4096 / 4-wide phase 2 / 8-way phase 1, and aligned the large-term `++--` unroll: at BLOCK=4096 the suffix starts at $t=91$ (`--++`), not $t=1$. Also `worker_count` no longer panics when `current_num_threads()==1`. A/B `python3 ab_bench.py 614 1 3`, `RAYON_NUM_THREADS=32`. Stdout `130694090`.
+
+| Problem | Baseline ms | Candidate ms | Speedup | Notes |
+|--------:|------------:|-------------:|--------:|-------|
+| p614 | 930.0 | 794.0 | 1.171× | BLOCK $2^{14}\to 2^{12}$; align large_tri `++--`; 4-wide phase 2 with serial $T_1,T_2$ |
 
 ## Wave 34 Batch C — Parallel DFS / factor trees (agy `--print`)
 

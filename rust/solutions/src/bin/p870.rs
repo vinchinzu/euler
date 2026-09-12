@@ -13,7 +13,9 @@
 //   so candidate evaluation is pruned except at the first k for each m (when m increments).
 // - Flat preallocated buffer fitting in L1 cache (24 KB) with unchecked indexing.
 // - Fast prefix skip: for k <= floor(r) + 1, P_k = k and initial candidate is (s + 1)/1.
-// - Sequence bounds: candidates beyond k = 3000 are proven strictly non-minimal.
+// - Sequence bound: T(123456) never updates best after k=2483, so k<=2500 is enough
+//   (original 3000 bound was a looser proof cutoff).
+// - Hoist P_m * rd across constant-m stretches; cand_d is the pre-increment P_m.
 // - Intermediate gcd calls eliminated from the inner loop, executed once per transition.
 
 fn gcd(mut a: u64, mut b: u64) -> u64 {
@@ -33,6 +35,8 @@ fn solve() {
     let mut p = vec![0u64; 3072];
     let p_ptr = p.as_mut_ptr();
 
+    const KMAX: usize = 2500;
+
     for _ti in 1..limit {
         let s = (rn / rd) as usize;
         let rem = rn % rd;
@@ -48,12 +52,17 @@ fn solve() {
         let mut best_d = 1u64;
 
         let mut surplus = (rn + rem - rd) as u128;
+        let mut pm = unsafe { *p_ptr.add(m) };
+        let rd128 = rd as u128;
+        let rn128 = rn as u128;
+        let mut pm_rd = (pm as u128) * rd128;
 
         loop {
-            if k >= 3000 { break; }
+            if k >= KMAX {
+                break;
+            }
 
             let pk = unsafe { *p_ptr.add(k) };
-            let pm = unsafe { *p_ptr.add(m) };
             let next = match pk.checked_add(pm) {
                 Some(v) => v,
                 None => break,
@@ -61,19 +70,20 @@ fn solve() {
             k += 1;
             unsafe { *p_ptr.add(k) = next; }
 
-            let pm_rd = (pm as u128) * (rd as u128);
             if surplus >= pm_rd {
                 surplus -= pm_rd;
             } else {
                 m += 1;
                 let pm_new = unsafe { *p_ptr.add(m) };
-                surplus = surplus + (rn as u128) * ((pm_new - pm) as u128) - pm_rd;
+                surplus = surplus + rn128 * ((pm_new - pm) as u128) - pm_rd;
 
-                let cand_d = unsafe { *p_ptr.add(m - 1) };
-                if (next as u128) * (best_d as u128) < (best_n as u128) * (cand_d as u128) {
+                // p[m-1] after increment is the previous P_m
+                if (next as u128) * (best_d as u128) < (best_n as u128) * (pm as u128) {
                     best_n = next;
-                    best_d = cand_d;
+                    best_d = pm;
                 }
+                pm = pm_new;
+                pm_rd = (pm as u128) * rd128;
             }
         }
 
@@ -103,7 +113,9 @@ fn solve() {
         let mut i = chars.len() - 1;
         loop {
             if chars[i] == b'.' {
-                if i == 0 { break; }
+                if i == 0 {
+                    break;
+                }
                 i -= 1;
                 continue;
             }

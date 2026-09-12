@@ -85,10 +85,6 @@ fn centers_from_vectors_into(vectors: &[Point], masks: &[u16], centers: &mut Vec
     }
 }
 
-fn has_unit_coordinate(points: &[Point]) -> bool {
-    points.iter().any(|&(x, y)| x.abs() == 1 || y.abs() == 1)
-}
-
 /// Flat grid with generation-based reset. Each cell is u32:
 /// high 16 bits = generation, low 16 bits = count/value.
 struct FlatGrid {
@@ -172,19 +168,85 @@ impl FlatGrid {
     }
 }
 
+/// Packed u16 occupancy grid for the hot harmony-count path.
+/// 14-bit generation + 2-bit saturating count (we only test == 2).
+/// Half the bytes of FlatGrid, so 32 worker copies fit better in L3.
+struct HotGrid {
+    data: Vec<u16>,
+    gn: u16,
+    width: usize,
+    off_x: i32,
+    off_y: i32,
+}
+
+impl HotGrid {
+    fn new() -> Self {
+        HotGrid {
+            data: Vec::new(),
+            gn: 1,
+            width: 0,
+            off_x: 0,
+            off_y: 0,
+        }
+    }
+
+    fn configure(&mut self, hx: i32, hy: i32) {
+        let w = (2 * hx + 1) as usize;
+        let h = (2 * hy + 1) as usize;
+        let needed = w * h;
+        if self.data.len() < needed {
+            self.data.resize(needed, 0);
+        }
+        self.width = w;
+        self.off_x = hx;
+        self.off_y = hy;
+    }
+
+    #[inline]
+    fn reset(&mut self) {
+        self.gn += 1;
+        if self.gn >= 0x4000 {
+            self.data.fill(0);
+            self.gn = 1;
+        }
+    }
+
+    #[inline]
+    fn increment_at(&mut self, idx: usize) -> u16 {
+        // SAFETY: idx comes from center+circle offsets inside the configured bounds.
+        let cell = unsafe { self.data.get_unchecked_mut(idx) };
+        let packed_gn = self.gn << 2;
+        if (*cell & !3u16) != packed_gn {
+            *cell = packed_gn | 1;
+            1
+        } else {
+            let cnt = (*cell & 3) + 1;
+            let cnt = if cnt > 3 { 3 } else { cnt };
+            *cell = packed_gn | cnt;
+            cnt
+        }
+    }
+}
+
 #[inline]
 fn quick_harmony_count_equals_n(
     centers: &[Point],
-    circle_points: &[Point],
     n: usize,
-    grid: &mut FlatGrid,
+    grid: &mut HotGrid,
+    coff: &[isize],
 ) -> bool {
     grid.reset();
     let mut harmony_count = 0usize;
+    let width = grid.width;
+    let off_x = grid.off_x;
+    let off_y = grid.off_y;
+    let np = coff.len();
 
     for &(cx, cy) in centers {
-        for &(vx, vy) in circle_points {
-            let cnt = grid.increment(cx + vx, cy + vy);
+        let base = ((cy + off_y) as usize) * width + (cx + off_x) as usize;
+        for i in 0..np {
+            let idx = (base as isize + unsafe { *coff.get_unchecked(i) }) as usize;
+            let cnt = grid.increment_at(idx);
             if cnt == 2 {
                 harmony_count += 1;
                 if harmony_count > n {
@@ -292,6 +354,7 @@ fn strict_perfect_check(
 struct Workspace {
     grid: FlatGrid,
     center_grid: FlatGrid,
+    hot: HotGrid,
     oriented: Vec<Point>,
     centers: Vec<Point>,
 }
@@ -302,25 +365,35 @@ fn find_min_radius_sq_for_parity_family(k: usize, m_limit: i32, filtered: bool) 
 
     let mut candidates: Vec<(i32, Vec<Point>, Vec<(Point, Point)>)> = Vec::new();
 
-    for m in 1..=m_limit {
+    let mut consider = |m: i32| {
         let circle_points = lattice_points_on_circle(m);
         let p = circle_points.len() / 2;
         if p < k {
-            continue;
+            return;
         }
-        if filtered {
-            if p != k && p != k + 2 {
-                continue;
-            }
-            if !has_unit_coordinate(&circle_points) {
-                continue;
-            }
+        if filtered && p != k && p != k + 2 {
+            return;
         }
         let pairs = opposite_pairs(&circle_points);
         if pairs.len() != p {
-            continue;
+            return;
         }
         candidates.push((m, circle_points, pairs));
+    };
+
+    if filtered {
+        // Unit coordinate ⇔ m-1 is a square, so only those radii are candidates.
+        let smax = isqrt_i32(m_limit - 1);
+        for s in 0..=smax {
+            let m = s * s + 1;
+            if m <= m_limit {
+                consider(m);
+            }
+        }
+    } else {
+        for m in 1..=m_limit {
+            consider(m);
+        }
     }
 
     thread_local! {
@@ -358,11 +431,21 @@ fn find_min_radius_sq_for_parity_family(k: usize, m_limit: i32, filtered: bool) 
                 let ws = ws_opt.get_or_insert_with(|| Workspace {
                     grid: FlatGrid::new(),
                     center_grid: FlatGrid::new(),
+                    hot: HotGrid::new(),
                     oriented: Vec::with_capacity(k),
                     centers: Vec::with_capacity(n),
                 });
                 ws.grid.configure(phx, phy);
                 ws.center_grid.configure(chx, chy);
+                ws.hot.configure(phx, phy);
+
+                let mut coff = [0isize; 64];
+                let np = circle_points.len();
+                let hot_w = ws.hot.width as isize;
+                for i in 0..np {
+                    let (vx, vy) = circle_points[i];
+                    coff[i] = vy as isize * hot_w + vx as isize;
+                }
 
                 let mut chosen_pairs: Vec<(Point, Point)> = Vec::with_capacity(k);
                 for &idx in comb {
@@ -383,9 +466,9 @@ fn find_min_radius_sq_for_parity_family(k: usize, m_limit: i32, filtered: bool) 
                     centers_from_vectors_into(&ws.oriented, &masks, &mut ws.centers);
                     if !quick_harmony_count_equals_n(
                         &ws.centers,
-                        circle_points,
                         n,
-                        &mut ws.grid,
+                        &mut ws.hot,
+                        &coff[..np],
                     ) {
                         continue;
                     }

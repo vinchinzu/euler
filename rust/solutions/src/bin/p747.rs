@@ -1,6 +1,7 @@
 // Project Euler 747 - Triangular Pizza
 //
-// Counting triangular configurations on a grid.
+// Chunked (a, b-range) work units so small-a inner loops split across threads.
+// Inner loop uses u64::isqrt and defers modular reduction.
 
 use rayon::prelude::*;
 
@@ -41,52 +42,72 @@ fn tr(n: i64) -> i64 {
     n * (n + 1) / 2
 }
 
-fn isqrt_ll(n: i64) -> i64 {
-    if n <= 0 {
-        return 0;
+#[inline(always)]
+fn contrib_ab(a: u64, b0: u64, b1: u64, n: u64) -> i64 {
+    let mut local = 0i64;
+    let a1 = a + 1;
+    let c = 4 * a * a1; // 4*a*(a+1)
+    let two_a_1 = 2 * a + 1;
+    let mut b = b0;
+    while b < b1 {
+        let prod = c.wrapping_mul(b.wrapping_mul(b + 1));
+        let sq_root = prod.isqrt();
+        let min_n2 = two_a_1 * b + a1 + sq_root;
+        if min_n2 > n {
+            break;
+        }
+        local += 12 * (n - min_n2) as i64;
+        if sq_root * sq_root == prod {
+            local += 6;
+        }
+        b += 1;
     }
-    let mut r = (n as f64).sqrt() as i64;
-    while r * r > n {
-        r -= 1;
-    }
-    while (r + 1) * (r + 1) <= n {
-        r += 1;
-    }
-    r
+    local % MOD
 }
 
 fn main() {
-    let n: i64 = 100_000_000; // 10^8
+    let n: u64 = 100_000_000;
 
-    let mut ans = ncr(n, 3);
-    ans = (ans + 6 * (tr(n - 2) % MOD)) % MOD;
+    let mut ans = ncr(n as i64, 3);
+    ans = (ans + 6 * (tr(n as i64 - 2) % MOD)) % MOD;
 
-    let sqrt_2n = isqrt_ll(2 * n);
-    let extra: i64 = (1..=sqrt_2n)
+    let sqrt_2n = (2 * n).isqrt();
+
+    // Diagonal a=b contribution (the min_n = (2a+1)^2 term).
+    let extra_diag: i64 = (1..=sqrt_2n)
         .into_par_iter()
         .map(|a| {
-            let mut local = 0i64;
             let min_n = (2 * a + 1) * (2 * a + 1);
             if min_n <= n {
-                local = (local + 6 * ((n - min_n) % MOD) % MOD + 3) % MOD;
+                (6 * ((n - min_n) % MOD as u64) as i64 + 3) % MOD
+            } else {
+                0
             }
-
-            let mut b = a + 1;
-            loop {
-                let prod = 4 * (a + 1) * (b + 1) * a * b;
-                let sq_root = isqrt_ll(prod);
-                let min_n2 = (a + 1) * (b + 1) + a * b + sq_root;
-                if min_n2 > n {
-                    break;
-                }
-                local = (local + 12 * ((n - min_n2) % MOD)) % MOD;
-                if sq_root * sq_root == prod {
-                    local = (local + 6) % MOD;
-                }
-                b += 1;
-            }
-            local
         })
+        .sum();
+    ans = (ans + extra_diag) % MOD;
+
+    // Work units: split each a's b-loop into chunks so a=1 (b up to ~n/4) is
+    // shared across threads instead of sitting in one range-split half.
+    const B_CHUNK: u64 = 8192;
+    let mut units: Vec<(u64, u64, u64)> = Vec::new();
+    for a in 1..=sqrt_2n {
+        // min_n2 ≈ 4ab for large b, so b_max ≈ n/(4a). Add slack for the isqrt error.
+        let b_hi_est = (n / (4 * a) + a + 64).min(n);
+        if b_hi_est <= a {
+            continue;
+        }
+        let mut b0 = a + 1;
+        while b0 <= b_hi_est {
+            let b1 = (b0 + B_CHUNK).min(b_hi_est + 1);
+            units.push((a, b0, b1));
+            b0 = b1;
+        }
+    }
+
+    let extra: i64 = units
+        .into_par_iter()
+        .map(|(a, b0, b1)| contrib_ab(a, b0, b1, n))
         .sum();
 
     ans = (ans + extra) % MOD;

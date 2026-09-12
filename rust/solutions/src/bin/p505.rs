@@ -110,15 +110,42 @@ fn main() {
     let (x2, x3) = step(0, 1);
     let (x6, x7) = step(1, x3);
     let (x12, x13) = step(x3, x6);
+    let (x24, x25) = step(x6, x12);
+    let (x26, x27) = step(x6, x13);
+    let (x48, x49) = step(x12, x24);
+    let (x50, x51) = step(x12, x25);
+    let (x52, x53) = step(x13, x26);
+    let (x54, x55) = step(x13, x27);
     let (x4, x5) = step(1, x2);
     let (x8, x9) = step(x2, x4);
 
-    // Step 1: k=13 and k=12 in parallel
-    let (y13, y12) = std::thread::scope(|s| {
-        let h1 = s.spawn(|| helper(13, x6, x13, 0, K));
-        let h2 = s.spawn(|| helper(12, x6, x12, 0, K));
-        (h1.join().unwrap(), h2.join().unwrap())
+    // Speculative 8-way exact values at k=48..55, then combine.
+    let ys = std::thread::scope(|s| {
+        let h: Vec<_> = [
+            (48u64, x24, x48),
+            (49, x24, x49),
+            (50, x25, x50),
+            (51, x25, x51),
+            (52, x26, x52),
+            (53, x26, x53),
+            (54, x27, x54),
+            (55, x27, x55),
+        ]
+        .into_iter()
+        .map(|(k, prev, x)| s.spawn(move || helper(k, prev, x, 0, K)))
+        .collect();
+        let mut out = [0u64; 8];
+        for (i, t) in h.into_iter().enumerate() {
+            out[i] = t.join().unwrap();
+        }
+        out
     });
+    let y24 = K - ys[0].max(ys[1]);
+    let y25 = K - ys[2].max(ys[3]);
+    let y26 = K - ys[4].max(ys[5]);
+    let y27 = K - ys[6].max(ys[7]);
+    let y12 = K - y24.max(y25);
+    let y13 = K - y26.max(y27);
     let y6 = K - y13.max(y12);
     let y7 = helper(7, x3, x7, y6, K);
     let y3 = K - y6.max(y7);

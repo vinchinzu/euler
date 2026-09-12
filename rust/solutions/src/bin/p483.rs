@@ -6,7 +6,7 @@
 // stored in a packed open-addressing table (Fx-style mix, linear probe).
 
 const N: usize = 350;
-const HBITS: usize = 23;
+const HBITS: usize = 19;
 const HSIZE: usize = 1 << HBITS;
 const HMASK: usize = HSIZE - 1;
 
@@ -54,14 +54,22 @@ fn mix(pack: u32, lcm: u64) -> u64 {
     x | 1
 }
 
+#[derive(Clone, Copy)]
+#[repr(C, align(32))]
+struct Entry {
+    hash: u64,
+    lcm: u64,
+    val: f64,
+    pack: u32,
+    _pad: u32,
+}
+
 struct Solver {
     primes: Vec<u32>,
     inv_ffact: Vec<f64>,
-    by_lpf: Vec<Vec<u16>>,
-    hash: Vec<u64>,
-    kpack: Vec<u32>,
-    klcm: Vec<u64>,
-    kval: Vec<f64>,
+    lpf_offsets: Vec<usize>,
+    lpf_data: Vec<u16>,
+    table: Vec<Entry>,
 }
 
 impl Solver {
@@ -70,15 +78,12 @@ impl Solver {
         let h = mix(pack, lcm);
         let mut i = h as usize & HMASK;
         loop {
-            let eh = unsafe { *self.hash.get_unchecked(i) };
-            if eh == 0 {
+            let e = unsafe { self.table.get_unchecked(i) };
+            if e.hash == 0 {
                 return None;
             }
-            if eh == h
-                && unsafe { *self.kpack.get_unchecked(i) } == pack
-                && unsafe { *self.klcm.get_unchecked(i) } == lcm
-            {
-                return Some(unsafe { *self.kval.get_unchecked(i) });
+            if e.hash == h && e.pack == pack && e.lcm == lcm {
+                return Some(e.val);
             }
             i = (i + 1) & HMASK;
         }
@@ -89,23 +94,16 @@ impl Solver {
         let h = mix(pack, lcm);
         let mut i = h as usize & HMASK;
         loop {
-            let eh = unsafe { *self.hash.get_unchecked(i) };
-            if eh == 0 {
-                unsafe {
-                    *self.hash.get_unchecked_mut(i) = h;
-                    *self.kpack.get_unchecked_mut(i) = pack;
-                    *self.klcm.get_unchecked_mut(i) = lcm;
-                    *self.kval.get_unchecked_mut(i) = val;
-                }
+            let e = unsafe { self.table.get_unchecked_mut(i) };
+            if e.hash == 0 {
+                e.hash = h;
+                e.pack = pack;
+                e.lcm = lcm;
+                e.val = val;
                 return;
             }
-            if eh == h
-                && unsafe { *self.kpack.get_unchecked(i) } == pack
-                && unsafe { *self.klcm.get_unchecked(i) } == lcm
-            {
-                unsafe {
-                    *self.kval.get_unchecked_mut(i) = val;
-                }
+            if e.hash == h && e.pack == pack && e.lcm == lcm {
+                e.val = val;
                 return;
             }
             i = (i + 1) & HMASK;
@@ -160,9 +158,10 @@ impl Solver {
             let start_c = start_k * p;
             let scale2 = (scale as f64) * (scale as f64);
 
-            let nlen = unsafe { self.by_lpf.get_unchecked(idx).len() };
-            for li in 0..nlen {
-                let c = unsafe { *self.by_lpf.get_unchecked(idx).get_unchecked(li) } as usize;
+            let start = unsafe { *self.lpf_offsets.get_unchecked(idx) };
+            let end = unsafe { *self.lpf_offsets.get_unchecked(idx + 1) };
+            for li in start..end {
+                let c = unsafe { *self.lpf_data.get_unchecked(li) } as usize;
                 if c < start_c {
                     continue;
                 }
@@ -236,23 +235,42 @@ fn main() {
         inv_ffact[i] = 1.0 / f;
     }
 
-    let mut by_lpf = vec![Vec::new(); nprimes];
     let mut pidx = vec![0usize; N + 1];
     for (i, &p) in primes.iter().enumerate() {
         pidx[p as usize] = i;
     }
+    // CSR representation for numbers grouped by lowest prime factor (cf. p482)
+    let mut counts = vec![0usize; nprimes];
     for c in 2..=N {
-        by_lpf[pidx[lpf[c] as usize]].push(c as u16);
+        counts[pidx[lpf[c] as usize]] += 1;
+    }
+    let mut lpf_offsets = vec![0usize; nprimes + 1];
+    for i in 0..nprimes {
+        lpf_offsets[i + 1] = lpf_offsets[i] + counts[i];
+    }
+    let mut lpf_data = vec![0u16; lpf_offsets[nprimes]];
+    let mut pos = lpf_offsets.clone();
+    for c in 2..=N {
+        let p = pidx[lpf[c] as usize];
+        lpf_data[pos[p]] = c as u16;
+        pos[p] += 1;
     }
 
     let mut solver = Solver {
         primes,
         inv_ffact,
-        by_lpf,
-        hash: vec![0u64; HSIZE],
-        kpack: vec![0u32; HSIZE],
-        klcm: vec![0u64; HSIZE],
-        kval: vec![0f64; HSIZE],
+        lpf_offsets,
+        lpf_data,
+        table: vec![
+            Entry {
+                hash: 0,
+                lcm: 0,
+                val: 0.0,
+                pack: 0,
+                _pad: 0,
+            };
+            HSIZE
+        ],
     };
 
     let ans = solver.sum_f2(nprimes - 1, 1, N, 1);

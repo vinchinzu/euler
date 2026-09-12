@@ -10,24 +10,7 @@ const INV2: u64 = (MOD + 1) / 2;
 
 #[inline(always)]
 fn isqrt(n: u64) -> u64 {
-    if n < 2 {
-        return n;
-    }
-    let mut x = (n as f64).sqrt() as u64;
-    if x == 0 {
-        return 0;
-    }
-    let y = (x + n / x) >> 1;
-    if y < x {
-        x = y;
-    }
-    while x * x > n {
-        x -= 1;
-    }
-    while (x + 1) * (x + 1) <= n {
-        x += 1;
-    }
-    x
+    n.isqrt()
 }
 
 /// n_mod = n % MOD, 0 <= n_mod < MOD. Returns n*(n+1)/2 % MOD.
@@ -57,13 +40,15 @@ fn mul_coeff(coeff: i64, s: u64) -> u64 {
     (c as u64) * s % MOD
 }
 
-/// S(n) = sum_{k=1}^n sigma(k)  (n > table bound; uses hyperbola, u64 mulmod)
-fn sum_sigma_large(n: u64) -> u64 {
-    let s = isqrt(n);
+/// Accumulate i*(n/i)+tri(n/i) over [lo, hi] (sequential).
+fn sigma_range(n: u64, lo: u64, hi: u64) -> u64 {
+    if lo > hi {
+        return 0;
+    }
     let mut acc = 0u64;
-    let mut i = 1u64;
+    let mut i = lo;
 
-    while i + 3 <= s {
+    while i + 3 <= hi {
         let q0 = n / i;
         let q1 = n / (i + 1);
         let q2 = n / (i + 2);
@@ -86,12 +71,43 @@ fn sum_sigma_large(n: u64) -> u64 {
             acc %= MOD;
         }
     }
-    while i <= s {
+    while i <= hi {
         let r = (n / i) % MOD;
         acc = acc.wrapping_add(i * r).wrapping_add(tri_from_mod(r));
         i += 1;
     }
-    acc %= MOD;
+    acc % MOD
+}
+
+/// S(n) = sum_{k=1}^n sigma(k)  (n > table bound; uses hyperbola, u64 mulmod)
+fn sum_sigma_large(n: u64) -> u64 {
+    let s = isqrt(n);
+    let acc = sigma_range(n, 1, s);
+    let sub = (s % MOD) * tri_from_mod(s % MOD) % MOD;
+    if acc >= sub { acc - sub } else { acc + MOD - sub }
+}
+
+fn sum_sigma_large_par(n: u64) -> u64 {
+    let s = isqrt(n);
+    // 4-way split on the calling thread (not nested inside large.par_iter).
+    let c = s / 4;
+    let (a, b) = rayon::join(
+        || {
+            let (x, y) = rayon::join(
+                || sigma_range(n, 1, c),
+                || sigma_range(n, c + 1, 2 * c),
+            );
+            x + y
+        },
+        || {
+            let (x, y) = rayon::join(
+                || sigma_range(n, 2 * c + 1, 3 * c),
+                || sigma_range(n, 3 * c + 1, s),
+            );
+            x + y
+        },
+    );
+    let acc = (a + b) % MOD;
     let sub = (s % MOD) * tri_from_mod(s % MOD) % MOD;
     if acc >= sub { acc - sub } else { acc + MOD - sub }
 }
@@ -169,10 +185,17 @@ fn main() {
         g = g_hi + 1;
     }
 
-    let ans_large: u64 = large
-        .par_iter()
-        .map(|&(coeff, q)| mul_coeff(coeff, sum_sigma_large(q)))
-        .sum();
+    // Heaviest q (g=1, n=10^14) on its own 4-way split; remaining q's in par_iter.
+    let ans_large: u64 = if let Some(&(coeff0, q0)) = large.first() {
+        let first = mul_coeff(coeff0, sum_sigma_large_par(q0));
+        let rest: u64 = large[1..]
+            .par_iter()
+            .map(|&(coeff, q)| mul_coeff(coeff, sum_sigma_large(q)))
+            .sum();
+        first + rest
+    } else {
+        0
+    };
 
     let mut ans_small = 0u64;
     while g <= l {

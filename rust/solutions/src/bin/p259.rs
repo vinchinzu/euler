@@ -1,41 +1,17 @@
 // Project Euler 259: Reachable Numbers
-use fxhash::FxHashSet;
 use rayon::prelude::*;
 
 const BASE: usize = 10;
 const BOUND: u64 = 4_000_000_000_000_000_000;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Frac {
     num: i64,
     den: i64,
 }
 
 struct FracSet {
-    map: FxHashSet<u128>,
     list: Vec<Frac>,
-}
-
-impl FracSet {
-    fn with_capacity(cap: usize) -> Self {
-        Self {
-            map: FxHashSet::with_capacity_and_hasher(cap, Default::default()),
-            list: Vec::with_capacity(cap),
-        }
-    }
-
-    #[inline(always)]
-    fn insert(&mut self, f: Frac) {
-        if self.map.insert(pack(f.num, f.den)) {
-            self.list.push(f);
-        }
-    }
-}
-
-impl Default for FracSet {
-    fn default() -> Self {
-        Self::with_capacity(0)
-    }
 }
 
 #[inline(always)]
@@ -46,6 +22,12 @@ fn cell(start: usize, end: usize) -> usize {
 #[inline(always)]
 fn pack(num: i64, den: i64) -> u128 {
     ((num as u128) << 64) | (den as u64 as u128)
+}
+
+#[inline(always)]
+fn unique_inplace(v: &mut Vec<Frac>) {
+    v.sort_unstable_by_key(|f| pack(f.num, f.den));
+    v.dedup_by(|a, b| a.num == b.num && a.den == b.den);
 }
 
 #[inline(always)]
@@ -83,7 +65,7 @@ fn capacity_for(length: usize) -> usize {
 }
 
 #[inline(always)]
-fn insert_normalized(set: &mut FracSet, mut n: i64, mut d: i64) {
+fn emit(out: &mut Vec<Frac>, mut n: i64, mut d: i64) {
     if d < 0 {
         n = -n;
         d = -d;
@@ -91,12 +73,12 @@ fn insert_normalized(set: &mut FracSet, mut n: i64, mut d: i64) {
     if n == 0 {
         d = 1;
     }
-    set.insert(Frac { num: n, den: d });
+    out.push(Frac { num: n, den: d });
 }
 
-/// Reduce then insert. Bound check matches the original 4e18 cutoff.
+/// Reduce then emit. Bound check matches the original 4e18 cutoff.
 #[inline(always)]
-fn insert_reduced_i64(set: &mut FracSet, mut n: i64, mut d: i64) {
+fn emit_reduced_i64(out: &mut Vec<Frac>, mut n: i64, mut d: i64) {
     if d == 0 {
         return;
     }
@@ -108,16 +90,16 @@ fn insert_reduced_i64(set: &mut FracSet, mut n: i64, mut d: i64) {
     if n.unsigned_abs() > BOUND || d.unsigned_abs() > BOUND {
         return;
     }
-    insert_normalized(set, n, d);
+    emit(out, n, d);
 }
 
 #[inline(always)]
-fn try_add(set: &mut FracSet, n: i128, d: i128) {
+fn try_add(out: &mut Vec<Frac>, n: i128, d: i128) {
     if d == 0 {
         return;
     }
     if n >= i64::MIN as i128 && n <= i64::MAX as i128 && d >= i64::MIN as i128 && d <= i64::MAX as i128 {
-        insert_reduced_i64(set, n as i64, d as i64);
+        emit_reduced_i64(out, n as i64, d as i64);
         return;
     }
     let g = gcd_u128(n.unsigned_abs(), d.unsigned_abs());
@@ -130,30 +112,30 @@ fn try_add(set: &mut FracSet, n: i128, d: i128) {
     if n.unsigned_abs() > BOUND as u128 || d.unsigned_abs() > BOUND as u128 {
         return;
     }
-    insert_normalized(set, n as i64, d as i64);
+    emit(out, n as i64, d as i64);
 }
 
 /// Mul/div of already-reduced fractions with pre-cancel is reduced; skip gcd.
 #[inline(always)]
-fn try_insert_reduced(set: &mut FracSet, n: i128, d: i128) {
+fn try_insert_reduced(out: &mut Vec<Frac>, n: i128, d: i128) {
     if d == 0 {
         return;
     }
     if n.unsigned_abs() > BOUND as u128 || d.unsigned_abs() > BOUND as u128 {
         return;
     }
-    insert_normalized(set, n as i64, d as i64);
+    emit(out, n as i64, d as i64);
 }
 
 #[inline(always)]
-fn add_ops(set: &mut FracSet, a: Frac, b: Frac) {
+fn add_ops(out: &mut Vec<Frac>, a: Frac, b: Frac) {
     try_add(
-        set,
+        out,
         a.num as i128 * b.den as i128 + b.num as i128 * a.den as i128,
         a.den as i128 * b.den as i128,
     );
     try_add(
-        set,
+        out,
         a.num as i128 * b.den as i128 - b.num as i128 * a.den as i128,
         a.den as i128 * b.den as i128,
     );
@@ -161,7 +143,7 @@ fn add_ops(set: &mut FracSet, a: Frac, b: Frac) {
         let g1 = gcd_i64(a.num, b.den);
         let g2 = gcd_i64(b.num, a.den);
         try_insert_reduced(
-            set,
+            out,
             (a.num / g1) as i128 * (b.num / g2) as i128,
             (a.den / g2) as i128 * (b.den / g1) as i128,
         );
@@ -170,7 +152,7 @@ fn add_ops(set: &mut FracSet, a: Frac, b: Frac) {
         let g1 = gcd_i64(a.num, b.num);
         let g2 = gcd_i64(a.den, b.den);
         try_insert_reduced(
-            set,
+            out,
             (a.num / g1) as i128 * (b.den / g2) as i128,
             (a.den / g2) as i128 * (b.num / g1) as i128,
         );
@@ -185,17 +167,7 @@ fn concat_digits(start: usize, end: usize) -> i64 {
     concat
 }
 
-fn merge(mut a: FracSet, mut b: FracSet) -> FracSet {
-    if a.list.len() < b.list.len() {
-        std::mem::swap(&mut a, &mut b);
-    }
-    for f in b.list {
-        a.insert(f);
-    }
-    a
-}
-
-fn combine_splits(cur: &mut FracSet, start: usize, end: usize, sets: &[FracSet]) {
+fn combine_splits(cur: &mut Vec<Frac>, start: usize, end: usize, sets: &[FracSet]) {
     let length = end - start;
     for left in 1..length {
         let mid = start + left;
@@ -211,13 +183,14 @@ fn combine_splits(cur: &mut FracSet, start: usize, end: usize, sets: &[FracSet])
 
 fn build_cell(start: usize, length: usize, sets: &[FracSet]) -> FracSet {
     let end = start + length;
-    let mut cur = FracSet::with_capacity(capacity_for(length));
-    cur.insert(Frac {
+    let mut cur = Vec::with_capacity(capacity_for(length));
+    cur.push(Frac {
         num: concat_digits(start, end),
         den: 1,
     });
     combine_splits(&mut cur, start, end, sets);
-    cur
+    unique_inplace(&mut cur);
+    FracSet { list: cur }
 }
 
 /// Length-9 bottleneck: chunk left operands so rayon can balance uneven splits.
@@ -241,40 +214,45 @@ fn build_cell_parallel(start: usize, length: usize, sets: &[FracSet]) -> FracSet
         }
     }
 
-    let mut cur = units
+    let parts: Vec<Vec<Frac>> = units
         .into_par_iter()
-        .fold(
-            || FracSet::with_capacity(1 << 18),
-            |mut acc, (mid, lo, hi)| {
-                let lset = &sets[cell(start, mid)].list;
-                let rset = &sets[cell(mid, end)].list;
-                for &fa in &lset[lo..hi] {
-                    for &fb in rset {
-                        add_ops(&mut acc, fa, fb);
-                    }
+        .map(|(mid, lo, hi)| {
+            let lset = &sets[cell(start, mid)].list;
+            let rset = &sets[cell(mid, end)].list;
+            let mut acc = Vec::with_capacity((hi - lo).saturating_mul(rset.len().max(1)) * 4);
+            for &fa in &lset[lo..hi] {
+                for &fb in rset {
+                    add_ops(&mut acc, fa, fb);
                 }
-                acc
-            },
-        )
-        .reduce(FracSet::default, merge);
+            }
+            acc
+        })
+        .collect();
 
-    cur.insert(Frac {
+    let total: usize = parts.iter().map(|v| v.len()).sum();
+    let mut cur = Vec::with_capacity(total + 1);
+    for mut p in parts {
+        cur.append(&mut p);
+    }
+    cur.push(Frac {
         num: concat_digits(start, end),
         den: 1,
     });
-    cur
+    cur.par_sort_unstable_by_key(|f| pack(f.num, f.den));
+    cur.dedup_by(|a, b| a.num == b.num && a.den == b.den);
+    FracSet { list: cur }
 }
 
 fn main() {
-    let mut sets: Vec<FracSet> = (0..BASE * BASE).map(|_| FracSet::with_capacity(0)).collect();
+    let mut sets: Vec<FracSet> = (0..BASE * BASE).map(|_| FracSet { list: Vec::new() }).collect();
 
     for i in 0..BASE - 1 {
-        let mut s = FracSet::with_capacity(1);
-        s.insert(Frac {
-            num: i as i64 + 1,
-            den: 1,
-        });
-        sets[cell(i, i + 1)] = s;
+        sets[cell(i, i + 1)] = FracSet {
+            list: vec![Frac {
+                num: i as i64 + 1,
+                den: 1,
+            }],
+        };
     }
 
     for length in 2..BASE {

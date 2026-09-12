@@ -6085,5 +6085,2095 @@
     "accepted": true,
     "decision": "ACCEPT",
     "reason": "speedup=1.157x"
+  },
+  {
+    "problem": 614,
+    "baseline_median_ms": 930.0,
+    "candidate_median_ms": 794.0,
+    "speedup": 1.171,
+    "correct": true,
+    "baseline_times": [
+      917.2,
+      930.0,
+      930.0
+    ],
+    "candidate_times": [
+      777.6,
+      806.7,
+      794.0
+    ],
+    "notes": "BLOCK 16384->4096; align large_tri ++-- unroll (split t=91 is --++); 4-wide phase-2 with T1/T2 serial; worker_count cap 32",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.171x"
+  },
+  {
+    "problem": 533,
+    "baseline_median_ms": 595.2,
+    "candidate_median_ms": 69.0,
+    "speedup": 8.63,
+    "correct": true,
+    "baseline_times": [
+      589.0,
+      597.1,
+      595.2
+    ],
+    "candidate_times": [
+      66.5,
+      69.0,
+      70.2
+    ],
+    "notes": "segmented Carmichael lambda 128 chunks; O(1) p=2 tzcnt; precomputed prime logs",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=8.63x"
+  },
+  {
+    "problem": 927,
+    "baseline_median_ms": 640.5,
+    "candidate_median_ms": 290.2,
+    "speedup": 2.207,
+    "correct": true,
+    "baseline_times": [
+      602.7,
+      640.5,
+      748.2
+    ],
+    "candidate_times": [
+      290.2,
+      290.2,
+      285.2
+    ],
+    "notes": "skip q=3 mod 4; test exp=2 before factoring phi(q); specialized Brent inner; u32 SPF odd-stride",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.207x"
+  },
+  {
+    "problem": 421,
+    "baseline_median_ms": 474.6,
+    "candidate_median_ms": 150.2,
+    "speedup": 3.159,
+    "correct": true,
+    "baseline_times": [
+      476.4,
+      474.6,
+      472.0
+    ],
+    "candidate_times": [
+      150.9,
+      150.0,
+      150.2
+    ],
+    "notes": "odd-only bit sieve 100MB->6.25MB; Vec<u32> primes; mod3/mod5 vs gcd; fewer modpow order checks",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.159x"
+  },
+  {
+    "problem": 437,
+    "baseline_median_ms": 425.0,
+    "candidate_median_ms": 190.6,
+    "speedup": 2.23,
+    "correct": true,
+    "baseline_times": [
+      423.0,
+      437.3,
+      425.0
+    ],
+    "candidate_times": [
+      190.6,
+      190.2,
+      190.7
+    ],
+    "notes": "drop 400MB SPF; odd-only bit sieve; factor p-1 from primes<=10k; filter p=1,9 mod 10; iterative fib_pair",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.23x"
+  },
+  {
+    "problem": 658,
+    "baseline_median_ms": 379.5,
+    "candidate_median_ms": 164.4,
+    "speedup": 2.308,
+    "correct": true,
+    "baseline_times": [
+      381.2,
+      378.1,
+      379.5
+    ],
+    "candidate_times": [
+      164.4,
+      161.7,
+      171.8
+    ],
+    "notes": "i128->u64 mulmod MOD=1e9+7; pows/invs i64->u32; odd-step SPF; get_unchecked hot passes",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.308x"
+  },
+  {
+    "problem": 801,
+    "baseline_median_ms": 319.9,
+    "candidate_median_ms": 103.7,
+    "speedup": 3.083,
+    "correct": true,
+    "baseline_times": [
+      321.0,
+      317.3,
+      319.9
+    ],
+    "candidate_times": [
+      104.4,
+      102.8,
+      103.7
+    ],
+    "notes": "CSR factor lists drop 1e6 Vecs; odd-only bit sieve tzcnt; rayon only primes in [A+1,A+B]",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.083x"
+  },
+  {
+    "problem": 483,
+    "baseline_median_ms": 715.1,
+    "candidate_median_ms": 476.8,
+    "speedup": 1.5,
+    "correct": true,
+    "baseline_times": [
+      715.1,
+      653.8,
+      737.7
+    ],
+    "candidate_times": [
+      477.4,
+      472.2,
+      476.8
+    ],
+    "notes": "CSR by_lpf replacing Vec<Vec<u16>>; packed OA hash; binary tzcnt gcd",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.5x"
+  },
+  {
+    "problem": 738,
+    "baseline_median_ms": 683.2,
+    "candidate_median_ms": 276.1,
+    "speedup": 2.474,
+    "correct": true,
+    "baseline_times": [
+      683.2,
+      686.3,
+      678.5
+    ],
+    "candidate_times": [
+      276.0,
+      276.2,
+      276.1
+    ],
+    "notes": "packed OA table replacing FxHashMap memo; u32 values",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.474x"
+  },
+  {
+    "problem": 544,
+    "baseline_median_ms": 465.3,
+    "candidate_median_ms": 175.6,
+    "speedup": 2.65,
+    "correct": true,
+    "baseline_times": [
+      459.4,
+      465.3,
+      465.9
+    ],
+    "candidate_times": [
+      178.1,
+      175.6,
+      175.4
+    ],
+    "notes": "F_SIZE=RC+3 delayed % MOD",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.65x"
+  },
+  {
+    "problem": 558,
+    "baseline_median_ms": 239.9,
+    "candidate_median_ms": 96.2,
+    "speedup": 2.494,
+    "correct": true,
+    "baseline_times": [
+      240.0,
+      233.8,
+      239.9
+    ],
+    "candidate_times": [
+      97.1,
+      95.9,
+      96.2
+    ],
+    "notes": "compact U192 limbs + greedy skip-3",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.494x"
+  },
+  {
+    "problem": 741,
+    "baseline_median_ms": 636.1,
+    "candidate_median_ms": 247.2,
+    "speedup": 2.573,
+    "correct": true,
+    "baseline_times": [
+      634.9,
+      636.1,
+      639.1
+    ],
+    "candidate_times": [
+      247.2,
+      306.6,
+      245.6
+    ],
+    "notes": "parallelize 4 heavy g() recurrences",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.573x"
+  },
+  {
+    "problem": 211,
+    "baseline_median_ms": 684.2,
+    "candidate_median_ms": 311.4,
+    "speedup": 2.198,
+    "correct": true,
+    "baseline_times": [
+      684.2,
+      692.4,
+      677.2
+    ],
+    "candidate_times": [
+      311.2,
+      313.6,
+      311.4
+    ],
+    "notes": "odd-only SPF/sigma2 + parallel 2-adic square scan",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.198x"
+  },
+  {
+    "problem": 747,
+    "baseline_median_ms": 471.5,
+    "candidate_median_ms": 100.8,
+    "speedup": 4.679,
+    "correct": true,
+    "baseline_times": [
+      471.5,
+      477.1,
+      467.9
+    ],
+    "candidate_times": [
+      100.3,
+      100.8,
+      101.1
+    ],
+    "notes": "chunked (a,b) work units + u64::isqrt",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=4.679x"
+  },
+  {
+    "problem": 557,
+    "baseline_median_ms": 96.2,
+    "candidate_median_ms": 88.5,
+    "speedup": 1.088,
+    "correct": true,
+    "baseline_times": [
+      95.4,
+      96.2,
+      97.2
+    ],
+    "candidate_times": [
+      89.6,
+      87.9,
+      88.5
+    ],
+    "notes": "skip gcd(a,S)==1; i64::isqrt; max_len=1",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.088x"
+  },
+  {
+    "problem": 785,
+    "baseline_median_ms": 89.3,
+    "candidate_median_ms": 76.2,
+    "speedup": 1.172,
+    "correct": true,
+    "baseline_times": [
+      89.3,
+      89.3,
+      89.7
+    ],
+    "candidate_times": [
+      75.4,
+      76.2,
+      76.3
+    ],
+    "notes": "incremental z; u32 gcd; max_len=8",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.172x"
+  },
+  {
+    "problem": 910,
+    "baseline_median_ms": 558.4,
+    "candidate_median_ms": 423.3,
+    "speedup": 1.319,
+    "correct": true,
+    "baseline_times": [
+      513.0,
+      558.4,
+      591.3
+    ],
+    "candidate_times": [
+      423.3,
+      419.3,
+      423.3
+    ],
+    "notes": "AVX2 i32 gather apply/compose; ping-pong buffers; join pow-table sieves",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.319x"
+  },
+  {
+    "problem": 465,
+    "baseline_median_ms": 846.6,
+    "candidate_median_ms": 734.2,
+    "speedup": 1.153,
+    "correct": true,
+    "baseline_times": [
+      846.6,
+      844.9,
+      886.0
+    ],
+    "candidate_times": [
+      725.0,
+      736.3,
+      734.2
+    ],
+    "notes": "u32 phi sieve; pre-reduced prefix1/prefix2; 32-bit hyperbola div",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.153x"
+  },
+  {
+    "problem": 339,
+    "baseline_median_ms": 611.8,
+    "candidate_median_ms": 0.8,
+    "speedup": 754.529,
+    "correct": true,
+    "baseline_times": [
+      609.2,
+      611.8,
+      621.2
+    ],
+    "candidate_times": [
+      0.9,
+      0.8,
+      0.8
+    ],
+    "notes": "O(n) Snell/scale recurrence replacing O(n^2) Thomas",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=754.529x"
+  },
+  {
+    "problem": 589,
+    "baseline_median_ms": 123.5,
+    "candidate_median_ms": 57.9,
+    "speedup": 2.132,
+    "correct": true,
+    "baseline_times": [
+      126.6,
+      123.5,
+      116.4
+    ],
+    "candidate_times": [
+      57.3,
+      61.5,
+      57.9
+    ],
+    "notes": "closed-form |t1-t2| range updates + integer min-sum",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.132x"
+  },
+  {
+    "problem": 815,
+    "baseline_median_ms": 700.4,
+    "candidate_median_ms": 157.4,
+    "speedup": 4.45,
+    "correct": true,
+    "baseline_times": [
+      661.6,
+      700.4,
+      710.3
+    ],
+    "candidate_times": [
+      157.4,
+      155.9,
+      159.6
+    ],
+    "notes": "entire E(c,.) row per composition; u8 occupancy vs 310MB NaN cache",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=4.45x"
+  },
+  {
+    "problem": 977,
+    "baseline_median_ms": 612.3,
+    "candidate_median_ms": 229.5,
+    "speedup": 2.668,
+    "correct": true,
+    "baseline_times": [
+      612.7,
+      610.3,
+      612.3
+    ],
+    "candidate_times": [
+      227.9,
+      229.5,
+      229.5
+    ],
+    "notes": "rayon independent L=2..256; incremental a^L tail; drop L=1 u128 via INV3",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.668x"
+  },
+  {
+    "problem": 784,
+    "baseline_median_ms": 61.6,
+    "candidate_median_ms": 60.6,
+    "speedup": 1.015,
+    "correct": true,
+    "baseline_times": [
+      61.4,
+      61.6,
+      63.0
+    ],
+    "candidate_times": [
+      60.2,
+      61.0,
+      60.6
+    ],
+    "notes": "odd-only SPF + stack factors; already ~62ms; below 5% gate",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": false,
+    "decision": "REJECT",
+    "reason": "speedup=1.015x"
+  },
+  {
+    "problem": 890,
+    "baseline_median_ms": 596.3,
+    "candidate_median_ms": 377.4,
+    "speedup": 1.58,
+    "correct": true,
+    "baseline_times": [
+      596.3,
+      596.6,
+      593.1
+    ],
+    "candidate_times": [
+      377.1,
+      377.8,
+      377.4
+    ],
+    "notes": "even/odd split + Karatsuba above n=64; serial bit loop unchanged",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.58x"
+  },
+  {
+    "problem": 655,
+    "baseline_median_ms": 541.0,
+    "candidate_median_ms": 399.6,
+    "speedup": 1.354,
+    "correct": true,
+    "baseline_times": [
+      541.0,
+      533.7,
+      546.7
+    ],
+    "candidate_times": [
+      399.6,
+      395.4,
+      399.9
+    ],
+    "notes": "i32 dest-chunk while counts<=1e9 then promote i64",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.354x"
+  },
+  {
+    "problem": 447,
+    "baseline_median_ms": 181.7,
+    "candidate_median_ms": 152.3,
+    "speedup": 1.193,
+    "correct": true,
+    "baseline_times": [
+      181.7,
+      181.6,
+      182.8
+    ],
+    "candidate_times": [
+      152.3,
+      151.1,
+      156.2
+    ],
+    "notes": "u64::isqrt; 4-way rayon::join on heaviest q=N",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.193x"
+  },
+  {
+    "problem": 774,
+    "baseline_median_ms": 1039.5,
+    "candidate_median_ms": 4.5,
+    "speedup": 233.154,
+    "correct": true,
+    "baseline_times": [
+      1021.5,
+      1048.5,
+      1039.5
+    ],
+    "candidate_times": [
+      4.5,
+      4.5,
+      4.7
+    ],
+    "notes": "Bit-stripping combinatorics DP instead of MPS left-sweep GE",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=233.154x"
+  },
+  {
+    "problem": 954,
+    "baseline_median_ms": 660.3,
+    "candidate_median_ms": 448.7,
+    "speedup": 1.471,
+    "correct": true,
+    "baseline_times": [
+      660.2,
+      660.6,
+      660.3
+    ],
+    "candidate_times": [
+      437.7,
+      453.2,
+      448.7
+    ],
+    "notes": "interned OA DP; drop FxHashMap",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.471x"
+  },
+  {
+    "problem": 714,
+    "baseline_median_ms": 629.5,
+    "candidate_median_ms": 360.9,
+    "speedup": 1.744,
+    "correct": true,
+    "baseline_times": [
+      632.6,
+      629.5,
+      600.2
+    ],
+    "candidate_times": [
+      371.3,
+      360.9,
+      360.9
+    ],
+    "notes": "thread-local scratch + %10 {0,d} prune",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.744x"
+  },
+  {
+    "problem": 870,
+    "baseline_median_ms": 551.2,
+    "candidate_median_ms": 465.4,
+    "speedup": 1.184,
+    "correct": true,
+    "baseline_times": [
+      584.6,
+      551.2,
+      549.3
+    ],
+    "candidate_times": [
+      465.4,
+      465.1,
+      468.7
+    ],
+    "notes": "KMAX 2500 + hoisted P_m*rd",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.184x"
+  },
+  {
+    "problem": 513,
+    "baseline_median_ms": 530.4,
+    "candidate_median_ms": 20.0,
+    "speedup": 26.464,
+    "correct": true,
+    "baseline_times": [
+      527.4,
+      530.4,
+      545.7
+    ],
+    "candidate_times": [
+      20.0,
+      20.0,
+      20.1
+    ],
+    "notes": "floor-sum trapezoids + odd scaling",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=26.464x"
+  },
+  {
+    "problem": 829,
+    "baseline_median_ms": 555.4,
+    "candidate_median_ms": 115.5,
+    "speedup": 4.81,
+    "correct": true,
+    "baseline_times": [
+      565.2,
+      504.7,
+      555.4
+    ],
+    "candidate_times": [
+      107.0,
+      145.0,
+      115.5
+    ],
+    "notes": "MITM best-divisor + Omega prune",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=4.810x"
+  },
+  {
+    "problem": 989,
+    "baseline_median_ms": 542.0,
+    "candidate_median_ms": 316.9,
+    "speedup": 1.71,
+    "correct": true,
+    "baseline_times": [
+      542.0,
+      538.2,
+      544.8
+    ],
+    "candidate_times": [
+      308.5,
+      316.9,
+      320.8
+    ],
+    "notes": "join g-phases, variable chunks, u64 mulmod",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.710x"
+  },
+  {
+    "problem": 850,
+    "baseline_median_ms": 534.4,
+    "candidate_median_ms": 250.5,
+    "speedup": 2.133,
+    "correct": true,
+    "baseline_times": [
+      531.2,
+      534.4,
+      588.0
+    ],
+    "candidate_times": [
+      250.5,
+      251.8,
+      250.2
+    ],
+    "notes": "SMALL_PRIME_LIMIT 32000->2500 (>=N^{1/4})",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.133x"
+  },
+  {
+    "problem": 611,
+    "baseline_median_ms": 490.9,
+    "candidate_median_ms": 351.7,
+    "speedup": 1.396,
+    "correct": true,
+    "baseline_times": [
+      487.3,
+      490.9,
+      494.1
+    ],
+    "candidate_times": [
+      351.7,
+      352.3,
+      351.2
+    ],
+    "notes": "Lucy SoA + i32 small",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.396x"
+  },
+  {
+    "problem": 786,
+    "baseline_median_ms": 608.7,
+    "candidate_median_ms": 261.8,
+    "speedup": 2.325,
+    "correct": true,
+    "baseline_times": [
+      638.0,
+      567.0,
+      608.7
+    ],
+    "candidate_times": [
+      274.1,
+      244.8,
+      261.8
+    ],
+    "notes": "sieve only to g_lim_9",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.325x"
+  },
+  {
+    "problem": 691,
+    "baseline_median_ms": 258.5,
+    "candidate_median_ms": 240.2,
+    "speedup": 1.076,
+    "correct": true,
+    "baseline_times": [
+      266.2,
+      258.5,
+      254.5
+    ],
+    "candidate_times": [
+      240.2,
+      241.2,
+      209.3
+    ],
+    "notes": "packed UF + 16-byte LCP",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.076x"
+  },
+  {
+    "problem": 660,
+    "baseline_median_ms": 476.9,
+    "candidate_median_ms": 80.8,
+    "speedup": 5.905,
+    "correct": true,
+    "baseline_times": [
+      476.9,
+      479.3,
+      475.2
+    ],
+    "candidate_times": [
+      81.3,
+      80.8,
+      80.1
+    ],
+    "notes": "digital-root k stride",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=5.905x"
+  },
+  {
+    "problem": 259,
+    "baseline_median_ms": 487.2,
+    "candidate_median_ms": 251.7,
+    "speedup": 1.936,
+    "correct": true,
+    "baseline_times": [
+      490.6,
+      479.0,
+      487.2
+    ],
+    "candidate_times": [
+      251.6,
+      251.7,
+      256.1
+    ],
+    "notes": "vec + par_sort dedup",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.936x"
+  },
+  {
+    "problem": 505,
+    "baseline_median_ms": 412.8,
+    "candidate_median_ms": 329.7,
+    "speedup": 1.252,
+    "correct": true,
+    "baseline_times": [
+      413.0,
+      412.8,
+      412.6
+    ],
+    "candidate_times": [
+      329.7,
+      331.1,
+      328.8
+    ],
+    "notes": "8-way speculative frontier",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.252x"
+  },
+  {
+    "problem": 632,
+    "baseline_median_ms": 455.0,
+    "candidate_median_ms": 56.0,
+    "speedup": 8.121,
+    "correct": true,
+    "baseline_times": [
+      433.4,
+      455.0,
+      463.3
+    ],
+    "candidate_times": [
+      56.0,
+      56.0,
+      56.2
+    ],
+    "notes": "odd-only packed sieve",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=8.121x"
+  },
+  {
+    "problem": 824,
+    "baseline_median_ms": 447.0,
+    "candidate_median_ms": 103.0,
+    "speedup": 4.34,
+    "correct": true,
+    "baseline_times": [
+      447.8,
+      447.0,
+      444.9
+    ],
+    "candidate_times": [
+      102.6,
+      103.6,
+      103.0
+    ],
+    "notes": "join fac/invp; par_iter over t",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=4.34x"
+  },
+  {
+    "problem": 827,
+    "baseline_median_ms": 462.1,
+    "candidate_median_ms": 410.2,
+    "speedup": 1.126,
+    "correct": true,
+    "baseline_times": [
+      461.7,
+      462.1,
+      462.2
+    ],
+    "candidate_times": [
+      410.0,
+      410.5,
+      410.2
+    ],
+    "notes": "par_iter over k=1..18 Q(10^k)",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.126x"
+  },
+  {
+    "problem": 891,
+    "baseline_median_ms": 351.8,
+    "candidate_median_ms": 125.5,
+    "speedup": 2.804,
+    "correct": true,
+    "baseline_times": [
+      359.0,
+      351.8,
+      351.4
+    ],
+    "candidate_times": [
+      125.5,
+      124.1,
+      131.5
+    ],
+    "notes": "par_iter 6 perms + FxHashSet",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.804x"
+  },
+  {
+    "problem": 418,
+    "baseline_median_ms": 375.7,
+    "candidate_median_ms": 28.6,
+    "speedup": 13.15,
+    "correct": true,
+    "baseline_times": [
+      374.8,
+      375.7,
+      376.0
+    ],
+    "candidate_times": [
+      28.4,
+      28.7,
+      28.6
+    ],
+    "notes": "par split 2/3; binary BigNum exp",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=13.15x"
+  },
+  {
+    "problem": 440,
+    "baseline_median_ms": 343.2,
+    "candidate_median_ms": 101.9,
+    "speedup": 3.369,
+    "correct": true,
+    "baseline_times": [
+      342.9,
+      343.2,
+      343.3
+    ],
+    "candidate_times": [
+      100.5,
+      101.9,
+      103.1
+    ],
+    "notes": "par_iter over c; mat_pow u32 exp",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.369x"
+  },
+  {
+    "problem": 840,
+    "baseline_median_ms": 348.9,
+    "candidate_median_ms": 115.1,
+    "speedup": 3.031,
+    "correct": true,
+    "baseline_times": [
+      347.7,
+      349.7,
+      348.9
+    ],
+    "candidate_times": [
+      115.9,
+      115.1,
+      115.1
+    ],
+    "notes": "u64 mulmod; join 3 NTT primes",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.031x"
+  },
+  {
+    "problem": 728,
+    "baseline_median_ms": 326.0,
+    "candidate_median_ms": 180.5,
+    "speedup": 1.806,
+    "correct": true,
+    "baseline_times": [
+      326.0,
+      324.8,
+      326.0
+    ],
+    "candidate_times": [
+      181.2,
+      180.5,
+      179.1
+    ],
+    "notes": "u64 mulmod; par_iter over i",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.806x"
+  },
+  {
+    "problem": 457,
+    "baseline_median_ms": 333.5,
+    "candidate_median_ms": 33.4,
+    "speedup": 9.976,
+    "correct": true,
+    "baseline_times": [
+      333.5,
+      327.9,
+      334.0
+    ],
+    "candidate_times": [
+      33.4,
+      32.8,
+      33.8
+    ],
+    "notes": "u64 Tonelli; par_iter primes",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=9.976x"
+  },
+  {
+    "problem": 647,
+    "baseline_median_ms": 318.6,
+    "candidate_median_ms": 22.9,
+    "speedup": 13.912,
+    "correct": true,
+    "baseline_times": [
+      318.6,
+      316.5,
+      320.1
+    ],
+    "candidate_times": [
+      22.8,
+      22.9,
+      23.3
+    ],
+    "notes": "par_iter odd sqrt_a via k",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=13.912x"
+  },
+  {
+    "problem": 567,
+    "baseline_median_ms": 307.2,
+    "candidate_median_ms": 0.7,
+    "speedup": 432.491,
+    "correct": true,
+    "baseline_times": [
+      307.4,
+      307.2,
+      305.1
+    ],
+    "candidate_times": [
+      0.8,
+      0.7,
+      0.7
+    ],
+    "notes": "Euler-Maclaurin H_n vs Kahan loop",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=432.491x"
+  },
+  {
+    "problem": 255,
+    "baseline_median_ms": 306.0,
+    "candidate_median_ms": 23.5,
+    "speedup": 13.033,
+    "correct": true,
+    "baseline_times": [
+      306.9,
+      306.0,
+      305.4
+    ],
+    "candidate_times": [
+      23.2,
+      24.0,
+      23.5
+    ],
+    "notes": "par remaining walk of sum_iterations",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=13.033x"
+  },
+  {
+    "problem": 581,
+    "baseline_median_ms": 300.7,
+    "candidate_median_ms": 15.1,
+    "speedup": 19.943,
+    "correct": true,
+    "baseline_times": [
+      300.5,
+      305.5,
+      300.7
+    ],
+    "candidate_times": [
+      15.1,
+      15.1,
+      14.9
+    ],
+    "notes": "par_iter 2^15 Pell subsets",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=19.943x"
+  },
+  {
+    "problem": 805,
+    "baseline_median_ms": 289.3,
+    "candidate_median_ms": 20.1,
+    "speedup": 14.36,
+    "correct": true,
+    "baseline_times": [
+      290.2,
+      289.3,
+      288.8
+    ],
+    "candidate_times": [
+      20.1,
+      20.4,
+      19.9
+    ],
+    "notes": "u64 mulmod; par_iter over v",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=14.36x"
+  },
+  {
+    "problem": 456,
+    "baseline_median_ms": 271.9,
+    "candidate_median_ms": 141.8,
+    "speedup": 1.917,
+    "correct": true,
+    "baseline_times": [
+      268.6,
+      271.9,
+      275.7
+    ],
+    "candidate_times": [
+      141.8,
+      142.2,
+      136.5
+    ],
+    "notes": "par_sort_unstable by angle",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.917x"
+  },
+  {
+    "problem": 560,
+    "baseline_median_ms": 257.4,
+    "candidate_median_ms": 105.8,
+    "speedup": 2.434,
+    "correct": true,
+    "baseline_times": [
+      269.1,
+      252.4,
+      257.4
+    ],
+    "candidate_times": [
+      105.5,
+      107.2,
+      105.8
+    ],
+    "notes": "u64 FWHT par_chunks; par pow",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.434x"
+  },
+  {
+    "problem": 792,
+    "baseline_median_ms": 244.2,
+    "candidate_median_ms": 149.9,
+    "speedup": 1.629,
+    "correct": true,
+    "baseline_times": [
+      244.2,
+      244.2,
+      242.8
+    ],
+    "candidate_times": [
+      150.4,
+      149.9,
+      149.9
+    ],
+    "notes": "par_iter over m=1..10000 ncr",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.629x"
+  },
+  {
+    "problem": 620,
+    "baseline_median_ms": 247.3,
+    "candidate_median_ms": 14.7,
+    "speedup": 16.86,
+    "correct": true,
+    "baseline_times": [
+      248.9,
+      246.6,
+      247.3
+    ],
+    "candidate_times": [
+      14.7,
+      15.1,
+      14.3
+    ],
+    "notes": "par_iter outer s in triple loop",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=16.86x"
+  },
+  {
+    "problem": 562,
+    "baseline_median_ms": 229.7,
+    "candidate_median_ms": 10.9,
+    "speedup": 21.033,
+    "correct": true,
+    "baseline_times": [
+      229.0,
+      229.7,
+      230.2
+    ],
+    "candidate_times": [
+      10.9,
+      11.6,
+      10.8
+    ],
+    "notes": "chunked par x1 + atomic prune",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=21.033x"
+  },
+  {
+    "problem": 717,
+    "baseline_median_ms": 215.4,
+    "candidate_median_ms": 29.1,
+    "speedup": 7.392,
+    "correct": true,
+    "baseline_times": [
+      214.7,
+      216.4,
+      215.4
+    ],
+    "candidate_times": [
+      29.0,
+      29.1,
+      29.9
+    ],
+    "notes": "u64 pow_mod; par_iter odd primes",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=7.392x"
+  },
+  {
+    "problem": 690,
+    "baseline_median_ms": 211.6,
+    "candidate_median_ms": 72.7,
+    "speedup": 2.912,
+    "correct": true,
+    "baseline_times": [
+      210.3,
+      212.5,
+      211.6
+    ],
+    "candidate_times": [
+      71.0,
+      72.7,
+      72.7
+    ],
+    "notes": "u64 mulmod; par gf_mul + DP",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.912x"
+  },
+  {
+    "problem": 665,
+    "baseline_median_ms": 551.0,
+    "candidate_median_ms": 228.4,
+    "speedup": 2.413,
+    "correct": true,
+    "baseline_times": [
+      554.7,
+      551.0,
+      549.6
+    ],
+    "candidate_times": [
+      236.4,
+      228.4,
+      226.2
+    ],
+    "notes": "Vec<u32> next-free; iterative path-halving; unchecked hot path",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.413x"
+  },
+  {
+    "problem": 663,
+    "baseline_median_ms": 512.1,
+    "candidate_median_ms": 349.0,
+    "speedup": 1.467,
+    "correct": true,
+    "baseline_times": [
+      517.6,
+      512.1,
+      500.1
+    ],
+    "candidate_times": [
+      350.0,
+      349.0,
+      345.5
+    ],
+    "notes": "packed AoS nodes; rayon leaf-init and per-level build",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.467x"
+  },
+  {
+    "problem": 720,
+    "baseline_median_ms": 430.7,
+    "candidate_median_ms": 201.2,
+    "speedup": 2.14,
+    "correct": true,
+    "baseline_times": [
+      431.7,
+      430.7,
+      424.0
+    ],
+    "candidate_times": [
+      195.0,
+      208.1,
+      201.2
+    ],
+    "notes": "i32 arrays; drop i128; rayon doubling + chunked sum",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.14x"
+  },
+  {
+    "problem": 615,
+    "baseline_median_ms": 484.1,
+    "candidate_median_ms": 11.0,
+    "speedup": 44.196,
+    "correct": true,
+    "baseline_times": [
+      484.1,
+      483.6,
+      487.2
+    ],
+    "candidate_times": [
+      10.8,
+      11.5,
+      11.0
+    ],
+    "notes": "DFS Omega>=29 cores below 3^29; nth_element; modpow lift",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=44.196x"
+  },
+  {
+    "problem": 550,
+    "baseline_median_ms": 402.5,
+    "candidate_median_ms": 177.5,
+    "speedup": 2.268,
+    "correct": true,
+    "baseline_times": [
+      402.5,
+      399.6,
+      413.8
+    ],
+    "candidate_times": [
+      174.5,
+      177.6,
+      177.5
+    ],
+    "notes": "DFS factor-list divisors; mex bitset+ctz; u64 mulmod",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.268x"
+  },
+  {
+    "problem": 320,
+    "baseline_median_ms": 442.3,
+    "candidate_median_ms": 56.0,
+    "speedup": 7.896,
+    "correct": true,
+    "baseline_times": [
+      444.2,
+      442.1,
+      442.3
+    ],
+    "candidate_times": [
+      57.0,
+      56.0,
+      56.0
+    ],
+    "notes": "skip advance when lower bound <= max_n; SPF last-only; u32 pidx",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=7.896x"
+  },
+  {
+    "problem": 495,
+    "baseline_median_ms": 365.0,
+    "candidate_median_ms": 28.2,
+    "speedup": 12.92,
+    "correct": true,
+    "baseline_times": [
+      365.0,
+      366.4,
+      363.4
+    ],
+    "candidate_times": [
+      28.7,
+      28.2,
+      28.2
+    ],
+    "notes": "par_iter partitions of 30; delayed-mod knapsack",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=12.92x"
+  },
+  {
+    "problem": 275,
+    "baseline_median_ms": 350.2,
+    "candidate_median_ms": 195.3,
+    "speedup": 1.793,
+    "correct": true,
+    "baseline_times": [
+      350.2,
+      363.3,
+      346.6
+    ],
+    "candidate_times": [
+      195.3,
+      211.2,
+      186.3
+    ],
+    "notes": "stack Sculpture bitset; Vec buckets; nested par large groups",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.793x"
+  },
+  {
+    "problem": 958,
+    "baseline_median_ms": 356.6,
+    "candidate_median_ms": 265.2,
+    "speedup": 1.345,
+    "correct": true,
+    "baseline_times": [
+      356.3,
+      356.6,
+      358.5
+    ],
+    "candidate_times": [
+      265.2,
+      263.6,
+      271.1
+    ],
+    "notes": "AtomicI64 best_m; rayon::join; i64 bounds",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.345x"
+  },
+  {
+    "problem": 718,
+    "baseline_median_ms": 313.3,
+    "candidate_median_ms": 198.7,
+    "speedup": 1.577,
+    "correct": true,
+    "baseline_times": [
+      313.3,
+      315.0,
+      311.7
+    ],
+    "candidate_times": [
+      199.5,
+      198.0,
+      198.7
+    ],
+    "notes": "packed (q,r) queues; no i64 div; bitset visited; u64 ncr2",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.577x"
+  },
+  {
+    "problem": 790,
+    "baseline_median_ms": 307.6,
+    "candidate_median_ms": 193.8,
+    "speedup": 1.588,
+    "correct": true,
+    "baseline_times": [
+      308.4,
+      307.6,
+      306.9
+    ],
+    "candidate_times": [
+      194.6,
+      190.9,
+      193.8
+    ],
+    "notes": "lazy shifts 0..11; wrap by subtract-12",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.588x"
+  },
+  {
+    "problem": 584,
+    "baseline_median_ms": 311.3,
+    "candidate_median_ms": 174.4,
+    "speedup": 1.786,
+    "correct": true,
+    "baseline_times": [
+      309.9,
+      312.0,
+      311.3
+    ],
+    "candidate_times": [
+      176.5,
+      174.0,
+      174.4
+    ],
+    "notes": "no matrix clone; MAX_N=85; skip zero-k rows",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.786x"
+  },
+  {
+    "problem": 857,
+    "baseline_median_ms": 310.1,
+    "candidate_median_ms": 94.6,
+    "speedup": 3.278,
+    "correct": true,
+    "baseline_times": [
+      312.4,
+      308.0,
+      310.1
+    ],
+    "candidate_times": [
+      94.5,
+      96.7,
+      94.6
+    ],
+    "notes": "drop rem_euclid; unroll k=1..5; u64 mulmod",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.278x"
+  },
+  {
+    "problem": 545,
+    "baseline_median_ms": 306.5,
+    "candidate_median_ms": 116.2,
+    "speedup": 2.637,
+    "correct": true,
+    "baseline_times": [
+      308.8,
+      283.0,
+      306.5
+    ],
+    "candidate_times": [
+      111.3,
+      118.7,
+      116.2
+    ],
+    "notes": "sieve 12 APs g|308; rayon over g",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.637x"
+  },
+  {
+    "problem": 621,
+    "baseline_median_ms": 310.6,
+    "candidate_median_ms": 101.0,
+    "speedup": 3.076,
+    "correct": true,
+    "baseline_times": [
+      315.1,
+      310.6,
+      309.4
+    ],
+    "candidate_times": [
+      102.0,
+      99.4,
+      101.0
+    ],
+    "notes": "segmented remaining walk + par Tonelli; u64 pow_mod",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.076x"
+  },
+  {
+    "problem": 678,
+    "baseline_median_ms": 301.7,
+    "candidate_median_ms": 273.9,
+    "speedup": 1.102,
+    "correct": true,
+    "baseline_times": [
+      303.2,
+      301.7,
+      300.6
+    ],
+    "candidate_times": [
+      274.8,
+      272.8,
+      273.9
+    ],
+    "notes": "par gauss_cache; HashSet->sort+dedup; is_sq_small",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.102x"
+  },
+  {
+    "problem": 726,
+    "baseline_median_ms": 300.6,
+    "candidate_median_ms": 7.3,
+    "speedup": 41.447,
+    "correct": true,
+    "baseline_times": [
+      303.7,
+      300.6,
+      299.6
+    ],
+    "candidate_times": [
+      7.3,
+      7.3,
+      7.2
+    ],
+    "notes": "u64 mulmod; incremental 2^i; par prefix factorial",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=41.447x"
+  },
+  {
+    "problem": 530,
+    "baseline_median_ms": 278.9,
+    "candidate_median_ms": 200.8,
+    "speedup": 1.389,
+    "correct": true,
+    "baseline_times": [
+      278.9,
+      280.1,
+      272.3
+    ],
+    "candidate_times": [
+      200.8,
+      204.9,
+      187.2
+    ],
+    "notes": "par segmented mu sieve; 4-acc idiv unroll; Range+with_min_len",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.389x"
+  },
+  {
+    "problem": 775,
+    "baseline_median_ms": 278.2,
+    "candidate_median_ms": 22.7,
+    "speedup": 12.227,
+    "correct": true,
+    "baseline_times": [
+      277.6,
+      279.2,
+      278.2
+    ],
+    "candidate_times": [
+      22.7,
+      22.7,
+      22.8
+    ],
+    "notes": "u64 mulmod; precomputed inv2/inv6; closed C(d2+2,3)",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=12.227x"
+  },
+  {
+    "problem": 791,
+    "baseline_median_ms": 275.2,
+    "candidate_median_ms": 12.4,
+    "speedup": 22.108,
+    "correct": true,
+    "baseline_times": [
+      275.6,
+      275.2,
+      275.2
+    ],
+    "candidate_times": [
+      12.9,
+      12.4,
+      12.4
+    ],
+    "notes": "par_iter over g; u64 mulmod",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=22.108x"
+  },
+  {
+    "problem": 565,
+    "baseline_median_ms": 281.1,
+    "candidate_median_ms": 98.5,
+    "speedup": 2.854,
+    "correct": true,
+    "baseline_times": [
+      281.1,
+      283.2,
+      261.8
+    ],
+    "candidate_times": [
+      98.5,
+      99.9,
+      98.5
+    ],
+    "notes": "u8 segmented par sieve; first-level IE par_iter",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.854x"
+  },
+  {
+    "problem": 983,
+    "baseline_median_ms": 275.1,
+    "candidate_median_ms": 249.2,
+    "speedup": 1.104,
+    "correct": true,
+    "baseline_times": [
+      282.7,
+      275.1,
+      267.7
+    ],
+    "candidate_times": [
+      272.6,
+      247.0,
+      249.2
+    ],
+    "notes": "u16 gen-counter grid; hoisted offsets; m=s^2+1 filter",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.104x"
+  },
+  {
+    "problem": 803,
+    "baseline_median_ms": 249.1,
+    "candidate_median_ms": 83.2,
+    "speedup": 2.996,
+    "correct": true,
+    "baseline_times": [
+      249.4,
+      249.1,
+      249.0
+    ],
+    "candidate_times": [
+      82.3,
+      83.2,
+      83.4
+    ],
+    "notes": "32 disjoint L-step affine streams; first-char reject",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.996x"
+  },
+  {
+    "problem": 443,
+    "baseline_median_ms": 249.3,
+    "candidate_median_ms": 2.5,
+    "speedup": 100.223,
+    "correct": true,
+    "baseline_times": [
+      248.9,
+      249.3,
+      251.0
+    ],
+    "candidate_times": [
+      2.7,
+      2.5,
+      2.2
+    ],
+    "notes": "Pollard Rho factor jumps; drop 1000-step gcd scan",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=100.223x"
+  },
+  {
+    "problem": 888,
+    "baseline_median_ms": 243.2,
+    "candidate_median_ms": 85.3,
+    "speedup": 2.851,
+    "correct": true,
+    "baseline_times": [
+      243.8,
+      239.9,
+      243.2
+    ],
+    "candidate_times": [
+      85.8,
+      85.2,
+      85.3
+    ],
+    "notes": "reused mex bitset; flat DP; u128 deferred mod; par xor",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.851x"
+  },
+  {
+    "problem": 302,
+    "baseline_median_ms": 223.8,
+    "candidate_median_ms": 74.7,
+    "speedup": 2.995,
+    "correct": true,
+    "baseline_times": [
+      231.8,
+      223.8,
+      223.3
+    ],
+    "candidate_times": [
+      74.7,
+      73.3,
+      75.5
+    ],
+    "notes": "stack Dict; strided first-level rayon; thread-local HashSet",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=2.995x"
+  },
+  {
+    "problem": 849,
+    "baseline_median_ms": 241.1,
+    "candidate_median_ms": 126.5,
+    "speedup": 1.906,
+    "correct": true,
+    "baseline_times": [
+      244.8,
+      229.9,
+      241.1
+    ],
+    "candidate_times": [
+      126.5,
+      120.6,
+      146.4
+    ],
+    "notes": "par_iter over h; disjoint nxt writes",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.906x"
+  },
+  {
+    "problem": 467,
+    "baseline_median_ms": 234.1,
+    "candidate_median_ms": 123.3,
+    "speedup": 1.898,
+    "correct": true,
+    "baseline_times": [
+      235.1,
+      227.0,
+      234.1
+    ],
+    "candidate_times": [
+      121.7,
+      135.0,
+      123.3
+    ],
+    "notes": "blocked anti-diagonal wavefront B=100; rayon per block-diagonal",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=1.898x"
+  },
+  {
+    "problem": 537,
+    "baseline_median_ms": 271.4,
+    "candidate_median_ms": 73.2,
+    "speedup": 3.71,
+    "correct": true,
+    "baseline_times": [
+      271.4,
+      261.6,
+      279.9
+    ],
+    "candidate_times": [
+      65.2,
+      77.8,
+      73.2
+    ],
+    "notes": "u64 mulmod; par_chunks large NTT; join two forward NTTs",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.71x"
+  },
+  {
+    "problem": 273,
+    "baseline_median_ms": 209.8,
+    "candidate_median_ms": 22.0,
+    "speedup": 9.529,
+    "correct": true,
+    "baseline_times": [
+      209.8,
+      210.4,
+      205.3
+    ],
+    "candidate_times": [
+      18.0,
+      22.0,
+      24.4
+    ],
+    "notes": "par_iter 3^5 prefixes; remaining Gaussian subtrees",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=9.529x"
+  },
+  {
+    "problem": 638,
+    "baseline_median_ms": 217.5,
+    "candidate_median_ms": 58.8,
+    "speedup": 3.702,
+    "correct": true,
+    "baseline_times": [
+      217.5,
+      216.7,
+      225.4
+    ],
+    "candidate_times": [
+      58.8,
+      58.8,
+      57.7
+    ],
+    "notes": "u64 mulmod; drop loop-carried qfact vec; const-generic K",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.702x"
+  },
+  {
+    "problem": 808,
+    "baseline_median_ms": 222.3,
+    "candidate_median_ms": 57.2,
+    "speedup": 3.888,
+    "correct": true,
+    "baseline_times": [
+      222.3,
+      224.2,
+      221.5
+    ],
+    "candidate_times": [
+      57.1,
+      60.3,
+      57.2
+    ],
+    "notes": "odd-only u64 bit sieve; par segmented fill",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=3.888x"
+  },
+  {
+    "problem": 750,
+    "baseline_median_ms": 211.4,
+    "candidate_median_ms": 51.9,
+    "speedup": 4.073,
+    "correct": true,
+    "baseline_times": [
+      211.4,
+      210.6,
+      212.7
+    ],
+    "candidate_times": [
+      49.7,
+      51.9,
+      55.7
+    ],
+    "notes": "par_iter independent s per length; transposed dp",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=4.073x"
+  },
+  {
+    "problem": 724,
+    "baseline_median_ms": 196.3,
+    "candidate_median_ms": 0.7,
+    "speedup": 265.097,
+    "correct": true,
+    "baseline_times": [
+      193.0,
+      199.9,
+      196.3
+    ],
+    "candidate_times": [
+      0.7,
+      0.9,
+      0.7
+    ],
+    "notes": "closed (H_n^2 + H_n^{(2)})/2; Euler-Maclaurin",
+    "method": "ab_bench warmup=1 runs=3",
+    "accepted": true,
+    "decision": "ACCEPT",
+    "reason": "speedup=265.097x"
   }
 ]

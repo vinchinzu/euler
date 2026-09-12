@@ -20,34 +20,27 @@
 //              + bit 7 = has0 (digit 0 placed in this class)
 //              + bit 8 = has7 (digit 7 placed in this class)
 //
-// DP value = [i32; 7]: count of partial numbers by running sum mod 7.
-// (Max count value verified to be 24576, well within i32 range.
-//  Using i32 instead of i64 halves value memory for better cache behavior.)
-//
-// For each target final residue r in {1..6}, we precompute which digit
-// residue at the current class would allow a cross-class swap to bring the
-// final number to 0 mod 7 (forbidden placement).  MSD processing uses
-// mask_no0 to exclude swaps that would move digit 0 to the MSD position
-// (creating a leading zero, which makes the swap invalid per the problem).
-//
-// Optimization: rayon parallelism across independent (l, tr) pairs;
-// i32 values to halve memory and improve cache utilization;
-// unsafe bounds-check elimination in proven-safe hot loops.
+// DP value = [u16; 7]: count of partial numbers by running sum mod 7.
+// Max stored count is 8192 (fits u16). States interned to dense Vec ids;
+// open-addressing epoch table replaces HashMap in the inner loop.
 
-use fxhash::FxHashMap;
 use rayon::prelude::*;
 
 const W: [i32; 6] = [1, 3, 2, 6, 4, 5];
 const CB: u64 = 0x1FF;
 const SH: [u32; 6] = [0, 9, 18, 27, 36, 45];
 const RES: [usize; 8] = [0, 0, 1, 2, 3, 4, 5, 6];
-const MULT: [i16; 8] = [1, 1, 2, 2, 1, 1, 1, 1];
+const MULT: [u16; 8] = [1, 1, 2, 2, 1, 1, 1, 1];
+
+const HBITS: usize = 22;
+const HSIZE: usize = 1 << HBITS;
+const HMASK: usize = HSIZE - 1;
+const DENSE_CAP: usize = 1_500_000;
 
 struct Tables {
     shifts: [[[usize; 6]; 6]; 7],
-    rot_table: [[u8; 128]; 7],
-    mask_all: [u8; 512],
-    mask_no0: [u8; 512],
+    forb_all: [[u8; 512]; 7],
+    forb_no0: [[u8; 512]; 7],
     update_table: [[u16; 8]; 512],
     add_contrib: [[usize; 8]; 6],
     perm: [[usize; 7]; 7],
@@ -91,17 +84,19 @@ fn build_tables() -> Tables {
         }
     }
 
-    let mut mask_all = [0u8; 512];
-    let mut mask_no0 = [0u8; 512];
+    let mut forb_all = [[0u8; 512]; 7];
+    let mut forb_no0 = [[0u8; 512]; 7];
     for bits in 0..512u16 {
         let m7 = (bits & 0x7F) as u8;
         let has7 = (bits >> 8) & 1;
-        mask_all[bits as usize] = m7;
-        let mut m = m7 & !1u8;
+        let mut m_no0 = m7 & !1u8;
         if has7 != 0 {
-            m |= 1;
+            m_no0 |= 1;
         }
-        mask_no0[bits as usize] = m;
+        for sh in 0..7 {
+            forb_all[sh][bits as usize] = rot_table[sh][m7 as usize];
+            forb_no0[sh][bits as usize] = rot_table[sh][m_no0 as usize];
+        }
     }
 
     let mut update_table = [[0u16; 8]; 512];
@@ -141,19 +136,123 @@ fn build_tables() -> Tables {
 
     Tables {
         shifts,
-        rot_table,
-        mask_all,
-        mask_no0,
+        forb_all,
+        forb_no0,
         update_table,
         add_contrib,
         perm,
     }
 }
 
+struct Intern {
+    keys: Vec<u64>,
+    ids: Vec<u32>,
+    stamp: Vec<u32>,
+    epoch: u32,
+}
+
+impl Intern {
+    fn new() -> Self {
+        let mut keys = Vec::<u64>::with_capacity(HSIZE);
+        let mut ids = Vec::<u32>::with_capacity(HSIZE);
+        unsafe {
+            keys.set_len(HSIZE);
+            ids.set_len(HSIZE);
+        }
+        Self {
+            keys,
+            ids,
+            stamp: vec![0u32; HSIZE],
+            epoch: 1,
+        }
+    }
+
+    #[inline(always)]
+    fn clear(&mut self) {
+        self.epoch = self.epoch.wrapping_add(1);
+        if self.epoch == 0 {
+            self.stamp.fill(0);
+            self.epoch = 1;
+        }
+    }
+
+    #[inline(always)]
+    fn intern(&mut self, key: u64, out_keys: &mut Vec<u64>, out_vals: &mut Vec<[u16; 7]>) -> usize {
+        let mut idx = (key.wrapping_mul(0x517cc1b727220a95) >> (64 - HBITS)) as usize;
+        loop {
+            if unsafe { *self.stamp.get_unchecked(idx) } != self.epoch {
+                let id = out_keys.len();
+                out_keys.push(key);
+                out_vals.push([0u16; 7]);
+                unsafe {
+                    *self.keys.get_unchecked_mut(idx) = key;
+                    *self.ids.get_unchecked_mut(idx) = id as u32;
+                    *self.stamp.get_unchecked_mut(idx) = self.epoch;
+                }
+                return id;
+            }
+            if unsafe { *self.keys.get_unchecked(idx) } == key {
+                return unsafe { *self.ids.get_unchecked(idx) as usize };
+            }
+            idx = (idx + 1) & HMASK;
+        }
+    }
+}
+
+#[inline(always)]
+fn fold_forb(st: u64, c: usize, sr: &[[usize; 6]; 6], tab: &[[u8; 512]; 7]) -> u8 {
+    let mut forb = 0u8;
+    unsafe {
+        for a in 0..6usize {
+            if a != c {
+                let ba = ((st >> *SH.get_unchecked(a)) & CB) as usize;
+                let sh = *sr.get_unchecked(a).get_unchecked(c);
+                forb |= *tab.get_unchecked(sh).get_unchecked(ba);
+            }
+        }
+    }
+    forb
+}
+
+#[inline(always)]
+fn acc_cnt(arr: &mut [u16; 7], cn: &[u16; 7], p: &[usize; 7], m: u16) {
+    unsafe {
+        let p0 = *p.get_unchecked(0);
+        let p1 = *p.get_unchecked(1);
+        let p2 = *p.get_unchecked(2);
+        let p3 = *p.get_unchecked(3);
+        let p4 = *p.get_unchecked(4);
+        let p5 = *p.get_unchecked(5);
+        let p6 = *p.get_unchecked(6);
+        if m == 1 {
+            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0);
+            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1);
+            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2);
+            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3);
+            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4);
+            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5);
+            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6);
+        } else {
+            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0) << 1;
+            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1) << 1;
+            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2) << 1;
+            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3) << 1;
+            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4) << 1;
+            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5) << 1;
+            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6) << 1;
+        }
+    }
+}
+
 #[inline(never)]
 fn solve_all_lengths_for_tr(t: &Tables, max_l: usize, tr: usize) -> i64 {
-    let mut dp: FxHashMap<u64, [i32; 7]> = FxHashMap::default();
-    dp.insert(0, [1, 0, 0, 0, 0, 0, 0]);
+    let mut intern = Intern::new();
+    let mut keys_a: Vec<u64> = Vec::with_capacity(DENSE_CAP);
+    let mut vals_a: Vec<[u16; 7]> = Vec::with_capacity(DENSE_CAP);
+    let mut keys_b: Vec<u64> = Vec::with_capacity(DENSE_CAP);
+    let mut vals_b: Vec<[u16; 7]> = Vec::with_capacity(DENSE_CAP);
+    keys_a.push(0);
+    vals_a.push([1, 0, 0, 0, 0, 0, 0]);
 
     let mut total_count = 0i64;
 
@@ -162,26 +261,13 @@ fn solve_all_lengths_for_tr(t: &Tables, max_l: usize, tr: usize) -> i64 {
         let sc = SH[c];
         let sr = &t.shifts[tr];
         let ac = &t.add_contrib[c];
+        let n = keys_a.len();
 
         // Part 1: Branch for MSD (treat pos as the final MSD digit)
-        // Here msd = true: mf = mask_no0, idx starts at 1.
-        // Accumulate directly into total_count without building any hash table!
-        for (&st, cn) in &dp {
-            let mut forb = 0u8;
-            for a in 0..6usize {
-                if a == c {
-                    continue;
-                }
-                let ba = ((st >> SH[a]) & CB) as usize;
-                let mu = unsafe { *t.mask_no0.get_unchecked(ba) };
-                if mu != 0 {
-                    forb |= unsafe {
-                        *t.rot_table
-                            .get_unchecked(sr[a][c])
-                            .get_unchecked(mu as usize)
-                    };
-                }
-            }
+        for i in 0..n {
+            let st = unsafe { *keys_a.get_unchecked(i) };
+            let cn = unsafe { *vals_a.get_unchecked(i) };
+            let forb = fold_forb(st, c, sr, &t.forb_no0);
 
             for idx in 1..8 {
                 let res = unsafe { *RES.get_unchecked(idx) };
@@ -195,27 +281,16 @@ fn solve_all_lengths_for_tr(t: &Tables, max_l: usize, tr: usize) -> i64 {
             }
         }
 
-        // Part 2: If pos + 1 < max_l, advance dp with non-MSD transitions (msd = false)
+        // Part 2: If pos + 1 < max_l, advance dp with non-MSD transitions
         if pos + 1 < max_l {
-            let mut ndp: FxHashMap<u64, [i32; 7]> =
-                FxHashMap::with_capacity_and_hasher(dp.len() * 3, Default::default());
+            intern.clear();
+            keys_b.clear();
+            vals_b.clear();
 
-            for (&st, cn) in &dp {
-                let mut forb = 0u8;
-                for a in 0..6usize {
-                    if a == c {
-                        continue;
-                    }
-                    let ba = ((st >> SH[a]) & CB) as usize;
-                    let mu = unsafe { *t.mask_all.get_unchecked(ba) };
-                    if mu != 0 {
-                        forb |= unsafe {
-                            *t.rot_table
-                                .get_unchecked(sr[a][c])
-                                .get_unchecked(mu as usize)
-                        };
-                    }
-                }
+            for i in 0..n {
+                let st = unsafe { *keys_a.get_unchecked(i) };
+                let cn = unsafe { *vals_a.get_unchecked(i) };
+                let forb = fold_forb(st, c, sr, &t.forb_all);
 
                 let bc = ((st >> sc) & CB) as u16;
                 for idx in 0..8 {
@@ -231,38 +306,14 @@ fn solve_all_lengths_for_tr(t: &Tables, max_l: usize, tr: usize) -> i64 {
                     let ns = st ^ (((bc ^ nbc) as u64) << sc);
                     let add = unsafe { *ac.get_unchecked(idx) };
                     let p = unsafe { t.perm.get_unchecked(add) };
-                    let m = unsafe { *MULT.get_unchecked(idx) } as i32;
-
-                    let arr = ndp.entry(ns).or_insert([0i32; 7]);
-                    unsafe {
-                        let p0 = *p.get_unchecked(0);
-                        let p1 = *p.get_unchecked(1);
-                        let p2 = *p.get_unchecked(2);
-                        let p3 = *p.get_unchecked(3);
-                        let p4 = *p.get_unchecked(4);
-                        let p5 = *p.get_unchecked(5);
-                        let p6 = *p.get_unchecked(6);
-                        if m == 1 {
-                            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0);
-                            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1);
-                            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2);
-                            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3);
-                            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4);
-                            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5);
-                            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6);
-                        } else {
-                            *arr.get_unchecked_mut(p0) += *cn.get_unchecked(0) * 2;
-                            *arr.get_unchecked_mut(p1) += *cn.get_unchecked(1) * 2;
-                            *arr.get_unchecked_mut(p2) += *cn.get_unchecked(2) * 2;
-                            *arr.get_unchecked_mut(p3) += *cn.get_unchecked(3) * 2;
-                            *arr.get_unchecked_mut(p4) += *cn.get_unchecked(4) * 2;
-                            *arr.get_unchecked_mut(p5) += *cn.get_unchecked(5) * 2;
-                            *arr.get_unchecked_mut(p6) += *cn.get_unchecked(6) * 2;
-                        }
-                    }
+                    let m = unsafe { *MULT.get_unchecked(idx) };
+                    let id = intern.intern(ns, &mut keys_b, &mut vals_b);
+                    let arr = unsafe { vals_b.get_unchecked_mut(id) };
+                    acc_cnt(arr, &cn, p, m);
                 }
             }
-            dp = ndp;
+            std::mem::swap(&mut keys_a, &mut keys_b);
+            std::mem::swap(&mut vals_a, &mut vals_b);
         }
     }
 

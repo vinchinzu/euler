@@ -2,6 +2,9 @@
 //
 // Compute sum_{k=1}^{N} f(R,C,k) mod M for an R x C grid graph using DP
 // with Lagrange interpolation to extrapolate cumulative sum.
+//
+// F_SIZE only needs RC+3 points (chromatic poly degree RC; cumulative RC+1).
+// Delay % MOD until a state is fully accumulated.
 
 use fxhash::FxHashMap;
 
@@ -9,7 +12,7 @@ const R_VAL: usize = 9;
 const C_VAL: usize = 10;
 const MOD: i64 = 1_000_000_007;
 const RC: usize = R_VAL * C_VAL;
-const F_SIZE: usize = 2 * RC + 5;
+const F_SIZE: usize = RC + 3;
 
 fn encode_state(r: usize, last_colors: &[i32]) -> u64 {
     let mut key = r as u64;
@@ -55,7 +58,7 @@ fn f_rec(
         return idx;
     }
 
-    let mut f_arr = [0i32; F_SIZE];
+    let mut f_arr = [0i64; F_SIZE];
     let mut pass = [0i32; R_VAL + 1];
     pass[..nlast].copy_from_slice(&last_colors[..nlast]);
 
@@ -71,24 +74,36 @@ fn f_rec(
         let next_idx = f_rec(r + 1, &pass[..=nlast], cache, results);
         let next_f = &results[next_idx];
         let new_col = color == max_color + 1;
-        for n_idx in 0..F_SIZE {
-            let choices = if new_col {
-                n_idx as i64 - color as i64 + 1
-            } else {
-                1
-            };
-            if choices <= 0 {
-                continue;
+        if new_col {
+            let c = color as i64;
+            for n_idx in 0..F_SIZE {
+                let choices = n_idx as i64 - c + 1;
+                if choices <= 0 {
+                    continue;
+                }
+                // SAFETY: n_idx < F_SIZE
+                let nf = unsafe { *next_f.get_unchecked(n_idx) } as i64;
+                unsafe {
+                    *f_arr.get_unchecked_mut(n_idx) += choices * nf;
+                }
             }
-            // SAFETY: n_idx < F_SIZE; next_idx from cache/results
-            let nf = unsafe { *next_f.get_unchecked(n_idx) } as i64;
-            let slot = unsafe { f_arr.get_unchecked_mut(n_idx) };
-            *slot = ((*slot as i64 + choices * nf) % MOD) as i32;
+        } else {
+            for n_idx in 0..F_SIZE {
+                let nf = unsafe { *next_f.get_unchecked(n_idx) } as i64;
+                unsafe {
+                    *f_arr.get_unchecked_mut(n_idx) += nf;
+                }
+            }
         }
     }
 
+    let mut out = [0i32; F_SIZE];
+    for n_idx in 0..F_SIZE {
+        out[n_idx] = (f_arr[n_idx] % MOD) as i32;
+    }
+
     let idx = results.len();
-    results.push(f_arr);
+    results.push(out);
     cache.insert(key, idx);
     idx
 }

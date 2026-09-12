@@ -90,9 +90,8 @@ A/B gate: accept only if median is **≥5% faster** and the answer matches `data
 | `ab_bench.py` | A/B gate (HEAD vs working tree) |
 | `rust/CLAUDE.md` | Performance rules from C→Rust ports |
 | `rust/profiles/SUMMARY.md` | Feb 2026 perf classes (times are not current) |
-| `.grok/skills/euler-rust-speed/SKILL.md` | Speed playbook (rayon / `u64` / A/B) |
 
-2026-08-22 re-time on Ryzen 9 5900XT (16c/32t): 997 binaries, **1101s → 386s** (2.85×). After waves 4–6 (overlay, not a full re-validate): **~264s**. Remaining overlay: 83 ≥1s, 65 in 500ms–1s. Details in `optimization_applied_summary.md`.
+2026-08-22 re-time on Ryzen 9 5900XT (16c/32t): 997 binaries, **1101s → 386s** (2.85×). Full re-validate after waves 18–25 (2026-09-03): **119.17s**. Overlay after wave 40 (2026-09-11, 1000 binaries, not a full re-validate): **~70s** (**15.7×** vs 1101s, **5.5×** vs 386s). Remaining: 0 ≥1s except skipped p680. Details in `optimization_applied_summary.md`.
 
 ## Key files
 

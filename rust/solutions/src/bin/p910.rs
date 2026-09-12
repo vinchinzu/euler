@@ -1,8 +1,8 @@
 // Project Euler 910 — Phi-recursion + CRT solver
 // Optimized: streaming jump-table approach (2 levels in memory at a time)
-// + u32 tables + rayon for per-level work
+// + u32 tables + AVX2 gather compose/apply (swap buffers, no per-level memcpy)
 
-use rayon::prelude::*;
+use std::arch::x86_64::*;
 
 const MOD: u64 = 1_000_000_000;
 const M1: u64 = 512; // 2^9
@@ -61,6 +61,48 @@ fn crt(x1: u64, m1: u64, x2: u64, m2: u64) -> u64 {
     (x1 as u128 + m1 as u128 * k as u128) as u64 % MOD
 }
 
+#[target_feature(enable = "avx2")]
+unsafe fn apply_gather_avx2(values: *mut u32, table: *const u32, n: usize) {
+    unsafe {
+        let base = table as *const i32;
+        let mut i = 0;
+        while i + 16 <= n {
+            let idx0 = _mm256_loadu_si256(values.add(i) as *const __m256i);
+            let idx1 = _mm256_loadu_si256(values.add(i + 8) as *const __m256i);
+            let g0 = _mm256_i32gather_epi32(base, idx0, 4);
+            let g1 = _mm256_i32gather_epi32(base, idx1, 4);
+            _mm256_storeu_si256(values.add(i) as *mut __m256i, g0);
+            _mm256_storeu_si256(values.add(i + 8) as *mut __m256i, g1);
+            i += 16;
+        }
+        while i < n {
+            *values.add(i) = *table.add(*values.add(i) as usize);
+            i += 1;
+        }
+    }
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn compose_gather_avx2(src: *const u32, dst: *mut u32, n: usize) {
+    unsafe {
+        let base = src as *const i32;
+        let mut i = 0;
+        while i + 16 <= n {
+            let idx0 = _mm256_loadu_si256(src.add(i) as *const __m256i);
+            let idx1 = _mm256_loadu_si256(src.add(i + 8) as *const __m256i);
+            let g0 = _mm256_i32gather_epi32(base, idx0, 4);
+            let g1 = _mm256_i32gather_epi32(base, idx1, 4);
+            _mm256_storeu_si256(dst.add(i) as *mut __m256i, g0);
+            _mm256_storeu_si256(dst.add(i + 8) as *mut __m256i, g1);
+            i += 16;
+        }
+        while i < n {
+            *dst.add(i) = *src.add(*src.add(i) as usize);
+            i += 1;
+        }
+    }
+}
+
 /// Apply function `func` exactly `steps` times to each element in `values`,
 /// using streaming binary lifting (only 2 jump levels in memory at once).
 /// This is much more cache-friendly than building the full jump table.
@@ -68,41 +110,28 @@ fn iterate_all_streaming(
     func: &[u32],
     steps: u64,
     values: &mut [u32],
-    use_par: bool,
+    _use_par: bool,
     buf_a: &mut [u32],
     buf_b: &mut [u32],
 ) {
     let n = func.len();
     let bits = if steps == 0 { return } else { bit_len(steps) };
 
-    buf_a[..n].copy_from_slice(func);
+    unsafe {
+        std::ptr::copy_nonoverlapping(func.as_ptr(), buf_a.as_mut_ptr(), n);
+        let mut src = buf_a.as_mut_ptr();
+        let mut dst = buf_b.as_mut_ptr();
+        let vptr = values.as_mut_ptr();
+        let vn = values.len();
 
-    for bit in 0..bits {
-        // If this bit is set in steps, apply buf_a to all values
-        if steps & (1u64 << bit) != 0 {
-            // Sequential is fine here: values[i] is accessed sequentially,
-            // buf_a[*v] is random but read-only (shared cache lines)
-            for v in values.iter_mut() {
-                // SAFETY: *v < modulus < n
-                *v = unsafe { *buf_a.get_unchecked(*v as usize) };
+        for bit in 0..bits {
+            if steps & (1u64 << bit) != 0 {
+                apply_gather_avx2(vptr, src, vn);
             }
-        }
-
-        // Build next level: buf_b[x] = buf_a[buf_a[x]]
-        if bit + 1 < bits {
-            if use_par {
-                let a_slice = &buf_a[..n];
-                buf_b[..n].par_iter_mut().enumerate().for_each(|(i, out)| {
-                    let mid = unsafe { *a_slice.get_unchecked(i) } as usize;
-                    *out = unsafe { *a_slice.get_unchecked(mid) };
-                });
-            } else {
-                for i in 0..n {
-                    let mid = unsafe { *buf_a.get_unchecked(i) } as usize;
-                    unsafe { *buf_b.get_unchecked_mut(i) = *buf_a.get_unchecked(mid) };
-                }
+            if bit + 1 < bits {
+                compose_gather_avx2(src, dst, n);
+                std::mem::swap(&mut src, &mut dst);
             }
-            buf_a[..n].copy_from_slice(&buf_b[..n]);
         }
     }
 }
@@ -156,15 +185,16 @@ fn phi_mod_table(modulus: u64) -> u64 {
     let use_par = size > 100_000;
 
     // Precompute x^C and x^(C+1) mod modulus for all x
-    let pow_c = if size <= 1024 {
-        (0..size as u64).map(|x| mod_pow(x, C, modulus) as u32).collect()
+    let (pow_c, pow_cp1) = if size <= 1024 {
+        (
+            (0..size as u64).map(|x| mod_pow(x, C, modulus) as u32).collect::<Vec<_>>(),
+            (0..size as u64).map(|x| mod_pow(x, C + 1, modulus) as u32).collect::<Vec<_>>(),
+        )
     } else {
-        precompute_pow_table(C, modulus)
-    };
-    let pow_cp1 = if size <= 1024 {
-        (0..size as u64).map(|x| mod_pow(x, C + 1, modulus) as u32).collect()
-    } else {
-        precompute_pow_table(C + 1, modulus)
+        rayon::join(
+            || precompute_pow_table(C, modulus),
+            || precompute_pow_table(C + 1, modulus),
+        )
     };
 
     // g_c(x) = x^C * (x+1) mod m

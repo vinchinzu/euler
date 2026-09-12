@@ -331,3 +331,98 @@ problem_id,baseline_ms,candidate_ms,delta_pct,accepted,correctness_pass,notes
 861,282.9,264.2,6.61,True,True,hardware isqrt in PrimePi/integer_root; nested par_iter fat permutation roots speedup=1.071x
 636,265.6,266.4,-0.3,False,True,TLS DP buffer pool + LPT root children; smoke 195ms did not hold (noise) speedup=0.997x
 245,261.3,225.9,13.55,True,True,CSR pf_data replacing 447k Vecs; stack divisor buffer; Copy Factors in DFS speedup=1.157x
+614,930.0,794.0,14.62,True,True,BLOCK 16384->4096; align large_tri ++-- unroll (split t=91 is --++); 4-wide phase-2 T1/T2 serial; worker_count cap 32 speedup=1.171x
+533,595.2,69.0,88.41,True,True,segmented Carmichael lambda 128 chunks; O(1) p=2 tzcnt; precomputed prime logs speedup=8.63x
+927,640.5,290.2,54.69,True,True,skip q=3 mod 4; test exp=2 before factoring phi(q); specialized Brent inner; u32 SPF odd-stride speedup=2.207x
+421,474.6,150.2,68.35,True,True,odd-only bit sieve 100MB->6.25MB; Vec<u32> primes; mod3/mod5 vs gcd; fewer modpow order checks speedup=3.159x
+437,425.0,190.6,55.15,True,True,drop 400MB SPF; odd-only bit sieve; factor p-1 from primes<=10k; filter p=1,9 mod 10; iterative fib_pair speedup=2.23x
+658,379.5,164.4,56.68,True,True,i128->u64 mulmod MOD=1e9+7; pows/invs i64->u32; odd-step SPF; get_unchecked hot passes speedup=2.308x
+801,319.9,103.7,67.58,True,True,CSR factor lists drop 1e6 Vecs; odd-only bit sieve tzcnt; rayon only primes in [A+1,A+B] speedup=3.083x
+483,715.1,476.8,33.32,True,True,CSR by_lpf replacing Vec<Vec<u16>>; packed OA hash; binary tzcnt gcd speedup=1.5x
+738,683.2,276.1,59.59,True,True,packed OA table replacing FxHashMap memo; u32 values speedup=2.474x
+544,465.3,175.6,62.26,True,True,F_SIZE=RC+3 delayed % MOD speedup=2.65x
+558,239.9,96.2,59.9,True,True,compact U192 limbs + greedy skip-3 speedup=2.494x
+741,636.1,247.2,61.14,True,True,parallelize 4 heavy g() recurrences speedup=2.573x
+211,684.2,311.4,54.49,True,True,odd-only SPF/sigma2 + parallel 2-adic square scan speedup=2.198x
+747,471.5,100.8,78.62,True,True,chunked (a,b) work units + u64::isqrt speedup=4.679x
+557,96.2,88.5,8.0,True,True,skip gcd(a,S)==1; i64::isqrt; max_len=1 speedup=1.088x
+785,89.3,76.2,14.67,True,True,incremental z; u32 gcd; max_len=8 speedup=1.172x
+910,558.4,423.3,24.19,True,True,AVX2 i32 gather apply/compose; ping-pong buffers; join pow-table sieves speedup=1.319x
+465,846.6,734.2,13.28,True,True,u32 phi sieve; pre-reduced prefix1/prefix2; 32-bit hyperbola div speedup=1.153x
+339,611.8,0.8,99.87,True,True,O(n) Snell/scale recurrence replacing O(n^2) Thomas speedup=754.529x
+589,123.5,57.9,53.12,True,True,closed-form |t1-t2| range updates + integer min-sum speedup=2.132x
+815,700.4,157.4,77.53,True,True,entire E(c,.) row per composition; u8 occupancy vs 310MB NaN cache speedup=4.45x
+977,612.3,229.5,62.52,True,True,rayon independent L=2..256; incremental a^L tail; drop L=1 u128 via INV3 speedup=2.668x
+784,61.6,60.6,1.62,False,True,odd-only SPF + stack factors; already ~62ms; below 5% gate speedup=1.015x
+890,596.3,377.4,36.71,True,True,even/odd split + Karatsuba above n=64; serial bit loop unchanged speedup=1.58x
+655,541.0,399.6,26.14,True,True,i32 dest-chunk while counts<=1e9 then promote i64 speedup=1.354x
+447,181.7,152.3,16.18,True,True,u64::isqrt; 4-way rayon::join on heaviest q=N speedup=1.193x
+774,1039.5,4.5,99.57,True,True,Bit-stripping combinatorics DP instead of MPS left-sweep GE speedup=233.154x
+954,660.3,448.7,32.05,True,True,interned OA DP; drop FxHashMap speedup=1.471x
+714,629.5,360.9,42.67,True,True,thread-local scratch + %10 {0,d} prune speedup=1.744x
+870,551.2,465.4,15.57,True,True,KMAX 2500 + hoisted P_m*rd speedup=1.184x
+513,530.4,20.0,96.23,True,True,floor-sum trapezoids + odd scaling speedup=26.464x
+829,555.4,115.5,79.20,True,True,MITM best-divisor + Omega prune speedup=4.810x
+989,542.0,316.9,41.53,True,True,join g-phases, variable chunks, u64 mulmod speedup=1.710x
+850,534.4,250.5,53.12,True,True,SMALL_PRIME_LIMIT 32000->2500 (>=N^{1/4}) speedup=2.133x
+611,490.9,351.7,28.36,True,True,Lucy SoA + i32 small speedup=1.396x
+786,608.7,261.8,56.99,True,True,sieve only to g_lim_9 speedup=2.325x
+691,258.5,240.2,7.08,True,True,packed UF + 16-byte LCP speedup=1.076x
+660,476.9,80.8,83.06,True,True,digital-root k stride speedup=5.905x
+259,487.2,251.7,48.34,True,True,vec + par_sort dedup speedup=1.936x
+505,412.8,329.7,20.13,True,True,8-way speculative frontier speedup=1.252x
+632,455.0,56.0,87.69,True,True,odd-only packed sieve speedup=8.121x
+824,447.0,103.0,76.96,True,True,join fac/invp; par_iter over t speedup=4.34x
+827,462.1,410.2,11.23,True,True,par_iter over k=1..18 Q(10^k) speedup=1.126x
+891,351.8,125.5,64.33,True,True,par_iter 6 perms + FxHashSet speedup=2.804x
+418,375.7,28.6,92.39,True,True,par split 2/3; binary BigNum exp speedup=13.15x
+440,343.2,101.9,70.31,True,True,par_iter over c; mat_pow u32 exp speedup=3.369x
+840,348.9,115.1,67.01,True,True,u64 mulmod; join 3 NTT primes speedup=3.031x
+728,326.0,180.5,44.63,True,True,u64 mulmod; par_iter over i speedup=1.806x
+457,333.5,33.4,89.99,True,True,u64 Tonelli; par_iter primes speedup=9.976x
+647,318.6,22.9,92.81,True,True,par_iter odd sqrt_a via k speedup=13.912x
+567,307.2,0.7,99.77,True,True,Euler-Maclaurin H_n vs Kahan loop speedup=432.491x
+255,306.0,23.5,92.32,True,True,par remaining walk of sum_iterations speedup=13.033x
+581,300.7,15.1,94.98,True,True,par_iter 2^15 Pell subsets speedup=19.943x
+805,289.3,20.1,93.05,True,True,u64 mulmod; par_iter over v speedup=14.36x
+456,271.9,141.8,47.85,True,True,par_sort_unstable by angle speedup=1.917x
+560,257.4,105.8,58.9,True,True,u64 FWHT par_chunks; par pow speedup=2.434x
+792,244.2,149.9,38.62,True,True,par_iter over m=1..10000 ncr speedup=1.629x
+620,247.3,14.7,94.06,True,True,par_iter outer s in triple loop speedup=16.86x
+562,229.7,10.9,95.25,True,True,chunked par x1 + atomic prune speedup=21.033x
+717,215.4,29.1,86.49,True,True,u64 pow_mod; par_iter odd primes speedup=7.392x
+690,211.6,72.7,65.64,True,True,u64 mulmod; par gf_mul + DP speedup=2.912x
+665,551.0,228.4,58.55,True,True,Vec<u32> next-free; iterative path-halving; unchecked hot path speedup=2.413x
+663,512.1,349.0,31.85,True,True,packed AoS nodes; rayon leaf-init and per-level build speedup=1.467x
+720,430.7,201.2,53.29,True,True,i32 arrays; drop i128; rayon doubling + chunked sum speedup=2.14x
+615,484.1,11.0,97.73,True,True,DFS Omega>=29 cores below 3^29; nth_element; modpow lift speedup=44.196x
+550,402.5,177.5,55.90,True,True,DFS factor-list divisors; mex bitset+ctz; u64 mulmod speedup=2.268x
+320,442.3,56.0,87.34,True,True,skip advance when lower bound <= max_n; SPF last-only; u32 pidx speedup=7.896x
+495,365.0,28.2,92.27,True,True,par_iter partitions of 30; delayed-mod knapsack speedup=12.92x
+275,350.2,195.3,44.23,True,True,stack Sculpture bitset; Vec buckets; nested par large groups speedup=1.793x
+958,356.6,265.2,25.63,True,True,AtomicI64 best_m; rayon::join; i64 bounds speedup=1.345x
+718,313.3,198.7,36.58,True,True,packed (q,r) queues; no i64 div; bitset visited; u64 ncr2 speedup=1.577x
+790,307.6,193.8,37.00,True,True,lazy shifts 0..11; wrap by subtract-12 speedup=1.588x
+584,311.3,174.4,43.98,True,True,no matrix clone; MAX_N=85; skip zero-k rows speedup=1.786x
+857,310.1,94.6,69.49,True,True,drop rem_euclid; unroll k=1..5; u64 mulmod speedup=3.278x
+545,306.5,116.2,62.09,True,True,sieve 12 APs g|308; rayon over g speedup=2.637x
+621,310.6,101.0,67.48,True,True,segmented remaining walk + par Tonelli; u64 pow_mod speedup=3.076x
+678,301.7,273.9,9.21,True,True,par gauss_cache; HashSet->sort+dedup; is_sq_small speedup=1.102x
+726,300.6,7.3,97.57,True,True,u64 mulmod; incremental 2^i; par prefix factorial speedup=41.447x
+530,278.9,200.8,28.00,True,True,par segmented mu sieve; 4-acc idiv unroll; Range+with_min_len speedup=1.389x
+775,278.2,22.7,91.84,True,True,u64 mulmod; precomputed inv2/inv6; closed C(d2+2,3) speedup=12.227x
+791,275.2,12.4,95.49,True,True,par_iter over g; u64 mulmod speedup=22.108x
+565,281.1,98.5,64.96,True,True,u8 segmented par sieve; first-level IE par_iter speedup=2.854x
+983,275.1,249.2,9.41,True,True,u16 gen-counter grid; hoisted offsets; m=s^2+1 filter speedup=1.104x
+803,249.1,83.2,66.60,True,True,32 disjoint L-step affine streams; first-char reject speedup=2.996x
+443,249.3,2.5,99.00,True,True,Pollard Rho factor jumps; drop 1000-step gcd scan speedup=100.223x
+888,243.2,85.3,64.93,True,True,reused mex bitset; flat DP; u128 deferred mod; par xor speedup=2.851x
+302,223.8,74.7,66.62,True,True,stack Dict; strided first-level rayon; thread-local HashSet speedup=2.995x
+849,241.1,126.5,47.53,True,True,par_iter over h; disjoint nxt writes speedup=1.906x
+467,234.1,123.3,47.33,True,True,blocked anti-diagonal wavefront B=100; rayon per block-diagonal speedup=1.898x
+537,271.4,73.2,73.03,True,True,u64 mulmod; par_chunks large NTT; join two forward NTTs speedup=3.71x
+273,209.8,22.0,89.51,True,True,par_iter 3^5 prefixes; remaining Gaussian subtrees speedup=9.529x
+638,217.5,58.8,72.97,True,True,u64 mulmod; drop loop-carried qfact vec; const-generic K speedup=3.702x
+808,222.3,57.2,74.27,True,True,odd-only u64 bit sieve; par segmented fill speedup=3.888x
+750,211.4,51.9,75.45,True,True,par_iter independent s per length; transposed dp speedup=4.073x
+724,196.3,0.7,99.64,True,True,closed (H_n^2 + H_n^{(2)})/2; Euler-Maclaurin speedup=265.097x

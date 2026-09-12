@@ -16,9 +16,15 @@ const MAX_NTT: usize = 1 << MAX_LOG; // 131072
 
 const DIRECT_THRESHOLD: usize = 512;
 
+// All NTT primes and MOD satisfy m*m < 2^64, and callers keep a,b < m.
 #[inline(always)]
 fn mul_mod_u(a: u64, b: u64, m: u64) -> u64 {
-    (a as u128 * b as u128 % m as u128) as u64
+    a * b % m
+}
+
+#[inline(always)]
+fn reduce_2p(x: u64, p: u64) -> u64 {
+    if x >= p { x - p } else { x }
 }
 
 fn pow_mod_u(mut base: u64, mut exp: u64, m: u64) -> u64 {
@@ -146,12 +152,38 @@ impl Workspace {
         Workspace { buf: vec![0u64; 6 * MAX_NTT] }
     }
 
-    fn get_pair(&mut self, prime_idx: usize, ntt_len: usize) -> (&mut [u64], &mut [u64]) {
-        let base = prime_idx * 2 * MAX_NTT;
-        let (left, right) = self.buf[base..base + 2 * MAX_NTT].split_at_mut(MAX_NTT);
-        (&mut left[..ntt_len], &mut right[..ntt_len])
-    }
+}
 
+fn ntt_one_prime(
+    ntt: &NttPrime,
+    buf: &mut [u64],
+    ntt_len: usize,
+    g_src: &[i64],
+    b_arr: &[u64],
+    len_a: usize,
+    len_b: usize,
+) {
+    let p = ntt.p;
+    let (fa_all, fb_all) = buf.split_at_mut(MAX_NTT);
+    let fa = &mut fa_all[..ntt_len];
+    let fb = &mut fb_all[..ntt_len];
+    // g, b < MOD < 2p for all three NTT primes
+    for i in 0..len_a {
+        fa[i] = reduce_2p(g_src[i] as u64, p);
+    }
+    fa[len_a..].fill(0);
+    for i in 0..len_b {
+        fb[i] = reduce_2p(b_arr[i], p);
+    }
+    fb[len_b..].fill(0);
+    ntt.ntt(fa, false);
+    ntt.ntt(fb, false);
+    for i in 0..ntt_len {
+        unsafe {
+            *fa.get_unchecked_mut(i) = mul_mod_u(*fa.get_unchecked(i), *fb.get_unchecked(i), p);
+        }
+    }
+    ntt.ntt(fa, true);
 }
 
 fn contribute_ntt(
@@ -164,29 +196,25 @@ fn contribute_ntt(
     let out_len = len_a + len_b - 1;
     let ntt_len = out_len.next_power_of_two();
 
-    for pi in 0..3 {
-        let (fa, fb) = ws.get_pair(pi, ntt_len);
-        // Fill fa with g[lo..mid], zero-padded
-        for i in 0..len_a { fa[i] = g[lo + i] as u64; }
-        fa[len_a..].fill(0);
-        // Fill fb with b[0..len_b], zero-padded
-        fb[..len_b].copy_from_slice(&b_arr[..len_b]);
-        fb[len_b..].fill(0);
-        // Forward NTT both
-        ntts[pi].ntt(fa, false);
-        ntts[pi].ntt(fb, false);
-        // Pointwise multiply into fa
-        let p = ntts[pi].p;
-        for i in 0..ntt_len {
-            unsafe {
-                *fa.get_unchecked_mut(i) = mul_mod_u(*fa.get_unchecked(i), *fb.get_unchecked(i), p);
-            }
-        }
-        // Inverse NTT
-        ntts[pi].ntt(fa, true);
+    let (g_left, g_right) = g.split_at_mut(mid);
+    let g_src = &g_left[lo..mid];
+
+    {
+        let (b0, rest) = ws.buf.split_at_mut(2 * MAX_NTT);
+        let (b1, b2) = rest.split_at_mut(2 * MAX_NTT);
+
+        rayon::join(
+            || ntt_one_prime(&ntts[0], b0, ntt_len, g_src, b_arr, len_a, len_b),
+            || {
+                rayon::join(
+                    || ntt_one_prime(&ntts[1], b1, ntt_len, g_src, b_arr, len_a, len_b),
+                    || ntt_one_prime(&ntts[2], b2, ntt_len, g_src, b_arr, len_a, len_b),
+                )
+            },
+        );
     }
 
-    // CRT and accumulate
+    // CRT and accumulate into g[mid..hi]
     for n in mid..hi {
         let m = n - lo;
         unsafe {
@@ -194,7 +222,8 @@ fn contribute_ntt(
             let r2 = *ws.buf.get_unchecked(1 * 2 * MAX_NTT + m);
             let r3 = *ws.buf.get_unchecked(2 * 2 * MAX_NTT + m);
             let val = crt.crt3_mod(r1, r2, r3);
-            g[n] = (g[n] + val as i64) % MOD;
+            let slot = g_right.get_unchecked_mut(n - mid);
+            *slot = (*slot + val as i64) % MOD;
         }
     }
 }
@@ -218,10 +247,11 @@ fn solve(
                 g[n] = ((g[n] as i128 * inv_arr[n] as i128) % MOD as i128) as i64;
                 if g[n] < 0 { g[n] += MOD; }
             }
-            let gn = g[n] as i128;
+            let gn = g[n] as u64;
             for m in (n + 1)..hi {
                 unsafe {
-                    g[m] = ((g[m] as i128 + *b_arr.get_unchecked(m - n) as i128 * gn) % MOD as i128) as i64;
+                    let t = *g.get_unchecked(m) as u64 + *b_arr.get_unchecked(m - n) * gn;
+                    *g.get_unchecked_mut(m) = (t % UMOD) as i64;
                 }
             }
         }
@@ -272,8 +302,8 @@ fn main() {
         let mut pow_y = y;
         let mut k = d;
         while k <= NMAX {
-            b_arr[k] = ((b_arr[k] as u128 + d as u128 * pow_y as u128) % UMOD as u128) as u64;
-            pow_y = (pow_y as u128 * y as u128 % UMOD as u128) as u64;
+            b_arr[k] = (b_arr[k] + d as u64 * pow_y) % UMOD;
+            pow_y = pow_y * y % UMOD;
             k += d;
         }
     }

@@ -4,61 +4,92 @@
 
 use std::collections::HashSet;
 use euler_utils::{gcd_i32, is_prime, sieve, sieve_smallest_factor};
+use rayon::prelude::*;
 
 const N: i64 = 1_000_000_000_000_000_000; // 10^18
 const MAX_SPF: usize = 1_000_100;
+const MAX_DICT: usize = 32;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct Dict {
-    p: Vec<i32>,
-    e: Vec<i32>,
+    p: [i32; MAX_DICT],
+    e: [i32; MAX_DICT],
+    n: usize,
 }
 
 impl Dict {
-    fn new() -> Self { Dict { p: Vec::new(), e: Vec::new() } }
+    fn new() -> Self {
+        Dict { p: [0; MAX_DICT], e: [0; MAX_DICT], n: 0 }
+    }
 
+    #[inline]
     fn get(&self, key: i32) -> i32 {
-        for i in 0..self.p.len() { if self.p[i] == key { return self.e[i]; } }
+        for i in 0..self.n {
+            if self.p[i] == key {
+                return self.e[i];
+            }
+        }
         0
     }
 
+    #[inline]
     fn has(&self, key: i32) -> bool {
-        self.p.contains(&key)
-    }
-
-    fn set(&mut self, key: i32, val: i32) {
-        for i in 0..self.p.len() {
-            if self.p[i] == key { self.e[i] = val; return; }
-        }
-        self.p.push(key);
-        self.e.push(val);
-    }
-
-    fn inc(&mut self, key: i32, val: i32) {
-        for i in 0..self.p.len() {
-            if self.p[i] == key { self.e[i] += val; return; }
-        }
-        self.p.push(key);
-        self.e.push(val);
-    }
-
-    fn del(&mut self, key: i32) {
-        for i in 0..self.p.len() {
+        for i in 0..self.n {
             if self.p[i] == key {
-                let last = self.p.len() - 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    #[inline]
+    fn set(&mut self, key: i32, val: i32) {
+        for i in 0..self.n {
+            if self.p[i] == key {
+                self.e[i] = val;
+                return;
+            }
+        }
+        self.p[self.n] = key;
+        self.e[self.n] = val;
+        self.n += 1;
+    }
+
+    #[inline]
+    fn inc(&mut self, key: i32, val: i32) {
+        for i in 0..self.n {
+            if self.p[i] == key {
+                self.e[i] += val;
+                return;
+            }
+        }
+        self.p[self.n] = key;
+        self.e[self.n] = val;
+        self.n += 1;
+    }
+
+    #[inline]
+    fn del(&mut self, key: i32) {
+        for i in 0..self.n {
+            if self.p[i] == key {
+                let last = self.n - 1;
                 self.p[i] = self.p[last];
                 self.e[i] = self.e[last];
-                self.p.pop();
-                self.e.pop();
+                self.n = last;
                 return;
             }
         }
     }
 
+    #[inline]
     fn gcd_of_vals(&self) -> i32 {
-        if self.p.is_empty() { return 0; }
+        if self.n == 0 {
+            return 0;
+        }
         let mut g = 0i32;
-        for &e in &self.e { g = gcd_i32(g, e); }
+        for i in 0..self.n {
+            g = gcd_i32(g, self.e[i]);
+        }
         g
     }
 }
@@ -66,18 +97,38 @@ impl Dict {
 fn main() {
     let spf = sieve_smallest_factor(MAX_SPF);
 
-    // Primes up to N^(1/3)
     let limit = (N as f64).cbrt() as usize + 2;
     let is_p = sieve(limit);
     let primes: Vec<i32> = (2..=limit).filter(|&i| is_p[i]).map(|i| i as i32).collect();
 
-    let mut achilles_set: HashSet<i64> = HashSet::new();
-
-    let mut factors = Dict::new();
-    let mut phi = Dict::new();
-
-    helper(1, &mut factors, &mut phi, 1_000_000_000, &primes, &spf, &mut achilles_set);
-
+    let nthreads = rayon::current_num_threads().max(1);
+    let mut sets: Vec<HashSet<i64>> = (0..nthreads)
+        .into_par_iter()
+        .map(|t| {
+            let mut set = HashSet::with_capacity(1_200_000 / nthreads + 1024);
+            let mut factors = Dict::new();
+            let mut phi = Dict::new();
+            let mut i = t;
+            while i < primes.len() {
+                let p = primes[i];
+                if (p as f64) * (p as f64) * (p as f64) < N as f64 {
+                    add_prime_fn(1, p, 3, &mut factors, &mut phi, p, &primes, &spf, &mut set);
+                }
+                i += nthreads;
+            }
+            set
+        })
+        .collect();
+    let mut best = 0usize;
+    for i in 1..sets.len() {
+        if sets[i].len() > sets[best].len() {
+            best = i;
+        }
+    }
+    let mut achilles_set = sets.swap_remove(best);
+    for s in sets {
+        achilles_set.extend(s);
+    }
     println!("{}", achilles_set.len());
 }
 
@@ -90,16 +141,15 @@ fn helper(
     spf: &[u32],
     achilles_set: &mut HashSet<i64>,
 ) {
-    // Find largest prime in phi with exponent 1
     let mut bad_p = 0i32;
-    for i in 0..phi.p.len() {
+    for i in 0..phi.n {
         if phi.e[i] == 1 && phi.p[i] > bad_p {
             bad_p = phi.p[i];
         }
     }
 
     if bad_p == 0 {
-        if !factors.p.is_empty() {
+        if factors.n > 0 {
             let ge = factors.gcd_of_vals();
             let gp = phi.gcd_of_vals();
             if ge == 1 && gp == 1 {
@@ -107,17 +157,24 @@ fn helper(
             }
         }
 
-        let phi_keys: Vec<i32> = phi.p.clone();
+        let mut phi_keys = [0i32; MAX_DICT];
+        let phi_n = phi.n;
+        phi_keys[..phi_n].copy_from_slice(&phi.p[..phi_n]);
 
-        for &p in &phi_keys {
+        for i in 0..phi_n {
+            let p = phi_keys[i];
             if p < max_p {
                 add_prime_fn(n, p, 2, factors, phi, p, primes, spf, achilles_set);
             }
         }
 
         for &p in primes {
-            if p >= max_p { break; }
-            if (n as f64) * (p as f64) * (p as f64) * (p as f64) >= N as f64 { break; }
+            if p >= max_p {
+                break;
+            }
+            if (n as f64) * (p as f64) * (p as f64) * (p as f64) >= N as f64 {
+                break;
+            }
             if !phi.has(p) {
                 add_prime_fn(n, p, 3, factors, phi, p, primes, spf, achilles_set);
             }
@@ -146,15 +203,17 @@ fn add_prime_fn(
     spf: &[u32],
     achilles_set: &mut HashSet<i64>,
 ) {
-    if factors.has(p) { return; }
+    if factors.has(p) {
+        return;
+    }
 
     let prev_e = phi.get(p);
     let had_prev = phi.has(p);
 
     phi.inc(p, min_e - 1);
 
-    // Factor p-1 and add to phi
-    let mut phi_p_factors = Vec::new();
+    let mut phi_p_factors = [0i32; 40];
+    let mut npf = 0usize;
     let mut temp = p - 1;
     while temp > 1 {
         let pf = if (temp as usize) < MAX_SPF {
@@ -162,12 +221,18 @@ fn add_prime_fn(
         } else {
             let mut pf = temp;
             for &pr in primes {
-                if (pr as i64) * (pr as i64) > temp as i64 { break; }
-                if temp % pr == 0 { pf = pr; break; }
+                if (pr as i64) * (pr as i64) > temp as i64 {
+                    break;
+                }
+                if temp % pr == 0 {
+                    pf = pr;
+                    break;
+                }
             }
             pf
         };
-        phi_p_factors.push(pf);
+        phi_p_factors[npf] = pf;
+        npf += 1;
         phi.inc(pf, 1);
         temp /= pf;
     }
@@ -175,7 +240,10 @@ fn add_prime_fn(
     let mut e = min_e;
     let mut power_p = 1i64;
     for _ in 0..min_e {
-        if power_p > N / p as i64 { power_p = N + 1; break; }
+        if power_p > N / p as i64 {
+            power_p = N + 1;
+            break;
+        }
         power_p *= p as i64;
     }
 
@@ -185,11 +253,12 @@ fn add_prime_fn(
 
         phi.inc(p, 1);
         e += 1;
-        if power_p > N / p as i64 { break; }
+        if power_p > N / p as i64 {
+            break;
+        }
         power_p *= p as i64;
     }
 
-    // Restore
     factors.del(p);
 
     if had_prev {
@@ -198,8 +267,13 @@ fn add_prime_fn(
         phi.del(p);
     }
 
-    for &pf in &phi_p_factors {
+    for i in 0..npf {
+        let pf = phi_p_factors[i];
         let cur = phi.get(pf);
-        if cur <= 1 { phi.del(pf); } else { phi.set(pf, cur - 1); }
+        if cur <= 1 {
+            phi.del(pf);
+        } else {
+            phi.set(pf, cur - 1);
+        }
     }
 }

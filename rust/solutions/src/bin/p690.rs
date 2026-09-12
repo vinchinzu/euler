@@ -2,47 +2,71 @@
 // Count graphs on N=2019 vertices where every component is a lobster graph.
 // Uses generating functions with partition numbers and DP.
 
+use rayon::prelude::*;
+
 const MAXN: usize = 2020;
 const MOD: i64 = 1_000_000_007;
+const MODU: u64 = MOD as u64;
 
-fn power_mod(mut base: i64, mut exp: i64) -> i64 {
-    let mut r = 1i64;
-    base = ((base % MOD) + MOD) % MOD;
+fn power_mod(mut base: u64, mut exp: u64) -> u64 {
+    let mut r = 1u64;
+    base %= MODU;
     while exp > 0 {
-        if exp & 1 == 1 { r = (r as i128 * base as i128 % MOD as i128) as i64; }
-        base = (base as i128 * base as i128 % MOD as i128) as i64;
+        if exp & 1 == 1 { r = r * base % MODU; }
+        base = base * base % MODU;
         exp >>= 1;
     }
     r
 }
 
-fn inv_mod(a: i64) -> i64 { power_mod(a, MOD - 2) }
+fn inv_mod(a: i64) -> i64 { power_mod(((a % MOD + MOD) % MOD) as u64, (MOD - 2) as u64) as i64 }
 
 fn gf_mul(a: &[i64; MAXN], b: &[i64; MAXN]) -> [i64; MAXN] {
-    let mut out = [0i64; MAXN];
-    for i in 0..MAXN {
-        if a[i] == 0 { continue; }
-        for j in 0..MAXN - i {
-            out[i + j] = (out[i + j] as i128 + a[i] as i128 * b[j] as i128 % MOD as i128) as i64 % MOD;
-        }
-    }
-    out
+    // Heap partials: rayon worker stacks cannot hold [u64; MAXN] fold identities.
+    (0..MAXN)
+        .into_par_iter()
+        .fold(
+            || vec![0u64; MAXN],
+            |mut out, i| {
+                let ai = a[i] as u64;
+                if ai != 0 {
+                    for j in 0..MAXN - i {
+                        out[i + j] = (out[i + j] + ai * b[j] as u64) % MODU;
+                    }
+                }
+                out
+            },
+        )
+        .reduce(
+            || vec![0u64; MAXN],
+            |mut x, y| {
+                for i in 0..MAXN {
+                    x[i] = (x[i] + y[i]) % MODU;
+                }
+                x
+            },
+        )
+        .iter()
+        .map(|&v| v as i64)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
 }
 
 fn gf_recip(f: &[i64; MAXN]) -> [i64; MAXN] {
     let mut out = [0i64; MAXN];
-    let inv_f0 = inv_mod(f[0]);
-    for i in 0..MAXN {
-        if i == 0 {
-            out[0] = inv_f0;
-        } else {
-            let mut s = 0i128;
-            let jmax = (i + 1).min(MAXN);
-            for j in 1..jmax {
-                s = (s + f[j] as i128 * out[i - j] as i128) % MOD as i128;
+    let inv_f0 = inv_mod(f[0]) as u64;
+    out[0] = inv_f0 as i64;
+    for i in 1..MAXN {
+        let mut s = 0u64;
+        for j in 1..=i {
+            s += f[j] as u64 * out[i - j] as u64;
+            if j & 15 == 0 {
+                s %= MODU;
             }
-            out[i] = ((MOD as i128 - s) % MOD as i128 * inv_f0 as i128 % MOD as i128) as i64;
         }
+        s %= MODU;
+        out[i] = ((MODU - s) % MODU * inv_f0 % MODU) as i64;
     }
     out
 }
@@ -124,10 +148,10 @@ fn main() {
     let part_b = gf_mul(&tmp_b1, &recip_omx2p2);
 
     // inner = x^2 * (part_a + part_b) / 2
-    let inv2 = inv_mod(2);
+    let inv2 = inv_mod(2) as u64;
     let mut inner = [0i64; MAXN];
     for i in 2..MAXN {
-        inner[i] = ((part_a[i - 2] + part_b[i - 2]) as i128 % MOD as i128 * inv2 as i128 % MOD as i128) as i64;
+        inner[i] = ((part_a[i - 2] as u64 + part_b[i - 2] as u64) % MODU * inv2 % MODU) as i64;
     }
 
     // correction = x^3 / ((1-x)^2 * (1+x))
@@ -153,23 +177,52 @@ fn main() {
         mod_invs[i] = (MOD - (MOD / i as i64) * mod_invs[(MOD % i as i64) as usize] % MOD) % MOD;
     }
 
-    let mut dp_prev = vec![0i64; n + 1];
-    dp_prev[0] = 1;
+    let mut dp = vec![0u64; n + 1];
+    dp[0] = 1;
+    let mut tmp = vec![0u64; n + 1];
+    let mut ncr_buf = vec![0u64; n + 1];
 
     for j in 1..=n {
-        let mut dp_cur = dp_prev.clone();
-        for i in j..=n {
-            let mut ncr = 1i64;
-            let mut k = 1;
-            while k * j <= i {
-                ncr = (ncr as i128 * ((num_lobsters[j] + k as i64 - 1 + MOD) % MOD) as i128 % MOD as i128) as i64;
-                ncr = (ncr as i128 * mod_invs[k] as i128 % MOD as i128) as i64;
-                dp_cur[i] = (dp_cur[i] as i128 + ncr as i128 * dp_prev[i - j * k] as i128 % MOD as i128) as i64 % MOD;
-                k += 1;
+        let nj = num_lobsters[j] as u64;
+        let max_k = n / j;
+        ncr_buf[0] = 1;
+        for k in 1..=max_k {
+            let term = nj + k as u64 - 1;
+            let term = if term >= MODU { term - MODU } else { term };
+            ncr_buf[k] = ncr_buf[k - 1] * term % MODU * mod_invs[k] as u64 % MODU;
+        }
+
+        tmp[..j].copy_from_slice(&dp[..j]);
+        let ncr = &ncr_buf;
+        let prev = &dp;
+        if n - j >= 64 {
+            tmp[j..n + 1]
+                .par_iter_mut()
+                .with_min_len(8)
+                .enumerate()
+                .for_each(|(off, slot)| {
+                    let i = j + off;
+                    let mut val = prev[i];
+                    let mut k = 1;
+                    while k * j <= i {
+                        val = (val + ncr[k] * prev[i - j * k] % MODU) % MODU;
+                        k += 1;
+                    }
+                    *slot = val;
+                });
+        } else {
+            for i in j..=n {
+                let mut val = dp[i];
+                let mut k = 1;
+                while k * j <= i {
+                    val = (val + ncr_buf[k] * dp[i - j * k] % MODU) % MODU;
+                    k += 1;
+                }
+                tmp[i] = val;
             }
         }
-        dp_prev = dp_cur;
+        std::mem::swap(&mut dp, &mut tmp);
     }
 
-    println!("{}", dp_prev[n]);
+    println!("{}", dp[n]);
 }

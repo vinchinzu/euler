@@ -7,7 +7,9 @@ const MOD: i64 = 977676779;
 const MOD2: i64 = 2 * MOD;
 const N_VAL: i64 = 33557799775533;
 const SQRT_N_MAX: usize = 5_900_000;
-const SMALL_PRIME_LIMIT: usize = 32_000;
+// Tail formula only has p^2 and p^3 terms, so every tail prime needs p^4 > N
+// (N^{1/4} ≈ 2407). 2500 sits just above that bound and shrinks the DFS.
+const SMALL_PRIME_LIMIT: usize = 2_500;
 const SMALL_P2: i64 = (SMALL_PRIME_LIMIT as i64) * (SMALL_PRIME_LIMIT as i64);
 const NUM_K: usize = 22;
 const MOD2_I128: i128 = MOD2 as i128;

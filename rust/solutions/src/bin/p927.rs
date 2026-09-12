@@ -182,41 +182,88 @@ fn check_reach_all(m: u64, exps: &[u64]) -> bool {
     true
 }
 
-fn is_prime_in_s(q: usize, spf: &[usize]) -> bool {
+#[inline(always)]
+fn check_reach_brent_2(m: u64, inv: u64) -> bool {
+    let mut power = 1u64;
+    let mut tortoise = 1u64;
+    let mut hare = 2u64;
+    if hare >= m { hare -= m; }
+    if hare == 0 { return true; }
+
+    loop {
+        for _ in 0..power {
+            let x2 = hare * hare;
+            let q = ((x2 as u128 * inv as u128) >> 47) as u64;
+            let mut r = x2 - q * m + 1;
+            if r >= m { r -= m; }
+            if r >= m { r -= m; }
+            hare = r;
+            if hare == 0 { return true; }
+            if hare == tortoise { return false; }
+        }
+        tortoise = hare;
+        power <<= 1;
+    }
+}
+
+fn is_prime_in_s(q: usize, spf: &[u32]) -> bool {
     if q == 2 {
         return true;
     }
-    // Collect distinct prime factors of phi(q) = q-1
+    // If q = 3 mod 4, -1 is not a quadratic residue, so x^2 + 1 = 0 mod q is impossible.
+    if q & 3 == 3 {
+        return false;
+    }
+    let q_u64 = q as u64;
+    let bar = Barrett::new(q_u64);
+
+    // Test exp = 2 first using specialized tight loop
+    if !check_reach_brent_2(bar.m, bar.inv) {
+        return false;
+    }
+
+    // exp = 2 passed! Now factor the rest of phi(q) = q - 1
     let mut exps = [0u64; 16];
     let mut ne = 0usize;
-    let mut phi = q - 1;
-    if phi & 1 == 0 {
-        exps[ne] = 2;
-        ne += 1;
-        while phi & 1 == 0 {
-            phi >>= 1;
-        }
+    let mut phi = (q - 1) >> 1;
+    while phi & 1 == 0 {
+        phi >>= 1;
     }
     while phi > 1 {
-        let p = spf[phi];
+        let p = spf[phi] as usize;
         exps[ne] = p as u64;
         ne += 1;
         while phi % p == 0 {
             phi /= p;
         }
     }
-    check_reach_all(q as u64, &exps[..ne])
+
+    // Check remaining prime factors
+    if q <= VIS_LIMIT {
+        for &exp in &exps[..ne] {
+            if !check_reach_visited(&bar, exp) {
+                return false;
+            }
+        }
+    } else {
+        for &exp in &exps[..ne] {
+            if !check_reach_brent(&bar, exp) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
-fn is_composite_in_s(m: usize, spf: &[usize]) -> bool {
+fn is_composite_in_s(m: usize, spf: &[u32]) -> bool {
     let mut phi_factors = [0u64; 32];
     let mut nf = 0usize;
     let mut temp = m;
     while temp > 1 {
-        let p = spf[temp];
+        let p = spf[temp] as usize;
         let mut t = p - 1;
         while t > 1 {
-            let f = spf[t];
+            let f = spf[t] as usize;
             let fv = f as u64;
             let mut found = false;
             for i in 0..nf {
@@ -261,29 +308,29 @@ fn is_composite_in_s(m: usize, spf: &[usize]) -> bool {
 }
 
 fn main() {
-    // Smallest prime factor sieve
-    let mut spf = vec![0usize; N_LIMIT + 1];
-    for i in 0..=N_LIMIT {
-        spf[i] = i;
+    // Smallest prime factor sieve using u32 and odd multiples
+    let mut spf = vec![0u32; N_LIMIT + 1];
+    for i in (2..=N_LIMIT).step_by(2) {
+        spf[i] = 2;
     }
-    {
-        let mut i = 2;
-        while i * i <= N_LIMIT {
-            if spf[i] == i {
+    for i in (3..=N_LIMIT).step_by(2) {
+        if spf[i] == 0 {
+            spf[i] = i as u32;
+            if (i as u64) * (i as u64) <= N_LIMIT as u64 {
+                let step = 2 * i;
                 let mut j = i * i;
                 while j <= N_LIMIT {
-                    if spf[j] == j {
-                        spf[j] = i;
+                    if spf[j] == 0 {
+                        spf[j] = i as u32;
                     }
-                    j += i;
+                    j += step;
                 }
             }
-            i += 1;
         }
     }
 
     // Phase 1: Find S-primes (parallel)
-    let primes: Vec<usize> = (2..=N_LIMIT).filter(|&q| spf[q] == q).collect();
+    let primes: Vec<usize> = (2..=N_LIMIT).filter(|&q| spf[q] == q as u32).collect();
     let flags: Vec<bool> = primes.par_iter().map(|&q| is_prime_in_s(q, &spf)).collect();
 
     let mut is_sp = vec![false; N_LIMIT + 1];
@@ -307,13 +354,11 @@ fn main() {
         }
     }
 
-    // Phase 2: Check smooth composites (parallel)
-    let sum2: i64 = (4..=N_LIMIT)
+    // Phase 2: Check smooth candidates (parallel)
+    let candidates: Vec<usize> = (4..=N_LIMIT).filter(|&m| smooth[m] && spf[m] != m as u32).collect();
+    let sum2: i64 = candidates
         .into_par_iter()
         .map(|m| -> i64 {
-            if !smooth[m] || spf[m] == m {
-                return 0;
-            }
             if is_composite_in_s(m, &spf) {
                 m as i64
             } else {

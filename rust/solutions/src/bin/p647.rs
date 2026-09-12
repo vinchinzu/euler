@@ -2,6 +2,8 @@
 // For positive odd k, find all (A,B) with A,B positive integers such that
 // A * X_n + B is always a k-gonal number. Sum A+B over all such pairs.
 
+use rayon::prelude::*;
+
 fn isqrt(n: i64) -> i64 {
     let mut x = (n as f64).sqrt() as i64;
     while x > 0 && x * x > n { x -= 1; }
@@ -11,41 +13,39 @@ fn isqrt(n: i64) -> i64 {
 
 fn main() {
     let n: i64 = 1_000_000_000_000; // 10^12
-    let l = isqrt(n) as i32;
+    let l = isqrt(n);
+    let k_max = ((l - 1) / 2) as usize;
 
-    let mut ans: i64 = 0;
-
-    // odd sqrt_a only
-    let mut sqrt_a = 1i32;
-    while sqrt_a <= l {
-        let a = sqrt_a as i64 * sqrt_a as i64;
+    let ans: i64 = (0..k_max + 1).into_par_iter().map(|k| {
+        let sqrt_a = 2 * k as i64 + 1;
+        let a = sqrt_a * sqrt_a;
         let d_max = (sqrt_a - 1) / 2;
-        if d_max == 0 { sqrt_a += 2; continue; }
+        if d_max == 0 {
+            return 0;
+        }
 
-        // Iterate over all odd divisors of d_max
-        let mut d = 1i32;
-        while (d as i64) * (d as i64) <= d_max as i64 {
+        let mut local = 0i64;
+        let mut d = 1i64;
+        while d * d <= d_max {
             if d_max % d == 0 {
-                // Process divisor d
                 if d % 2 == 1 {
-                    let b = ((a - 1) / (8 * d as i64)) * ((d as i64 - 2) * (d as i64 - 2));
+                    let b = ((a - 1) / (8 * d)) * ((d - 2) * (d - 2));
                     if b >= 1 && b <= n {
-                        ans += a + b;
+                        local += a + b;
                     }
                 }
-                // Process complementary divisor
                 let d2 = d_max / d;
                 if d2 != d && d2 % 2 == 1 {
-                    let b = ((a - 1) / (8 * d2 as i64)) * ((d2 as i64 - 2) * (d2 as i64 - 2));
+                    let b = ((a - 1) / (8 * d2)) * ((d2 - 2) * (d2 - 2));
                     if b >= 1 && b <= n {
-                        ans += a + b;
+                        local += a + b;
                     }
                 }
             }
             d += 1;
         }
-        sqrt_a += 2;
-    }
+        local
+    }).sum();
 
     println!("{}", ans);
 }

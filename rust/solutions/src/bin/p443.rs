@@ -1,60 +1,44 @@
 // Project Euler 443: GCD sequence
-use euler_utils::gcd;
-
-fn factorize(n: i64) -> Vec<i64> {
-    let mut n = n.abs();
-    let mut factors = Vec::new();
-    let mut d = 2i64;
-    while d * d <= n {
-        if n % d == 0 {
-            factors.push(d);
-            while n % d == 0 { n /= d; }
-        }
-        d += 1;
-    }
-    if n > 1 { factors.push(n); }
-    factors
-}
+// g(4) = 13, g(n) = g(n-1) + gcd(n, g(n-1)). Find g(10^15).
+//
+// While gcd stays 1, g(n)+d and n+1+d share factors with the constant
+// diff = g(n)-(n+1). Jump to the next multiple of a prime factor of diff.
+use euler_utils::{factor, gcd};
 
 fn main() {
-    let n_limit: i64 = 1_000_000_000_000_000; // 10^15
-    let l = 1000;
+    let n_limit: u64 = 1_000_000_000_000_000; // 10^15
 
-    let mut ans: i64 = 13;
-    let mut n: i64 = 4;
+    let mut ans: u64 = 13;
+    let mut n: u64 = 4;
 
     while n < n_limit {
-        let mut found = false;
-        for d in 0..l {
-            let g = gcd((ans + d) as u64, (n + d + 1) as u64) as i64;
-            if g > 1 {
-                ans += d;
-                n += d + 1;
-                ans += gcd(n as u64, ans as u64) as i64;
-                found = true;
-                break;
-            }
+        let np1 = n + 1;
+        let g0 = gcd(ans, np1);
+        if g0 > 1 {
+            n = np1;
+            ans += g0;
+            continue;
         }
 
-        if !found {
-            let diff = ans - (n + 1);
-            if diff == 0 {
-                n += 1;
-                ans += 1;
-            } else {
-                let factors = factorize(diff);
-                let mut next_val = ans + n_limit - n - 1;
-                for &p in &factors {
-                    let candidate = ((ans / p) + 1) * p;
-                    if candidate < next_val {
-                        next_val = candidate;
-                    }
-                }
-                let jump = next_val - ans;
-                n += jump + 1;
-                ans = next_val + gcd(n as u64, next_val as u64) as i64;
+        let diff = ans - np1;
+        if diff == 0 {
+            n = np1;
+            ans += 1;
+            continue;
+        }
+
+        // Next n' > n with gcd(g(n)+(n'-n), n'+1) > 1 is the soonest
+        // multiple of a prime factor of diff after `ans`.
+        let factors = factor(diff);
+        let mut next_val = ans + n_limit - n - 1;
+        for &(p, _) in &factors {
+            let candidate = (ans / p + 1) * p;
+            if candidate < next_val {
+                next_val = candidate;
             }
         }
+        n += next_val - ans + 1;
+        ans = next_val + gcd(n, next_val);
     }
 
     println!("{}", ans);
