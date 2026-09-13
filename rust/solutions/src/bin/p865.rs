@@ -33,12 +33,12 @@ fn main() {
     // Initialize conv_vv[0] = v[0]*v[0] = 1
     conv_vv[0] = 1;
 
+    let nine_inv10 = 9u64 * inv10 % MOD;
+    
     for m in 1..=limit {
         // 1. Compute dp[m] = 10 * sum_{c=0}^{m-1} dp[c] * conv_vv[m-1-c]
-        // conv_vv[0..m-1] are all precomputed from previous steps
         let mut sum_dp = 0u64;
         for c in 0..m {
-            // SAFETY: c < m, m-1-c >= 0, all indices valid
             unsafe {
                 sum_dp += *dp.get_unchecked(c) * *conv_vv.get_unchecked(m - 1 - c) % MOD;
             }
@@ -60,7 +60,7 @@ fn main() {
         let mut sum_v = 0u64;
         for k in 1..=m {
             unsafe {
-                let p_val = *prim.get_unchecked(k) * 9 % MOD * inv10 % MOD;
+                let p_val = *prim.get_unchecked(k) * nine_inv10 % MOD;
                 sum_v += p_val * *v.get_unchecked(m - k) % MOD;
             }
             if sum_v >= MOD { sum_v -= MOD; }
