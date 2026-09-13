@@ -1,4 +1,5 @@
-// Project Euler 406: Guessing Game
+use rayon::prelude::*;
+
 fn fibonacci(k: usize) -> i64 {
     if k <= 2 { return 1; }
     let (mut a, mut b) = (1i64, 1i64);
@@ -29,7 +30,6 @@ fn c_func(n: i64, a_val: f64, b_val: f64) -> f64 {
     }
 
     costs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    // Deduplicate
     let mut unique = Vec::new();
     for &c in &costs {
         if unique.is_empty() || c - *unique.last().unwrap() > 1e-12 {
@@ -70,14 +70,12 @@ fn c_func(n: i64, a_val: f64, b_val: f64) -> f64 {
 
 fn main() {
     let n: i64 = 1_000_000_000_000;
-    let mut total = 0.0;
 
-    for k in 1..=30 {
+    let total: f64 = (1..=30).into_par_iter().map(|k| {
         let a = (k as f64).sqrt();
         let b = (fibonacci(k) as f64).sqrt();
-        let c = c_func(n, a, b);
-        total += c;
-    }
+        c_func(n, a, b)
+    }).sum();
 
     println!("{:.8}", total);
 }
