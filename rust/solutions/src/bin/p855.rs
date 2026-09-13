@@ -4,20 +4,21 @@ unsafe extern "C" {
     fn lgamma(x: f64) -> f64;
 }
 
+#[inline(always)]
 fn ln_gamma(x: f64) -> f64 {
     unsafe { lgamma(x) }
 }
 
 fn main() {
-    let a = 5.0_f64;
-    let b = 8.0_f64;
-    let ln10 = 10.0_f64.ln();
+    const A: f64 = 5.0;
+    const B: f64 = 8.0;
+    const LN10: f64 = 2.302585092994045684;
 
-    let log10_fact_a = ln_gamma(a + 1.0) / ln10;
-    let log10_fact_b = ln_gamma(b + 1.0) / ln10;
-    let log10_fact_ab = ln_gamma(a * b + 1.0) / ln10;
+    let log10_fact_a = ln_gamma(A + 1.0) / LN10;
+    let log10_fact_b = ln_gamma(B + 1.0) / LN10;
+    let log10_fact_ab = ln_gamma(A * B + 1.0) / LN10;
 
-    let log10_val = b * log10_fact_a + a * log10_fact_b - 2.0 * log10_fact_ab;
+    let log10_val = B.mul_add(log10_fact_a, A.mul_add(log10_fact_b, -2.0 * log10_fact_ab));
     let val = 10.0_f64.powf(log10_val);
     println!("{:.10e}", val);
 }
