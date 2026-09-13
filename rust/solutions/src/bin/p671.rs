@@ -1,6 +1,8 @@
 // Project Euler 671 - Coloured Tiles II
 // Matrix exponentiation for colored tiles on a loop. 84 states.
-// Optimized with u64 mulmod (M^2 < 2^64) and deferred i128 reduction.
+// Optimized with i-j-k loop order, deferred i128 reduction, and rayon parallelism.
+
+use rayon::prelude::*;
 
 const M_VAL: u64 = 1_000_004_321;
 const T_VAL: usize = 3;
@@ -15,39 +17,19 @@ fn horiz_idx(top: usize, tc: usize, bot: usize, bc: usize) -> usize {
 fn min_c(c: usize) -> usize { if c < 2 { c } else { 2 } }
 
 fn mat_mult(a: &[u64], b: &[u64], r: &mut [u64]) {
-    r.fill(0);
-    for i in 0..NS {
-        let row_base = i * NS;
-        for k in 0..NS {
-            let aik = unsafe { *a.get_unchecked(row_base + k) };
-            if aik == 0 { continue; }
-            let aik128 = aik as i128;
-            let b_row = k * NS;
-            
-            let mut j = 0;
-            while j + 16 <= NS {
-                let mut acc = [0i128; 16];
-                for jj in 0..16 {
-                    acc[jj] = unsafe { *r.get_unchecked(row_base + j + jj) } as i128;
-                }
-                for jj in 0..16 {
-                    acc[jj] += aik128 * unsafe { *b.get_unchecked(b_row + j + jj) } as i128;
-                }
-                for jj in 0..16 {
-                    acc[jj] %= M_VAL as i128;
-                    unsafe { *r.get_unchecked_mut(row_base + j + jj) = acc[jj] as u64; }
-                }
-                j += 16;
+    const M: i128 = M_VAL as i128;
+    
+    r.par_chunks_mut(NS).enumerate().for_each(|(i, row_out)| {
+        let row_a = i * NS;
+        for j in 0..NS {
+            let mut sum = 0i128;
+            for k in 0..NS {
+                sum += unsafe { *a.get_unchecked(row_a + k) } as i128
+                     * unsafe { *b.get_unchecked(k * NS + j) } as i128;
             }
-            while j < NS {
-                let idx = row_base + j;
-                let val = (unsafe { *r.get_unchecked(idx) } as i128 
-                           + aik128 * unsafe { *b.get_unchecked(b_row + j) } as i128) % M_VAL as i128;
-                unsafe { *r.get_unchecked_mut(idx) = val as u64; }
-                j += 1;
-            }
+            row_out[j] = (sum % M) as u64;
         }
-    }
+    });
 }
 
 fn mat_pow(mat: &[u64], mut exp: u64) -> Vec<u64> {
