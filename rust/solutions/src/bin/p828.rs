@@ -2,7 +2,7 @@
 // Compute sum of min scores for all targets
 
 use rayon::prelude::*;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 fn read_file() -> Vec<(i64, Vec<i64>)> {
     let data = include_str!("../../../../data/0828_number_challenges.txt");
@@ -14,7 +14,6 @@ fn read_file() -> Vec<(i64, Vec<i64>)> {
         if line.is_empty() {
             continue;
         }
-        // Format: "target:n1,n2,n3,n4,n5,n6"
         let mut split = line.splitn(2, ':');
         let target_str = match split.next() {
             Some(s) => s,
@@ -39,67 +38,90 @@ fn read_file() -> Vec<(i64, Vec<i64>)> {
     result
 }
 
+fn compute_key(a: &[i64]) -> Vec<i64> {
+    let mut sorted = a.to_vec();
+    sorted.sort_unstable();
+    sorted
+}
+
 fn recursive_generate(
     a: &[i64],
-    memo: &mut std::collections::HashMap<Vec<i64>, HashSet<i64>>,
-) -> HashSet<i64> {
-    let key = a.to_vec();
+    memo: &mut HashMap<Vec<i64>, Vec<i64>>,
+) -> Vec<i64> {
+    let key = compute_key(a);
     if let Some(result) = memo.get(&key) {
         return result.clone();
     }
 
-    let mut values = HashSet::new();
     if a.len() == 1 {
-        values.insert(a[0]);
+        let values = vec![a[0]];
         memo.insert(key, values.clone());
         return values;
     }
 
-    // Check for duplicates
-    let mut freq = std::collections::HashMap::new();
+    let mut freq = HashMap::new();
     for &x in a {
-        *freq.entry(x).or_insert(0) += 1;
+        *freq.entry(x).or_insert(0u8) += 1;
     }
     let multiples_flag = freq.values().any(|&v| v > 1);
 
+    let mut all_values = Vec::with_capacity(10000);
+    
     for k in 1..a.len() {
-        let combs1: Vec<Vec<i64>> = combinations(a, k);
-        let combs2: Vec<Vec<i64>> = combinations(a, a.len() - k);
+        let combs1 = combinations(a, k);
+        let combs2 = combinations(a, a.len() - k);
 
         for c1 in &combs1 {
             for c2 in &combs2 {
-                let set1: HashSet<i64> = c1.iter().cloned().collect();
-                let set2: HashSet<i64> = c2.iter().cloned().collect();
-                let intersection: HashSet<_> = set1.intersection(&set2).collect();
-
-                let mut flag = false;
-                if intersection.is_empty() {
-                    flag = true;
-                } else if multiples_flag {
-                    flag = true;
-                    for &x in &intersection {
-                        let xcount = c1.iter().filter(|&&v| v == *x).count()
-                            + c2.iter().filter(|&&v| v == *x).count();
-                        if xcount > freq[x] {
-                            flag = false;
-                            break;
+                let mut valid = true;
+                
+                if multiples_flag {
+                    let mut count1: HashMap<i64, u8> = HashMap::new();
+                    let mut count2: HashMap<i64, u8> = HashMap::new();
+                    for &x in c1 {
+                        *count1.entry(x).or_insert(0) += 1;
+                    }
+                    for &x in c2 {
+                        *count2.entry(x).or_insert(0) += 1;
+                    }
+                    
+                    for (&x, &c1_count) in &count1 {
+                        if let Some(&c2_count) = count2.get(&x) {
+                            if c1_count + c2_count > freq[&x] {
+                                valid = false;
+                                break;
+                            }
                         }
+                    }
+                } else {
+                    let mut seen = false;
+                    'outer: for &x in c1 {
+                        for &y in c2 {
+                            if x == y {
+                                valid = false;
+                                seen = true;
+                                break 'outer;
+                            }
+                        }
+                    }
+                    if !seen {
+                        valid = true;
                     }
                 }
 
-                if flag {
+                if valid {
                     let t1 = recursive_generate(c1, memo);
                     let t2 = recursive_generate(c2, memo);
 
                     for &v1 in &t1 {
                         for &v2 in &t2 {
-                            values.insert(v1 + v2);
-                            values.insert(v1 * v2);
+                            all_values.push(v1 + v2);
+                            all_values.push(v1 * v2);
                             if v1 > v2 {
-                                values.insert(v1 - v2);
+                                all_values.push(v1 - v2);
                             }
                             if v2 != 0 && v1 % v2 == 0 {
-                                values.insert(v1 / v2);
+                                all_values.push(v1 / v2);
                             }
                         }
                     }
@@ -108,8 +130,11 @@ fn recursive_generate(
         }
     }
 
-    memo.insert(key, values.clone());
-    values
+    all_values.sort_unstable();
+    all_values.dedup();
+    let result = all_values;
+    memo.insert(key, result.clone());
+    result
 }
 
 fn combinations(arr: &[i64], k: usize) -> Vec<Vec<i64>> {
@@ -145,14 +170,14 @@ fn combinations(arr: &[i64], k: usize) -> Vec<Vec<i64>> {
 }
 
 fn min_score(target: i64, numbers: &[i64]) -> i64 {
-    let mut memo = std::collections::HashMap::new();
+    let mut memo = HashMap::new();
     let mut min_sum = i64::MAX;
 
     for k in 1..=numbers.len() {
         let combs = combinations(numbers, k);
         for combo in &combs {
             let values = recursive_generate(combo, &mut memo);
-            if values.contains(&target) {
+            if values.binary_search(&target).is_ok() {
                 let sum: i64 = combo.iter().sum();
                 if sum < min_sum {
                     min_sum = sum;
