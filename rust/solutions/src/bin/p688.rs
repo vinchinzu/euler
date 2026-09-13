@@ -20,22 +20,22 @@ fn k_max(n: i64) -> i64 {
 
 fn chunk_sum(k0: i64, k1: i64, inv2: u64) -> u64 {
     let mut local = 0u64;
+    let mut tri = k0 * (k0 - 1) / 2;
+    
     for k in k0..=k1 {
-        let tri = k * (k - 1) / 2;
         let n = N - tri;
         if n <= 0 {
-            continue;
+            break;
         }
         let q = n / k;
         let r = n - q * k;
         let limit = (q as u64) % MOD;
         let km = (k as u64) % MOD;
-        
-        let a = km * limit % MOD;
-        let b = (limit + MOD - 1) % MOD;
-        let term1 = a * b % MOD * inv2 % MOD;
+        let lim_m1 = (limit + MOD - 1) % MOD;
+        let term1 = km * limit % MOD * lim_m1 % MOD * inv2 % MOD;
         let term2 = ((r as u64 + 1) % MOD) * limit % MOD;
         local += term1 + term2;
+        tri += k;
     }
     local % MOD
 }
@@ -43,7 +43,7 @@ fn chunk_sum(k0: i64, k1: i64, inv2: u64) -> u64 {
 fn main() {
     let inv2 = (MOD + 1) / 2;
     let k_hi = k_max(N);
-    const CHUNK: i64 = 500_000;
+    const CHUNK: i64 = 250_000;
     let n_chunks = (k_hi + CHUNK - 1) / CHUNK;
 
     let ans: u64 = (0..n_chunks)
