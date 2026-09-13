@@ -7,12 +7,12 @@ const MOD: i64 = 1_000_000_007;
 
 fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
     let mut result: i64 = 1;
-    base = ((base % m) + m) % m;
+    base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % m as i128) as i64;
+            result = result * base % m;
         }
-        base = (base as i128 * base as i128 % m as i128) as i64;
+        base = base * base % m;
         exp >>= 1;
     }
     result
@@ -23,32 +23,46 @@ fn main() {
     let m = MOD;
 
     let mut ans: i64 = 0;
+    let mut pow2_term: i64 = 8;
+    
+    const BATCH: i32 = 30;
+    let mut batch_count = 0;
 
-    // For even i from 2 to n-1 (step 2)
-    let mut pow2_i: i64 = 4; // 2^2
-    let mut pow2_half: i64 = 2; // 2^1
     let mut i = 2i64;
     while i < n {
-        ans = ((2 * ans % m) as i128
-            + ((pow2_half - 2 + m) % m) as i128 * pow2_i as i128 % m as i128) as i64
-            % m;
-        ans = (ans + pow2_i - 1 + pow2_i + m) % m;
-
-        pow2_i = (pow2_i as i128 * 4 % m as i128) as i64;
-        pow2_half = pow2_half * 2 % m;
+        ans = 2 * ans + pow2_term - 1;
+        pow2_term = pow2_term * 8 % m;
         i += 2;
+        batch_count += 1;
+        
+        if batch_count == BATCH {
+            ans %= m;
+            batch_count = 0;
+        }
+    }
+    if batch_count > 0 {
+        ans %= m;
     }
 
-    // For odd i from 1 to n-1 (step 2)
-    let mut pow2_odd: i64 = 2; // 2^1
-    let mut i = 1i64;
+    let mut pow2_odd: i64 = 2;
+    batch_count = 0;
+    
+    i = 1;
     while i < n {
-        ans = (ans + pow2_odd - 1 + m) % m;
-        pow2_odd = (pow2_odd as i128 * 4 % m as i128) as i64;
+        ans += pow2_odd - 1;
+        pow2_odd = pow2_odd * 4 % m;
         i += 2;
+        batch_count += 1;
+        
+        if batch_count == BATCH {
+            ans %= m;
+            batch_count = 0;
+        }
+    }
+    if batch_count > 0 {
+        ans %= m;
     }
 
-    // Add pow2[n] - 1 and pow2[n]
     let pow2_n = pow_mod(2, n, m);
     ans = (ans + pow2_n - 1 + m) % m;
     ans = (ans + pow2_n) % m;
