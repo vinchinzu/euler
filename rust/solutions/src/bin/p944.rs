@@ -4,39 +4,35 @@
 
 use rayon::prelude::*;
 
-#[inline]
-fn power(mut base: u64, mut exp: u64, m: u64) -> u64 {
+const MOD: u64 = 1234567891;
+const MOD_EXP: u64 = MOD - 1;
+
+#[inline(always)]
+fn power(mut base: u64, mut exp: u64) -> u64 {
     let mut res = 1u64;
-    base %= m;
+    base %= MOD;
     while exp > 0 {
         if exp & 1 == 1 {
-            res = res * base % m;
+            res = res * base % MOD;
         }
-        base = base * base % m;
+        base = base * base % MOD;
         exp >>= 1;
     }
     res
 }
 
-#[inline]
-fn mulmod(a: u64, b: u64, m: u64) -> u64 {
-    ((a as u128 * b as u128) % m as u128) as u64
-}
-
-#[inline]
-fn compute_c(n_val: u64, m: u64) -> u64 {
-    let n1 = (n_val + 1) % m;
-    if n_val & 1 == 0 {
-        mulmod(n_val / 2, n1, m)
+#[inline(always)]
+fn compute_c(n_val: u64) -> u64 {
+    let n1 = (n_val + 1) % MOD;
+    let result = if n_val & 1 == 0 {
+        (n_val / 2) * n1
     } else {
-        mulmod(n_val, n1 / 2, m)
-    }
+        n_val * (n1 / 2)
+    };
+    result % MOD
 }
 
 fn main() {
-    const MOD: u64 = 1234567891;
-    const MOD_EXP: u64 = MOD - 1;
-
     let n: u64 = 100_000_000_000_000;
 
     let mut s = (n as f64).sqrt() as u64;
@@ -52,28 +48,23 @@ fn main() {
     let sum1: u64 = (2..=s)
         .into_par_iter()
         .map(|d| {
-            let n_div_d = n / d;
-            let c_val = compute_c(n_div_d % MOD, MOD);
+            let c_val = compute_c((n / d) % MOD);
             let exp = (n_mod_exp + MOD_EXP - d % MOD_EXP) % MOD_EXP;
-            let power_val = power(2, exp, MOD);
-            mulmod(power_val, c_val, MOD)
+            let power_val = power(2, exp);
+            power_val * c_val % MOD
         })
         .sum::<u64>()
         % MOD;
 
     let k_max = n / (s + 1);
-
-    let c_k_max = compute_c(k_max % MOD, MOD);
-    let exp_s = (n - s) % MOD_EXP;
-    let term1 = mulmod(c_k_max, power(2, exp_s, MOD), MOD);
+    let c_k_max = compute_c(k_max % MOD);
+    let term1 = c_k_max * power(2, (n - s) % MOD_EXP) % MOD;
 
     let sum_k: u64 = (1..=k_max)
         .into_par_iter()
         .map(|k| {
-            let n_div_k = n / k;
-            let exp = (n - n_div_k) % MOD_EXP;
-            let pv = power(2, exp, MOD);
-            mulmod(k % MOD, pv, MOD)
+            let exp = (n - n / k) % MOD_EXP;
+            (k % MOD) * power(2, exp) % MOD
         })
         .sum::<u64>()
         % MOD;
