@@ -12,26 +12,27 @@ fn main() {
     }
     xmax -= 1;
 
-    let mut stealthies: Vec<i64> = (1..=xmax)
-        .into_par_iter()
-        .flat_map_iter(|x| {
-            let xa = x * (x + 1);
-            let gmax = {
-                let mut lo = x;
-                let mut hi = (N / xa).isqrt() + 2;
-                while lo < hi {
-                    let mid = (lo + hi + 1) / 2;
-                    if xa.saturating_mul(mid).saturating_mul(mid + 1) <= N {
-                        lo = mid;
-                    } else {
-                        hi = mid - 1;
-                    }
+    let mut stealthies: Vec<i64> = Vec::with_capacity(100_000_000);
+    
+    for x in 1..=xmax {
+        let xa = x * (x + 1);
+        let gmax = {
+            let mut lo = x;
+            let mut hi = (N / xa).isqrt() + 2;
+            while lo < hi {
+                let mid = (lo + hi + 1) / 2;
+                if xa.saturating_mul(mid).saturating_mul(mid + 1) <= N {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
                 }
-                lo
-            };
-            (x..=gmax).map(move |g| xa * g * (g + 1))
-        })
-        .collect();
+            }
+            lo
+        };
+        for g in x..=gmax {
+            stealthies.push(xa * g * (g + 1));
+        }
+    }
 
     stealthies.par_sort_unstable();
     stealthies.dedup();
