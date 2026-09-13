@@ -27,12 +27,17 @@ fn main() {
         let prob2 = p * p;
 
         let len = sums_a.len();
-        let mut next = Vec::with_capacity(len * 3);
-        for j in 0..len {
-            let (sv, sp) = unsafe { *sums_a.get_unchecked(j) };
-            next.push((sv + v0, sp * prob0));
-            next.push((sv, sp * prob1));
-            next.push((sv + v2, sp * prob2));
+        let mut next: Vec<(f64, f64)> = Vec::with_capacity(len * 3);
+        unsafe {
+            let ptr = next.as_mut_ptr();
+            for j in 0..len {
+                let (sv, sp) = *sums_a.get_unchecked(j);
+                let base = j * 3;
+                *ptr.add(base) = (sv + v0, sp * prob0);
+                *ptr.add(base + 1) = (sv, sp * prob1);
+                *ptr.add(base + 2) = (sv + v2, sp * prob2);
+            }
+            next.set_len(len * 3);
         }
         sums_a = next;
     }
@@ -49,12 +54,17 @@ fn main() {
         let prob2 = p * p;
 
         let len = sums_b.len();
-        let mut next = Vec::with_capacity(len * 3);
-        for j in 0..len {
-            let (sv, sp) = unsafe { *sums_b.get_unchecked(j) };
-            next.push((sv + v0, sp * prob0));
-            next.push((sv, sp * prob1));
-            next.push((sv + v2, sp * prob2));
+        let mut next: Vec<(f64, f64)> = Vec::with_capacity(len * 3);
+        unsafe {
+            let ptr = next.as_mut_ptr();
+            for j in 0..len {
+                let (sv, sp) = *sums_b.get_unchecked(j);
+                let base = j * 3;
+                *ptr.add(base) = (sv + v0, sp * prob0);
+                *ptr.add(base + 1) = (sv, sp * prob1);
+                *ptr.add(base + 2) = (sv + v2, sp * prob2);
+            }
+            next.set_len(len * 3);
         }
         sums_b = next;
     }
