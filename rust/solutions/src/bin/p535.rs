@@ -1,10 +1,10 @@
 // Project Euler 535 - Fractal Sequence
 //
-// Recursive computation of T(n) with memoization using FxHashMap.
+// Recursive computation of T(n) with memoization using FxHashMap with pre-allocation.
 // T(n) = sum_{i=1}^n S_i mod 10^9.
 //
 // Key optimizations:
-// 1. FxHashMap only allocates for actual keys (vs 4M open-address zeroing)
+// 1. FxHashMap with reserved capacity to avoid reallocation overhead
 // 2. sum_sqrts() returns i128 to avoid overflow (values can reach ~10^27 for n=10^18)
 // 3. tr() correctly computes n*(n+1)/2 mod 10^9 (modular inverse of 2 doesn't exist mod 10^9)
 
@@ -46,9 +46,9 @@ struct Solver {
 impl Solver {
     fn new() -> Self {
         Solver {
-            cache_f: FxHashMap::default(),
-            cache_ss: FxHashMap::default(),
-            cache_t: FxHashMap::default(),
+            cache_f: FxHashMap::with_capacity_and_hasher(8192, Default::default()),
+            cache_ss: FxHashMap::with_capacity_and_hasher(8192, Default::default()),
+            cache_t: FxHashMap::with_capacity_and_hasher(8192, Default::default()),
         }
     }
 
