@@ -128,6 +128,9 @@ fn min_tau_number_for_exponents(
     if r == 0 {
         return Some(1);
     }
+    if r > 64 {
+        return None;
+    }
 
     let required_primes: Vec<u64> = req.keys().cloned().collect();
     let s = required_primes.len();
@@ -145,7 +148,6 @@ fn min_tau_number_for_exponents(
     let required_set: std::collections::HashSet<u64> =
         required_primes.iter().cloned().collect();
 
-    // Smallest filler primes not in required_set.
     let fillers_needed = r - s;
     let mut fillers: Vec<u64> = Vec::new();
     if fillers_needed > 0 {
@@ -160,24 +162,23 @@ fn min_tau_number_for_exponents(
     }
     fillers.sort();
 
-    // Process larger required primes first (they prefer smaller exponents).
     let mut req_primes_sorted: Vec<u64> = required_primes.clone();
     req_primes_sorted.sort_unstable_by(|a, b| b.cmp(a));
 
     let exps: Vec<u32> = exps_desc.to_vec();
 
-    // Greedy upper bound.
     let greedy_upper_bound = || -> Option<u128> {
         let mut avail: Vec<u32> = exps.clone();
-        avail.sort();
+        avail.sort_unstable();
+        let mut used = [false; 64];
         let mut prod: u128 = 1;
         for &p in &req_primes_sorted {
             let need = *req.get(&p).unwrap();
             let mut found = false;
             for i in 0..avail.len() {
-                if avail[i] >= need {
+                if !used[i] && avail[i] >= need {
                     prod = prod.checked_mul(pow128(p as u128, avail[i]))?;
-                    avail.remove(i);
+                    used[i] = true;
                     found = true;
                     break;
                 }
@@ -189,9 +190,17 @@ fn min_tau_number_for_exponents(
                 return None;
             }
         }
-        avail.sort_unstable_by(|a, b| b.cmp(a));
-        for (&p, &e) in fillers.iter().zip(avail.iter()) {
-            prod = prod.checked_mul(pow128(p as u128, e))?;
+        let mut rem_idx = 0;
+        let mut rem = [0u32; 64];
+        for i in 0..avail.len() {
+            if !used[i] {
+                rem[rem_idx] = avail[i];
+                rem_idx += 1;
+            }
+        }
+        rem[..rem_idx].sort_unstable_by(|a, b| b.cmp(a));
+        for i in 0..rem_idx.min(fillers.len()) {
+            prod = prod.checked_mul(pow128(fillers[i] as u128, rem[i]))?;
             if prod > limit {
                 return None;
             }
@@ -206,19 +215,20 @@ fn min_tau_number_for_exponents(
     };
     let mut best_val: Option<u128> = greedy;
 
-    // DFS to assign exponents to required primes, with inline lower-bound pruning.
-    struct DfsState {
-        req_primes_sorted: Vec<u64>,
-        req: HashMap<u64, u32>,
-        fillers: Vec<u64>,
-        exps: Vec<u32>,
-        r: usize,
-        limit: u128,
+    let mut req_needs = [0u32; 64];
+    for (idx, &p) in req_primes_sorted.iter().enumerate() {
+        req_needs[idx] = *req.get(&p).unwrap();
     }
 
+    #[inline(always)]
     fn dfs2(
-        state: &DfsState,
         req_idx: usize,
+        req_primes_sorted: &[u64],
+        req_needs: &[u32; 64],
+        fillers: &[u64],
+        exps: &[u32],
+        r: usize,
+        limit: u128,
         mask: u64,
         current_prod: u128,
         best_int: &mut u128,
@@ -227,17 +237,19 @@ fn min_tau_number_for_exponents(
         if current_prod >= *best_int {
             return;
         }
-        if req_idx == state.req_primes_sorted.len() {
-            let mut rem_exps: Vec<u32> = Vec::new();
-            for i in 0..state.r {
+        if req_idx == req_primes_sorted.len() {
+            let mut rem = [0u32; 64];
+            let mut rem_count = 0;
+            for i in 0..r {
                 if (mask >> i) & 1 == 0 {
-                    rem_exps.push(state.exps[i]);
+                    rem[rem_count] = exps[i];
+                    rem_count += 1;
                 }
             }
-            rem_exps.sort_unstable_by(|a, b| b.cmp(a));
+            rem[..rem_count].sort_unstable_by(|a, b| b.cmp(a));
             let mut total = current_prod;
-            for (&p, &e) in state.fillers.iter().zip(rem_exps.iter()) {
-                total = match total.checked_mul(pow128(p as u128, e)) {
+            for i in 0..rem_count.min(fillers.len()) {
+                total = match total.checked_mul(pow128(fillers[i] as u128, rem[i])) {
                     Some(v) => v,
                     None => return,
                 };
@@ -245,62 +257,22 @@ fn min_tau_number_for_exponents(
                     return;
                 }
             }
-            if total <= state.limit && total < *best_int {
+            if total <= limit && total < *best_int {
                 *best_int = total;
                 *best_val = Some(total);
             }
             return;
         }
 
-        // Inline lower bound check.
-        {
-            let mut rem_exps: Vec<u32> = Vec::new();
-            for i in 0..state.r {
-                if (mask >> i) & 1 == 0 {
-                    rem_exps.push(state.exps[i]);
-                }
-            }
-            rem_exps.sort_unstable_by(|a, b| b.cmp(a));
-            let mut rem_primes: Vec<u64> = state.fillers.clone();
-            for i in req_idx..state.req_primes_sorted.len() {
-                rem_primes.push(state.req_primes_sorted[i]);
-            }
-            rem_primes.sort_unstable();
-            let mut lb = current_prod;
-            let mut exceeded = false;
-            for (&p, &e) in rem_primes.iter().zip(rem_exps.iter()) {
-                lb = match lb.checked_mul(pow128(p as u128, e)) {
-                    Some(v) => v,
-                    None => {
-                        exceeded = true;
-                        break;
-                    }
-                };
-                if lb >= *best_int {
-                    exceeded = true;
-                    break;
-                }
-            }
-            if !exceeded && lb >= *best_int {
-                return;
-            }
-            if exceeded {
-                // lb overflowed or exceeded best_int => can't prune
-                // Actually if lb >= best_int, we should prune!
-                // The overflow case means the actual value is huge, so also prune.
-                return;
-            }
-        }
-
-        let p = state.req_primes_sorted[req_idx];
-        let need = *state.req.get(&p).unwrap();
+        let p = req_primes_sorted[req_idx];
+        let need = req_needs[req_idx];
 
         let mut prev_e: Option<u32> = None;
-        for i in 0..state.r {
+        for i in 0..r {
             if (mask >> i) & 1 != 0 {
                 continue;
             }
-            let e = state.exps[i];
+            let e = exps[i];
             if e < need {
                 continue;
             }
@@ -313,23 +285,38 @@ fn min_tau_number_for_exponents(
                 Some(v) => v,
                 None => continue,
             };
-            if nxt >= *best_int || nxt > state.limit {
+            if nxt >= *best_int || nxt > limit {
                 continue;
             }
-            dfs2(state, req_idx + 1, mask | (1 << i), nxt, best_int, best_val);
+            dfs2(
+                req_idx + 1,
+                req_primes_sorted,
+                req_needs,
+                fillers,
+                exps,
+                r,
+                limit,
+                mask | (1 << i),
+                nxt,
+                best_int,
+                best_val,
+            );
         }
     }
 
-    let state = DfsState {
-        req_primes_sorted,
-        req: req.clone(),
-        fillers,
-        exps,
+    dfs2(
+        0,
+        &req_primes_sorted,
+        &req_needs,
+        &fillers,
+        &exps,
         r,
         limit,
-    };
-
-    dfs2(&state, 0, 0, 1, &mut best_int, &mut best_val);
+        0,
+        1,
+        &mut best_int,
+        &mut best_val,
+    );
     best_val
 }
 
