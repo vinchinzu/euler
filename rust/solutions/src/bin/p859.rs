@@ -21,42 +21,55 @@ fn main() {
     let mut dp = vec![0i64; (N + 1) * MAX_VAL];
     dp[OFFSET] = 1;
 
+    let mut lo = vec![MAX_VAL; N + 1];
+    let mut hi = vec![0usize; N + 1];
+    lo[0] = OFFSET;
+    hi[0] = OFFSET;
+
     for k in 1..=N {
         let g_val = g[k];
         for n in k..=N {
+            if lo[n - k] > hi[n - k] {
+                continue;
+            }
             let src_base = (n - k) * MAX_VAL;
             let dst_base = n * MAX_VAL;
             if g_val >= 0 {
-                let g_usize = g_val as usize;
-                let i_end = MAX_VAL - g_usize;
-                for i in 0..i_end {
-                    let src_idx = src_base + i;
-                    let dst_idx = dst_base + i + g_usize;
+                let offset = g_val as usize;
+                let i_start = lo[n - k];
+                let i_end = hi[n - k].min(MAX_VAL - offset - 1);
+                for i in i_start..=i_end {
                     unsafe {
-                        // SAFETY: src_idx = (n-k)*MAX_VAL + i where n-k < N+1, i < MAX_VAL
-                        // and dst_idx = n*MAX_VAL + i + g_usize where n <= N, i+g_usize < MAX_VAL
-                        // Both indices are within dp size of (N+1)*MAX_VAL
-                        let val = *dp.get_unchecked(src_idx);
+                        // SAFETY: i is in [i_start, i_end] where both are < MAX_VAL
+                        // and offset ensures i+offset < MAX_VAL
+                        // src_base and dst_base are valid row offsets
+                        let val = *dp.get_unchecked(src_base + i);
                         if val > 0 {
-                            *dp.get_unchecked_mut(dst_idx) += val;
+                            *dp.get_unchecked_mut(dst_base + i + offset) += val;
                         }
                     }
                 }
+                if i_start <= i_end {
+                    lo[n] = lo[n].min(i_start + offset);
+                    hi[n] = hi[n].max(i_end + offset);
+                }
             } else {
-                let i_start = (-g_val) as usize;
-                for i in i_start..MAX_VAL {
-                    let src_idx = src_base + i;
-                    let dst_idx = dst_base + (i as i32 + g_val) as usize;
+                let neg_offset = (-g_val) as usize;
+                let i_start = lo[n - k].max(neg_offset);
+                let i_end = hi[n - k];
+                for i in i_start..=i_end {
                     unsafe {
-                        // SAFETY: src_idx = (n-k)*MAX_VAL + i where n-k < N+1, i < MAX_VAL
-                        // and dst_idx = n*MAX_VAL + (i+g_val) where n <= N, i >= -g_val ensures i+g_val >= 0,
-                        // and i < MAX_VAL with g_val negative ensures (i+g_val) < MAX_VAL
-                        // Both indices are within dp size of (N+1)*MAX_VAL
-                        let val = *dp.get_unchecked(src_idx);
+                        // SAFETY: i >= neg_offset ensures i-neg_offset >= 0
+                        // i <= hi[n-k] < MAX_VAL ensures bounds
+                        let val = *dp.get_unchecked(src_base + i);
                         if val > 0 {
-                            *dp.get_unchecked_mut(dst_idx) += val;
+                            *dp.get_unchecked_mut(dst_base + i - neg_offset) += val;
                         }
                     }
+                }
+                if i_start <= i_end {
+                    lo[n] = lo[n].min(i_start - neg_offset);
+                    hi[n] = hi[n].max(i_end - neg_offset);
                 }
             }
         }
