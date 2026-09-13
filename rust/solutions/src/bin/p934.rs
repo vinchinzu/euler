@@ -51,10 +51,10 @@ fn main() {
     // Start from index 4 (primes[4] = 11)
     let mut idx = 4usize;
     while idx + 1 < primes.len() {
-        let p = primes[idx];
+        let p = primes[idx] as u64;
         let p128 = p as i128;
         let next_p = primes[idx + 1];
-        let diff = next_p - p;
+        let diff = next_p - primes[idx];
 
         let next_mod = mod_val * p128;
 
@@ -64,13 +64,13 @@ fn main() {
         // Compute inv30 mod p using Fermat's little theorem
         let inv30 = pow_mod(30 % p, p - 2, p);
 
-        let mut valid_digits: Vec<i64> = Vec::with_capacity((limit_s + 1) as usize);
+        let mut valid_digits: Vec<u64> = Vec::with_capacity((limit_s + 1) as usize);
         for s in 0..=limit_s {
             valid_digits.push(s * inv30 % p);
         }
 
-        // inv_mod = mod_val^(-1) mod p (mod_val % p fits in i64)
-        let mod_val_mod_p = ((mod_val % p128) as i64 + p) % p;
+        // inv_mod = mod_val^(-1) mod p (mod_val % p fits in u64)
+        let mod_val_mod_p = (mod_val % p128) as u64;
         let inv_mod = pow_mod(mod_val_mod_p, p - 2, p);
 
         let is_next_mod_large = next_mod > m128;
@@ -85,10 +85,18 @@ fn main() {
 
         let mut new_residues: Vec<i64> = Vec::with_capacity(nres * nvalid);
 
+        let p_i64 = p as i64;
         for &r in &residues {
-            let r_mod_p = ((r % p) + p) % p;
+            // Optimize: r is typically positive, so avoid double modulo
+            let r_mod_p = if r >= 0 {
+                (r % p_i64) as u64
+            } else {
+                ((r % p_i64 + p_i64) as u64)
+            };
+            
             for &d in &valid_digits {
-                let k_val = ((d - r_mod_p + p) % p * inv_mod) % p;
+                // Optimize: single modulo with Barrett-style reduction
+                let k_val = (d + p - r_mod_p) % p * inv_mod % p;
                 // Use i128 to avoid overflow in k_val * mod_val
                 let x = r as i128 + k_val as i128 * mod_val;
                 if is_next_mod_large {
@@ -127,15 +135,16 @@ fn main() {
     println!("{}", total);
 }
 
-fn pow_mod(mut base: i64, mut exp: i64, m: i64) -> i64 {
-    let mut result: i64 = 1;
+// Fast modular exponentiation using u64 arithmetic (all primes < 1000)
+#[inline]
+fn pow_mod(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut result = 1u64;
     base %= m;
-    if base < 0 { base += m; }
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % m as i128) as i64;
+            result = result * base % m;
         }
-        base = (base as i128 * base as i128 % m as i128) as i64;
+        base = base * base % m;
         exp >>= 1;
     }
     result
