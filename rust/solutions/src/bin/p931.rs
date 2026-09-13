@@ -249,15 +249,18 @@ fn main() {
 
     let mut s_main: u64 = 0;
     let mut k = 1u64;
+    let k_threshold = K as u64;
     while k <= LIMIT {
         let v = LIMIT / k;
         let k_end = LIMIT / v;
 
         let hi = k_end;
-        let lo = if v + 1 <= LIMIT { LIMIT / (v + 1) } else { 0 };
+        let lo_v = v + 1;
+        let lo = if lo_v <= LIMIT { LIMIT / lo_v } else { 0 };
 
-        let (sp_hi, cp_hi) = if hi <= K as u64 {
-            (s1_small[hi as usize] as u64, s0_small[hi as usize] as u64)
+        let (sp_hi, cp_hi) = if hi <= k_threshold {
+            let h_idx = hi as usize;
+            (s1_small[h_idx] as u64, s0_small[h_idx] as u64)
         } else {
             let idx = (LIMIT / hi) as usize;
             (s1_large[idx] as u64, s0_large[idx] as u64)
@@ -265,7 +268,7 @@ fn main() {
 
         let (sp_lo, cp_lo) = if lo == 0 {
             (0, 0)
-        } else if lo <= K as u64 {
+        } else if lo <= k_threshold {
             (s1_small[lo as usize] as u64, s0_small[lo as usize] as u64)
         } else {
             let idx = (LIMIT / lo) as usize;
@@ -276,27 +279,29 @@ fn main() {
         let cp_range = (cp_hi + MOD - cp_lo) % MOD;
         let sum_p_minus_2 = (sp_range + 2 * MOD - 2 * cp_range % MOD) % MOD;
 
-        s_main = (s_main + f(v) * sum_p_minus_2 % MOD) % MOD;
+        let fv = f(v);
+        s_main = (s_main + fv * sum_p_minus_2 % MOD) % MOD;
 
         k = k_end + 1;
     }
 
     let mut d_sum: u64 = 0;
-    for &p_u32 in &primes {
-        let p = p_u32 as u64;
-        if p * p > LIMIT { break; }
-        d_sum = (d_sum + (p % MOD) * f(LIMIT / (p * p)) % MOD) % MOD;
-    }
-
     let mut c_ge2: u64 = 0;
+    let sqrt_limit = (LIMIT as f64).sqrt() as u64 + 1;
+    
     for &p_u32 in &primes {
         let p = p_u32 as u64;
-        let mut pa = p * p;
-        if pa > LIMIT { break; }
+        let p2 = p * p;
+        if p2 > LIMIT { break; }
+        
+        let pm = p % MOD;
+        d_sum = (d_sum + pm * f(LIMIT / p2) % MOD) % MOD;
+        
+        let mut pa = p2;
         loop {
             let q1 = LIMIT / pa;
             let q2 = q1 / p;
-            let term = (f(q1) + MOD - (p % MOD) * f(q2) % MOD) % MOD;
+            let term = (f(q1) + MOD - pm * f(q2) % MOD) % MOD;
             c_ge2 = (c_ge2 + term) % MOD;
             if pa > LIMIT / p { break; }
             pa *= p;
