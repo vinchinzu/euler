@@ -31,16 +31,17 @@ fn mod_inv(n: u32) -> u32 {
 }
 
 fn main() {
-    // Sieve primes up to N_VAL
     let mut is_prime = vec![true; N_VAL + 1];
     is_prime[0] = false;
     is_prime[1] = false;
-    let mut primes = Vec::new();
+    let mut primes = Vec::with_capacity(N_VAL / 10);
     for i in 2..=N_VAL {
         if is_prime[i] {
             primes.push(i);
-            for j in (i * 2..=N_VAL).step_by(i) {
-                is_prime[j] = false;
+            if i <= 141 {
+                for j in (i * i..=N_VAL).step_by(i) {
+                    is_prime[j] = false;
+                }
             }
         }
     }
@@ -78,19 +79,19 @@ fn main() {
         .map(|prime_list| {
             let mut num = vec![1u32; N_VAL + 1];
             for p in prime_list {
-                let inv_p = mod_inv(p as u32);
+                let p_u32 = p as u32;
+                let inv_p = mod_inv(p_u32);
                 let mut e = 0i64;
                 let mut f = 0i64;
-                let mut p_pow;
-                let mut step_mult;
+                let mut step_mult = 1u32;
 
                 let mut n = p;
                 while n <= N_VAL {
-                    if n == p {
-                        e = p as i64 - 1;
+                    let p_pow = if n == p {
+                        e = (p - 1) as i64;
                         f = 1;
-                        p_pow = power(p as u32, (e + 1) as u64);
                         step_mult = inv_p;
+                        power(p_u32, e as u64 + 1)
                     } else {
                         let mut m = n;
                         let mut v = 0i64;
@@ -100,20 +101,41 @@ fn main() {
                         }
                         e += (n as i64 - 1) * v - f;
                         f += v;
-                        p_pow = power(p as u32, (e + 1) as u64);
-                        step_mult = power(inv_p, f as u64);
-                    }
+                        for _ in 0..v {
+                            step_mult = mul_mod(step_mult, inv_p);
+                        }
+                        power(p_u32, (e + 1) as u64)
+                    };
 
-                    let term_num = p_pow - 1;
-                    num[n] = mul_mod(num[n], term_num);
+                    let term_num = p_pow.wrapping_sub(1);
+                    // SAFETY: n is in range [p, N_VAL] and num has size N_VAL+1
+                    unsafe {
+                        *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), term_num);
+                    }
 
                     let next_mult = std::cmp::min(n + p, N_VAL + 1);
                     let steps = (next_mult - 1 - n) as i64;
+                    
+                    let mut cur_pow = p_pow;
                     n += 1;
-                    while n < next_mult {
-                        p_pow = mul_mod(p_pow, step_mult);
-                        let term_num = p_pow - 1;
-                        num[n] = mul_mod(num[n], term_num);
+                    let limit = next_mult;
+                    while n + 3 < limit {
+                        cur_pow = mul_mod(cur_pow, step_mult);
+                        unsafe { *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), cur_pow.wrapping_sub(1)); }
+                        n += 1;
+                        cur_pow = mul_mod(cur_pow, step_mult);
+                        unsafe { *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), cur_pow.wrapping_sub(1)); }
+                        n += 1;
+                        cur_pow = mul_mod(cur_pow, step_mult);
+                        unsafe { *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), cur_pow.wrapping_sub(1)); }
+                        n += 1;
+                        cur_pow = mul_mod(cur_pow, step_mult);
+                        unsafe { *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), cur_pow.wrapping_sub(1)); }
+                        n += 1;
+                    }
+                    while n < limit {
+                        cur_pow = mul_mod(cur_pow, step_mult);
+                        unsafe { *num.get_unchecked_mut(n) = mul_mod(*num.get_unchecked(n), cur_pow.wrapping_sub(1)); }
                         n += 1;
                     }
                     e -= steps * f;
@@ -125,7 +147,10 @@ fn main() {
             || vec![1u32; N_VAL + 1],
             |mut acc, item| {
                 for i in 1..=N_VAL {
-                    acc[i] = mul_mod(acc[i], item[i]);
+                    // SAFETY: i is in range [1, N_VAL] and both vecs have size N_VAL+1
+                    unsafe {
+                        *acc.get_unchecked_mut(i) = mul_mod(*acc.get_unchecked(i), *item.get_unchecked(i));
+                    }
                 }
                 acc
             },
@@ -134,8 +159,11 @@ fn main() {
     // Sum D(n) = num[n] * inv_all_pm1[n] mod MOD for n = 1..=N_VAL
     let mut answer = 0u64;
     for n in 1..=N_VAL {
-        let d = mul_mod(final_num[n], inv_all_pm1[n]) as u64;
-        answer = (answer + d) % MOD;
+        // SAFETY: n is in range [1, N_VAL] and both vecs have size N_VAL+1
+        unsafe {
+            let d = mul_mod(*final_num.get_unchecked(n), *inv_all_pm1.get_unchecked(n)) as u64;
+            answer = (answer + d) % MOD;
+        }
     }
 
     println!("{}", answer);
