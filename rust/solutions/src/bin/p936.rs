@@ -26,7 +26,11 @@ fn mul_inv(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
         for x in s..=xmax {
             let y_hi = ymax.min(x);
             for y in 1..=y_hi {
-                p[x][y] += p[x - s][y - 1];
+                // SAFETY: x <= xmax < DIM, x-s < DIM (since x >= s), y <= ymax < DIM, y-1 < DIM
+                unsafe {
+                    let val = *p.get_unchecked(x - s).get_unchecked(y - 1);
+                    *p.get_unchecked_mut(x).get_unchecked_mut(y) += val;
+                }
             }
         }
         return;
@@ -38,7 +42,11 @@ fn mul_inv(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
             for x in s..=xmax {
                 let y_hi = ymax.min(x);
                 for y in 1..=y_hi {
-                    p[x][y] += p[x - s][y - 1];
+                    // SAFETY: x <= xmax < DIM, x-s < DIM, y <= ymax < DIM, y-1 < DIM
+                    unsafe {
+                        let val = *p.get_unchecked(x - s).get_unchecked(y - 1);
+                        *p.get_unchecked_mut(x).get_unchecked_mut(y) += val;
+                    }
                 }
             }
         }
@@ -49,7 +57,11 @@ fn mul_inv(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
         for x in (s..=xmax).rev() {
             let y_hi = ymax.min(x);
             for y in (1..=y_hi).rev() {
-                p[x][y] += count * p[x - s][y - 1];
+                // SAFETY: x <= xmax < DIM, x-s < DIM, y <= ymax < DIM, y-1 < DIM
+                unsafe {
+                    let val = count * *p.get_unchecked(x - s).get_unchecked(y - 1);
+                    *p.get_unchecked_mut(x).get_unchecked_mut(y) += val;
+                }
             }
         }
         return;
@@ -71,9 +83,18 @@ fn mul_inv(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
             let mj = mjx.min(y);
             let mut term = 0i64;
             for j in 1..=mj {
-                term += p[x - j * s][y - j] * cs[j];
+                // SAFETY: x >= j*s, j*s <= x <= xmax < DIM, x-j*s < DIM
+                //         y >= j, y-j < DIM, j <= mj <= max_j < DIM
+                unsafe {
+                    let pval = *p.get_unchecked(x - j * s).get_unchecked(y - j);
+                    let cval = *cs.get_unchecked(j);
+                    term += pval * cval;
+                }
             }
-            p[x][y] += term;
+            // SAFETY: x <= xmax < DIM, y <= ymax < DIM
+            unsafe {
+                *p.get_unchecked_mut(x).get_unchecked_mut(y) += term;
+            }
         }
     }
 }
@@ -99,7 +120,11 @@ fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
         for x in (s..=xmax).rev() {
             let y_hi = ymax.min(x);
             for y in (1..=y_hi).rev() {
-                p[x][y] -= p[x - s][y - 1];
+                // SAFETY: x <= xmax < DIM, x-s < DIM, y <= ymax < DIM, y-1 < DIM
+                unsafe {
+                    let val = *p.get_unchecked(x - s).get_unchecked(y - 1);
+                    *p.get_unchecked_mut(x).get_unchecked_mut(y) -= val;
+                }
             }
         }
         return;
@@ -109,7 +134,11 @@ fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
         for x in (s..=xmax).rev() {
             let y_hi = ymax.min(x);
             for y in (1..=y_hi).rev() {
-                p[x][y] -= count * p[x - s][y - 1];
+                // SAFETY: x <= xmax < DIM, x-s < DIM, y <= ymax < DIM, y-1 < DIM
+                unsafe {
+                    let val = count * *p.get_unchecked(x - s).get_unchecked(y - 1);
+                    *p.get_unchecked_mut(x).get_unchecked_mut(y) -= val;
+                }
             }
         }
         return;
@@ -120,7 +149,11 @@ fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
             for x in (s..=xmax).rev() {
                 let y_hi = ymax.min(x);
                 for y in (1..=y_hi).rev() {
-                    p[x][y] -= p[x - s][y - 1];
+                    // SAFETY: x <= xmax < DIM, x-s < DIM, y <= ymax < DIM, y-1 < DIM
+                    unsafe {
+                        let val = *p.get_unchecked(x - s).get_unchecked(y - 1);
+                        *p.get_unchecked_mut(x).get_unchecked_mut(y) -= val;
+                    }
                 }
             }
         }
@@ -143,9 +176,17 @@ fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
             let mj = mjx.min(y);
             let mut term = 0i64;
             for j in 1..=mj {
-                term += p[x - j * s][y - j] * cs[j];
+                // SAFETY: x >= j*s, x-j*s < DIM, y >= j, y-j < DIM, j <= mj <= max_j < DIM
+                unsafe {
+                    let pval = *p.get_unchecked(x - j * s).get_unchecked(y - j);
+                    let cval = *cs.get_unchecked(j);
+                    term += pval * cval;
+                }
             }
-            p[x][y] += term;
+            // SAFETY: x <= xmax < DIM, y <= ymax < DIM
+            unsafe {
+                *p.get_unchecked_mut(x).get_unchecked_mut(y) += term;
+            }
         }
     }
 }
@@ -154,10 +195,12 @@ fn mul_factor(p: &mut Poly, s: usize, count: i64, xmax: usize, ymax: usize) {
 fn conv_at(g: &Poly, f: &Poly, x: usize, y: usize) -> i64 {
     let mut acc = 0i64;
     for i in 0..=x {
-        let fi = &f[i];
-        let gi = &g[x - i];
+        // SAFETY: i <= x < DIM, x-i < DIM guaranteed by loop bounds
+        let fi = unsafe { f.get_unchecked(i) };
+        let gi = unsafe { g.get_unchecked(x - i) };
         for j in 0..=y {
-            acc += fi[j] * gi[y - j];
+            // SAFETY: j <= y < DIM, y-j < DIM guaranteed by loop bounds
+            acc += unsafe { fi.get_unchecked(j) * gi.get_unchecked(y - j) };
         }
     }
     acc
