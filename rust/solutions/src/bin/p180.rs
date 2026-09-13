@@ -87,7 +87,8 @@ fn main() {
     let frac_set: HashSet<(i64, i64)> = fractions.iter().map(|f| f.key()).collect();
 
     let valid = |r: Frac| -> bool {
-        r.den > 0 && r.gt(fzero) && fone.gt(r) && r.den <= MAX_DEN as i128 && frac_set.contains(&r.key())
+        r.den > 0 && r.num > 0 && r.num * r.den < r.den * r.den 
+            && r.den <= MAX_DEN as i128 && frac_set.contains(&r.key())
     };
 
     let sq: Vec<Frac> = fractions.iter().map(|f| f.mul(*f)).collect();
@@ -98,24 +99,36 @@ fn main() {
     for i in 0..fractions.len() {
         for j in i..fractions.len() {
             let z = fractions[i].add(fractions[j]);
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
+            if valid(z) {
+                let s = fractions[i].add(fractions[j]).add(z);
+                sums.insert(s.key());
+            }
         }
     }
 
-    // Case 2: x^2 + y^2 = z^2
+    // Case 2: x^2 + y^2 = z^2 with binary search
     for k in 0..fractions.len() {
         let target = sq[k];
         for i in 0..fractions.len() {
             let diff = target.sub(sq[i]);
             if diff.num <= 0 { continue; }
-            for j in i..fractions.len() {
-                if sq[j].eq(diff) {
-                    let s = fractions[i].add(fractions[j]).add(fractions[k]);
-                    sums.insert(s.key());
+            
+            let mut left = i;
+            let mut right = fractions.len();
+            while left < right {
+                let mid = (left + right) / 2;
+                if sq[mid].num * diff.den < diff.num * sq[mid].den {
+                    left = mid + 1;
+                } else {
+                    right = mid;
                 }
-                if sq[j].gt(diff) { break; }
+            }
+            
+            let mut j = left;
+            while j < fractions.len() && sq[j].eq(diff) {
+                let s = fractions[i].add(fractions[j]).add(fractions[k]);
+                sums.insert(s.key());
+                j += 1;
             }
         }
     }
@@ -126,9 +139,10 @@ fn main() {
             let denom = fractions[i].add(fractions[j]);
             if denom.num == 0 { continue; }
             let z = fractions[i].mul(fractions[j]).div(denom);
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
+            if valid(z) {
+                let s = fractions[i].add(fractions[j]).add(z);
+                sums.insert(s.key());
+            }
         }
     }
 
@@ -139,10 +153,10 @@ fn main() {
             if denom.num == 0 { continue; }
             let z_sq = sq[i].mul(sq[j]).div(denom);
             let z = frac_sqrt(z_sq);
-            if z.den == 0 { continue; }
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
+            if z.den > 0 && valid(z) {
+                let s = fractions[i].add(fractions[j]).add(z);
+                sums.insert(s.key());
+            }
         }
     }
 
