@@ -76,23 +76,34 @@ fn l(n: u128) -> u128 {
         return 0;
     }
 
-    // U = losing positions with 1 <= a <= b <= n.
     let mut u = 0u128;
-    let mut k = 1u32;
-    while (1u128 << (k - 1)) <= n {
-        let lo = 1u128 << (k - 1);
-        let hi = n.min((1u128 << k) - 1);
-        if hi >= lo {
-            let a_k = hi - lo + 1;
-            let m = 1u128 << k;
-            let c_k = if n >= m - 1 { (n - (m - 1)) / m + 1 } else { 0 };
-            u += a_k * c_k;
-        }
-        k += 1;
+    
+    // Precompute max k to avoid repeated comparisons
+    let max_k = 128 - n.leading_zeros();
+    
+    // Maintain powers of 2 incrementally
+    let mut pow2_k_minus_1 = 1u128; // 2^(k-1)
+    let mut pow2_k = 2u128;         // 2^k
+    
+    for _ in 1..=max_k {
+        let lo = pow2_k_minus_1;
+        let hi = n.min(pow2_k - 1);
+        
+        let a_k = hi - lo + 1;
+        let c_k = if n >= pow2_k - 1 { 
+            (n - pow2_k + 1) / pow2_k + 1 
+        } else { 
+            0 
+        };
+        
+        u += a_k * c_k;
+        
+        // Advance powers for next iteration
+        pow2_k_minus_1 = pow2_k;
+        pow2_k <<= 1;
     }
 
-    // Diagonal losing positions: a = b = 2^k - 1.
-    let d = 128u32 - (n + 1).leading_zeros() - 1;
+    let d = 128 - (n + 1).leading_zeros() - 1;
     2 * u - d as u128
 }
 
