@@ -6,7 +6,6 @@
 // Compute sum F(a,b,c) for 9 <= a < b < c <= 53.
 
 use rayon::prelude::*;
-use std::collections::HashSet;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Rad {
@@ -35,11 +34,15 @@ impl Rad {
     }
     #[inline(always)]
     fn min_rad(self, o: Rad, sc: f64) -> Rad {
-        if self.cmp_rad(o, sc) <= 0 { self } else { o }
+        let vx = self.val(sc);
+        let vy = o.val(sc);
+        if vx <= vy { self } else { o }
     }
     #[inline(always)]
     fn max_rad(self, o: Rad, sc: f64) -> Rad {
-        if self.cmp_rad(o, sc) >= 0 { self } else { o }
+        let vx = self.val(sc);
+        let vy = o.val(sc);
+        if vx >= vy { self } else { o }
     }
     #[inline(always)]
     fn one(d: i64) -> Rad { Rad { a: d, b: 0 } }
@@ -79,10 +82,22 @@ fn gcd_ll(mut a: i64, mut b: i64) -> i64 {
 fn lcm_ll(a: i64, b: i64) -> i64 { a / gcd_ll(a, b) * b }
 
 #[inline]
-fn ext_gcd(a: i64, b: i64) -> (i64, i64) {
-    if b == 0 { return (1, 0); }
-    let (x1, y1) = ext_gcd(b, a % b);
-    (y1, x1 - (a / b) * y1)
+fn ext_gcd(mut a: i64, mut b: i64) -> (i64, i64) {
+    let (mut x0, mut x1) = (1i64, 0i64);
+    let (mut y0, mut y1) = (0i64, 1i64);
+    while b != 0 {
+        let q = a / b;
+        let t = b;
+        b = a % b;
+        a = t;
+        let tx = x1;
+        x1 = x0 - q * x1;
+        x0 = tx;
+        let ty = y1;
+        y1 = y0 - q * y1;
+        y0 = ty;
+    }
+    (x0, y0)
 }
 
 #[inline]
@@ -106,9 +121,9 @@ struct State {
     shift_results: Vec<i32>,
     orders: Vec<i64>,
     new_orders: Vec<i64>,
-    order_set: HashSet<i64>,
     to_add: Vec<Interval>,
     merged_buf: Vec<Interval>,
+    pre_merged: Vec<Interval>,
 }
 
 impl State {
@@ -121,9 +136,9 @@ impl State {
             shift_results: Vec::new(),
             orders: Vec::new(),
             new_orders: Vec::new(),
-            order_set: HashSet::new(),
             to_add: Vec::new(),
             merged_buf: Vec::new(),
+            pre_merged: Vec::new(),
         }
     }
 }
@@ -244,16 +259,17 @@ fn order_compute(st: &mut State, flip_sizes: &[Rad; 3], d: i64, sc: f64) -> i64 
 
         let curr_period = n_pos as i64;
         st.new_orders.clear();
-        st.order_set.clear();
         for &ov in st.orders.iter() {
             for &sv in st.shift_results.iter() {
                 let nv = general_crt(ov, period, sv as i64, curr_period);
-                if nv != -1 && st.order_set.insert(nv) {
+                if nv != -1 {
                     st.new_orders.push(nv);
                 }
             }
         }
         period = lcm_ll(period, curr_period);
+        st.new_orders.sort_unstable();
+        st.new_orders.dedup();
         std::mem::swap(&mut st.orders, &mut st.new_orders);
 
         // Collect non-flipped stride-3 intervals, sort, pre-merge, batch-insert
@@ -271,17 +287,17 @@ fn order_compute(st: &mut State, flip_sizes: &[Rad; 3], d: i64, sc: f64) -> i64 
             va.partial_cmp(&vb).unwrap()
         });
         // Pre-merge adjacent/overlapping intervals
-        let mut pre_merged: Vec<Interval> = Vec::new();
+        st.pre_merged.clear();
         for &iv in &st.to_add {
-            if let Some(last) = pre_merged.last_mut() {
+            if let Some(last) = st.pre_merged.last_mut() {
                 if iv.start.cmp_rad(last.end, sc) <= 0 {
                     last.end = last.end.max_rad(iv.end, sc);
                     continue;
                 }
             }
-            pre_merged.push(iv);
+            st.pre_merged.push(iv);
         }
-        batch_insert_intervals(&mut st.intervals, &pre_merged, &mut st.merged_buf, sc);
+        batch_insert_intervals(&mut st.intervals, &st.pre_merged, &mut st.merged_buf, sc);
     }
 
     let mut min_order = period;
