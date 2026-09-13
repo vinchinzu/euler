@@ -32,32 +32,32 @@ fn expected_gain(fair: usize, unfair: usize, prev: &mut Vec<f64>, curr: &mut Vec
 
     let mut l = pow_half(MAX_TOSS);
     for h in 0..=MAX_TOSS {
-        let pf = fair_f / (fair_f + unfair_f * l);
-        let m = if pf > 0.5 { pf } else { 1.0 - pf };
-        // SAFETY: h <= MAX_TOSS, prev.len() == MAX_TOSS + 2
+        let denom = unfair_f.mul_add(l, fair_f);
+        let pf = fair_f / denom;
+        let m = pf.max(1.0 - pf);
         unsafe {
-            *prev.get_unchecked_mut(h) = 70.0 * m - 50.0;
+            *prev.get_unchecked_mut(h) = m.mul_add(70.0, -50.0);
         }
         l *= 3.0;
     }
 
     for total in (0..MAX_TOSS).rev() {
         let mut l = pow_half(total);
-        for h in 0..=total {
-            let pf = fair_f / (fair_f + unfair_f * l);
-            let m = if pf > 0.5 { pf } else { 1.0 - pf };
-            let best_guess = 70.0 * m - 50.0;
-            let p_heads = 0.75 - 0.25 * pf;
-            // SAFETY: h <= total < MAX_TOSS => h + 1 <= MAX_TOSS; buffers length MAX_TOSS + 2
+        let h_max = total;
+        
+        for h in 0..=h_max {
+            let denom = unfair_f.mul_add(l, fair_f);
+            let pf = fair_f / denom;
+            let m = pf.max(1.0 - pf);
+            let best_guess = m.mul_add(70.0, -50.0);
+            let p_heads = pf.mul_add(-0.25, 0.75);
+            
             unsafe {
                 let val_h = *prev.get_unchecked(h + 1);
                 let val_t = *prev.get_unchecked(h);
-                let ev_toss = p_heads.mul_add(val_h - val_t, val_t) - COST;
-                *curr.get_unchecked_mut(h) = if best_guess > ev_toss {
-                    best_guess
-                } else {
-                    ev_toss
-                };
+                let diff = val_h - val_t;
+                let ev_toss = p_heads.mul_add(diff, val_t - COST);
+                *curr.get_unchecked_mut(h) = best_guess.max(ev_toss);
             }
             l *= 3.0;
         }
