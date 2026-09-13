@@ -166,10 +166,10 @@ fn fast_f_mod(k: u64, t: u64, r: u64, m: u64) -> u64 {
     // Corrections: for j = k-p0-1 (p0>0), the leading bit forces d_j = Q - (B_j-C_j)
     for i in 1..n {
         let _p0 = positions[i];
-        // bits <= p0 are in B; bits > p0 are in C
-        let sum_high_le = prefix_high[i + 1];
+        // s represents (B_j - C_j) * 2^{p0+1} mod m
+        let sum_low_le = prefix_low[i + 1];
         let sum_low_gt = (total_low + m - prefix_low[i + 1]) % m;
-        let s = (sum_high_le + m - sum_low_gt) % m;
+        let s = (pow2_k * sum_low_le % m + m - sum_low_gt) % m;
 
         let pow2_p0_plus1 = vals_low[i] * 2 % m; // 2^{p0+1}
         // (2^k + 1) * 2^{p0+1}
