@@ -135,9 +135,16 @@ fn main() {
                 let d = unsafe { *divs.get_unchecked(i) };
                 if d > ni64 {
                     let m = d - ni64;
-                    let val = d + 1 - nn1 / d;
-                    if val & 1 == 0 {
+                    if d & 1 == 1 {
+                        // Odd divisors always satisfy the parity condition
+                        // since n(n-1) is even, n(n-1)/d is even, and d+1 is even
                         local_ans += m;
+                    } else {
+                        // Even divisors need explicit check
+                        let val = d + 1 - nn1 / d;
+                        if val & 1 == 0 {
+                            local_ans += m;
+                        }
                     }
                 }
             }
