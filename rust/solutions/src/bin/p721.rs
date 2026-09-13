@@ -11,10 +11,10 @@ const M: u64 = 999_999_937;
 #[inline(always)]
 fn mat_mult(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     [
-        (a[0] * b[0] % M + a[1] * b[2] % M) % M,
-        (a[0] * b[1] % M + a[1] * b[3] % M) % M,
-        (a[2] * b[0] % M + a[3] * b[2] % M) % M,
-        (a[2] * b[1] % M + a[3] * b[3] % M) % M,
+        (a[0] * b[0] + a[1] * b[2]) % M,
+        (a[0] * b[1] + a[1] * b[3]) % M,
+        (a[2] * b[0] + a[3] * b[2]) % M,
+        (a[2] * b[1] + a[3] * b[3]) % M,
     ]
 }
 
@@ -35,17 +35,7 @@ fn mat_pow(mat: &[u64; 4], mut exp: u64) -> [u64; 4] {
 #[inline(always)]
 fn is_sq(n: u64) -> bool {
     let r = (n as f64).sqrt() as u64;
-    // Check r-1, r, r+1 to handle floating point imprecision
-    if r >= 1 && r - 1 > 0 && (r - 1) * (r - 1) == n {
-        return true;
-    }
-    if r * r == n {
-        return true;
-    }
-    if (r + 1) * (r + 1) == n {
-        return true;
-    }
-    false
+    r * r == n
 }
 
 fn f(a: u64) -> u64 {
