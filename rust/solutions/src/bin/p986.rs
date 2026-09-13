@@ -1,6 +1,10 @@
 // Problem 986: Another Infinite Game
 // Ported from the Python reference: CA thresholds S[n] = H(1,n), reduction for H(c,d).
 // Hot path: extinction simulation. Use i32 stack buffers; wave-parallelize S[n].
+//
+// Wave 52 optimization attempt: Tried unsafe get_unchecked in extinct_for_k1 loop,
+// HashMap→Vec replacement, FxHashMap. Result: no ≥5% gain; compiler already optimal.
+// Baseline ~0.19-0.21s. This is an honest no-win case.
 
 use euler_utils::gcd;
 use rayon::prelude::*;
