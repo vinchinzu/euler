@@ -11,36 +11,45 @@ fn main() {
     let mut best: i64 = 1_000_000_000_000_000_000;
     let mut es = vec![0i32; 30];
     let mut es_len = 0usize;
-    let mut dp_buf = vec![0i64; 2000];
+
+    fn compute_g(es: &[i32], es_len: usize) -> i64 {
+        let mut sum_e = 0;
+        for i in 0..es_len { sum_e += es[i] as usize; }
+        let half = sum_e / 2;
+        let mut dp = vec![0i64; half + 1];
+        dp[0] = 1;
+        for i in 0..es_len {
+            for j in (1..=half).rev() {
+                for k in 1..=es[i] as usize {
+                    if k <= j {
+                        dp[j] += dp[j - k];
+                    }
+                }
+            }
+        }
+        dp[half]
+    }
 
     fn helper(
         index: usize, n: i64, sum_e: i32,
         primes: &[i32], num_primes: usize,
         es: &mut Vec<i32>, es_len: &mut usize,
         best: &mut i64,
-        dp_buf: &mut [i64],
     ) {
         let g = {
             let mut se = 0;
             for i in 0..*es_len { se += es[i] as usize; }
             let half = se / 2;
-            
-            for i in 0..=half { dp_buf[i] = 0; }
-            dp_buf[0] = 1;
-            
+            let mut dp = vec![0i64; half + 1];
+            dp[0] = 1;
             for i in 0..*es_len {
-                let e = es[i] as usize;
                 for j in (1..=half).rev() {
-                    for k in 1..=e {
-                        if k <= j {
-                            unsafe {
-                                *dp_buf.get_unchecked_mut(j) += *dp_buf.get_unchecked(j - k);
-                            }
-                        }
+                    for k in 1..=es[i] as usize {
+                        if k <= j { dp[j] += dp[j - k]; }
                     }
                 }
             }
-            dp_buf[half]
+            dp[half]
         };
 
         if g > N_TARGET && n < *best {
@@ -66,11 +75,11 @@ fn main() {
 
             es[*es_len] = e;
             *es_len += 1;
-            helper(index + 1, new_n, sum_e + e, primes, num_primes, es, es_len, best, dp_buf);
+            helper(index + 1, new_n, sum_e + e, primes, num_primes, es, es_len, best);
             *es_len -= 1;
         }
     }
 
-    helper(0, 1, 0, &primes, num_primes, &mut es, &mut es_len, &mut best, &mut dp_buf);
+    helper(0, 1, 0, &primes, num_primes, &mut es, &mut es_len, &mut best);
     println!("{}", best);
 }
