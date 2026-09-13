@@ -236,9 +236,6 @@ fn convolve_and_decimate(a: &[u64], b: &[u64], bit: usize, out: &mut Vec<u64>) {
             let cp = conv.as_mut_ptr();
             for j in 0..la {
                 let aj = *ap.add(j);
-                if aj == 0 {
-                    continue;
-                }
                 let k0 = (bit ^ j) & 1;
                 if k0 >= lb {
                     continue;
