@@ -3,6 +3,7 @@
 // Port of the Python solution.
 // We compute G(9898) mod 989898989.
 
+#[inline]
 fn modinv(a: i64, m: i64) -> i64 {
     let (mut x0, mut x1): (i64, i64) = (1, 0);
     let (mut aa, mut bb) = (a, m);
@@ -18,8 +19,8 @@ fn modinv(a: i64, m: i64) -> i64 {
     ((x0 % m) + m) % m
 }
 
+#[inline]
 fn ceil_div(n: i64, d: i64) -> i64 {
-    // d > 0
     -((-n).div_euclid(d))
 }
 
@@ -41,31 +42,29 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
         invpow2[i] = invpow2[i - 1] * inv2 % md;
     }
 
-    // prefix sums of invpow2, a*invpow2, a^2*invpow2
     let mut p0 = vec![0i64; m + 1];
     let mut p1 = vec![0i64; m + 1];
     let mut p2 = vec![0i64; m + 1];
     for a in 1..=m {
         let w = invpow2[a];
-        let a_mod = a as i64 % md;
+        let a_mod = a as i64;
         p0[a] = (p0[a - 1] + w) % md;
-        p1[a] = (p1[a - 1] + a_mod % md * w % md) % md;
-        p2[a] = (p2[a - 1] + a_mod % md * a_mod % md * w % md) % md;
+        p1[a] = (p1[a - 1] + a_mod * w) % md;
+        p2[a] = (p2[a - 1] + a_mod * a_mod % md * w) % md;
     }
 
-    // interval_sums(l, r) returns (s0, s1, s2)
     let interval_sums = |l: usize, r: usize| -> (i64, i64, i64) {
         if l > r {
             return (0, 0, 0);
         }
-        let s0 = (p0[r] - p0[l - 1] + md) % md;
-        let s1 = (p1[r] - p1[l - 1] + md) % md;
-        let s2 = (p2[r] - p2[l - 1] + md) % md;
-        (s0, s1, s2)
+        unsafe {
+            let s0 = (*p0.get_unchecked(r) - *p0.get_unchecked(l - 1) + md) % md;
+            let s1 = (*p1.get_unchecked(r) - *p1.get_unchecked(l - 1) + md) % md;
+            let s2 = (*p2.get_unchecked(r) - *p2.get_unchecked(l - 1) + md) % md;
+            (s0, s1, s2)
+        }
     };
 
-    // sum_F_linear(alpha, beta, l, r)
-    // sum_{a=l..r} F(alpha*a+beta) * invpow2[a] where F(x) = C(x+2,2)
     let sum_f_linear = |alpha: i64, beta: i64, l: usize, r: usize| -> i64 {
         if l > r {
             return 0;
@@ -74,18 +73,16 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
         let a_mod = ((alpha % md) + md) % md;
         let b_mod = ((beta % md) + md) % md;
 
-        // inv2*(alpha^2*S2 + alpha*(2*beta+3)*S1 + (beta^2+3*beta+2)*S0)
         let term2 = a_mod * a_mod % md;
-        let term1 = a_mod % md * ((2 * b_mod % md + 3) % md) % md;
-        let term0 = (b_mod * b_mod % md + 3 * b_mod % md + 2) % md;
+        let term1 = a_mod * ((2 * b_mod + 3) % md) % md;
+        let term0 = (b_mod * b_mod % md + 3 * b_mod + 2) % md;
 
-        let res = (term2 % md * s2 % md + term1 % md * s1 % md + term0 % md * s0 % md) % md;
+        let res = (term2 * s2 % md + term1 * s1 % md + term0 * s0) % md;
         res * inv2 % md
     };
 
-    let c2: [i64; 3] = [1, 2, 1]; // C(2, ca)
+    let c2: [i64; 3] = [1, 2, 1];
 
-    // G_pq(b, s, p, q)
     let g_pq = |b: usize, s: i64, p: i64, q: i64| -> i64 {
         let a_max = b as i64 - 1;
         if a_max < 1 {
@@ -132,7 +129,6 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
         total
     };
 
-    // base_weighted(b, s) -> [base[0], base[1], base[2], base[3]]
     let base_weighted = |b: usize, s: i64| -> [i64; 4] {
         // precompute all G_pq for p in 0..=2, q in 0..=1
         let mut g = [[0i64; 2]; 3];
@@ -172,15 +168,17 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
     }
     case2 = case2 * 6 % md;
 
-    // Case 3: three mixed
     let mut case3: i64 = 0;
 
-    // carry DP for u-bit core
-    let mut cur0: Vec<i64> = vec![1]; // u=1
-    let mut cur1: Vec<i64> = vec![1];
+    let max_size = m - 1;
+    let mut cur0 = vec![0i64; max_size];
+    let mut cur1 = vec![0i64; max_size];
+    let mut nxt0 = vec![0i64; max_size];
+    let mut nxt1 = vec![0i64; max_size];
+    cur0[0] = 1;
+    cur1[0] = 1;
 
     for u in 1..m - 1 {
-        // u <= m-2
         if u <= m - 2 {
             let b = m - u;
 
@@ -203,26 +201,23 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
                     } else {
                         cur1[c_idx as usize]
                     };
-                    case3 = (case3 + numerator_high % md * base[r as usize] % md) % md;
+                    case3 = (case3 + numerator_high * base[r as usize]) % md;
                 }
             }
         }
 
-        // update DP to u+1 (mod MOD)
-        let mut nxt0 = vec![0i64; u + 1];
-        let mut nxt1 = vec![0i64; u + 1];
         nxt0[0] = 3 * cur0[0] % md;
-        nxt1[0] = cur0[0] % md;
+        nxt1[0] = cur0[0];
         for c in 1..u {
             nxt0[c] = (3 * cur0[c] + cur1[c - 1]) % md;
             nxt1[c] = (cur0[c] + 3 * cur1[c - 1]) % md;
         }
         if u >= 1 {
-            nxt0[u] = cur1[u - 1] % md;
+            nxt0[u] = cur1[u - 1];
             nxt1[u] = 3 * cur1[u - 1] % md;
         }
-        cur0 = nxt0;
-        cur1 = nxt1;
+        std::mem::swap(&mut cur0, &mut nxt0);
+        std::mem::swap(&mut cur1, &mut nxt1);
     }
 
     (case0 + case2 + case3) % md
