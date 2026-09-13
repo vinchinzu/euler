@@ -7,8 +7,6 @@ const MOD: i64 = 977676779;
 const MOD2: i64 = 2 * MOD;
 const N_VAL: i64 = 33557799775533;
 const SQRT_N_MAX: usize = 5_900_000;
-// Tail formula only has p^2 and p^3 terms, so every tail prime needs p^4 > N
-// (N^{1/4} ≈ 2407). 2500 sits just above that bound and shrinks the DFS.
 const SMALL_PRIME_LIMIT: usize = 2_500;
 const SMALL_P2: i64 = (SMALL_PRIME_LIMIT as i64) * (SMALL_PRIME_LIMIT as i64);
 const NUM_K: usize = 22;
@@ -65,9 +63,19 @@ struct Ctx<'a> {
 #[inline(always)]
 fn isqrt(n: i64) -> i64 {
     if n <= 0 {
-        0
-    } else {
-        (n as u64).isqrt() as i64
+        return 0;
+    }
+    let n_u64 = n as u64;
+    if n_u64 <= 1 {
+        return n;
+    }
+    let mut x = 1u64 << ((63 - n_u64.leading_zeros()) / 2 + 1);
+    loop {
+        let y = (x + n_u64 / x) / 2;
+        if y >= x {
+            return x as i64;
+        }
+        x = y;
     }
 }
 
@@ -183,7 +191,7 @@ fn merge_acc(
     *a_inf += b_inf;
 }
 
-const PAR_D_MAX: i64 = 2000;
+const PAR_D_MAX: i64 = 5000;
 
 fn apply_prime(
     i: usize,
@@ -267,7 +275,7 @@ fn dfs(
         return;
     }
 
-    if par && end - idx > 16 {
+    if par && end - idx > 10 {
         let (bk, binf) = (idx..end)
             .into_par_iter()
             .map(|i| {
