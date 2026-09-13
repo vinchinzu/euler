@@ -1,5 +1,11 @@
 // Project Euler 857 - Beautiful Graphs
 // G(n) via sliding window recurrence with A = {0,1,2,6,18,12}
+//
+// Note: This implementation is already near-optimal. Attempted optimizations
+// (u128 deferred reduction, unsafe get_unchecked, copy_within, pre-computed values)
+// showed no improvement or regressions. The tight loop with modular arithmetic
+// is compiler-friendly and bottlenecked by ~100M unavoidable mod operations.
+// See p857_optimization_report.md for details.
 
 const MOD: u64 = 1_000_000_007;
 const A_VALS: [u64; 6] = [0, 1, 2, 6, 18, 12];
