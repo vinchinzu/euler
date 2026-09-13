@@ -36,11 +36,9 @@ fn main() {
                     let fcd = unsafe { *f.get_unchecked(c).get_unchecked(d) };
                     let fda = unsafe { *f.get_unchecked(d).get_unchecked(a) };
                     let total = (fab_fbc + fcd + fda + 1) as usize;
-                    if total <= max_val {
-                        // SAFETY: total <= max_val checked above; is_sq has size max_val+1
-                        if unsafe { *is_sq.get_unchecked(total) } {
-                            ans += 1;
-                        }
+                    // SAFETY: total always <= 19997 < 20001 (max_val+1); is_sq has size max_val+1
+                    if unsafe { *is_sq.get_unchecked(total) } {
+                        ans += 1;
                     }
                 }
             }
