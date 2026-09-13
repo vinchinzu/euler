@@ -58,11 +58,17 @@ fn main() {
     let poly_mul = |a: &[i64], b: &[i64]| -> Vec<i64> {
         let mut out = vec![0i64; BIG_N + 1];
         for i in 0..=BIG_N {
-            if a[i] == 0 { continue; }
-            let ai = a[i];
+            // SAFETY: i <= BIG_N and a has size BIG_N+1
+            let ai = unsafe { *a.get_unchecked(i) };
+            if ai == 0 { continue; }
             for j in 0..=BIG_N - i {
-                if b[j] != 0 {
-                    out[i + j] = (out[i + j] + ai * b[j]) % MOD;
+                // SAFETY: j <= BIG_N-i, so i+j <= BIG_N; arrays have size BIG_N+1
+                unsafe {
+                    let bj = *b.get_unchecked(j);
+                    if bj != 0 {
+                        let out_ptr = out.get_unchecked_mut(i + j);
+                        *out_ptr = (*out_ptr + ai * bj) % MOD;
+                    }
                 }
             }
         }
@@ -93,7 +99,14 @@ fn main() {
     let mut sigma1 = vec![0i64; big_l + 1];
     for d in 1..=big_l {
         let mut m = d;
-        while m <= big_l { sigma1[m] += d as i64; m += d; }
+        while m <= big_l { 
+            // SAFETY: m <= big_l and sigma1 has size big_l+1
+            unsafe {
+                let s1_ptr = sigma1.get_unchecked_mut(m);
+                *s1_ptr += d as i64;
+            }
+            m += d; 
+        }
     }
 
     let mut r1 = vec![0i64; big_l + 1];
@@ -103,10 +116,17 @@ fn main() {
     for _ in 0..5 {
         let mut new_r = vec![0i64; big_l + 1];
         for i in 1..=big_l {
-            if r_cur[i] == 0 { continue; }
+            // SAFETY: i <= big_l and r_cur has size big_l+1
+            let rc = unsafe { *r_cur.get_unchecked(i) };
+            if rc == 0 { continue; }
             for j in 1..=big_l - i {
-                if r1[j] != 0 {
-                    new_r[i + j] = (new_r[i + j] + r_cur[i] * r1[j]) % MOD;
+                // SAFETY: j <= big_l-i and i+j <= big_l; arrays have size big_l+1
+                unsafe {
+                    let r1j = *r1.get_unchecked(j);
+                    if r1j != 0 {
+                        let new_r_ptr = new_r.get_unchecked_mut(i + j);
+                        *new_r_ptr = (*new_r_ptr + rc * r1j) % MOD;
+                    }
                 }
             }
         }
@@ -126,7 +146,14 @@ fn main() {
         for d in 1..=big_l {
             let dk = mod_pow(d as i64, kv as i64, MOD);
             let mut m = d;
-            while m <= big_l { sk[m] = (sk[m] + dk) % MOD; m += d; }
+            while m <= big_l { 
+                // SAFETY: m <= big_l and sk has size big_l+1
+                unsafe {
+                    let sk_ptr = sk.get_unchecked_mut(m);
+                    *sk_ptr = (*sk_ptr + dk) % MOD;
+                }
+                m += d; 
+            }
         }
         sigma_k_vals.push(sk);
     }
@@ -145,35 +172,44 @@ fn main() {
         b_vec[i] = r6_vals[n];
     }
 
-    // Gaussian elimination
+    // Gaussian elimination with flat matrix
     let nn = big_l;
-    let mut aug = vec![vec![0i64; nn + 1]; nn];
+    let ncols = nn + 1;
+    let mut aug = vec![0i64; nn * ncols];
     for i in 0..nn {
-        for j in 0..nn { aug[i][j] = a_mat[i][j]; }
-        aug[i][nn] = b_vec[i];
+        for j in 0..nn { aug[i * ncols + j] = a_mat[i][j]; }
+        aug[i * ncols + nn] = b_vec[i];
     }
 
     for col in 0..nn {
         let mut pivot = nn;
         for row in col..nn {
-            if aug[row][col] % MOD != 0 { pivot = row; break; }
+            if aug[row * ncols + col] % MOD != 0 { pivot = row; break; }
         }
         if pivot != col {
-            aug.swap(col, pivot);
+            for j in 0..ncols {
+                let temp = aug[col * ncols + j];
+                aug[col * ncols + j] = aug[pivot * ncols + j];
+                aug[pivot * ncols + j] = temp;
+            }
         }
-        let inv = mod_inv(aug[col][col]);
-        for j in col..=nn { aug[col][j] = aug[col][j] * inv % MOD; }
+        let inv = mod_inv(aug[col * ncols + col]);
+        for j in col..ncols { 
+            aug[col * ncols + j] = aug[col * ncols + j] * inv % MOD; 
+        }
         for r in 0..nn {
             if r == col { continue; }
-            let factor = aug[r][col] % MOD;
+            let factor = aug[r * ncols + col] % MOD;
             if factor == 0 { continue; }
-            for j in col..=nn {
-                aug[r][j] = (aug[r][j] - factor * aug[col][j] % MOD + MOD) % MOD;
+            for j in col..ncols {
+                let old = aug[r * ncols + j];
+                let sub = factor * aug[col * ncols + j] % MOD;
+                aug[r * ncols + j] = (old - sub + MOD) % MOD;
             }
         }
     }
 
-    let x_sol: Vec<i64> = (0..nn).map(|i| aug[i][nn] % MOD).collect();
+    let x_sol: Vec<i64> = (0..nn).map(|i| aug[i * ncols + nn] % MOD).collect();
 
     // Evaluate at n = 10000!
     let mut fac_exp = vec![0i32; BIG_N + 1];
