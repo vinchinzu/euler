@@ -1,40 +1,51 @@
 const SZ: usize = 30;
 const STEPS: usize = 50;
-
-fn neighbors(i: usize, j: usize) -> usize {
-    let mut n = 0;
-    if i > 0 { n += 1; }
-    if i < SZ - 1 { n += 1; }
-    if j > 0 { n += 1; }
-    if j < SZ - 1 { n += 1; }
-    n
-}
+const HALF: usize = SZ / 2;
 
 fn main() {
-    let half = SZ / 2;
-    let mut table = vec![vec![[[0.0f64; SZ]; SZ]; half]; half];
+    let half = HALF;
+    
+    let neighbor_counts = {
+        let mut nc = [[0u8; SZ]; SZ];
+        for i in 0..SZ {
+            for j in 0..SZ {
+                let mut n = 0u8;
+                if i > 0 { n += 1; }
+                if i < SZ - 1 { n += 1; }
+                if j > 0 { n += 1; }
+                if j < SZ - 1 { n += 1; }
+                nc[i][j] = n;
+            }
+        }
+        nc
+    };
+    
+    let mut table: Box<[[[[f64; SZ]; SZ]; HALF]; HALF]> = 
+        Box::new([[[[0.0f64; SZ]; SZ]; HALF]; HALF]);
 
     for fi in 0..half {
         for fj in 0..half {
-            let mut grid = [[0.0f64; SZ]; SZ];
-            grid[fi][fj] = 1.0;
+            let mut grid_a = [[0.0f64; SZ]; SZ];
+            let mut grid_b = [[0.0f64; SZ]; SZ];
+            grid_a[fi][fj] = 1.0;
 
             for _step in 0..STEPS {
-                let mut new_grid = [[0.0f64; SZ]; SZ];
                 for i in 0..SZ {
                     for j in 0..SZ {
-                        if grid[i][j] == 0.0 { continue; }
-                        let p = grid[i][j] / neighbors(i, j) as f64;
-                        if i > 0 { new_grid[i - 1][j] += p; }
-                        if i < SZ - 1 { new_grid[i + 1][j] += p; }
-                        if j > 0 { new_grid[i][j - 1] += p; }
-                        if j < SZ - 1 { new_grid[i][j + 1] += p; }
+                        let prob = grid_a[i][j];
+                        if prob == 0.0 { continue; }
+                        let p = prob / neighbor_counts[i][j] as f64;
+                        if i > 0 { grid_b[i - 1][j] += p; }
+                        if i < SZ - 1 { grid_b[i + 1][j] += p; }
+                        if j > 0 { grid_b[i][j - 1] += p; }
+                        if j < SZ - 1 { grid_b[i][j + 1] += p; }
                     }
                 }
-                grid = new_grid;
+                std::mem::swap(&mut grid_a, &mut grid_b);
+                grid_b = [[0.0f64; SZ]; SZ];
             }
 
-            table[fi][fj] = grid;
+            table[fi][fj] = grid_a;
         }
     }
 
