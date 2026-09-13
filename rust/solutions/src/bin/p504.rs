@@ -25,13 +25,22 @@ fn main() {
     let mut ans: i64 = 0;
     for a in 1..=N {
         for b in 1..=N {
-            let fab = f[a][b];
+            // SAFETY: a, b in range 1..=N; f has size [N+1][N+1]
+            let fab = unsafe { *f.get_unchecked(a).get_unchecked(b) };
             for c in 1..=N {
-                let fab_fbc = fab + f[b][c];
+                // SAFETY: b, c in range 1..=N; f has size [N+1][N+1]
+                let fbc = unsafe { *f.get_unchecked(b).get_unchecked(c) };
+                let fab_fbc = fab + fbc;
                 for d in 1..=N {
-                    let total = (fab_fbc + f[c][d] + f[d][a] + 1) as usize;
-                    if total <= max_val && is_sq[total] {
-                        ans += 1;
+                    // SAFETY: c, d, a in range 1..=N; f has size [N+1][N+1]
+                    let fcd = unsafe { *f.get_unchecked(c).get_unchecked(d) };
+                    let fda = unsafe { *f.get_unchecked(d).get_unchecked(a) };
+                    let total = (fab_fbc + fcd + fda + 1) as usize;
+                    if total <= max_val {
+                        // SAFETY: total <= max_val checked above; is_sq has size max_val+1
+                        if unsafe { *is_sq.get_unchecked(total) } {
+                            ans += 1;
+                        }
                     }
                 }
             }
