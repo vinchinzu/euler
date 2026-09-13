@@ -21,7 +21,7 @@ fn fib_pair(n: u64, m: u64) -> (u64, u64) {
         return (0, 1);
     }
     let (a, b) = fib_pair(n >> 1, m);
-    let c = mulmod(a, ((2 * b as u128 + m as u128 - a as u128) % m as u128) as u64, m);
+    let c = mulmod(a, ((2u128 * b as u128 + m as u128 - a as u128) % m as u128) as u64, m);
     let d = (mulmod(a, a, m) + mulmod(b, b, m)) % m;
     if n & 1 == 1 {
         (d, (c + d) % m)
@@ -30,6 +30,7 @@ fn fib_pair(n: u64, m: u64) -> (u64, u64) {
     }
 }
 
+#[inline]
 fn fib_mod(n: u64, m: u64) -> u64 {
     fib_pair(n, m).0
 }
@@ -74,7 +75,12 @@ fn main() {
     let total: u64 = primes
         .par_iter()
         .map(|&p| fib_mod(p, MOD))
-        .reduce(|| 0, |a, b| (a + b) % MOD);
+        .reduce(
+            || 0,
+            |a, b| {
+                (a + b) % MOD
+            },
+        );
 
     println!("{}", total);
 }
