@@ -2,29 +2,44 @@
 // S(n) = sum contributions from divisor pairs.
 // Uses sqrt decomposition.
 
-fn power(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    let mut res: i64 = 1;
-    base %= modulus;
-    if base < 0 {
-        base += modulus;
-    }
+use rayon::prelude::*;
+
+#[inline]
+fn power(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut res = 1u64;
+    base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            res = (res as i128 * base as i128 % modulus as i128) as i64;
+            res = res * base % m;
         }
-        base = (base as i128 * base as i128 % modulus as i128) as i64;
+        base = base * base % m;
         exp >>= 1;
     }
     res
 }
 
+#[inline]
+fn mulmod(a: u64, b: u64, m: u64) -> u64 {
+    ((a as u128 * b as u128) % m as u128) as u64
+}
+
+#[inline]
+fn compute_c(n_val: u64, m: u64) -> u64 {
+    let n1 = (n_val + 1) % m;
+    if n_val & 1 == 0 {
+        mulmod(n_val / 2, n1, m)
+    } else {
+        mulmod(n_val, n1 / 2, m)
+    }
+}
+
 fn main() {
-    const MOD: i64 = 1234567891;
-    const MOD_EXP: i64 = MOD - 1;
+    const MOD: u64 = 1234567891;
+    const MOD_EXP: u64 = MOD - 1;
 
-    let n: i64 = 100_000_000_000_000; // 10^14
+    let n: u64 = 100_000_000_000_000;
 
-    let mut s = (n as f64).sqrt() as i64;
+    let mut s = (n as f64).sqrt() as u64;
     while s * s > n {
         s -= 1;
     }
@@ -32,54 +47,38 @@ fn main() {
         s += 1;
     }
 
-    use rayon::prelude::*;
     let n_mod_exp = n % MOD_EXP;
 
-    // Part 1: d = 2 to s (parallelized)
-    let sum1: i64 = (2..=s).into_par_iter().map(|d| {
-        let n_div_d = n / d;
-        let nd_mod = n_div_d % MOD;
-        let nd1_mod = (n_div_d + 1) % MOD;
-        let c_val = if nd_mod % 2 == 0 {
-            ((nd_mod / 2) as i128 * nd1_mod as i128 % MOD as i128) as i64
-        } else {
-            (nd_mod as i128 * (nd1_mod / 2) as i128 % MOD as i128) as i64
-        };
-        let exp = (n_mod_exp - d % MOD_EXP + MOD_EXP) % MOD_EXP;
-        let power_val = power(2, exp, MOD);
-        (power_val as i128 * c_val as i128 % MOD as i128) as i64
-    }).sum::<i64>().rem_euclid(MOD);
+    let sum1: u64 = (2..=s)
+        .into_par_iter()
+        .map(|d| {
+            let n_div_d = n / d;
+            let c_val = compute_c(n_div_d % MOD, MOD);
+            let exp = (n_mod_exp + MOD_EXP - d % MOD_EXP) % MOD_EXP;
+            let power_val = power(2, exp, MOD);
+            mulmod(power_val, c_val, MOD)
+        })
+        .sum::<u64>()
+        % MOD;
 
-    // Part 2: d from s+1 to n, transformed to sum over k
     let k_max = n / (s + 1);
 
-    // C(k_max) * 2^(n-s)
-    let km_mod = k_max % MOD;
-    let km1_mod = (k_max + 1) % MOD;
-    let c_k_max = if km_mod % 2 == 0 {
-        ((km_mod / 2) as i128 * km1_mod as i128 % MOD as i128) as i64
-    } else {
-        (km_mod as i128 * (km1_mod / 2) as i128 % MOD as i128) as i64
-    };
+    let c_k_max = compute_c(k_max % MOD, MOD);
+    let exp_s = (n - s) % MOD_EXP;
+    let term1 = mulmod(c_k_max, power(2, exp_s, MOD), MOD);
 
-    let mut exp_s = (n - s) % MOD_EXP;
-    if exp_s < 0 {
-        exp_s += MOD_EXP;
-    }
-    let term1 = (c_k_max as i128 * power(2, exp_s, MOD) as i128 % MOD as i128) as i64;
+    let sum_k: u64 = (1..=k_max)
+        .into_par_iter()
+        .map(|k| {
+            let n_div_k = n / k;
+            let exp = (n - n_div_k) % MOD_EXP;
+            let pv = power(2, exp, MOD);
+            mulmod(k % MOD, pv, MOD)
+        })
+        .sum::<u64>()
+        % MOD;
 
-    // sum k * 2^(n - floor(n/k)) for k=1..k_max (parallelized)
-    let sum_k: i64 = (1..=k_max).into_par_iter().map(|k| {
-        let n_div_k = n / k;
-        let mut exp = (n - n_div_k) % MOD_EXP;
-        if exp < 0 {
-            exp += MOD_EXP;
-        }
-        let pv = power(2, exp, MOD);
-        ((k % MOD) as i128 * pv as i128 % MOD as i128) as i64
-    }).sum::<i64>().rem_euclid(MOD);
-
-    let sum2 = (term1 - sum_k % MOD + MOD) % MOD;
+    let sum2 = (term1 + MOD - sum_k) % MOD;
     let result = (sum1 + sum2) % MOD;
 
     println!("{}", result);
