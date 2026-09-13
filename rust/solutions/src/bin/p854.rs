@@ -4,6 +4,7 @@
 // Bounded period keys live in a flat Vec (not HashMap). Rank z(p) is
 // independent per prime and is computed in parallel.
 
+use euler_utils::primes::sieve_smallest_factor;
 use rayon::prelude::*;
 
 const MOD: i64 = 1_234_567_891;
@@ -85,7 +86,7 @@ fn fib_n_mod_m(n: i64, m: i64) -> i64 {
 }
 
 fn get_divisors(d: i64, spf: &[i32]) -> Vec<i32> {
-    let mut factors: Vec<(i64, i32)> = Vec::new();
+    let mut factors: Vec<(i64, i32)> = Vec::with_capacity(8);
     let mut temp = d;
     while temp > 1 && (temp as usize) <= SPF_LIMIT {
         let p = spf[temp as usize] as i64;
@@ -100,22 +101,23 @@ fn get_divisors(d: i64, spf: &[i32]) -> Vec<i32> {
         factors.push((temp, 1));
     }
 
-    let mut divs = vec![1i64];
+    let mut divs: Vec<i32> = Vec::with_capacity(128);
+    divs.push(1);
     for &(p, e) in &factors {
         let prev_count = divs.len();
-        let mut pk = 1i64;
+        let mut pk = p;
         for _ in 0..e {
-            pk *= p;
             for k in 0..prev_count {
-                let nd = divs[k] * pk;
+                let nd = divs[k] as i64 * pk;
                 if nd <= 2_000_000_000 {
-                    divs.push(nd);
+                    divs.push(nd as i32);
                 }
             }
+            pk *= p;
         }
     }
     divs.sort_unstable();
-    divs.iter().map(|&x| x as i32).collect()
+    divs
 }
 
 fn get_z_rank(p: i32, spf: &[i32]) -> i32 {
@@ -197,21 +199,8 @@ fn gcd_ll(mut a: i64, mut b: i64) -> i64 {
 }
 
 fn main() {
-    let mut spf = vec![0i32; SPF_LIMIT + 1];
-    for i in 0..=SPF_LIMIT {
-        spf[i] = i as i32;
-    }
-    for i in 2..=SPF_LIMIT {
-        if spf[i] == i as i32 {
-            let mut j = i * i;
-            while j <= SPF_LIMIT {
-                if spf[j] == j as i32 {
-                    spf[j] = i as i32;
-                }
-                j += i;
-            }
-        }
-    }
+    let spf_usize = sieve_smallest_factor(SPF_LIMIT);
+    let spf: Vec<i32> = spf_usize.iter().map(|&x| x as i32).collect();
 
     let small_primes: Vec<i32> = (2..=LIMIT)
         .filter(|&i| spf[i] == i as i32)
@@ -269,13 +258,16 @@ fn main() {
     }
 
     for i in 1..=LIMIT {
-        if g[i] <= 1 {
+        let gi = unsafe { *g.get_unchecked(i) };
+        if gi <= 1 {
             continue;
         }
-        let inv_g = mod_inv(g[i], MOD);
+        let inv_g = mod_inv(gi, MOD);
         let mut j = 2 * i;
         while j <= LIMIT {
-            g[j] = g[j] * inv_g % MOD;
+            unsafe {
+                *g.get_unchecked_mut(j) = *g.get_unchecked(j) * inv_g % MOD;
+            }
             j += i;
         }
     }
@@ -297,25 +289,29 @@ fn main() {
         }
 
         for k in 1..=max_k as usize {
-            if counts_buf[k] == 0 {
+            let c = counts_buf[k];
+            if c == 0 {
                 continue;
             }
-            let c = counts_buf[k];
             let mut m = 2 * k;
             while m <= max_k as usize {
-                counts_buf[m] -= c;
+                unsafe {
+                    *counts_buf.get_unchecked_mut(m) -= c;
+                }
                 m += k;
             }
         }
 
         let inv_p = mod_inv(p as i64, MOD);
         for k in 1..=max_k as usize {
-            let c = counts_buf[k];
+            let c = unsafe { *counts_buf.get_unchecked(k) };
             if c > 0 {
-                let m = k as i32 * z;
-                if g[m as usize] > 0 {
-                    let term = mod_pow(inv_p, c as i64, MOD);
-                    g[m as usize] = g[m as usize] * term % MOD;
+                let m = (k as i32 * z) as usize;
+                unsafe {
+                    if *g.get_unchecked(m) > 0 {
+                        let term = mod_pow(inv_p, c as i64, MOD);
+                        *g.get_unchecked_mut(m) = *g.get_unchecked(m) * term % MOD;
+                    }
                 }
             }
         }
