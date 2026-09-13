@@ -82,21 +82,26 @@ fn is_composite_odd(comp: &[u64], n: usize) -> bool {
     (comp[i >> 6] >> (i & 63)) & 1 != 0
 }
 
+#[inline(always)]
 fn reverse_num(mut n: u64) -> u64 {
     let mut rev = 0u64;
-    while n > 0 {
+    loop {
         rev = rev * 10 + n % 10;
         n /= 10;
+        if n == 0 {
+            break;
+        }
     }
     rev
 }
 
+#[inline(always)]
 fn isqrt(n: u64) -> u64 {
     let mut x = (n as f64).sqrt() as u64;
-    while x > 0 && x * x > n {
+    if x * x > n {
         x -= 1;
     }
-    while (x + 1) * (x + 1) <= n {
+    if (x + 1) * (x + 1) <= n {
         x += 1;
     }
     x
@@ -124,28 +129,45 @@ fn main() {
     let mut count = 0;
     let mut sum: u64 = 0;
 
-    // p=2 → 4 is a palindromic square, skip.
     let mut p = 3usize;
-    while p < LIMIT {
-        if count >= 50 {
-            break;
+    while p < LIMIT - 6 && count < 50 {
+        macro_rules! check_prime {
+            ($prime:expr) => {
+                if count < 50 && !is_composite_odd(&comp, $prime) {
+                    let sq = ($prime as u64) * ($prime as u64);
+                    let rev = reverse_num(sq);
+                    if rev != sq {
+                        let sr = isqrt(rev);
+                        if sr * sr == rev {
+                            let sr_us = sr as usize;
+                            if sr_us < LIMIT && (sr_us & 1) == 1 && !is_composite_odd(&comp, sr_us) {
+                                sum += sq;
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+            };
         }
+        
+        check_prime!(p);
+        check_prime!(p + 2);
+        check_prime!(p + 4);
+        check_prime!(p + 6);
+        p += 8;
+    }
+    
+    while p < LIMIT && count < 50 {
         if !is_composite_odd(&comp, p) {
-            let sq = p as u64 * p as u64;
+            let sq = (p as u64) * (p as u64);
             let rev = reverse_num(sq);
             if rev != sq {
                 let sr = isqrt(rev);
                 if sr * sr == rev {
                     let sr_us = sr as usize;
-                    if sr_us < LIMIT {
-                        let prime_sr = sr_us == 2
-                            || (sr_us >= 3
-                                && (sr_us & 1) == 1
-                                && !is_composite_odd(&comp, sr_us));
-                        if prime_sr {
-                            sum += sq;
-                            count += 1;
-                        }
+                    if sr_us < LIMIT && (sr_us & 1) == 1 && !is_composite_odd(&comp, sr_us) {
+                        sum += sq;
+                        count += 1;
                     }
                 }
             }
