@@ -30,19 +30,19 @@ fn consider(a: i64, b: i64, c: i64, gbc: i64, out: &mut Vec<(u32, u32, u32)>) {
     if s / g > LIMIT {
         return;
     }
-    let mut pa = a / g;
-    let mut pb = b / g;
-    let mut pc = c / g;
-    if pa > pb {
-        std::mem::swap(&mut pa, &mut pb);
-    }
-    if pb > pc {
-        std::mem::swap(&mut pb, &mut pc);
-    }
-    if pa > pb {
-        std::mem::swap(&mut pa, &mut pb);
-    }
-    out.push((pa as u32, pb as u32, pc as u32));
+    let pa = (a / g) as u32;
+    let pb = (b / g) as u32;
+    let pc = (c / g) as u32;
+    
+    let (pa, pb, pc) = if pa <= pb && pa <= pc {
+        if pb <= pc { (pa, pb, pc) } else { (pa, pc, pb) }
+    } else if pb <= pa && pb <= pc {
+        if pa <= pc { (pb, pa, pc) } else { (pb, pc, pa) }
+    } else {
+        if pa <= pb { (pc, pa, pb) } else { (pc, pb, pa) }
+    };
+    
+    out.push((pa, pb, pc));
 }
 
 #[inline(always)]
@@ -180,7 +180,7 @@ fn main() {
     t1.dedup();
 
     let ans: i64 = t1
-        .par_iter()
+        .iter()
         .map(|&(a, b, c)| {
             let p = a as i64 + b as i64 + c as i64;
             let count = LIMIT / p;
