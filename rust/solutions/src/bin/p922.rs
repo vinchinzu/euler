@@ -15,12 +15,14 @@ fn fwt_xor(arr: &mut [u64], inverse: bool) {
         let jump = step * 2;
         let mut i = 0;
         while i < n {
+            // SAFETY: j < i + step < n, and j + step < i + 2*step <= n
             for j in i..i + step {
-                let x = arr[j];
-                let y = arr[j + step];
-                arr[j] = (x + y) % MOD;
-                // (x - y) mod MOD
-                arr[j + step] = (x + MOD - y) % MOD;
+                unsafe {
+                    let x = *arr.get_unchecked(j);
+                    let y = *arr.get_unchecked(j + step);
+                    *arr.get_unchecked_mut(j) = (x + y) % MOD;
+                    *arr.get_unchecked_mut(j + step) = (x + MOD - y) % MOD;
+                }
             }
             i += jump;
         }
@@ -29,8 +31,13 @@ fn fwt_xor(arr: &mut [u64], inverse: bool) {
 
     if inverse {
         let inv_n = mod_pow_local(n as u64, MOD - 2, MOD);
-        for v in arr.iter_mut() {
-            *v = (*v as u128 * inv_n as u128 % MOD as u128) as u64;
+        let inv_n_128 = inv_n as u128;
+        // SAFETY: iterating over entire array
+        for i in 0..n {
+            unsafe {
+                let v = arr.get_unchecked_mut(i);
+                *v = ((*v as u128 * inv_n_128) % MOD as u128) as u64;
+            }
         }
     }
 }
@@ -62,7 +69,6 @@ fn poly_mul(pa: &ShiftedPoly, pb: &ShiftedPoly) -> ShiftedPoly {
     let (a, oa) = pa;
     let (b, ob) = pb;
 
-    // Put longer polynomial as `a`
     let (a, oa, b, ob) = if a.len() >= b.len() {
         (a.as_slice(), *oa, b.as_slice(), *ob)
     } else {
@@ -70,25 +76,29 @@ fn poly_mul(pa: &ShiftedPoly, pb: &ShiftedPoly) -> ShiftedPoly {
     };
 
     let res_len = a.len() + b.len() - 1;
-    let mut res = vec![0u64; res_len];
+    let mut res = vec![0u128; res_len];
 
-    for (i, &ai) in a.iter().enumerate() {
+    for i in 0..a.len() {
+        let ai = a[i];
         if ai != 0 {
             let ai128 = ai as u128;
-            for (j, &bj) in b.iter().enumerate() {
+            for j in 0..b.len() {
+                let bj = b[j];
                 if bj != 0 {
                     let idx = i + j;
-                    // SAFETY: idx < res_len since i < a.len() and j < b.len()
+                    // SAFETY: idx = i + j < res_len
                     unsafe {
-                        let r = res.get_unchecked_mut(idx);
-                        *r = ((*r as u128 + ai128 * bj as u128) % MOD as u128) as u64;
+                        *res.get_unchecked_mut(idx) += ai128 * bj as u128;
                     }
                 }
             }
         }
     }
 
-    (res, oa + ob)
+    // Apply modulo once at the end
+    let res_final: Vec<u64> = res.iter().map(|&v| (v % MOD as u128) as u64).collect();
+
+    (res_final, oa + ob)
 }
 
 /// Raise a shifted polynomial to the given power using binary exponentiation.
@@ -110,40 +120,41 @@ fn poly_pow(poly: &ShiftedPoly, mut exp: u64) -> ShiftedPoly {
 }
 
 fn compute_r(m: u64, w: usize) -> u64 {
-    let dmax = w - 2; // max possible |b - a|
+    let dmax = w - 2;
     let diff_count = 2 * dmax + 1;
 
-    // counts[d][g] for d in 0..diff_count, g in 0..XOR_SIZE
-    // Flat array: counts[d * XOR_SIZE + g]
     let mut counts = vec![0u64; diff_count * XOR_SIZE];
 
     // Count staircases by (d = b - a, g = k - 1)
     for k in 1..w - 1 {
-        let limit = w - k; // a + b <= limit
+        let limit = w - k;
         if limit < 2 {
             continue;
         }
         let g = k - 1;
-        let tmax = limit - 2; // max abs(d)
-        for t in 0..=tmax {
-            let c = ((limit - t) / 2) as u64;
-            if c == 0 {
-                continue;
-            }
-            counts[(dmax + t) * XOR_SIZE + g] =
-                (counts[(dmax + t) * XOR_SIZE + g] + c) % MOD;
-            if t != 0 {
-                counts[(dmax - t) * XOR_SIZE + g] =
-                    (counts[(dmax - t) * XOR_SIZE + g] + c) % MOD;
+        let tmax = limit - 2;
+        // SAFETY: g < XOR_SIZE (since k < w-1 and g = k-1 < w-2)
+        // and indices are within bounds
+        unsafe {
+            for t in 0..=tmax {
+                let c = ((limit - t) / 2) as u64;
+                if c != 0 {
+                    let idx_pos = (dmax + t) * XOR_SIZE + g;
+                    let val = counts.get_unchecked_mut(idx_pos);
+                    *val = (*val + c) % MOD;
+                    if t != 0 {
+                        let idx_neg = (dmax - t) * XOR_SIZE + g;
+                        let val = counts.get_unchecked_mut(idx_neg);
+                        *val = (*val + c) % MOD;
+                    }
+                }
             }
         }
     }
 
     // FWT over XOR dimension for each diff coefficient
-    // transformed[d][t] stored as flat: transformed[d * XOR_SIZE + t]
     let mut transformed = vec![0u64; diff_count * XOR_SIZE];
     for d in 0..diff_count {
-        // Copy the XOR_SIZE slice for this d
         let start = d * XOR_SIZE;
         transformed[start..start + XOR_SIZE]
             .copy_from_slice(&counts[start..start + XOR_SIZE]);
@@ -151,11 +162,10 @@ fn compute_r(m: u64, w: usize) -> u64 {
     }
 
     // Build XOR_SIZE polynomials, one per transformed XOR index t
-    // polys[t] has coefficients [transformed[0][t], transformed[1][t], ..., transformed[diff_count-1][t]]
     let mut polys: Vec<ShiftedPoly> = Vec::with_capacity(XOR_SIZE);
     for t in 0..XOR_SIZE {
         let coeffs: Vec<u64> = (0..diff_count)
-            .map(|d| transformed[d * XOR_SIZE + t])
+            .map(|d| unsafe { *transformed.get_unchecked(d * XOR_SIZE + t) })
             .collect();
         polys.push((coeffs, dmax));
     }
@@ -169,14 +179,15 @@ fn compute_r(m: u64, w: usize) -> u64 {
     let final_offset = (m as usize) * dmax;
     let final_len = 2 * final_offset + 1;
 
-    // Align into matrix Qhat[t][degree], stored flat: Qhat[t * final_len + idx]
+    // Align into matrix Qhat[t][degree], stored flat
     let mut qhat = vec![0u64; XOR_SIZE * final_len];
     for t in 0..XOR_SIZE {
         let (ref coeffs, off) = pow_polys[t];
-        assert_eq!(off, final_offset, "Unexpected polynomial offset mismatch");
-        for (i, &c) in coeffs.iter().enumerate() {
-            if i < final_len {
-                qhat[t * final_len + i] = c;
+        assert_eq!(off, final_offset);
+        // SAFETY: t < XOR_SIZE, coeffs.len() >= final_len from polynomial properties
+        unsafe {
+            for i in 0..coeffs.len().min(final_len) {
+                *qhat.get_unchecked_mut(t * final_len + i) = *coeffs.get_unchecked(i);
             }
         }
     }
@@ -187,19 +198,20 @@ fn compute_r(m: u64, w: usize) -> u64 {
 
     for idx in 0..final_len {
         // Gather column: vec_buf[t] = qhat[t][idx]
-        for t in 0..XOR_SIZE {
-            vec_buf[t] = qhat[t * final_len + idx];
+        // SAFETY: t < XOR_SIZE, idx < final_len
+        unsafe {
+            for t in 0..XOR_SIZE {
+                *vec_buf.get_unchecked_mut(t) = *qhat.get_unchecked(t * final_len + idx);
+            }
         }
 
         fwt_xor(&mut vec_buf, true);
 
         let total_diff = idx as i64 - final_offset as i64;
         if total_diff > 0 {
-            // Sum all elements
             let s: u64 = vec_buf.iter().fold(0u64, |acc, &v| (acc + v) % MOD);
             ans = (ans + s) % MOD;
         } else if total_diff == 0 {
-            // Sum all except vec_buf[0] (XOR == 0 case is a loss when diff == 0)
             let s: u64 = vec_buf[1..].iter().fold(0u64, |acc, &v| (acc + v) % MOD);
             ans = (ans + s) % MOD;
         }
