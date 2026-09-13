@@ -99,14 +99,18 @@ fn inner<const MODE: u8>(g: i64, h: i64) -> i64 {
     let six_g = 6 * g;
     let mut rem = (3 * (split + 1)).rem_euclid(13);
     let mut ng = (split + 1) * g;
+    let twenty_six_g = 26 * g;
+    let thirteen_g_sq = 13 * g * g;
+    let mut ng_term = 13 * ng * ng;
     for _n in (split + 1)..=n_max {
-        let s = fast_isqrt((13 * ng * ng + c) as u64);
+        let s = fast_isqrt((ng_term + c) as u64);
         let t2 = (s - 5 * ng) / six_g;
         add_mode::<MODE>(&mut acc, t2, rem);
         rem += 3;
         if rem >= 13 {
             rem -= 13;
         }
+        ng_term += twenty_six_g * ng + thirteen_g_sq;
         ng += g;
     }
     acc
