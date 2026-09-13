@@ -6,10 +6,25 @@ fn sjt_rank(perm: &[i32]) -> i64 {
     if n <= 1 { return 0; }
 
     let largest = n as i32 - 1;
-    let pos = perm.iter().position(|&x| x == largest).unwrap();
-
-    let sub_perm: Vec<i32> = perm.iter().filter(|&&x| x != largest).copied().collect();
-    let r_sub = sjt_rank(&sub_perm);
+    
+    let mut pos = 0;
+    for i in 0..n {
+        if perm[i] == largest {
+            pos = i;
+            break;
+        }
+    }
+    
+    let mut sub_perm = [0i32; 18];
+    let mut write_idx = 0;
+    for i in 0..n {
+        if perm[i] != largest {
+            sub_perm[write_idx] = perm[i];
+            write_idx += 1;
+        }
+    }
+    
+    let r_sub = sjt_rank(&sub_perm[..write_idx]);
 
     let local_index = if r_sub % 2 == 0 {
         (n - 1) - pos
@@ -22,7 +37,6 @@ fn sjt_rank(perm: &[i32]) -> i64 {
 
 fn main() {
     let target = b"NOWPICKBELFRYMATHS";
-    let n = target.len();
 
     let mut sorted: Vec<u8> = target.to_vec();
     sorted.sort_unstable();
