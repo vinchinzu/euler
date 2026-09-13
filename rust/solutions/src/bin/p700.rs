@@ -27,23 +27,27 @@ fn main() {
     let mut min_el = m;
     let mut ans: u64 = 0;
     let mut el = n_val;
+    
     for _ in 1..=l {
         if el < min_el {
             min_el = el;
             ans += el;
         }
-        el = (el + n_val) % m;
+        el += n_val;
+        if el >= m { el -= m; }
     }
 
     let mod_inv = mod_inverse(n_val, m);
     let mut min_n = m;
     let mut n_val2 = mod_inv;
+    
     for e in 1..min_el {
         if n_val2 < min_n {
             min_n = n_val2;
             ans += e;
         }
-        n_val2 = (n_val2 + mod_inv) % m;
+        n_val2 += mod_inv;
+        if n_val2 >= m { n_val2 -= m; }
     }
 
     println!("{}", ans);
