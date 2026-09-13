@@ -109,10 +109,10 @@ fn compute_large(n: usize) -> u64 {
 
     // 7. C0 and slope for the linear part of the rank expectation
     let bconst = ((n - 2) as u64 * (n - 3) as u64 / 2) % MOD;
-    let mut c0 = beta;
-    c0 = (c0 + (n - 3) as u64 % MOD * b % MOD) % MOD;
-    c0 = (c0 + (n - 1) as u64 % MOD * a % MOD) % MOD;
-    c0 = (c0 + eta * bconst % MOD) % MOD;
+    let c0 = (beta + 
+              (n - 3) as u64 % MOD * b % MOD +
+              (n - 1) as u64 % MOD * a % MOD +
+              eta * bconst % MOD) % MOD;
 
     let slope = (b + MOD - a) % MOD;
 
@@ -120,12 +120,13 @@ fn compute_large(n: usize) -> u64 {
     let mut fact = 1u64;
     let mut s1 = 0u64;
     let mut s2 = 0u64;
-    let inv2 = mod_pow(2, MOD - 2);
+    let inv2 = (MOD + 1) / 2;
     for m in 1..n {
-        fact = fact * (m as u64) % MOD;
-        s1 = (s1 + fact * (m as u64) % MOD) % MOD;
-        let tmp = m as u64 * (m + 1) as u64 % MOD * inv2 % MOD;
-        s2 = (s2 + fact * tmp % MOD) % MOD;
+        let m64 = m as u64;
+        fact = fact * m64 % MOD;
+        s1 = (s1 + fact * m64) % MOD;
+        let tmp = m64 * (m64 + 1) % MOD * inv2 % MOD;
+        s2 = (s2 + fact * tmp) % MOD;
     }
 
     // 9. Final Q(n) = (n!)^2 * E[rank]
@@ -140,20 +141,23 @@ fn mobius_sieve(n: usize) -> Vec<i8> {
     let mut primes = Vec::new();
     mu[1] = 1;
     for i in 2..=n {
-        if is_prime[i] {
+        // SAFETY: i <= n, so i < n+1, within bounds
+        if unsafe { *is_prime.get_unchecked(i) } {
             primes.push(i);
-            mu[i] = -1;
+            unsafe { *mu.get_unchecked_mut(i) = -1; }
         }
         for &p in &primes {
-            if i * p > n {
+            let ip = i * p;
+            if ip > n {
                 break;
             }
-            is_prime[i * p] = false;
+            // SAFETY: ip <= n, so ip < n+1, within bounds
+            unsafe { *is_prime.get_unchecked_mut(ip) = false; }
             if i % p == 0 {
-                mu[i * p] = 0;
+                unsafe { *mu.get_unchecked_mut(ip) = 0; }
                 break;
             }
-            mu[i * p] = -mu[i];
+            unsafe { *mu.get_unchecked_mut(ip) = -*mu.get_unchecked(i); }
         }
     }
     mu
