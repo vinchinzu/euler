@@ -5,9 +5,6 @@ use rayon::prelude::*;
 
 #[inline]
 fn pow_mod(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    if modulus == 1 {
-        return 0;
-    }
     let mut result: i64 = 1;
     base %= modulus;
     while exp > 0 {
@@ -26,7 +23,6 @@ fn main() {
 
     let mut pows = vec![0i64; nu + 1];
 
-    // Upper half: independent pow_mod — parallelize
     let half = (n / 2) as usize;
     let upper: Vec<i64> = ((half + 1)..=nu)
         .into_par_iter()
@@ -36,7 +32,6 @@ fn main() {
         pows[half + 1 + i] = v;
     }
 
-    // Lower half: pows[k] = pows[2k] % k (and 10^{n-1} mod k for free via doubling)
     for k in (1..=half).rev() {
         pows[k] = pows[2 * k] % (k as i64);
     }
