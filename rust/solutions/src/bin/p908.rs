@@ -28,7 +28,7 @@ fn mul_mod(a: u64, b: u64) -> u64 {
 /// Compute Mobius function for 0..=n via linear sieve.
 fn mobius_upto(n: usize) -> Vec<i8> {
     let mut mu = vec![0i8; n + 1];
-    let mut primes: Vec<usize> = Vec::new();
+    let mut primes: Vec<usize> = Vec::with_capacity(n / 10);
     let mut is_comp = vec![false; n + 1];
     mu[1] = 1;
     for i in 2..=n {
@@ -88,7 +88,7 @@ fn generate_moduli(max_k: usize) -> Vec<(u32, u32)> {
         options.push(opts);
     }
 
-    let mut pairs: Vec<(u32, u32)> = Vec::with_capacity(50_000);
+    let mut pairs: Vec<(u32, u32)> = Vec::with_capacity(100_000);
 
     fn dfs(
         start_idx: usize,
@@ -105,7 +105,6 @@ fn generate_moduli(max_k: usize) -> Vec<(u32, u32)> {
             if opts.is_empty() {
                 continue;
             }
-            // Smallest k-factor for this prime
             if k_cur * opts[0].1 > max_k {
                 break;
             }
@@ -188,7 +187,9 @@ fn compute_b(max_period: usize) -> Vec<u64> {
         );
 
     for x in &mut b {
-        *x %= MOD;
+        if *x >= MOD {
+            *x %= MOD;
+        }
     }
     b
 }
@@ -236,11 +237,7 @@ fn main() {
     let a = compute_a_from_b(&b, &mu);
 
     // C(N) = sum A[1..N]
-    let mut s = 0u64;
-    for i in 1..=N {
-        s += a[i];
-        s %= MOD;
-    }
+    let s = a[1..=N].iter().fold(0u64, |acc, &x| (acc + x) % MOD);
 
     // Sanity checks from problem statement
     {
