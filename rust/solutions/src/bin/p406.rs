@@ -13,40 +13,36 @@ fn fibonacci(k: usize) -> i64 {
 
 fn c_func(n: i64, a_val: f64, b_val: f64) -> f64 {
     let max_budget = 80.0 * a_val.max(b_val);
-
     let max_i = (max_budget / a_val) as usize + 2;
-    let mut costs = Vec::new();
+    let max_j = (max_budget / b_val) as usize + 2;
+    let mut costs = Vec::with_capacity(max_i * max_j);
 
     for i in 0..=max_i {
         let ia = i as f64 * a_val;
         if ia > max_budget { break; }
-        let mut j = 0;
-        loop {
+        for j in 0..=max_j {
             let c = ia + j as f64 * b_val;
             if c > max_budget { break; }
             costs.push(c);
-            j += 1;
         }
     }
 
     costs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let mut unique = Vec::new();
-    for &c in &costs {
-        if unique.is_empty() || c - *unique.last().unwrap() > 1e-12 {
-            unique.push(c);
+
+    let mut write_idx = 0;
+    for read_idx in 0..costs.len() {
+        if write_idx == 0 || costs[read_idx] - costs[write_idx - 1] > 1e-12 {
+            costs[write_idx] = costs[read_idx];
+            write_idx += 1;
         }
     }
-    let costs = unique;
+    costs.truncate(write_idx);
 
     let mut f_vals = vec![0i64; costs.len()];
     let eps = 1e-9;
 
     for idx in 0..costs.len() {
         let c = costs[idx];
-        if c < -eps {
-            f_vals[idx] = 0;
-            continue;
-        }
 
         let target_a = c - a_val + eps;
         let pos_a = costs[..idx + 1].partition_point(|&x| x <= target_a);
@@ -65,7 +61,7 @@ fn c_func(n: i64, a_val: f64, b_val: f64) -> f64 {
         f_vals[idx] = f_c;
     }
 
-    *costs.last().unwrap()
+    costs[costs.len() - 1]
 }
 
 fn main() {
