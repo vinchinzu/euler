@@ -1,24 +1,17 @@
 const SZ: usize = 30;
 const STEPS: usize = 50;
 
+fn neighbors(i: usize, j: usize) -> usize {
+    let mut n = 0;
+    if i > 0 { n += 1; }
+    if i < SZ - 1 { n += 1; }
+    if j > 0 { n += 1; }
+    if j < SZ - 1 { n += 1; }
+    n
+}
+
 fn main() {
     let half = SZ / 2;
-    
-    let neighbor_inv = {
-        let mut ni = [[0.0f64; SZ]; SZ];
-        for i in 0..SZ {
-            for j in 0..SZ {
-                let mut n = 0;
-                if i > 0 { n += 1; }
-                if i < SZ - 1 { n += 1; }
-                if j > 0 { n += 1; }
-                if j < SZ - 1 { n += 1; }
-                ni[i][j] = 1.0 / n as f64;
-            }
-        }
-        ni
-    };
-    
     let mut table = vec![vec![[[0.0f64; SZ]; SZ]; half]; half];
 
     for fi in 0..half {
@@ -30,9 +23,8 @@ fn main() {
                 let mut new_grid = [[0.0f64; SZ]; SZ];
                 for i in 0..SZ {
                     for j in 0..SZ {
-                        let prob = grid[i][j];
-                        if prob == 0.0 { continue; }
-                        let p = prob * neighbor_inv[i][j];
+                        if grid[i][j] == 0.0 { continue; }
+                        let p = grid[i][j] / neighbors(i, j) as f64;
                         if i > 0 { new_grid[i - 1][j] += p; }
                         if i < SZ - 1 { new_grid[i + 1][j] += p; }
                         if j > 0 { new_grid[i][j - 1] += p; }
