@@ -170,12 +170,15 @@ fn kernel_size(fd: u64, fd1: u64, d: u64, p: u64, e: u32, m: u64, pe: u64) -> u6
     let fdm1 = (fd1 + m - fd) % m;
     let e00 = (fdm1 + m - 1) % m;
     let e11 = (fd1 + m - 1) % m;
+    
     let v1 = val_p(e00, p, e)
         .min(val_p(fd, p, e))
         .min(val_p(e11, p, e));
+    
     if v1 >= e {
         return pe * pe;
     }
+    
     let trace = (fdm1 + fd1) % m;
     let det = if d & 1 == 0 {
         (2 + m - trace) % m
@@ -183,7 +186,7 @@ fn kernel_size(fd: u64, fd1: u64, d: u64, p: u64, e: u32, m: u64, pe: u64) -> u6
         (m - trace) % m
     };
     let vdet = val_p(det, p, 2 * e);
-    let v2 = if vdet >= v1 { (vdet - v1).min(e) } else { 0 };
+    let v2 = (vdet.saturating_sub(v1)).min(e);
     p.pow(v1) * p.pow(v2)
 }
 
@@ -193,8 +196,12 @@ fn val_p(mut x: u64, p: u64, cap: u32) -> u32 {
         return cap;
     }
     let mut v = 0u32;
-    while x % p == 0 && v < cap {
-        x /= p;
+    while v < cap {
+        let q = x / p;
+        if q * p != x {
+            break;
+        }
+        x = q;
         v += 1;
     }
     v
@@ -205,9 +212,12 @@ fn invert_exact(divs: &[u64], n_vals: &[u64], mu: &[i8]) -> Vec<(u64, u64)> {
     for i in 0..divs.len() {
         let d = divs[i];
         let mut exact = 0i64;
-        for j in 0..divs.len() {
+        for j in 0..=i {
             if d % divs[j] == 0 {
-                exact += mu[(d / divs[j]) as usize] as i64 * n_vals[j] as i64;
+                let mu_val = mu[(d / divs[j]) as usize] as i64;
+                if mu_val != 0 {
+                    exact += mu_val * n_vals[j] as i64;
+                }
             }
         }
         if exact > 0 {
@@ -325,12 +335,23 @@ fn fib_from_tab_wide(n: u64, tab: &[(u64, u64); KMAX], m: u64) -> (u64, u64) {
 
 #[inline(always)]
 fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
+    if a == 0 { return b; }
+    if b == 0 { return a; }
+    
+    let shift = (a | b).trailing_zeros();
+    a >>= a.trailing_zeros();
+    b >>= b.trailing_zeros();
+    
+    loop {
+        if b > a {
+            std::mem::swap(&mut a, &mut b);
+        }
+        a -= b;
+        if a == 0 {
+            return b << shift;
+        }
+        a >>= a.trailing_zeros();
     }
-    a
 }
 
 #[inline(always)]
@@ -375,7 +396,10 @@ fn s_from_pes(pes: &[u64], cache: &[Vec<(u64, u64)>]) -> u64 {
 fn s_from_dist(dist: &[(u64, u64)]) -> u64 {
     let mut s = 0u64;
     for &(d, c) in dist {
-        s = (s + (d % MODV) * (d % MODV) % MODV * (c % MODV)) % MODV;
+        let dm = d % MODV;
+        let dsq = dm * dm % MODV;
+        let cm = c % MODV;
+        s = (s + dsq * cm) % MODV;
     }
     s
 }
@@ -386,9 +410,11 @@ fn s_two(a: &[(u64, u64)], b: &[(u64, u64)]) -> u64 {
     for &(d1, c1) in a {
         let c1m = c1 % MODV;
         for &(d2, c2) in b {
-            let l = lcm_u64(d1, d2) % MODV;
+            let l = lcm_u64(d1, d2);
+            let lm = l % MODV;
+            let lsq = lm * lm % MODV;
             let cm = c1m * (c2 % MODV) % MODV;
-            s = (s + l * l % MODV * cm) % MODV;
+            s = (s + lsq * cm) % MODV;
         }
     }
     s
@@ -403,7 +429,8 @@ fn s_combine(pes: &[u64], cache: &[Vec<(u64, u64)>], idx: usize, lcm_so_far: u64
         let cm = cnt * (c % MODV) % MODV;
         if last {
             let lm = l % MODV;
-            s = (s + lm * lm % MODV * cm) % MODV;
+            let lsq = lm * lm % MODV;
+            s = (s + lsq * cm) % MODV;
         } else {
             s = (s + s_combine(pes, cache, idx + 1, l, cm)) % MODV;
         }
