@@ -1,27 +1,33 @@
 // Project Euler 876 - Triplet Tricks
 // For k=1..18, a=6^k, b=10^k.
-// Generate coprime divisor pairs (y,z) with y|a, z|b, gcd(y,z)=1.
-// Compute c = (y+z)*(a/y + b/z), numSteps via Euclidean algo.
-// Track min numSteps per c. Sum contributions.
-// Uses i128 for c values which can exceed i64 range for large k.
+// For each divisor pair (x,y) with x|a, y|b:
+// - Compute s = euclid_subtraction_steps(x,y) once
+// - Generate c1 = (x+y)*(a/x + b/y) with s steps
+// - Generate c2 = (x-y)*(a/x - b/y) with s-1 steps (if positive and s>1)
+// Track min steps per c using FxHashMap, sum results.
 
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 
-fn gcd(mut a: i64, mut b: i64) -> i64 {
-    while b != 0 { let t = b; b = a % b; a = t; }
-    a
+#[inline(always)]
+fn euclid_subtraction_steps(mut x: i64, mut y: i64) -> i64 {
+    let mut steps = 0i64;
+    while y != 0 {
+        steps += x / y;
+        let r = x % y;
+        x = y;
+        y = r;
+    }
+    steps
 }
 
 fn main() {
     let mut ans: i64 = 0;
 
     for k in 1..=18 {
-        let mut a = 1i64;
-        let mut b = 1i64;
-        for _ in 0..k { a *= 6; b *= 10; }
+        let a = 6i64.pow(k);
+        let b = 10i64.pow(k);
 
-        // Generate divisors of a = 2^k * 3^k
-        let mut a_divs = Vec::new();
+        let mut a_divs = Vec::with_capacity(((k + 1) * (k + 1)) as usize);
         let mut pw2 = 1i64;
         for _ in 0..=k {
             let mut pw3 = 1i64;
@@ -32,8 +38,7 @@ fn main() {
             pw2 *= 2;
         }
 
-        // Generate divisors of b = 2^k * 5^k
-        let mut b_divs = Vec::new();
+        let mut b_divs = Vec::with_capacity(((k + 1) * (k + 1)) as usize);
         pw2 = 1;
         for _ in 0..=k {
             let mut pw5 = 1i64;
@@ -44,45 +49,26 @@ fn main() {
             pw2 *= 2;
         }
 
-        // Use i128 for c to avoid overflow (c can be up to ~107 bits for k=18)
-        let mut min_steps: HashMap<i128, i64> = HashMap::new();
-        let threshold = 2i128 * (a as i128 + b as i128);
+        let capacity = (a_divs.len() * b_divs.len()) / 2;
+        let mut best: FxHashMap<i128, i64> = FxHashMap::with_capacity_and_hasher(capacity, Default::default());
 
-        for &y in &a_divs {
-            for &z in &b_divs {
-                if gcd(y, z) != 1 { continue; }
-                let c = (y as i128 + z as i128) * (a as i128 / y as i128 + b as i128 / z as i128);
+        for &x in &a_divs {
+            let u = a / x;
+            for &y in &b_divs {
+                let v = b / y;
+                let s = euclid_subtraction_steps(x, y);
 
-                // Compute numSteps via Euclidean-like algorithm
-                // numSteps can be very large (up to ~10^18) so use i64
-                let (mut ly, mut lz) = (y, z);
-                let mut num_steps = 0i64;
-                let mut side = 0;
-                loop {
-                    if side == 0 {
-                        if ly == 0 { break; }
-                        num_steps += lz / ly;
-                        lz %= ly;
-                        side = 1;
-                    } else {
-                        if lz == 0 { break; }
-                        num_steps += ly / lz;
-                        ly %= lz;
-                        side = 0;
-                    }
+                let c1 = (x as i128 + y as i128) * (u as i128 + v as i128);
+                best.entry(c1).and_modify(|e| *e = (*e).min(s)).or_insert(s);
+
+                let c2 = ((x - y) as i128) * ((u - v) as i128);
+                if c2 > 0 && s > 1 {
+                    best.entry(c2).and_modify(|e| *e = (*e).min(s - 1)).or_insert(s - 1);
                 }
-
-                let entry = min_steps.entry(c).or_insert(num_steps);
-                if num_steps < *entry { *entry = num_steps; }
             }
         }
 
-        for (&c, &num_steps) in &min_steps {
-            ans += num_steps;
-            if c < threshold {
-                ans += num_steps - 1;
-            }
-        }
+        ans += best.values().sum::<i64>();
     }
 
     println!("{}", ans);
