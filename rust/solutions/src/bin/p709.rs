@@ -129,7 +129,7 @@ fn poly_mul(crt: &Crt, a: &[u64], b: &[u64], trunc: usize) -> Vec<u64> {
         return vec![0u64; trunc];
     }
     let need = (na + nb - 1).min(trunc);
-    if need <= 26 {
+    if need <= 64 {
         return poly_mul_naive(&a[..na], &b[..nb], trunc);
     }
 
