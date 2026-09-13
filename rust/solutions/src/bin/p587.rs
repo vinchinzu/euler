@@ -5,18 +5,25 @@
 
 fn f(n: i32) -> f64 {
     let nf = n as f64;
-    let y = 1.0 / (nf + (2.0 * nf).sqrt() + 1.0);
-    (1.0 - (nf - 1.0) * y - (1.0 - nf * y).asin()) / 2.0
+    let sqrt_2n = (nf * 2.0).sqrt();
+    let y = 1.0 / (nf + sqrt_2n + 1.0);
+    (1.0 - (nf - 1.0) * y - (1.0 - nf * y).asin()) * 0.5
 }
 
 fn main() {
-    let r = 0.001;
-    let total_area = 1.0 - std::f64::consts::PI / 4.0;
-
-    let mut ans = 0;
-    while f(ans) >= r * total_area {
-        ans += 1;
+    const THRESHOLD: f64 = 0.001 * (1.0 - std::f64::consts::FRAC_PI_4);
+    
+    let mut lo = 1;
+    let mut hi = 10000;
+    
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if f(mid) < THRESHOLD {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
     }
 
-    println!("{}", ans);
+    println!("{}", lo);
 }
