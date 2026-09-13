@@ -9,33 +9,23 @@ fn main() {
     for i in 1..=n {
         let mut low = 0.0f64;
         let mut high = f64::MAX;
-        let i_u64 = i as u64;
-        let bits = 64 - i_u64.leading_zeros();
-        
-        for j in 0..bits {
-            let mask = 1usize << j;
-            let remaining = (i >> (j + 1) << j) + (i & (mask - 1));
-            
-            // SAFETY: remaining < i, and i <= n, so remaining < n+1 (array size)
-            let g_remaining = unsafe { *g.get_unchecked(remaining) };
-            
-            if (i & mask) != 0 {
-                if g_remaining > low { low = g_remaining; }
+        let mut j = 0u32;
+        while (1u64 << j) <= i as u64 {
+            let remaining = (i >> (j + 1) << j) + i % (1 << j);
+            if (i & (1 << j)) > 0 {
+                if g[remaining] > low { low = g[remaining]; }
             } else {
-                if g_remaining < high { high = g_remaining; }
+                if g[remaining] < high { high = g[remaining]; }
             }
+            j += 1;
         }
-        
         let mut d = 1.0f64;
-        let mut gi = 0.0f64;
-        while gi <= low || gi >= high {
-            gi = (low / d + 1.0).floor() * d;
-            d *= 0.5;
+        g[i] = 0.0;
+        while g[i] <= low || g[i] >= high {
+            g[i] = (low / d + 1.0).floor() * d;
+            d /= 2.0;
         }
-        
-        // SAFETY: i is in range 1..=n, so i < n+1 (array size)
-        unsafe { *g.get_unchecked_mut(i) = gi; }
-        total += i as f64 * gi;
+        total += i as f64 * g[i];
     }
 
     println!("{}", total.ceil() as i64);
