@@ -63,12 +63,15 @@ fn main() {
     let total: i64 = (1..=n)
         .into_par_iter()
         .filter_map(|i| {
-            let m = mu[i];
+            // SAFETY: i ranges from 1..=N_MAX, mu has size N_MAX+1
+            let m = unsafe { *mu.get_unchecked(i) };
             if m == 0 {
                 return None;
             }
             let x = (n / i + 1) as i64;
-            let cube = (x % PHI_MOD) * (x % PHI_MOD) % PHI_MOD * (x % PHI_MOD) % PHI_MOD;
+            let x_mod = x % PHI_MOD;
+            let x2 = x_mod * x_mod % PHI_MOD;
+            let cube = x2 * x_mod % PHI_MOD;
             let cube = (cube - 1 + PHI_MOD) % PHI_MOD;
             Some((m as i64 * cube % PHI_MOD + PHI_MOD) % PHI_MOD)
         })
@@ -95,7 +98,10 @@ fn main() {
     let fast_pow2 = |exp: i64| -> i64 {
         let q = (exp as usize) >> 16;
         let r = (exp as usize) & 0xffff;
-        (pow2_high[q] as i64 * pow2_low[r] as i64) % P_MOD
+        // SAFETY: q < num_high (exp < PHI_MOD ensures this), r < K by masking
+        unsafe {
+            (*pow2_high.get_unchecked(q) as i64 * *pow2_low.get_unchecked(r) as i64) % P_MOD
+        }
     };
 
     // F(s, n): compute using quotient blocks
@@ -107,15 +113,23 @@ fn main() {
         let mut i = 1i64;
         let s_i64 = s as i64;
         let n_i64 = n as i64;
+        let mut iter_count = 0;
         while i * s_i64 <= n_i64 {
             let t = n_i64 / i;
             let j = n_i64 / t + 1;
             let j_idx = (j - 1) as usize;
-            let dm = (mertens[j_idx] - mertens[(i - 1) as usize]) as i64;
+            // SAFETY: j_idx < n <= N_MAX, (i-1) < n <= N_MAX, mertens has size N_MAX+1
+            let dm = unsafe {
+                (*mertens.get_unchecked(j_idx) - *mertens.get_unchecked((i - 1) as usize)) as i64
+            };
             if dm != 0 {
                 let d = t / s_i64;
-                let g = (((2 * t + 2 - s_i64 * (1 + d)) * d) / 2) % PHI_MOD;
+                let g = ((2 * t + 2 - s_i64 * (1 + d)) * d) / 2;
                 ret += g * dm;
+                iter_count += 1;
+                if iter_count % 8 == 0 {
+                    ret %= PHI_MOD;
+                }
             }
             i = j;
         }
@@ -135,7 +149,9 @@ fn main() {
     let sum_diff: i64 = (1..=n)
         .into_par_iter()
         .map(|b| {
-            let m_val = (6i64 * phi_arr[b] as i64) % P_MOD;
+            // SAFETY: b ranges from 1..=n, n <= N_MAX, phi_arr has size N_MAX+1
+            let phi_b = unsafe { *phi_arr.get_unchecked(b) };
+            let m_val = (6i64 * phi_b as i64) % P_MOD;
             let f_val = f(b, n);
             let term2 = fast_pow2((half - f_val + PHI_MOD) % PHI_MOD);
             let diff = (term1 - term2 + P_MOD) % P_MOD;
