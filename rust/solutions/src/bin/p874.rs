@@ -9,10 +9,15 @@ fn main() {
     let mut is_prime = vec![true; SIEVE_LIMIT + 1];
     is_prime[0] = false;
     is_prime[1] = false;
-    for i in 2..=SIEVE_LIMIT {
+    let sqrt_limit = (SIEVE_LIMIT as f64).sqrt() as usize + 1;
+    for i in 2..=sqrt_limit {
         if is_prime[i] {
             let mut j = i * i;
-            while j <= SIEVE_LIMIT { is_prime[j] = false; j += i; }
+            // SAFETY: loop condition ensures j <= SIEVE_LIMIT < is_prime.len()
+            while j <= SIEVE_LIMIT { 
+                unsafe { *is_prime.get_unchecked_mut(j) = false; }
+                j += i;
+            }
         }
     }
     let primes: Vec<i64> = (2..=SIEVE_LIMIT).filter(|&i| is_prime[i]).take(MAX_PRIMES).map(|i| i as i64).collect();
@@ -31,20 +36,19 @@ fn main() {
 
     let target_r = remainder;
 
-    // Precompute costs
-    let mut cost = vec![0i64; target_r + 1];
-    for d in 1..=target_r {
-        cost[d] = primes[k - 1] - primes[k - 1 - d];
-    }
-
-    // DP
+    // DP with inline cost computation
     let mut dp = vec![i64::MAX / 2; target_r + 1];
     dp[0] = 0;
 
     for w in 1..=target_r {
-        let mut min_c = cost[w];
+        // SAFETY: w <= target_r < k-1, so k-1 and k-1-w are valid indices in primes
+        let cost_w = unsafe { 
+            *primes.get_unchecked(k - 1) - *primes.get_unchecked(k - 1 - w)
+        };
+        let mut min_c = cost_w;
         for j in 1..=w / 2 {
-            let c = dp[j] + dp[w - j];
+            // SAFETY: j in [1, w/2] and w-j in [w/2, w-1], both < target_r+1 = dp.len()
+            let c = unsafe { *dp.get_unchecked(j) + *dp.get_unchecked(w - j) };
             if c < min_c { min_c = c; }
         }
         dp[w] = min_c;
