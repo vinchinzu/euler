@@ -5,7 +5,6 @@
 
 const N: usize = 2_500_000;
 
-#[inline]
 fn primes_odd_sieve(limit: usize) -> Vec<usize> {
     let n_odds = (limit + 1) / 2;
     let mut odd = vec![true; n_odds];
@@ -38,15 +37,6 @@ fn primes_odd_sieve(limit: usize) -> Vec<usize> {
     primes
 }
 
-#[inline(always)]
-fn cross_product(p1x: i64, p1y: i64, mid_x: i64, mid_y: i64, base_x: i64, base_y: i64) -> i64 {
-    let dx1 = mid_x - p1x;
-    let dy1 = mid_y - p1y;
-    let dx2 = base_x - mid_x;
-    let dy2 = base_y - mid_y;
-    dx1 * dy2 - dy1 * dx2
-}
-
 fn main() {
     let prime_sieve_limit = 90_000_000;
     let primes = primes_odd_sieve(prime_sieve_limit);
@@ -68,6 +58,15 @@ fn main() {
     let mut y: i64 = 0;
     let mut ans: i64 = 0;
 
+    // Cross product: (p2-p1) x (p3-p2)
+    let cross = |p1x: i64, p1y: i64, p2x: i64, p2y: i64, p3x: i64, p3y: i64| -> i64 {
+        let dx1 = p2x - p1x;
+        let dy1 = p2y - p1y;
+        let dx2 = p3x - p2x;
+        let dy2 = p3y - p2y;
+        dx1 * dy2 - dy1 * dx2
+    };
+
     for i in 0..N {
         x += primes[2 * i] as i64;
         y += primes[2 * i] as i64;
@@ -76,43 +75,35 @@ fn main() {
         x += primes[2 * i + 1] as i64;
         y -= primes[2 * i + 1] as i64;
 
-        let vis_base = vis_data.len();
-        vis_start[i] = vis_base;
+        vis_start[i] = vis_data.len();
         let mut count = 0usize;
-        let mut j = i.wrapping_sub(1);
+        let mut j = i as i32 - 1;
 
-        let base_x = peaks_x[i];
-        let base_y = peaks_y[i];
-
-        while j < N {
-            vis_data.push(j as i32);
+        while j >= 0 {
+            vis_data.push(j);
             count += 1;
 
             if j == 0 {
                 break;
             }
 
-            let prev_vis_start = vis_start[j];
-            let prev_count = vis_count[j];
-            let mid_x = peaks_x[j];
-            let mid_y = peaks_y[j];
+            let prev_vis_start = vis_start[j as usize];
+            let prev_count = vis_count[j as usize];
+            let mid_x = peaks_x[j as usize];
+            let mid_y = peaks_y[j as usize];
+            let base_x = peaks_x[i];
+            let base_y = peaks_y[i];
 
-            let mut left = 0usize;
+            let mut left = 0;
             let mut right = prev_count;
-            
             while left < right {
-                let mid_idx = (left + right) >> 1;
-                // SAFETY: mid_idx < prev_count, prev_vis_start + mid_idx < vis_data.len()
-                let peak_idx = unsafe {
-                    *vis_data.get_unchecked(prev_vis_start + mid_idx) as usize
-                };
-                // SAFETY: peak_idx < j < N
-                let (p1x, p1y) = unsafe {
-                    (*peaks_x.get_unchecked(peak_idx), *peaks_y.get_unchecked(peak_idx))
-                };
-                
-                let turn_val = cross_product(p1x, p1y, mid_x, mid_y, base_x, base_y);
-                
+                let mid_idx = (left + right) / 2;
+                let peak_idx = vis_data[prev_vis_start + mid_idx] as usize;
+                let turn_val = cross(
+                    peaks_x[peak_idx], peaks_y[peak_idx],
+                    mid_x, mid_y,
+                    base_x, base_y,
+                );
                 if turn_val < 0 {
                     left = mid_idx + 1;
                 } else {
@@ -123,7 +114,7 @@ fn main() {
             if left >= prev_count {
                 break;
             }
-            j = vis_data[prev_vis_start + left] as usize;
+            j = vis_data[prev_vis_start + left];
         }
 
         vis_count[i] = count;
