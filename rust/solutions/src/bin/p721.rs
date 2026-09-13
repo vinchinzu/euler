@@ -44,7 +44,7 @@ fn f(a: u64) -> u64 {
     let result = mat_pow(&mat, a * a);
     let s = 2 * result[0] % M;
     if !is_sq(a) {
-        (s + M - 1) % M
+        if s == 0 { M - 1 } else { s - 1 }
     } else {
         s
     }
