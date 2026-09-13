@@ -1,58 +1,63 @@
 // Project Euler 860 - Fair arrangements of stacks
 // Multinomial approach with scaled values
 
-const MOD: i64 = 989898989;
+const MOD: u64 = 989898989;
 
-fn power(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
-    let mut res: i64 = 1;
-    base %= modulus;
+#[inline(always)]
+fn power(mut base: u64, mut exp: u64, m: u64) -> u64 {
+    let mut res = 1u64;
+    base %= m;
     while exp > 0 {
         if exp & 1 == 1 {
-            res = (res as i128 * base as i128 % modulus as i128) as i64;
+            res = res * base % m;
         }
-        base = (base as i128 * base as i128 % modulus as i128) as i64;
+        base = base * base % m;
         exp >>= 1;
     }
     res
 }
 
-fn main() {
-    let n = 9898usize;
+#[inline(always)]
+fn mul_mod(a: u64, b: u64, m: u64) -> u64 {
+    a * b % m
+}
 
-    let mut fact = vec![0i64; n + 1];
-    let mut invfact = vec![0i64; n + 1];
+fn main() {
+    let n = 9898;
+
+    let mut fact = vec![0u64; n + 1];
+    let mut invfact = vec![0u64; n + 1];
     fact[0] = 1;
     for i in 1..=n {
-        fact[i] = fact[i - 1] * i as i64 % MOD;
+        fact[i] = mul_mod(fact[i - 1], i as u64, MOD);
     }
     invfact[n] = power(fact[n], MOD - 2, MOD);
     for i in (0..n).rev() {
-        invfact[i] = invfact[i + 1] * (i + 1) as i64 % MOD;
+        invfact[i] = mul_mod(invfact[i + 1], (i + 1) as u64, MOD);
     }
 
-    let mut total: i64 = 0;
+    let mut total = 0u64;
 
-    let mut j = 0i32;
-    while j as usize <= n / 5 {
-        let nj = n as i32 + 3 * j;
+    let mut j = 0;
+    while j <= n / 5 {
+        let nj = n + 3 * j;
         if nj % 2 != 0 { j += 2; continue; }
         let s = nj / 2;
         let low_c = 4 * j;
         if s < low_c { j += 2; continue; }
 
-        let mut sum_contrib: i64 = 0;
+        let mut sum_contrib = 0u64;
         for c in low_c..=s {
             let a = s - c;
             let b = a + j;
             let d = c - 4 * j;
-            if a < 0 || b < 0 || d < 0 { continue; }
-            if (a + b + c + d) as usize != n { continue; }
+            if a > n || b > n || d > n { continue; }
 
             let mut term = fact[n];
-            term = (term as i128 * invfact[a as usize] as i128 % MOD as i128) as i64;
-            term = (term as i128 * invfact[b as usize] as i128 % MOD as i128) as i64;
-            term = (term as i128 * invfact[c as usize] as i128 % MOD as i128) as i64;
-            term = (term as i128 * invfact[d as usize] as i128 % MOD as i128) as i64;
+            term = mul_mod(term, invfact[a], MOD);
+            term = mul_mod(term, invfact[b], MOD);
+            term = mul_mod(term, invfact[c], MOD);
+            term = mul_mod(term, invfact[d], MOD);
             sum_contrib = (sum_contrib + term) % MOD;
         }
 
