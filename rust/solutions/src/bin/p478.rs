@@ -29,24 +29,28 @@ fn main() {
     phi_arr[1] = 1;
 
     for i in 2..=N_MAX {
-        if phi_arr[i] == 0 {
-            primes.push(i as u32);
-            mu[i] = -1;
-            phi_arr[i] = (i - 1) as i32;
-        }
-        for &p_u32 in &primes {
-            let p = p_u32 as usize;
-            let t = i * p;
-            if t > N_MAX {
-                break;
+        // SAFETY: i <= N_MAX, arrays have size N_MAX+1
+        unsafe {
+            if *phi_arr.get_unchecked(i) == 0 {
+                primes.push(i as u32);
+                *mu.get_unchecked_mut(i) = -1;
+                *phi_arr.get_unchecked_mut(i) = (i - 1) as i32;
             }
-            if i % p == 0 {
-                mu[t] = 0;
-                phi_arr[t] = phi_arr[i] * p as i32;
-                break;
-            } else {
-                mu[t] = -mu[i];
-                phi_arr[t] = phi_arr[i] * (p - 1) as i32;
+            for &p_u32 in &primes {
+                let p = p_u32 as usize;
+                let t = i * p;
+                if t > N_MAX {
+                    break;
+                }
+                let phi_i = *phi_arr.get_unchecked(i);
+                if i % p == 0 {
+                    *mu.get_unchecked_mut(t) = 0;
+                    *phi_arr.get_unchecked_mut(t) = phi_i * p as i32;
+                    break;
+                } else {
+                    *mu.get_unchecked_mut(t) = -*mu.get_unchecked(i);
+                    *phi_arr.get_unchecked_mut(t) = phi_i * (p - 1) as i32;
+                }
             }
         }
     }
@@ -56,7 +60,11 @@ fn main() {
     // Mertens function
     let mut mertens = vec![0i32; N_MAX + 1];
     for i in 1..=N_MAX {
-        mertens[i] = mertens[i - 1] + mu[i] as i32;
+        // SAFETY: i <= N_MAX, arrays have size N_MAX+1
+        unsafe {
+            *mertens.get_unchecked_mut(i) = 
+                *mertens.get_unchecked(i - 1) + *mu.get_unchecked(i) as i32;
+        }
     }
 
     // total = |M(n)| mod PHI_MOD
@@ -85,14 +93,22 @@ fn main() {
     let mut pow2_low = vec![0i32; K];
     pow2_low[0] = 1;
     for i in 1..K {
-        pow2_low[i] = ((pow2_low[i - 1] as i64 * 2) % P_MOD) as i32;
+        // SAFETY: i < K, pow2_low has size K
+        unsafe {
+            let prev = *pow2_low.get_unchecked(i - 1);
+            *pow2_low.get_unchecked_mut(i) = ((prev as i64 * 2) % P_MOD) as i32;
+        }
     }
     let step = pow_mod(2, K as i64, P_MOD);
     let num_high = (PHI_MOD as usize / K) + 2;
     let mut pow2_high = vec![0i32; num_high];
     pow2_high[0] = 1;
     for i in 1..num_high {
-        pow2_high[i] = ((pow2_high[i - 1] as i64 * step) % P_MOD) as i32;
+        // SAFETY: i < num_high, pow2_high has size num_high
+        unsafe {
+            let prev = *pow2_high.get_unchecked(i - 1);
+            *pow2_high.get_unchecked_mut(i) = ((prev as i64 * step) % P_MOD) as i32;
+        }
     }
 
     let fast_pow2 = |exp: i64| -> i64 {
