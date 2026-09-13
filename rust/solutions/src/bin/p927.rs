@@ -77,33 +77,29 @@ fn pow_mod_barrett(mut b: u64, mut e: u64, bar: &Barrett) -> u64 {
 #[inline(always)]
 fn step_bar(x: u64, exp: u64, bar: &Barrett) -> u64 {
     let m = bar.m;
-    match exp {
-        2 => {
-            let v = bar.mul_mod(x, x) + 1;
-            if v >= m { v - m } else { v }
-        }
-        3 => {
-            let x2 = bar.mul_mod(x, x);
-            let v = bar.mul_mod(x2, x) + 1;
-            if v >= m { v - m } else { v }
-        }
-        5 => {
-            let x2 = bar.mul_mod(x, x);
-            let x4 = bar.mul_mod(x2, x2);
-            let v = bar.mul_mod(x4, x) + 1;
-            if v >= m { v - m } else { v }
-        }
-        7 => {
-            let x2 = bar.mul_mod(x, x);
-            let x4 = bar.mul_mod(x2, x2);
-            let v = bar.mul_mod(bar.mul_mod(x4, x2), x) + 1;
-            if v >= m { v - m } else { v }
-        }
-        _ => {
-            let v = pow_mod_barrett(x, exp, bar) + 1;
-            if v >= m { v - m } else { v }
-        }
+    if exp == 2 {
+        let v = bar.mul_mod(x, x) + 1;
+        return if v >= m { v - m } else { v };
     }
+    if exp == 3 {
+        let x2 = bar.mul_mod(x, x);
+        let v = bar.mul_mod(x2, x) + 1;
+        return if v >= m { v - m } else { v };
+    }
+    if exp == 5 {
+        let x2 = bar.mul_mod(x, x);
+        let x4 = bar.mul_mod(x2, x2);
+        let v = bar.mul_mod(x4, x) + 1;
+        return if v >= m { v - m } else { v };
+    }
+    if exp == 7 {
+        let x2 = bar.mul_mod(x, x);
+        let x4 = bar.mul_mod(x2, x2);
+        let v = bar.mul_mod(bar.mul_mod(x4, x2), x) + 1;
+        return if v >= m { v - m } else { v };
+    }
+    let v = pow_mod_barrett(x, exp, bar) + 1;
+    if v >= m { v - m } else { v }
 }
 
 /// Brent's cycle detection for orbit x -> f(x) starting at x=1.
@@ -133,6 +129,7 @@ fn check_reach_brent(bar: &Barrett, exp: u64) -> bool {
 }
 
 /// Visited-array orbit detection for small m (fits in cache).
+#[inline(always)]
 fn check_reach_visited(bar: &Barrett, exp: u64) -> bool {
     TL.with(|cell| {
         let (vis, gn) = &mut *cell.borrow_mut();
@@ -156,9 +153,6 @@ fn check_reach_visited(bar: &Barrett, exp: u64) -> bool {
                 return true;
             }
             x = step_bar(x, exp, bar);
-            if x == 0 {
-                return true;
-            }
         }
     })
 }
@@ -194,8 +188,11 @@ fn check_reach_brent_2(m: u64, inv: u64) -> bool {
         for _ in 0..power {
             let x2 = hare * hare;
             let q = ((x2 as u128 * inv as u128) >> 47) as u64;
-            let mut r = x2 - q * m + 1;
+            let mut r = x2 - q * m;
+            // Barrett guarantees r < 2*m, so one check suffices
             if r >= m { r -= m; }
+            // Now add 1 and check once more
+            r += 1;
             if r >= m { r -= m; }
             hare = r;
             if hare == 0 { return true; }
@@ -256,15 +253,46 @@ fn is_prime_in_s(q: usize, spf: &[u32]) -> bool {
 }
 
 fn is_composite_in_s(m: usize, spf: &[u32]) -> bool {
+    // Collect unique prime factors of phi(m) efficiently
     let mut phi_factors = [0u64; 32];
     let mut nf = 0usize;
     let mut temp = m;
+    
+    // For each prime factor p of m, we need prime factors of (p-1) and p itself if p^2|m
     while temp > 1 {
         let p = spf[temp] as usize;
+        
+        // Count multiplicity of p in m
+        let mut cnt = 0;
+        let mut tmp = m;
+        while tmp % p == 0 {
+            cnt += 1;
+            tmp /= p;
+        }
+        
+        // Add p to factors if p^2 | m
+        if cnt >= 2 {
+            let pv = p as u64;
+            // Check if already present
+            let mut found = false;
+            for i in 0..nf {
+                if phi_factors[i] == pv {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                phi_factors[nf] = pv;
+                nf += 1;
+            }
+        }
+        
+        // Factor (p-1) and add its prime factors
         let mut t = p - 1;
         while t > 1 {
             let f = spf[t] as usize;
             let fv = f as u64;
+            // Check if already present
             let mut found = false;
             for i in 0..nf {
                 if phi_factors[i] == fv {
@@ -280,50 +308,32 @@ fn is_composite_in_s(m: usize, spf: &[u32]) -> bool {
                 t /= f;
             }
         }
-        let mut cnt = 0;
-        let mut tmp = m;
-        while tmp % p == 0 {
-            cnt += 1;
-            tmp /= p;
-        }
-        if cnt >= 2 {
-            let pv = p as u64;
-            let mut found = false;
-            for i in 0..nf {
-                if phi_factors[i] == pv {
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                phi_factors[nf] = pv;
-                nf += 1;
-            }
-        }
+        
+        // Remove p from temp
         while temp % p == 0 {
             temp /= p;
         }
     }
+    
     check_reach_all(m as u64, &phi_factors[..nf])
 }
 
 fn main() {
-    // Smallest prime factor sieve using u32 and odd multiples
+    // Smallest prime factor sieve using u32 - optimized for odd numbers
     let mut spf = vec![0u32; N_LIMIT + 1];
-    for i in (2..=N_LIMIT).step_by(2) {
+    spf[2] = 2;
+    for i in (4..=N_LIMIT).step_by(2) {
         spf[i] = 2;
     }
     for i in (3..=N_LIMIT).step_by(2) {
         if spf[i] == 0 {
             spf[i] = i as u32;
-            if (i as u64) * (i as u64) <= N_LIMIT as u64 {
+            if i <= 3162 {  // sqrt(10^7) ≈ 3162
                 let step = 2 * i;
-                let mut j = i * i;
-                while j <= N_LIMIT {
+                for j in (i * i..=N_LIMIT).step_by(step) {
                     if spf[j] == 0 {
                         spf[j] = i as u32;
                     }
-                    j += step;
                 }
             }
         }
@@ -342,20 +352,25 @@ fn main() {
         }
     }
 
-    // Mark numbers with a non-S prime factor (smooth sieve)
-    let mut smooth = vec![true; N_LIMIT + 1];
+    // Mark numbers with a non-S prime factor (smooth sieve using bitset)
+    let n_bytes = (N_LIMIT + 8) / 8;
+    let mut smooth = vec![0xFFu8; n_bytes];
     for &q in &primes {
         if !is_sp[q] {
             let mut j = q;
             while j <= N_LIMIT {
-                smooth[j] = false;
+                smooth[j >> 3] &= !(1u8 << (j & 7));
                 j += q;
             }
         }
     }
 
     // Phase 2: Check smooth candidates (parallel)
-    let candidates: Vec<usize> = (4..=N_LIMIT).filter(|&m| smooth[m] && spf[m] != m as u32).collect();
+    let candidates: Vec<usize> = (4..=N_LIMIT)
+        .filter(|&m| {
+            (smooth[m >> 3] & (1u8 << (m & 7))) != 0 && spf[m] != m as u32
+        })
+        .collect();
     let sum2: i64 = candidates
         .into_par_iter()
         .map(|m| -> i64 {
