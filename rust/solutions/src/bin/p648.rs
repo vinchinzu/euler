@@ -4,6 +4,12 @@
 const NN: usize = 1000;
 const MOD: i64 = 1_000_000_000;
 
+#[inline(always)]
+fn normalize_fast(mut v: i64) -> i64 {
+    v += (v >> 63) & MOD;
+    v - ((v >= MOD) as i64 * MOD)
+}
+
 fn main() {
     let max_s = (NN / 2) * (NN / 2);
 
@@ -41,16 +47,16 @@ fn main() {
                     let v2 = *j2_ptr.add(k + 2) + *j1_ptr.add(k + 1) - *j2_ptr.add(k + 1);
                     let v3 = *j2_ptr.add(k + 3) + *j1_ptr.add(k + 2) - *j2_ptr.add(k + 2);
                     
-                    *f_ptr.add(k) = if v0 >= MOD { v0 - MOD } else if v0 < 0 { v0 + MOD } else { v0 };
-                    *f_ptr.add(k + 1) = if v1 >= MOD { v1 - MOD } else if v1 < 0 { v1 + MOD } else { v1 };
-                    *f_ptr.add(k + 2) = if v2 >= MOD { v2 - MOD } else if v2 < 0 { v2 + MOD } else { v2 };
-                    *f_ptr.add(k + 3) = if v3 >= MOD { v3 - MOD } else if v3 < 0 { v3 + MOD } else { v3 };
+                    *f_ptr.add(k) = normalize_fast(v0);
+                    *f_ptr.add(k + 1) = normalize_fast(v1);
+                    *f_ptr.add(k + 2) = normalize_fast(v2);
+                    *f_ptr.add(k + 3) = normalize_fast(v3);
                     k += 4;
                 }
                 
                 while k <= NN {
                     let v = *j2_ptr.add(k) + *j1_ptr.add(k - 1) - *j2_ptr.add(k - 1);
-                    *f_ptr.add(k) = if v >= MOD { v - MOD } else if v < 0 { v + MOD } else { v };
+                    *f_ptr.add(k) = normalize_fast(v);
                     k += 1;
                 }
             }
