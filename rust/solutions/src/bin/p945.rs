@@ -19,7 +19,7 @@ fn main() {
 fn solve(n: u32) -> u64 {
     let rest: u64 = (1..n + 1)
         .into_par_iter()
-        .with_min_len(2048)
+        .with_min_len(5120)
         .map(|a| count_b(a, n))
         .sum();
     rest + n as u64 + 1
@@ -72,19 +72,13 @@ fn count_leq(g0: u32, dim: u32, upper: u32) -> u64 {
             rem -= 1;
             let vb = (val >> bit_pos) & 1;
             let ub = (upper >> bit_pos) & 1;
-            if ub == 1 {
-                count += 1u64 << rem;
-            }
-            if vb != ub {
-                val ^= bv;
-            }
+            count += (ub as u64) << rem;
+            val ^= bv & ((vb ^ ub).wrapping_neg());
         } else {
             let vb = (val >> bit_pos) & 1;
             let ub = (upper >> bit_pos) & 1;
             if vb != ub {
-                if vb < ub {
-                    count += 1u64 << rem;
-                }
+                count += ((vb < ub) as u64) << rem;
                 return count;
             }
         }
@@ -110,16 +104,20 @@ fn gf2_gcd(mut a: u32, mut b: u32) -> u32 {
 
 #[inline(always)]
 fn gf2_div(mut a: u32, b: u32) -> u32 {
+    if a == 0 {
+        return 0;
+    }
     let lb = b.leading_zeros();
     let mut q = 0u32;
-    while a != 0 {
-        let la = a.leading_zeros();
-        if la > lb {
-            break;
-        }
+    let mut la = a.leading_zeros();
+    while la <= lb {
         let sh = lb - la;
         q |= 1 << sh;
         a ^= b << sh;
+        if a == 0 {
+            break;
+        }
+        la = a.leading_zeros();
     }
     q
 }
