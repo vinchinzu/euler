@@ -63,6 +63,7 @@ fn big_b(n: u128) -> u128 {
 
 /// Fixed-width next permutation: treat x as exactly k decimal digits (leading zeros allowed).
 /// Returns Some(permuted_int) or None.
+#[inline]
 fn next_perm_fixed(x: u64, k: usize, buf: &mut [u8]) -> Option<u64> {
     let mut t = x;
     for i in (0..k).rev() {
@@ -171,15 +172,20 @@ fn delta10_and_bad(big_n: u64) -> (u64, Option<u64>, u64) {
         return (0, None, 0);
     }
 
-    let k: usize = 10;
-    let m: u64 = 10_000_000_000; // 10^10
+    const M: u64 = 10_000_000_000; // 10^10
     // cycle length modulo 10^k = 8 * 5^(k-2) = 8 * 5^8 = 3_125_000
-    let step: u64 = 8 * 390_625; // 8 * 5^8 = 3_125_000
+    let step: u64 = 3_125_000;
+
+    // Inline helper for modular squaring + 2
+    #[inline(always)]
+    fn sq_plus_2_mod(x: u64) -> u64 {
+        ((x as u128 * x as u128 + 2) % M as u128) as u64
+    }
 
     // Compute a_6 mod 10^10
     let mut x: u64 = 0;
     for _ in 0..6 {
-        x = ((x as u128 * x as u128 + 2) % m as u128) as u64;
+        x = sq_plus_2_mod(x);
     }
     let start = x;
 
@@ -188,36 +194,34 @@ fn delta10_and_bad(big_n: u64) -> (u64, Option<u64>, u64) {
     let r = total_terms % step;
 
     let mut buf = [0u8; 10];
-    let mut cycle_sum: u64 = 0;
-    let mut rem_sum: u64 = 0;
+    let mut cycle_sum: u128 = 0;
+    let mut rem_sum: u128 = 0;
     let mut bad_step: Option<u64> = None;
 
+    // Hot loop: 3.125M iterations
+    // Max sum fits in u128: 3.125M * 10^10 = 3.125*10^16 < 10^38
     for i in 1..=step {
-        if let Some(y) = next_perm_fixed(x, k, &mut buf) {
-            // delta = y - x, but y > x always when next_perm succeeds for fixed-width
-            let d = if y >= x {
-                (y - x) % MOD
-            } else {
-                // This shouldn't happen for fixed-width next perm, but be safe
-                (MOD - (x - y) % MOD) % MOD
-            };
-            cycle_sum = (cycle_sum + d) % MOD;
+        if let Some(y) = next_perm_fixed(x, 10, &mut buf) {
+            let d = y - x; // y > x always when next_perm succeeds
+            cycle_sum += d as u128;
             if i <= r {
-                rem_sum = (rem_sum + d) % MOD;
+                rem_sum += d as u128;
             }
         } else {
-            assert!(bad_step.is_none(), "More than one bad position in 10-digit cycle");
             bad_step = Some(i);
-            // Contributes 0 to delta10
         }
-        x = ((x as u128 * x as u128 + 2) % m as u128) as u64;
+        x = sq_plus_2_mod(x);
     }
+    
+    // Single modular reduction at the end
+    cycle_sum %= MOD as u128;
+    rem_sum %= MOD as u128;
 
     assert_eq!(x, start, "Must return to start after one cycle");
     assert!(bad_step.is_some(), "Expected one bad position");
 
     let first_bad_n = bad_step.unwrap() + 5; // i=1 corresponds to n=6
-    let total = ((q % MOD) * cycle_sum % MOD + rem_sum) % MOD;
+    let total = ((q % MOD) * cycle_sum as u64 % MOD + rem_sum as u64) % MOD;
     (total, Some(first_bad_n), step)
 }
 
