@@ -2,21 +2,27 @@
 //
 // Sum of Fibonacci(a(n)) mod 1234567891011 for n=1..100000,
 // where a(1) is smallest prime > 10^14, a(n+1) is next prime after a(n).
-// Uses segmented sieve + fast doubling Fibonacci.
+// Wave 50: Optimized with rayon parallelism.
 
-use euler_utils::{mod_mul, primes_up_to};
+use euler_utils::primes_up_to;
+use rayon::prelude::*;
 
 const MOD: u64 = 1_234_567_891_011;
 const START: u64 = 100_000_000_000_000; // 10^14
 const COUNT: usize = 100_000;
+
+#[inline]
+fn mulmod(a: u64, b: u64, m: u64) -> u64 {
+    ((a as u128 * b as u128) % m as u128) as u64
+}
 
 fn fib_pair(n: u64, m: u64) -> (u64, u64) {
     if n == 0 {
         return (0, 1);
     }
     let (a, b) = fib_pair(n >> 1, m);
-    let c = mod_mul(a, ((2 * b as u128 + m as u128 - a as u128) % m as u128) as u64, m);
-    let d = (mod_mul(a, a, m) + mod_mul(b, b, m)) % m;
+    let c = mulmod(a, ((2 * b as u128 + m as u128 - a as u128) % m as u128) as u64, m);
+    let d = (mulmod(a, a, m) + mulmod(b, b, m)) % m;
     if n & 1 == 1 {
         (d, (c + d) % m)
     } else {
@@ -29,11 +35,9 @@ fn fib_mod(n: u64, m: u64) -> u64 {
 }
 
 fn main() {
-    // Small primes for segmented sieve
     let small_limit = 10_000_100;
     let small_primes: Vec<u64> = primes_up_to(small_limit).into_iter().map(|p| p as u64).collect();
 
-    // Segmented sieve
     let first = START + 1;
     let delta = (COUNT as f64 * (START as f64).ln() * 1.5) as u64;
     let high = first + delta;
@@ -57,17 +61,20 @@ fn main() {
         }
     }
 
-    let mut total: u64 = 0;
-    let mut found = 0;
+    let mut primes = Vec::with_capacity(COUNT);
     for i in 0..size {
         if sieve[i] {
-            total = (total + fib_mod(first + i as u64, MOD)) % MOD;
-            found += 1;
-            if found == COUNT {
+            primes.push(first + i as u64);
+            if primes.len() == COUNT {
                 break;
             }
         }
     }
+
+    let total: u64 = primes
+        .par_iter()
+        .map(|&p| fib_mod(p, MOD))
+        .reduce(|| 0, |a, b| (a + b) % MOD);
 
     println!("{}", total);
 }
