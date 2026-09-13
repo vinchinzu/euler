@@ -19,6 +19,7 @@ fn compute_area(p: i64, q: i64, pi: f64) -> f64 {
     let pf = p as f64;
     let pi_over_p = pi / pf;
     let sin_a = pi_over_p.sin();
+    let cos_a = pi_over_p.cos();
 
     // Initial sign: +1 if q odd, -1 if q even
     let mut sign: f64 = if q % 2 == 1 { 1.0 } else { -1.0 };
@@ -27,10 +28,17 @@ fn compute_area(p: i64, q: i64, pi: f64) -> f64 {
     let mut s: f64 = 0.0;
     let mut s_comp: f64 = 0.0;
 
-    for j in 0..q {
-        let c1 = (j as f64 * pi_over_p).cos();
-        let c2 = ((j + 1) as f64 * pi_over_p).cos();
-        let dj = sign * sin_a / (c1 * c2);
+    // Use incremental cos computation via angle addition formula
+    // cos((j+1)*a) = cos(j*a)*cos(a) - sin(j*a)*sin(a)
+    // sin((j+1)*a) = sin(j*a)*cos(a) + cos(j*a)*sin(a)
+    let mut cos_j = 1.0; // cos(0)
+    let mut sin_j = 0.0; // sin(0)
+
+    for _ in 0..q {
+        let cos_j_plus_1 = cos_j * cos_a - sin_j * sin_a;
+        let sin_j_plus_1 = sin_j * cos_a + cos_j * sin_a;
+        
+        let dj = sign * sin_a / (cos_j * cos_j_plus_1);
 
         // Kahan add
         let y = dj - s_comp;
@@ -39,6 +47,8 @@ fn compute_area(p: i64, q: i64, pi: f64) -> f64 {
         s = t;
 
         sign = -sign;
+        cos_j = cos_j_plus_1;
+        sin_j = sin_j_plus_1;
     }
 
     pf * s
