@@ -59,13 +59,15 @@ fn recursive_generate(
         return values;
     }
 
-    let mut freq = HashMap::new();
+    let mut freq: HashMap<i64, u8> = HashMap::new();
     for &x in a {
-        *freq.entry(x).or_insert(0u8) += 1;
+        *freq.entry(x).or_insert(0) += 1;
     }
     let multiples_flag = freq.values().any(|&v| v > 1);
 
     let mut all_values = Vec::with_capacity(10000);
+    let mut count1: HashMap<i64, u8> = HashMap::with_capacity(8);
+    let mut count2: HashMap<i64, u8> = HashMap::with_capacity(8);
     
     for k in 1..a.len() {
         let combs1 = combinations(a, k);
@@ -73,11 +75,9 @@ fn recursive_generate(
 
         for c1 in &combs1 {
             for c2 in &combs2 {
-                let mut valid = true;
-                
-                if multiples_flag {
-                    let mut count1: HashMap<i64, u8> = HashMap::new();
-                    let mut count2: HashMap<i64, u8> = HashMap::new();
+                let valid = if multiples_flag {
+                    count1.clear();
+                    count2.clear();
                     for &x in c1 {
                         *count1.entry(x).or_insert(0) += 1;
                     }
@@ -85,29 +85,12 @@ fn recursive_generate(
                         *count2.entry(x).or_insert(0) += 1;
                     }
                     
-                    for (&x, &c1_count) in &count1 {
-                        if let Some(&c2_count) = count2.get(&x) {
-                            if c1_count + c2_count > freq[&x] {
-                                valid = false;
-                                break;
-                            }
-                        }
-                    }
+                    count1.iter().all(|(&x, &c1_count)| {
+                        count2.get(&x).map_or(true, |&c2_count| c1_count + c2_count <= freq[&x])
+                    })
                 } else {
-                    let mut seen = false;
-                    'outer: for &x in c1 {
-                        for &y in c2 {
-                            if x == y {
-                                valid = false;
-                                seen = true;
-                                break 'outer;
-                            }
-                        }
-                    }
-                    if !seen {
-                        valid = true;
-                    }
-                }
+                    c1.iter().all(|x| c2.iter().all(|y| x != y))
+                };
 
                 if valid {
                     let t1 = recursive_generate(c1, memo);
@@ -132,9 +115,8 @@ fn recursive_generate(
 
     all_values.sort_unstable();
     all_values.dedup();
-    let result = all_values;
-    memo.insert(key, result.clone());
-    result
+    memo.insert(key, all_values.clone());
+    all_values
 }
 
 fn combinations(arr: &[i64], k: usize) -> Vec<Vec<i64>> {
