@@ -2,18 +2,45 @@
 // Find the Nth j such that 2^j starts with "123".
 
 fn main() {
-    let n = 678910;
-    let log2 = 2.0f64.log10();
-    let lo = 1.23f64.log10();
-    let hi = 1.24f64.log10();
+    const N: i32 = 678910;
+    const LOG2: f64 = 0.3010299956639812;
+    const LO: f64 = 0.08990511143939793;
+    const HI: f64 = 0.09342168516223506;
+    
     let mut count = 0;
     let mut j = 0i64;
-    while count < n {
+    
+    while count < N {
         j += 1;
-        let val = j as f64 * log2;
+        let val = (j as f64) * LOG2;
         let frac = val - val.floor();
-        if frac >= lo && frac < hi {
+        if frac >= LO && frac < HI {
             count += 1;
+            if count == N { break; }
+        }
+        
+        j += 1;
+        let val = (j as f64) * LOG2;
+        let frac = val - val.floor();
+        if frac >= LO && frac < HI {
+            count += 1;
+            if count == N { break; }
+        }
+        
+        j += 1;
+        let val = (j as f64) * LOG2;
+        let frac = val - val.floor();
+        if frac >= LO && frac < HI {
+            count += 1;
+            if count == N { break; }
+        }
+        
+        j += 1;
+        let val = (j as f64) * LOG2;
+        let frac = val - val.floor();
+        if frac >= LO && frac < HI {
+            count += 1;
+            if count == N { break; }
         }
     }
     println!("{}", j);
