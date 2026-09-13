@@ -86,11 +86,10 @@ fn mod_sqrt_neg1_p2(p: i32) -> i64 {
 #[inline(always)]
 fn count_solutions(n: i64, m_sq: i64, sols: &[i64]) -> i64 {
     let mut total = 0i64;
-    for &a in sols {
-        if a == 0 {
-            total += n / m_sq;
-        } else if a <= n {
-            total += (n - a) / m_sq + 1;
+    for i in 0..sols.len() {
+        let a = unsafe { *sols.get_unchecked(i) };
+        if a <= n {
+            total += if a == 0 { n / m_sq } else { (n - a) / m_sq + 1 };
         }
     }
     total
@@ -105,17 +104,19 @@ fn fill_sols(
     r1: i64,
     p2: i64,
 ) -> usize {
-    let inv = mod_inv_gen(d_sq % p2, p2);
+    let d_sq_mod = if d_sq >= p2 { d_sq % p2 } else { d_sq };
+    let inv = mod_inv_gen(d_sq_mod, p2);
     let mut n = 0usize;
-    for &s in sols {
-        let s_mod = s % p2;
+    for i in 0..sols.len() {
+        let s = unsafe { *sols.get_unchecked(i) };
+        let s_mod = if s >= p2 { s % p2 } else { s };
         let diff0 = if r0 >= s_mod { r0 - s_mod } else { r0 + p2 - s_mod };
         let kv0 = mul_mod(diff0, inv, p2);
-        out[n] = s + d_sq * kv0;
+        unsafe { *out.get_unchecked_mut(n) = s + d_sq * kv0; }
         n += 1;
         let diff1 = if r1 >= s_mod { r1 - s_mod } else { r1 + p2 - s_mod };
         let kv1 = mul_mod(diff1, inv, p2);
-        out[n] = s + d_sq * kv1;
+        unsafe { *out.get_unchecked_mut(n) = s + d_sq * kv1; }
         n += 1;
     }
     n
@@ -160,19 +161,19 @@ fn part_a_range(
     }
 
     let d_sq = d * d;
+    let child_mu = -mu;
     let mut result = 0i64;
     for i in lo..hi {
-        // SAFETY: lo..hi is a subrange of primes; roots is 1-1 with primes.
         let p = unsafe { *primes.get_unchecked(i) } as i64;
-        let new_d = d * p;
         let p2 = p * p;
+        let new_d = d * p;
+        let new_d_sq = p2 * d_sq;
         let r0 = unsafe { *roots.get_unchecked(i) };
         let r1 = p2 - r0;
 
         let mut new_sols = [0i64; MAX_SOLS];
         let nsols = fill_sols(&mut new_sols, sols, d_sq, r0, r1, p2);
-        let child_mu = -mu;
-        let cnt = count_solutions(N_VAL, new_d * new_d, &new_sols[..nsols]);
+        let cnt = count_solutions(N_VAL, new_d_sq, &new_sols[..nsols]);
         result += child_mu * cnt
             + part_a_children(i + 1, new_d, &new_sols[..nsols], child_mu, primes, roots);
     }
@@ -302,17 +303,22 @@ fn mu_squarefree(n: i64, mu_small: &[i8], primes: &[i32]) -> Option<i32> {
     }
     let mut mu = 1i32;
     let mut temp = n;
-    for &p in primes {
-        let pl = p as i64;
-        if pl * pl > temp {
+    let mut temp_sqrt = (temp as f64).sqrt() as i64 + 1;
+    
+    for i in 0..primes.len() {
+        let p = unsafe { *primes.get_unchecked(i) } as i64;
+        if p > temp_sqrt {
             break;
         }
-        if temp % pl == 0 {
-            temp /= pl;
-            if temp % pl == 0 {
+        if temp % p == 0 {
+            temp /= p;
+            if temp % p == 0 {
                 return None;
             }
             mu = -mu;
+            if temp == 1 {
+                return Some(mu);
+            }
             if temp < lim {
                 let m = unsafe { *mu_small.get_unchecked(temp as usize) };
                 if m == 0 {
@@ -323,6 +329,7 @@ fn mu_squarefree(n: i64, mu_small: &[i8], primes: &[i32]) -> Option<i32> {
             if miller_rabin_u64(temp as u64) {
                 return Some(-mu);
             }
+            temp_sqrt = (temp as f64).sqrt() as i64 + 1;
         }
     }
     if temp > 1 {
