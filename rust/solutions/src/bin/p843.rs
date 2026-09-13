@@ -11,16 +11,18 @@
 // We compute periods from ALL factors, take LCMs across factors of same d
 // (Cartesian product), then across all d values.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 // GF(2) polynomial represented as u128 bitmask: bit i = coefficient of x^i
 type Poly = u128;
 
+#[inline(always)]
 fn poly_deg(p: Poly) -> i32 {
     if p == 0 { return -1; }
     127 - p.leading_zeros() as i32
 }
 
+#[inline(always)]
 fn poly_mod(a: Poly, b: Poly) -> Poly {
     if b == 0 { panic!("division by zero"); }
     let db = poly_deg(b);
@@ -32,28 +34,26 @@ fn poly_mod(a: Poly, b: Poly) -> Poly {
     }
 }
 
+#[inline(always)]
 fn poly_mul_mod(a: Poly, b: Poly, m: Poly) -> Poly {
-    // Multiply a*b mod m in GF(2)
-    // Since degrees can be up to ~96, we need to be careful about overflow in u128.
-    // We'll do shift-and-add with reduction.
     let mut result: Poly = 0;
     let mut aa = poly_mod(a, m);
     let mut bb = b;
+    let deg_m = poly_deg(m);
     while bb != 0 {
         if bb & 1 != 0 {
             result ^= aa;
         }
         bb >>= 1;
         aa <<= 1;
-        // Reduce aa mod m if degree exceeds
-        if poly_deg(aa) >= poly_deg(m) {
+        if poly_deg(aa) >= deg_m {
             aa ^= m;
         }
     }
     poly_mod(result, m)
 }
 
-// Polynomial exponentiation mod m in GF(2), with u128 exponent
+#[inline]
 fn poly_pow_mod_big(base: Poly, exp: u128, m: Poly) -> Poly {
     let mut result: Poly = 1;
     let mut b = poly_mod(base, m);
@@ -68,6 +68,7 @@ fn poly_pow_mod_big(base: Poly, exp: u128, m: Poly) -> Poly {
     result
 }
 
+#[inline]
 fn poly_gcd(mut a: Poly, mut b: Poly) -> Poly {
     while b != 0 {
         let t = poly_mod(a, b);
@@ -86,35 +87,18 @@ fn poly_gcd(mut a: Poly, mut b: Poly) -> Poly {
 // Over integers first, then reduce mod 2.
 // Actually, for GF(2), x^d - 1 = x^d + 1 (since -1 = 1 mod 2).
 // We compute Phi_d over Z using integer polynomial division, then reduce mod 2.
-fn cyclotomic_poly_gf2(d: usize) -> Poly {
-    // Compute Phi_d(x) over Z, then reduce mod 2
-    // For d up to 100, degrees up to 96, coefficients stay small enough
-    // Actually the coefficients of cyclotomic polynomials can be large for big d,
-    // but for d <= 100 they're manageable.
-
-    // Use the formula: Phi_d(x) = prod_{k|d} (x^k - 1)^{mu(d/k)}
-    // where mu is the Mobius function.
-    // Equivalently: x^d - 1 = prod_{k|d} Phi_k(x)
-    // So Phi_d = (x^d - 1) / prod_{k|d, k<d} Phi_k(x)
-
-    // We'll compute over Z using Vec<i64> coefficients, then reduce mod 2
-
-    // Get divisors of d
+fn cyclotomic_poly_gf2(d: usize, cache_z: &HashMap<usize, Vec<i64>>) -> Poly {
     let divs = get_divisors(d);
-
-    // Start with x^d - 1 = x^d + (-1)
     let mut num = vec![0i64; d + 1];
     num[0] = -1;
     num[d] = 1;
 
-    // Divide by Phi_k for each proper divisor k of d
     for &k in &divs {
         if k == d { continue; }
-        let phi_k = cyclotomic_poly_z(k);
-        num = poly_div_z(&num, &phi_k);
+        let phi_k = &cache_z[&k];
+        num = poly_div_z(&num, phi_k);
     }
 
-    // Convert to GF(2) polynomial
     let mut result: Poly = 0;
     for (i, &c) in num.iter().enumerate() {
         if c.rem_euclid(2) == 1 {
@@ -124,24 +108,30 @@ fn cyclotomic_poly_gf2(d: usize) -> Poly {
     result
 }
 
-fn cyclotomic_poly_z(d: usize) -> Vec<i64> {
-    if d == 1 {
-        return vec![-1, 1]; // x - 1
+fn build_cyclotomic_cache_z(max_d: usize) -> HashMap<usize, Vec<i64>> {
+    let mut cache = HashMap::new();
+    cache.insert(1, vec![-1, 1]);
+    
+    for d in 2..=max_d {
+        let divs = get_divisors(d);
+        let mut num = vec![0i64; d + 1];
+        num[0] = -1;
+        num[d] = 1;
+        
+        for &k in &divs {
+            if k == d { continue; }
+            let phi_k = &cache[&k];
+            num = poly_div_z(&num, phi_k);
+        }
+        
+        while num.len() > 1 && *num.last().unwrap() == 0 {
+            num.pop();
+        }
+        
+        cache.insert(d, num);
     }
-    let divs = get_divisors(d);
-    let mut num = vec![0i64; d + 1];
-    num[0] = -1;
-    num[d] = 1;
-    for &k in &divs {
-        if k == d { continue; }
-        let phi_k = cyclotomic_poly_z(k);
-        num = poly_div_z(&num, &phi_k);
-    }
-    // Trim trailing zeros
-    while num.len() > 1 && *num.last().unwrap() == 0 {
-        num.pop();
-    }
-    num
+    
+    cache
 }
 
 // Exact polynomial division over Z (assumes divisor divides evenly)
@@ -172,7 +162,7 @@ fn poly_div_z(num: &[i64], den: &[i64]) -> Vec<i64> {
 }
 
 fn get_divisors(n: usize) -> Vec<usize> {
-    let mut divs = Vec::new();
+    let mut divs = Vec::with_capacity(32);
     let mut i = 1;
     while i * i <= n {
         if n % i == 0 {
@@ -270,7 +260,7 @@ fn factor_gf2(f: Poly, factor_degree: usize) -> Vec<Poly> {
     factors
 }
 
-// Exact division in GF(2)[x]
+#[inline]
 fn poly_exact_div_gf2(a: Poly, b: Poly) -> Poly {
     let da = poly_deg(a);
     let db = poly_deg(b);
@@ -287,17 +277,14 @@ fn poly_exact_div_gf2(a: Poly, b: Poly) -> Poly {
     quot
 }
 
-// Compute multiplicative order of element `elem` in GF(2)[x]/(f)
-// where f is irreducible of degree d. Order divides 2^d - 1.
-fn multiplicative_order_gf2(elem: Poly, f: Poly) -> u64 {
+fn multiplicative_order_gf2(elem: Poly, f: Poly, factor_cache: &mut HashMap<u128, Vec<(u128, u32)>>) -> u64 {
     let d = poly_deg(f) as u32;
     if d == 0 { return 1; }
-    let order_bound = (1u128 << d) - 1; // 2^d - 1
+    let order_bound = (1u128 << d) - 1;
 
     if order_bound == 0 { return 1; }
 
-    // Factor 2^d - 1
-    let factors = factorize_u128(order_bound);
+    let factors = factorize_u128(order_bound, factor_cache);
 
     let mut m = order_bound;
     for &(p, e) in &factors {
@@ -313,36 +300,39 @@ fn multiplicative_order_gf2(elem: Poly, f: Poly) -> u64 {
     m as u64
 }
 
-// Factorize a u128 number (for numbers up to ~2^96)
-fn factorize_u128(mut n: u128) -> Vec<(u128, u32)> {
-    let mut factors = Vec::new();
-    if n <= 1 { return factors; }
+fn factorize_u128(n: u128, cache: &mut HashMap<u128, Vec<(u128, u32)>>) -> Vec<(u128, u32)> {
+    if let Some(cached) = cache.get(&n) {
+        return cached.clone();
+    }
 
+    let mut factors = Vec::new();
+    if n <= 1 {
+        cache.insert(n, factors.clone());
+        return factors;
+    }
+
+    let mut remaining = n;
     let mut d = 2u128;
-    while d * d <= n {
-        if n % d == 0 {
+    while d * d <= remaining {
+        if remaining % d == 0 {
             let mut e = 0u32;
-            while n % d == 0 {
-                n /= d;
+            while remaining % d == 0 {
+                remaining /= d;
                 e += 1;
             }
             factors.push((d, e));
         }
         d += if d == 2 { 1 } else { 2 };
-        // For large n, we might need to be smarter, but 2^96-1 has
-        // all prime factors manageable with trial division up to ~2^48
-        // Actually, we need to be careful. Let's add a limit.
-        if d > 1_000_000 && n > 1 {
-            // Try Pollard rho for the remaining factor
+        if d > 1_000_000 && remaining > 1 {
             break;
         }
     }
-    if n > 1 {
-        // n might be a prime or semiprime
-        // Try to factor further with Pollard rho
-        let remaining_factors = factor_large(n);
+    if remaining > 1 {
+        let remaining_factors = factor_large(remaining);
         factors.extend(remaining_factors);
     }
+    
+    cache.insert(n, factors.clone());
     factors
 }
 
@@ -466,15 +456,13 @@ fn gcd_u128(mut a: u128, mut b: u128) -> u128 {
 //
 // Valid periods for this component: {1} union {m * 2^j : j = 0..=j_max}
 // where j_max is determined by when we first get 1 mod the full modulus.
-fn get_component_periods(elem: Poly, f: Poly, s: u32) -> Vec<u64> {
-    // If element is zero mod f^{2^s}, period is 1
+fn get_component_periods(elem: Poly, f: Poly, s: u32, factor_cache: &mut HashMap<u128, Vec<(u128, u32)>>) -> Vec<u64> {
     let mod_poly = poly_pow_gf2(f, 1u128 << s);
     let elem_mod = poly_mod(elem, mod_poly);
     if elem_mod == 0 {
         return vec![1];
     }
 
-    // Compute multiplicative order of elem mod f (irreducible)
     let elem_f = poly_mod(elem, f);
     if elem_f == 0 {
         // elem is divisible by f. Period is determined by nilpotent part.
@@ -529,11 +517,10 @@ fn get_component_periods(elem: Poly, f: Poly, s: u32) -> Vec<u64> {
         // P^k mod (x+1) = 0, not 1. But this is the d=1 component which we skip anyway.
         // So in practice, elem_f should never be 0 for d > 1.
 
-        return vec![1]; // shouldn't happen for d > 1
+        return vec![1];
     }
 
-    // Multiplicative order of elem mod f
-    let m = multiplicative_order_gf2(elem_f, f);
+    let m = multiplicative_order_gf2(elem_f, f, factor_cache);
 
     let mut periods = vec![1];
 
@@ -582,7 +569,7 @@ fn poly_pow_gf2(f: Poly, e: u128) -> Poly {
     result
 }
 
-// Multiply two GF(2) polynomials without modular reduction
+#[inline]
 fn poly_mul_gf2(a: Poly, b: Poly) -> Poly {
     let mut result: Poly = 0;
     let mut bb = b;
@@ -597,18 +584,19 @@ fn poly_mul_gf2(a: Poly, b: Poly) -> Poly {
     result
 }
 
-// Multiplicative order of 2 modulo d
+#[inline]
 fn ord2_mod(d: usize) -> usize {
     if d <= 1 { return 1; }
-    let mut x = 2u64 % d as u64;
+    let d64 = d as u64;
+    let mut x = 2u64 % d64;
     for i in 1..=d {
         if x == 1 { return i; }
-        x = (x * 2) % d as u64;
+        x = (x << 1) % d64;
     }
     d
 }
 
-// Euler's totient function
+#[inline]
 fn euler_phi(mut n: usize) -> usize {
     let mut result = n;
     let mut p = 2;
@@ -626,10 +614,11 @@ fn euler_phi(mut n: usize) -> usize {
 }
 
 fn main() {
-    let mut all_periods: HashSet<u64> = HashSet::new();
+    let cyclo_cache_z = build_cyclotomic_cache_z(100);
+    let mut factor_cache: HashMap<u128, Vec<(u128, u32)>> = HashMap::new();
+    let mut all_periods: Vec<u64> = Vec::new();
 
     for n in 3..=100usize {
-        // Factor n = 2^s * n_odd
         let mut n_odd = n;
         let mut s = 0u32;
         while n_odd % 2 == 0 {
@@ -638,8 +627,6 @@ fn main() {
         }
 
         let divs = get_divisors(n_odd);
-
-        // For each divisor d, get the set of possible periods from that CRT component
         let mut component_sets: Vec<Vec<u64>> = Vec::new();
 
         for &d in &divs {
@@ -651,58 +638,64 @@ fn main() {
             let phi_d = euler_phi(d);
             let ord_d = ord2_mod(d);
             let num_factors = phi_d / ord_d;
-
-            // Compute Phi_d(x) mod 2
-            let phi_poly = cyclotomic_poly_gf2(d);
-
-            // Element P = x + x^{n-1} in GF(2)[x]
+            let phi_poly = cyclotomic_poly_gf2(d, &cyclo_cache_z);
             let p_elem: Poly = (1u128 << 1) | (1u128 << (n - 1));
 
             if num_factors == 1 {
-                // Only one irreducible factor = phi_poly itself
-                let periods = get_component_periods(p_elem, phi_poly, s);
+                let periods = get_component_periods(p_elem, phi_poly, s, &mut factor_cache);
                 component_sets.push(periods);
             } else {
-                // Factor phi_poly into irreducible factors over GF(2)
                 let factors = factor_gf2(phi_poly, ord_d);
-
-                // Get periods from each factor
                 let mut factor_period_sets: Vec<Vec<u64>> = Vec::new();
                 for &f in &factors {
-                    let periods = get_component_periods(p_elem, f, s);
+                    let periods = get_component_periods(p_elem, f, s, &mut factor_cache);
                     factor_period_sets.push(periods);
                 }
 
-                // Take Cartesian product and LCMs across factors
-                let mut d_periods: HashSet<u64> = HashSet::new();
+                let mut d_periods = Vec::new();
                 cartesian_lcm(&factor_period_sets, 0, 1, &mut d_periods);
+                d_periods.sort_unstable();
+                d_periods.dedup();
 
-                component_sets.push(d_periods.into_iter().collect());
+                component_sets.push(d_periods);
             }
         }
 
-        // Take Cartesian product across all divisor components, compute LCMs
-        let mut valid_periods: HashSet<u64> = HashSet::new();
+        let mut valid_periods = Vec::new();
         cartesian_lcm(&component_sets, 0, 1, &mut valid_periods);
 
         all_periods.extend(valid_periods);
     }
 
+    all_periods.sort_unstable();
+    all_periods.dedup();
     let total: u64 = all_periods.iter().sum();
     println!("{}", total);
 }
 
-fn cartesian_lcm(sets: &[Vec<u64>], idx: usize, current_lcm: u64, result: &mut HashSet<u64>) {
-    if idx == sets.len() {
-        result.insert(current_lcm);
+fn cartesian_lcm(sets: &[Vec<u64>], _idx: usize, _current_lcm: u64, result: &mut Vec<u64>) {
+    if sets.is_empty() {
         return;
     }
-    for &p in &sets[idx] {
-        let new_lcm = lcm(current_lcm, p);
-        cartesian_lcm(sets, idx + 1, new_lcm, result);
+    
+    result.clear();
+    result.push(1);
+    
+    for set in sets {
+        let prev_len = result.len();
+        let mut new_results = Vec::with_capacity(prev_len * set.len());
+        
+        for &existing_lcm in &result[..prev_len] {
+            for &p in set {
+                new_results.push(lcm(existing_lcm, p));
+            }
+        }
+        
+        *result = new_results;
     }
 }
 
+#[inline(always)]
 fn gcd(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
         let t = a % b;
@@ -712,6 +705,7 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
     a
 }
 
+#[inline(always)]
 fn lcm(a: u64, b: u64) -> u64 {
     if a == 0 || b == 0 { return 0; }
     a / gcd(a, b) * b
