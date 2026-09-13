@@ -30,7 +30,10 @@ fn chunk_sum(k0: i64, k1: i64, inv2: u64) -> u64 {
         let r = n - q * k;
         let limit = (q as u64) % MOD;
         let km = (k as u64) % MOD;
-        let term1 = km * limit % MOD * ((limit + MOD - 1) % MOD) % MOD * inv2 % MOD;
+        
+        let a = km * limit % MOD;
+        let b = (limit + MOD - 1) % MOD;
+        let term1 = a * b % MOD * inv2 % MOD;
         let term2 = ((r as u64 + 1) % MOD) * limit % MOD;
         local += term1 + term2;
     }
@@ -40,7 +43,7 @@ fn chunk_sum(k0: i64, k1: i64, inv2: u64) -> u64 {
 fn main() {
     let inv2 = (MOD + 1) / 2;
     let k_hi = k_max(N);
-    const CHUNK: i64 = 200_000;
+    const CHUNK: i64 = 500_000;
     let n_chunks = (k_hi + CHUNK - 1) / CHUNK;
 
     let ans: u64 = (0..n_chunks)
