@@ -9,15 +9,17 @@ fn main() {
     let limit = 2 * (N_VAL as f64).sqrt() as usize + 10;
 
     // Sieve primes
-    let mut is_p = vec![false; limit + 1];
-    for i in 2..=limit { is_p[i] = true; }
-    let mut i = 2;
-    while i * i <= limit {
+    let mut is_p = vec![true; limit + 1];
+    is_p[0] = false;
+    is_p[1] = false;
+    for i in 2..=((limit as f64).sqrt() as usize) {
         if is_p[i] {
             let mut j = i * i;
-            while j <= limit { is_p[j] = false; j += i; }
+            while j <= limit {
+                is_p[j] = false;
+                j += i;
+            }
         }
-        i += 1;
     }
     let primes: Vec<i32> = (2..=limit).filter(|&i| is_p[i]).map(|i| i as i32).collect();
 
@@ -56,16 +58,6 @@ fn main() {
         }
     }
 
-    fn num_factors_in_factorial(m: i32, p: i32) -> i32 {
-        let mut count = 0;
-        let mut power = p as i64;
-        while power <= m as i64 {
-            count += m / power as i32;
-            power *= p as i64;
-        }
-        count
-    }
-
     // Recursive helper with explicit stack to avoid stack overflow
     struct State<'a> {
         primes: &'a [i32],
@@ -76,6 +68,7 @@ fn main() {
     }
 
     impl<'a> State<'a> {
+        #[inline(always)]
         fn sum_primes_up_to(&self, x: i64) -> i64 {
             if x <= 0 { return 0; }
             if x <= self.sqrt_n as i64 { return self.small_arr[x as usize]; }
@@ -90,9 +83,9 @@ fn main() {
 
             for index in min_index..self.primes.len() {
                 let p = self.primes[index];
-                if p as i64 > s as i64 && n * (p as i64) * (p as i64) > N_VAL {
-                    // Only single-prime factors remain
-                    if p as i64 <= N_VAL / n {
+                let p64 = p as i64;
+                if p64 > s as i64 && n * p64 * p64 > N_VAL {
+                    if p64 <= N_VAL / n {
                         let sp_upper = self.sum_primes_up_to(N_VAL / n);
                         let sp_lower = if index > 0 {
                             self.sum_primes_up_to(self.primes[index - 1] as i64)
@@ -107,18 +100,24 @@ fn main() {
                 let mut new_n = n;
                 let mut e = 1;
                 loop {
-                    new_n *= p as i64;
+                    new_n *= p64;
                     if new_n > N_VAL { break; }
 
                     let mut mult = p;
                     loop {
-                        if num_factors_in_factorial(mult, p) >= e {
-                            let new_s = if mult > s { mult } else { s };
-                            self.helper(index + 1, new_n, new_s);
-                            break;
+                        let mut count = 0;
+                        let mut power = p64;
+                        let m64 = mult as i64;
+                        while power <= m64 {
+                            count += (m64 / power) as i32;
+                            power *= p64;
                         }
+                        if count >= e { break; }
                         mult += p;
                     }
+                    
+                    let new_s = if mult > s { mult } else { s };
+                    self.helper(index + 1, new_n, new_s);
                     e += 1;
                 }
             }
