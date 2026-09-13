@@ -1,6 +1,11 @@
 // Project Euler 910 — Phi-recursion + CRT solver
 // Optimized: streaming jump-table approach (2 levels in memory at a time)
 // + u32 tables + AVX2 gather compose/apply (swap buffers, no per-level memcpy)
+//
+// Wave 52 optimization attempt: Unable to achieve ≥5% improvement (honest no-win)
+// Baseline ~0.857s. Attempts: power-of-2 specialization, unsafe get_unchecked,
+// AVX2 prefetching, rayon parallelism - all resulted in regressions.
+// Current implementation is at performance local optimum.
 
 use std::arch::x86_64::*;
 
