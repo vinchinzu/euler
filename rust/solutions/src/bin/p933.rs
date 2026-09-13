@@ -25,6 +25,26 @@ use rayon::prelude::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn mex_bytes(seen: &[u8; 256]) -> u8 {
+    // SAFETY: seen has exactly 256 bytes, pointer is valid
+    unsafe {
+        let ptr = seen.as_ptr();
+        for i in (0..256).step_by(32) {
+            let chunk = _mm256_loadu_si256(ptr.add(i) as *const __m256i);
+            let zero = _mm256_setzero_si256();
+            let cmp = _mm256_cmpeq_epi8(chunk, zero);
+            let mask = _mm256_movemask_epi8(cmp);
+            if mask != 0 {
+                return (i + mask.trailing_zeros() as usize) as u8;
+            }
+        }
+        255
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
 #[inline(always)]
 fn mex_bytes(seen: &[u8; 256]) -> u8 {
     let mut m = 0u16;
@@ -45,20 +65,29 @@ unsafe fn mark_pairs_scalar(
     // SAFETY: caller guarantees vp[1..=maxb] and vp[h-maxb..=h-1] are in-bounds;
     // xor results are u8 so seen[v] is in 0..256.
     unsafe {
-        while b + 3 <= maxb {
+        let seen_ptr = seen.as_mut_ptr();
+        while b + 7 <= maxb {
             let v0 = *vp.add(b) ^ *vp.add(h - b);
             let v1 = *vp.add(b + 1) ^ *vp.add(h - b - 1);
             let v2 = *vp.add(b + 2) ^ *vp.add(h - b - 2);
             let v3 = *vp.add(b + 3) ^ *vp.add(h - b - 3);
-            *seen.get_unchecked_mut(v0 as usize) = 1;
-            *seen.get_unchecked_mut(v1 as usize) = 1;
-            *seen.get_unchecked_mut(v2 as usize) = 1;
-            *seen.get_unchecked_mut(v3 as usize) = 1;
-            b += 4;
+            let v4 = *vp.add(b + 4) ^ *vp.add(h - b - 4);
+            let v5 = *vp.add(b + 5) ^ *vp.add(h - b - 5);
+            let v6 = *vp.add(b + 6) ^ *vp.add(h - b - 6);
+            let v7 = *vp.add(b + 7) ^ *vp.add(h - b - 7);
+            *seen_ptr.add(v0 as usize) = 1;
+            *seen_ptr.add(v1 as usize) = 1;
+            *seen_ptr.add(v2 as usize) = 1;
+            *seen_ptr.add(v3 as usize) = 1;
+            *seen_ptr.add(v4 as usize) = 1;
+            *seen_ptr.add(v5 as usize) = 1;
+            *seen_ptr.add(v6 as usize) = 1;
+            *seen_ptr.add(v7 as usize) = 1;
+            b += 8;
         }
         while b <= maxb {
             let v = *vp.add(b) ^ *vp.add(h - b);
-            *seen.get_unchecked_mut(v as usize) = 1;
+            *seen_ptr.add(v as usize) = 1;
             b += 1;
         }
     }
@@ -270,14 +299,24 @@ fn main() {
             let l_inf = g_inf[a] ^ g_inf[c];
 
             let mut count_map = [0i64; 256];
+            let mut active: Vec<u8> = Vec::with_capacity(256);
             let mut prefix_b_sum_linf: i64 = 0;
-            for b in 1..b_stab {
-                let lb = unsafe {
-                    *g.get_unchecked(a * stride + b) ^ *g.get_unchecked(c * stride + b)
-                };
-                count_map[lb as usize] += 1;
-                if lb == l_inf {
-                    prefix_b_sum_linf += b as i64;
+            
+            // SAFETY: b < b_stab <= h_budget, stride = h_budget + 1,
+            // a and c are valid widths, so indices are in bounds
+            unsafe {
+                let ga_ptr = g.as_ptr().add(a * stride);
+                let gc_ptr = g.as_ptr().add(c * stride);
+                for b in 1..b_stab {
+                    let lb = *ga_ptr.add(b) ^ *gc_ptr.add(b);
+                    let cnt_ptr = count_map.get_unchecked_mut(lb as usize);
+                    if *cnt_ptr == 0 {
+                        active.push(lb);
+                    }
+                    *cnt_ptr += 1;
+                    if lb == l_inf {
+                        prefix_b_sum_linf += b as i64;
+                    }
                 }
             }
 
@@ -287,8 +326,8 @@ fn main() {
             let bs = b_stab as i64;
 
             let mut s: i64 = 0;
-            for v in 0..256u16 {
-                if v as u8 != l_inf {
+            for &v in &active {
+                if v != l_inf {
                     let cnt = count_map[v as usize];
                     s += cnt * cnt;
                 }
