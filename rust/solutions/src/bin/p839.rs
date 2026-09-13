@@ -49,33 +49,29 @@ fn main() {
 
     let mut ans: i64 = 0;
     let mut idx: usize = 0;
+    let num_blocks = vals.len();
     
     unsafe {
-        let s_ptr = s.as_mut_ptr();
-        
-        for block_i in 0..vals.len() {
+        for block_i in 0..num_blocks {
             let v = *vals.get_unchecked(block_i);
-            let len = *lens.get_unchecked(block_i) as usize;
-            let len_i64 = len as i64;
+            let len = *lens.get_unchecked(block_i);
+            let len_usize = len as usize;
             
-            let idx_end = idx + len;
+            let idx_end = idx + len_usize;
             let process_end = idx_end.min(N - 1);
             
             let mut i = 0i64;
             while idx < process_end {
-                let t_val = (v + i) / len_i64;
-                let s_val = *s_ptr.add(idx);
-                let diff = s_val - t_val;
-                *s_ptr.add(idx + 1) += diff;
+                let t_val = (v + i) / len;
+                let diff = *s.get_unchecked(idx) - t_val;
+                *s.get_unchecked_mut(idx + 1) += diff;
                 ans += diff;
                 idx += 1;
                 i += 1;
             }
             
             if idx < idx_end {
-                let t_val = (v + i) / len_i64;
-                let s_val = *s_ptr.add(idx);
-                ans += s_val - t_val;
+                ans += *s.get_unchecked(idx) - (v + i) / len;
                 idx += 1;
             }
         }
