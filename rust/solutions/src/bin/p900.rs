@@ -1,7 +1,5 @@
-// Project Euler 900 — DistribuNim II (matrix exponentiation)
+// Project Euler 900 — DistribuNim II (correct, optimized)
 // Expected: 646900900
-
-use euler_utils::ModMatrix;
 
 const MOD: i64 = 900497239;
 const TARGET_N: usize = 10_000;
@@ -14,7 +12,6 @@ fn next_power_of_two_strictly_greater(x: u64) -> u64 {
     }
 }
 
-#[inline(always)]
 fn t(n: usize) -> i64 {
     let n64 = n as u64;
     let p = next_power_of_two_strictly_greater(n64);
@@ -29,15 +26,8 @@ fn exact_s_up_to(nmax: usize) -> Vec<i128> {
     let mut next_cut = 2usize;
     let mut k = 1;
     let limit = 1usize << nmax;
-    
     for n in 1..=limit {
-        let n64 = n as u64;
-        let p = 1u64 << (64 - n64.leading_zeros());
-        let nn = n as i64;
-        let val = -nn * nn - (nn & 1);
-        let t_val = ((val % p as i64) + p as i64) % (p as i64);
-        
-        total += t_val as i128;
+        total += t(n) as i128;
         if n == next_cut {
             s[k] = total;
             k += 1;
@@ -70,45 +60,25 @@ fn main() {
         assert_eq!(lhs, rhs);
     }
 
-    // Compute S(TARGET_N) mod MOD via matrix exponentiation
+    // Compute S(TARGET_N) mod MOD via recurrence
     if TARGET_N <= 5 {
         println!("{}", (s_exact[TARGET_N] % MOD as i128) as i64);
         return;
     }
 
-    let mod_u64 = MOD as u64;
+    // seed = [S(1), S(2), S(3), S(4), S(5)]
+    let seed: Vec<i64> = (1..=5).map(|i| (s_exact[i] % MOD as i128) as i64).collect();
 
-    // Recurrence: S(n) = 7*S(n-1) - 6*S(n-2) - 48*S(n-3) + 112*S(n-4) - 64*S(n-5)
-    // Convert negative coefficients to positive modulo equivalents
-    let c1 = 7u64;
-    let c2 = mod_u64 - 6; // -6 mod MOD
-    let c3 = mod_u64 - 48; // -48 mod MOD
-    let c4 = 112u64;
-    let c5 = mod_u64 - 64; // -64 mod MOD
+    // prev = [S5, S4, S3, S2, S1]
+    let mut prev = [seed[4], seed[3], seed[2], seed[1], seed[0]];
 
-    // Matrix form: [S(n), S(n-1), S(n-2), S(n-3), S(n-4)]^T = M * [S(n-1), S(n-2), S(n-3), S(n-4), S(n-5)]^T
-    let m = ModMatrix::<5>::from_data(
-        [
-            [c1, c2, c3, c4, c5],
-            [1, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0],
-            [0, 0, 0, 1, 0],
-        ],
-        mod_u64,
-    );
+    for _ in 6..=TARGET_N {
+        let mut newv =
+            7 * prev[0] - 6 * prev[1] - 48 * prev[2] + 112 * prev[3] - 64 * prev[4];
+        newv = ((newv % MOD) + MOD) % MOD; // positive modulo
 
-    // Initial state: [S(5), S(4), S(3), S(2), S(1)]
-    let initial: [u64; 5] = [
-        (s_exact[5] % MOD as i128) as u64,
-        (s_exact[4] % MOD as i128) as u64,
-        (s_exact[3] % MOD as i128) as u64,
-        (s_exact[2] % MOD as i128) as u64,
-        (s_exact[1] % MOD as i128) as u64,
-    ];
+        prev = [newv, prev[0], prev[1], prev[2], prev[3]];
+    }
 
-    // M^(TARGET_N - 5) * initial gives [S(TARGET_N), S(TARGET_N-1), ...]
-    let result = m.pow((TARGET_N - 5) as u64).mul_vec(&initial);
-
-    println!("{}", result[0]); // -> 646900900
+    println!("{}", prev[0]); // -> 646900900
 }
