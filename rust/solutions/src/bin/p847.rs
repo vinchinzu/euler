@@ -154,56 +154,19 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize, tables: &Ta
                             new_r = -3;
                         }
 
-                        let mut valid_nca = [0i32; 2];
-                        let nca_count = if c_a != 0 {
-                            if a == 1 {
-                                valid_nca[0] = 1;
-                                1
-                            } else {
-                                continue;
-                            }
-                        } else if a == 0 {
-                            valid_nca[0] = 0;
-                            valid_nca[1] = 1;
-                            2
-                        } else {
-                            valid_nca[0] = 0;
-                            1
-                        };
-
-                        let mut valid_ncb = [0i32; 2];
-                        let ncb_count = if c_b != 0 {
-                            if b == 1 {
-                                valid_ncb[0] = 1;
-                                1
-                            } else {
-                                continue;
-                            }
-                        } else if b == 0 {
-                            valid_ncb[0] = 0;
-                            valid_ncb[1] = 1;
-                            2
-                        } else {
-                            valid_ncb[0] = 0;
-                            1
-                        };
-
-                        let mut valid_ncc = [0i32; 2];
-                        let ncc_count = if c_c != 0 {
-                            if c == 1 {
-                                valid_ncc[0] = 1;
-                                1
-                            } else {
-                                continue;
-                            }
-                        } else if c == 0 {
-                            valid_ncc[0] = 0;
-                            valid_ncc[1] = 1;
-                            2
-                        } else {
-                            valid_ncc[0] = 0;
-                            1
-                        };
+                        // Optimized carry transition logic with early exit
+                        if c_a != 0 && a != 1 { continue; }
+                        if c_b != 0 && b != 1 { continue; }
+                        if c_c != 0 && c != 1 { continue; }
+                        
+                        let valid_nca = if c_a != 0 { [1, 0] } else if a == 0 { [0, 1] } else { [0, 0] };
+                        let nca_count = if c_a != 0 { 1 } else if a == 0 { 2 } else { 1 };
+                        
+                        let valid_ncb = if c_b != 0 { [1, 0] } else if b == 0 { [0, 1] } else { [0, 0] };
+                        let ncb_count = if c_b != 0 { 1 } else if b == 0 { 2 } else { 1 };
+                        
+                        let valid_ncc = if c_c != 0 { [1, 0] } else if c == 0 { [0, 1] } else { [0, 0] };
+                        let ncc_count = if c_c != 0 { 1 } else if c == 0 { 2 } else { 1 };
 
                         for ia in 0..nca_count {
                             let nca = valid_nca[ia];
@@ -221,24 +184,74 @@ fn solve_dp(limit: i64, kval: i32, checks: &[[i32; 3]], nchk: usize, tables: &Ta
                                     let mut possible = true;
                                     let mut new_cs = [0i32; 3];
 
-                                    for idx in 0..nchk {
-                                        let b_a = if checks[idx][0] != 0 { bit_a1 } else { bit_a } as usize;
-                                        let b_b = if checks[idx][1] != 0 { bit_b1 } else { bit_b } as usize;
-                                        let b_c = if checks[idx][2] != 0 { bit_c1 } else { bit_c } as usize;
-
-                                        let prev_states = match idx {
-                                            0 => cs0,
-                                            1 => cs1,
-                                            _ => cs2,
-                                        } as usize;
-
-                                        let current_possible = tables.ptrans[b_a][b_b][b_c][has_source][prev_states] as i32;
-
+                                    // Manually unroll check loop for better performance
+                                    // Check 0
+                                    {
+                                        let b_a = if checks[0][0] != 0 { bit_a1 } else { bit_a } as usize;
+                                        let b_b = if checks[0][1] != 0 { bit_b1 } else { bit_b } as usize;
+                                        let b_c = if checks[0][2] != 0 { bit_c1 } else { bit_c } as usize;
+                                        
+                                        // SAFETY: b_a, b_b, b_c are 0 or 1, has_source is 0 or 1, cs0 is 0..255
+                                        let current_possible = unsafe {
+                                            *tables.ptrans
+                                                .get_unchecked(b_a)
+                                                .get_unchecked(b_b)
+                                                .get_unchecked(b_c)
+                                                .get_unchecked(has_source)
+                                                .get_unchecked(cs0 as usize)
+                                        } as i32;
+                                        
                                         if current_possible == 0 {
                                             possible = false;
-                                            break;
+                                        } else {
+                                            new_cs[0] = current_possible;
                                         }
-                                        new_cs[idx] = current_possible;
+                                    }
+                                    
+                                    // Check 1
+                                    if possible && nchk > 1 {
+                                        let b_a = if checks[1][0] != 0 { bit_a1 } else { bit_a } as usize;
+                                        let b_b = if checks[1][1] != 0 { bit_b1 } else { bit_b } as usize;
+                                        let b_c = if checks[1][2] != 0 { bit_c1 } else { bit_c } as usize;
+                                        
+                                        // SAFETY: b_a, b_b, b_c are 0 or 1, has_source is 0 or 1, cs1 is 0..255
+                                        let current_possible = unsafe {
+                                            *tables.ptrans
+                                                .get_unchecked(b_a)
+                                                .get_unchecked(b_b)
+                                                .get_unchecked(b_c)
+                                                .get_unchecked(has_source)
+                                                .get_unchecked(cs1 as usize)
+                                        } as i32;
+                                        
+                                        if current_possible == 0 {
+                                            possible = false;
+                                        } else {
+                                            new_cs[1] = current_possible;
+                                        }
+                                    }
+                                    
+                                    // Check 2
+                                    if possible && nchk > 2 {
+                                        let b_a = if checks[2][0] != 0 { bit_a1 } else { bit_a } as usize;
+                                        let b_b = if checks[2][1] != 0 { bit_b1 } else { bit_b } as usize;
+                                        let b_c = if checks[2][2] != 0 { bit_c1 } else { bit_c } as usize;
+                                        
+                                        // SAFETY: b_a, b_b, b_c are 0 or 1, has_source is 0 or 1, cs2 is 0..255
+                                        let current_possible = unsafe {
+                                            *tables.ptrans
+                                                .get_unchecked(b_a)
+                                                .get_unchecked(b_b)
+                                                .get_unchecked(b_c)
+                                                .get_unchecked(has_source)
+                                                .get_unchecked(cs2 as usize)
+                                        } as i32;
+                                        
+                                        if current_possible == 0 {
+                                            possible = false;
+                                        } else {
+                                            new_cs[2] = current_possible;
+                                        }
                                     }
 
                                     if possible {
