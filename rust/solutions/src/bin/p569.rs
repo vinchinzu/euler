@@ -5,6 +5,7 @@
 
 const N: usize = 2_500_000;
 
+#[inline]
 fn primes_odd_sieve(limit: usize) -> Vec<usize> {
     let n_odds = (limit + 1) / 2;
     let mut odd = vec![true; n_odds];
@@ -37,6 +38,15 @@ fn primes_odd_sieve(limit: usize) -> Vec<usize> {
     primes
 }
 
+#[inline(always)]
+fn cross_product(p1x: i64, p1y: i64, mid_x: i64, mid_y: i64, base_x: i64, base_y: i64) -> i64 {
+    let dx1 = mid_x - p1x;
+    let dy1 = mid_y - p1y;
+    let dx2 = base_x - mid_x;
+    let dy2 = base_y - mid_y;
+    dx1 * dy2 - dy1 * dx2
+}
+
 fn main() {
     let prime_sieve_limit = 90_000_000;
     let primes = primes_odd_sieve(prime_sieve_limit);
@@ -46,8 +56,8 @@ fn main() {
         return;
     }
 
-    // Interleaved peak coordinates for cache locality
-    let mut peaks = vec![0i64; 2 * N];
+    let mut peaks_x = vec![0i64; N];
+    let mut peaks_y = vec![0i64; N];
 
     // Visible peak storage
     let mut vis_data: Vec<i32> = Vec::with_capacity(30_000_000);
@@ -61,57 +71,47 @@ fn main() {
     for i in 0..N {
         x += primes[2 * i] as i64;
         y += primes[2 * i] as i64;
-        let i2 = 2 * i;
-        peaks[i2] = x;
-        peaks[i2 + 1] = y;
+        peaks_x[i] = x;
+        peaks_y[i] = y;
         x += primes[2 * i + 1] as i64;
         y -= primes[2 * i + 1] as i64;
 
-        vis_start[i] = vis_data.len();
+        let vis_base = vis_data.len();
+        vis_start[i] = vis_base;
         let mut count = 0usize;
-        let mut j = i as i32 - 1;
+        let mut j = i.wrapping_sub(1);
 
-        while j >= 0 {
-            vis_data.push(j);
+        let base_x = peaks_x[i];
+        let base_y = peaks_y[i];
+
+        while j < N {
+            vis_data.push(j as i32);
             count += 1;
 
             if j == 0 {
                 break;
             }
 
-            let j_usize = j as usize;
-            let prev_vis_start = vis_start[j_usize];
-            let prev_count = vis_count[j_usize];
-            
-            let j2 = 2 * j_usize;
-            // SAFETY: j_usize < i < N, so j2 and j2+1 < 2*N
-            let (mid_x, mid_y) = unsafe {
-                (*peaks.get_unchecked(j2), *peaks.get_unchecked(j2 + 1))
-            };
-            let (base_x, base_y) = unsafe {
-                (*peaks.get_unchecked(i2), *peaks.get_unchecked(i2 + 1))
-            };
+            let prev_vis_start = vis_start[j];
+            let prev_count = vis_count[j];
+            let mid_x = peaks_x[j];
+            let mid_y = peaks_y[j];
 
-            let mut left = 0;
+            let mut left = 0usize;
             let mut right = prev_count;
+            
             while left < right {
-                let mid_idx = (left + right) / 2;
+                let mid_idx = (left + right) >> 1;
                 // SAFETY: mid_idx < prev_count, prev_vis_start + mid_idx < vis_data.len()
                 let peak_idx = unsafe {
                     *vis_data.get_unchecked(prev_vis_start + mid_idx) as usize
                 };
-                let p2 = 2 * peak_idx;
-                // SAFETY: peak_idx < j_usize < N, so p2 and p2+1 < 2*N
+                // SAFETY: peak_idx < j < N
                 let (p1x, p1y) = unsafe {
-                    (*peaks.get_unchecked(p2), *peaks.get_unchecked(p2 + 1))
+                    (*peaks_x.get_unchecked(peak_idx), *peaks_y.get_unchecked(peak_idx))
                 };
                 
-                // Inline cross product: (mid - p1) x (base - mid)
-                let dx1 = mid_x - p1x;
-                let dy1 = mid_y - p1y;
-                let dx2 = base_x - mid_x;
-                let dy2 = base_y - mid_y;
-                let turn_val = dx1 * dy2 - dy1 * dx2;
+                let turn_val = cross_product(p1x, p1y, mid_x, mid_y, base_x, base_y);
                 
                 if turn_val < 0 {
                     left = mid_idx + 1;
@@ -123,8 +123,7 @@ fn main() {
             if left >= prev_count {
                 break;
             }
-            // SAFETY: left < prev_count, prev_vis_start + left < vis_data.len()
-            j = unsafe { *vis_data.get_unchecked(prev_vis_start + left) };
+            j = vis_data[prev_vis_start + left] as usize;
         }
 
         vis_count[i] = count;
