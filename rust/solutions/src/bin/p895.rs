@@ -28,7 +28,6 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
     let md = modulus;
     let inv2 = modinv(2, md);
 
-    // precompute pow2 and invpow2 up to m
     let mut pow2 = vec![1i64; m + 1];
     for i in 1..=m {
         pow2[i] = pow2[i - 1] * 2 % md;
@@ -46,11 +45,13 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
     let mut p1 = vec![0i64; m + 1];
     let mut p2 = vec![0i64; m + 1];
     for a in 1..=m {
-        let w = invpow2[a];
+        let w = unsafe { *invpow2.get_unchecked(a) };
         let a_mod = a as i64;
-        p0[a] = (p0[a - 1] + w) % md;
-        p1[a] = (p1[a - 1] + a_mod * w) % md;
-        p2[a] = (p2[a - 1] + a_mod * a_mod % md * w) % md;
+        unsafe {
+            *p0.get_unchecked_mut(a) = (*p0.get_unchecked(a - 1) + w) % md;
+            *p1.get_unchecked_mut(a) = (*p1.get_unchecked(a - 1) + a_mod * w) % md;
+            *p2.get_unchecked_mut(a) = (*p2.get_unchecked(a - 1) + a_mod * a_mod % md * w) % md;
+        }
     }
 
     let interval_sums = |l: usize, r: usize| -> (i64, i64, i64) {
@@ -151,7 +152,7 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
                     acc = (acc + mult_sign * g[ra][nb]) % md;
                 }
             }
-            base[r] = acc * pow2[b - 1] % md;
+            base[r] = acc * unsafe { *pow2.get_unchecked(b - 1) } % md;
         }
         base
     };
@@ -159,11 +160,10 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
     // Case 0: 3 monochrome
     let case0 = 3 * (m as i64 % md) % md * ((m as i64 - 1) % md + md) % md % md;
 
-    // Case 2: two mixed + one monochrome
     let mut case2: i64 = 0;
     for t in 1..m {
         let n = (m - t) as i64;
-        let term = pow2[t - 1] % md * (n % md) % md * ((n - 1) % md + md) % md;
+        let term = unsafe { *pow2.get_unchecked(t - 1) } * n % md * (n - 1 + md) % md;
         case2 = (case2 + term) % md;
     }
     case2 = case2 * 6 % md;
@@ -196,10 +196,12 @@ fn g_mod(m: usize, modulus: i64) -> i64 {
                     if c_idx < 0 || c_idx as usize > u - 1 {
                         continue;
                     }
-                    let numerator_high = if f == 0 {
-                        cur0[c_idx as usize]
-                    } else {
-                        cur1[c_idx as usize]
+                    let numerator_high = unsafe {
+                        if f == 0 {
+                            *cur0.get_unchecked(c_idx as usize)
+                        } else {
+                            *cur1.get_unchecked(c_idx as usize)
+                        }
                     };
                     case3 = (case3 + numerator_high * base[r as usize]) % md;
                 }
