@@ -9,7 +9,8 @@
 const MOD: i64 = 1_405_695_061;
 const CUTOFF: i64 = 40000;
 
-use std::collections::{HashSet, VecDeque};
+use fxhash::FxHashSet;
+use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct State {
@@ -31,8 +32,8 @@ fn pow_mod(mut base: i128, mut exp: i64, m: i64) -> i64 {
 }
 
 fn solve_compressed(k: i64, n: i64) -> i64 {
-    let mut visited: HashSet<State> = HashSet::new();
-    let mut found: HashSet<i64> = HashSet::new();
+    let mut visited: FxHashSet<State> = FxHashSet::default();
+    let mut found: FxHashSet<i64> = FxHashSet::default();
     let mut queue: VecDeque<State> = VecDeque::new();
 
     let init = State { ones: k as i32, non_ones: Vec::new() };
@@ -48,12 +49,22 @@ fn solve_compressed(k: i64, n: i64) -> i64 {
         if cur.ones > 0 && k as i128 * product <= n as i128 + 1 {
             let val = (k as i128 * product - 1) as i64;
             if val <= n && val > 1 {
-                let mut ns = State {
+                let mut new_non_ones = Vec::with_capacity(cur.non_ones.len() + 1);
+                let mut inserted = false;
+                for &x in &cur.non_ones {
+                    if !inserted && val < x {
+                        new_non_ones.push(val);
+                        inserted = true;
+                    }
+                    new_non_ones.push(x);
+                }
+                if !inserted {
+                    new_non_ones.push(val);
+                }
+                let ns = State {
                     ones: cur.ones - 1,
-                    non_ones: cur.non_ones.clone(),
+                    non_ones: new_non_ones,
                 };
-                ns.non_ones.push(val);
-                ns.non_ones.sort();
                 if visited.insert(ns.clone()) {
                     if found.insert(val) { found_sum = (found_sum + val) % MOD; }
                     queue.push_back(ns);
@@ -68,9 +79,24 @@ fn solve_compressed(k: i64, n: i64) -> i64 {
             if k as i128 * p_others > n as i128 + x as i128 { continue; }
             let val = (k as i128 * p_others - x as i128) as i64;
             if val <= n && val > x {
-                let mut ns = cur.clone();
-                ns.non_ones[i] = val;
-                ns.non_ones.sort();
+                let mut new_non_ones = Vec::with_capacity(cur.non_ones.len());
+                let mut inserted = false;
+                for j in 0..cur.non_ones.len() {
+                    if j != i {
+                        if !inserted && val < cur.non_ones[j] {
+                            new_non_ones.push(val);
+                            inserted = true;
+                        }
+                        new_non_ones.push(cur.non_ones[j]);
+                    }
+                }
+                if !inserted {
+                    new_non_ones.push(val);
+                }
+                let ns = State {
+                    ones: cur.ones,
+                    non_ones: new_non_ones,
+                };
                 if visited.insert(ns.clone()) {
                     if found.insert(val) { found_sum = (found_sum + val) % MOD; }
                     queue.push_back(ns);

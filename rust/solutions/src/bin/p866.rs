@@ -10,11 +10,28 @@ fn main() {
 
     for k in 1..=n {
         let mut sum_val: i64 = 0;
+        
         for i in 0..k {
-            sum_val = (sum_val as i128 + e[i] as i128 * e[k - 1 - i] as i128 % MOD as i128) as i64 % MOD;
+            // SAFETY: i < k <= n and k-1-i < k <= n, so both indices < n+1 (array size)
+            let a = unsafe { *e.get_unchecked(i) };
+            let b = unsafe { *e.get_unchecked(k - 1 - i) };
+            
+            sum_val += a * b % MOD;
+            
+            if i & 3 == 3 {
+                sum_val %= MOD;
+            }
         }
-        let factor = (2 * k as i64 - 1) % MOD;
-        e[k] = (factor as i128 * sum_val as i128 % MOD as i128) as i64;
+        
+        sum_val %= MOD;
+        
+        let factor = (2 * k as i64 - 1);
+        let result = factor * sum_val % MOD;
+        
+        // SAFETY: k <= n, so k < n+1 (array size)
+        unsafe {
+            *e.get_unchecked_mut(k) = result;
+        }
     }
 
     println!("{}", e[n]);

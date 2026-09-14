@@ -1,26 +1,39 @@
 // Project Euler 887
 // N = 7^10, K = 7. Binary representation analysis.
 
-fn main() {
-    let mut n: i64 = 1;
-    for _ in 0..10 { n *= 7; }
+const N: i64 = 282_475_249; // 7^10
 
-    let k = 7;
-    let mut ans = (n - 1) * n / 2;
-
-    for d in 1..=k {
-        let mut prev_k = 1i64;
-        let mut t = 1i64;
-        while prev_k < n {
-            let mut kv = 1i64 << t; // 2^t
-            if t > d {
-                kv += t + 1 - d as i64 - (1i64 << (t - d as i64));
-            }
-            if kv > n { kv = n; }
-            ans += (kv - prev_k) * t;
-            prev_k = kv;
-            t += 1;
-        }
+#[inline(always)]
+fn compute_sum(d: i64) -> i64 {
+    let mut sum = 0i64;
+    let mut prev_k = 1i64;
+    let mut t = 1i64;
+    let mut power_t = 2i64; // 2^t
+    
+    while prev_k < N {
+        let kv = if t <= d {
+            power_t.min(N)
+        } else {
+            let power_t_minus_d = 1i64 << (t - d);
+            let adjustment = t + 1 - d - power_t_minus_d;
+            (power_t + adjustment).min(N)
+        };
+        sum += (kv - prev_k) * t;
+        prev_k = kv;
+        t += 1;
+        power_t <<= 1; // power_t *= 2
     }
+    sum
+}
+
+fn main() {
+    let mut ans = (N - 1) * N / 2;
+    ans += compute_sum(1);
+    ans += compute_sum(2);
+    ans += compute_sum(3);
+    ans += compute_sum(4);
+    ans += compute_sum(5);
+    ans += compute_sum(6);
+    ans += compute_sum(7);
     println!("{}", ans);
 }

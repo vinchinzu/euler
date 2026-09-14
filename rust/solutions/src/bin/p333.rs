@@ -31,45 +31,60 @@ fn main() {
     }
     terms.sort_by(|a, b| a.exp2.cmp(&b.exp2).then(b.exp3.cmp(&a.exp3)));
 
-    // Build predecessors
+    // Build predecessors - flatten to single vec with offsets
     let nterms = terms.len();
-    let mut preds: Vec<Vec<usize>> = vec![Vec::new(); nterms];
+    let mut pred_data: Vec<usize> = Vec::new();
+    let mut pred_offsets: Vec<usize> = Vec::with_capacity(nterms + 1);
+    pred_offsets.push(0);
+    
     for j in 0..nterms {
         for i in 0..j {
             if terms[i].exp2 < terms[j].exp2 && terms[i].exp3 > terms[j].exp3 {
-                preds[j].push(i);
+                pred_data.push(i);
             }
         }
+        pred_offsets.push(pred_data.len());
     }
 
     // DP: for each term, store sparse (sum, count) pairs
     let mut dp: Vec<Vec<(usize, i32)>> = vec![Vec::new(); nterms];
     let mut counts = vec![0i32; LIMIT + 1];
+    let mut temp = vec![0i32; LIMIT + 1];
+    let mut active: Vec<usize> = Vec::new();
 
     for idx in 0..nterms {
         let value = terms[idx].value;
 
-        let mut temp = vec![0i32; LIMIT + 1];
         if value <= LIMIT {
             temp[value] = 1;
+            active.push(value);
         }
 
-        for &pred in &preds[idx] {
+        let start = pred_offsets[idx];
+        let end = pred_offsets[idx + 1];
+        for &pred in &pred_data[start..end] {
             for &(s, c) in &dp[pred] {
                 let new_sum = s + value;
                 if new_sum <= LIMIT {
+                    if temp[new_sum] == 0 {
+                        active.push(new_sum);
+                    }
                     temp[new_sum] += c;
                 }
             }
         }
 
-        let mut pairs = Vec::new();
-        for s in 1..=LIMIT {
-            if temp[s] > 0 {
-                pairs.push((s, temp[s]));
-                counts[s] += temp[s];
+        let mut pairs = Vec::with_capacity(active.len());
+        for &s in &active {
+            // SAFETY: s <= LIMIT guaranteed by outer DP logic
+            unsafe {
+                let cnt = *temp.get_unchecked(s);
+                pairs.push((s, cnt));
+                *counts.get_unchecked_mut(s) += cnt;
+                *temp.get_unchecked_mut(s) = 0;
             }
         }
+        active.clear();
         dp[idx] = pairs;
     }
 

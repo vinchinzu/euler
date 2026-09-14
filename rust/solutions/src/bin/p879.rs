@@ -13,7 +13,6 @@ fn gcd(mut a: i32, mut b: i32) -> i32 {
 }
 
 fn main() {
-    // Precompute intermediates
     let mut inters = [[0u32; NUM_POINTS]; NUM_POINTS];
     for p1 in 0..NUM_POINTS {
         for p2 in 0..NUM_POINTS {
@@ -37,31 +36,45 @@ fn main() {
         }
     }
 
-    // Flat memo: 0 = not cached (dfs always returns >= 1)
     let mut memo = vec![0i64; NUM_POINTS * MASK_SIZE];
 
+    #[inline(always)]
     fn dfs(
         current: usize, used_mask: u32,
         inters: &[[u32; NUM_POINTS]; NUM_POINTS],
         memo: &mut [i64],
     ) -> i64 {
         let mi = current * MASK_SIZE + used_mask as usize;
-        if memo[mi] != 0 {
-            return memo[mi];
-        }
-
-        let mut count = 1i64; // Current path is valid
-
-        for next in 0..NUM_POINTS {
-            if used_mask & (1 << next) != 0 { continue; }
-            let req = inters[current][next];
-            if (req & used_mask) == req {
-                count += dfs(next, used_mask | (1 << next), inters, memo);
+        
+        unsafe {
+            // SAFETY: current < NUM_POINTS, used_mask < MASK_SIZE => mi < memo.len()
+            let cached = *memo.get_unchecked(mi);
+            if cached != 0 {
+                return cached;
             }
-        }
 
-        memo[mi] = count;
-        count
+            let mut count = 1i64;
+            
+            // SAFETY: current < NUM_POINTS guaranteed by caller; inters has size [NUM_POINTS][NUM_POINTS]
+            let inter_row = inters.get_unchecked(current);
+            
+            // Manual loop unrolling for better performance
+            let mut next = 0;
+            while next < NUM_POINTS {
+                // SAFETY: next < NUM_POINTS by loop bound
+                if (used_mask & (1 << next)) == 0 {
+                    let req = *inter_row.get_unchecked(next);
+                    if (req & used_mask) == req {
+                        count += dfs(next, used_mask | (1 << next), inters, memo);
+                    }
+                }
+                next += 1;
+            }
+            
+            // SAFETY: same as cached lookup above
+            *memo.get_unchecked_mut(mi) = count;
+            count
+        }
     }
 
     let mut total: i64 = 0;

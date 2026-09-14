@@ -2,9 +2,11 @@
 // For reduced fractions 0 < x < 1 with denominator <= 35, find all (x,y,z)
 // satisfying power-sum equations. Sum distinct s = x+y+z values.
 
-use std::collections::HashSet;
+use rayon::prelude::*;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
-const MAX_DEN: i64 = 35;
+const MAX_DEN: usize = 35;
 
 fn gcd(a: i128, b: i128) -> i128 {
     let (mut a, mut b) = (a.abs(), b.abs());
@@ -43,8 +45,6 @@ impl Frac {
     fn div(self, b: Frac) -> Frac {
         self.mul(Frac { num: b.den, den: b.num })
     }
-    fn eq(self, b: Frac) -> bool { self.num == b.num && self.den == b.den }
-    fn gt(self, b: Frac) -> bool { self.num * b.den > b.num * self.den }
     fn key(self) -> (i64, i64) { (self.num as i64, self.den as i64) }
 }
 
@@ -68,9 +68,6 @@ fn frac_sqrt(r: Frac) -> Frac {
 }
 
 fn main() {
-    let fzero = Frac::new(0, 1);
-    let fone = Frac::new(1, 1);
-
     let mut fractions = Vec::new();
     for den in 1..=MAX_DEN {
         for num in 1..den {
@@ -84,67 +81,98 @@ fn main() {
     }
     fractions.sort_by(|a, b| (a.num * b.den).cmp(&(b.num * a.den)));
 
-    let frac_set: HashSet<(i64, i64)> = fractions.iter().map(|f| f.key()).collect();
+    let mut valid_table = [[false; MAX_DEN + 1]; MAX_DEN + 1];
+    for f in &fractions {
+        let n = f.num as usize;
+        let d = f.den as usize;
+        if n <= MAX_DEN && d <= MAX_DEN {
+            valid_table[n][d] = true;
+        }
+    }
 
     let valid = |r: Frac| -> bool {
-        r.den > 0 && r.gt(fzero) && fone.gt(r) && r.den <= MAX_DEN as i128 && frac_set.contains(&r.key())
+        if r.den <= 0 || r.num <= 0 || r.num >= r.den || r.den > MAX_DEN as i128 {
+            return false;
+        }
+        let n = r.num as usize;
+        let d = r.den as usize;
+        n <= MAX_DEN && d <= MAX_DEN && valid_table[n][d]
     };
 
     let sq: Vec<Frac> = fractions.iter().map(|f| f.mul(*f)).collect();
 
-    let mut sums = HashSet::new();
+    let mut sq_map: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (idx, &s) in sq.iter().enumerate() {
+        sq_map.entry(s.key()).or_insert_with(Vec::new).push(idx);
+    }
+
+    let mut sums: Vec<(i64, i64)> = Vec::with_capacity(8000);
 
     // Case 1: x + y = z
     for i in 0..fractions.len() {
+        let fi = fractions[i];
         for j in i..fractions.len() {
-            let z = fractions[i].add(fractions[j]);
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
-        }
-    }
-
-    // Case 2: x^2 + y^2 = z^2
-    for k in 0..fractions.len() {
-        let target = sq[k];
-        for i in 0..fractions.len() {
-            let diff = target.sub(sq[i]);
-            if diff.num <= 0 { continue; }
-            for j in i..fractions.len() {
-                if sq[j].eq(diff) {
-                    let s = fractions[i].add(fractions[j]).add(fractions[k]);
-                    sums.insert(s.key());
-                }
-                if sq[j].gt(diff) { break; }
+            let z = fi.add(fractions[j]);
+            if valid(z) {
+                sums.push(z.add(z).key());
             }
         }
     }
 
-    // Case 3: 1/x + 1/y = 1/z => z = xy/(x+y)
+    // Case 2: x^2 + y^2 = z^2 with HashMap lookup (parallelized)
+    let sums2 = Mutex::new(Vec::with_capacity(4000));
+    (0..fractions.len()).into_par_iter().for_each(|k| {
+        let target = sq[k];
+        let fk = fractions[k];
+        let mut local = Vec::new();
+        for i in 0..fractions.len() {
+            let diff = target.sub(sq[i]);
+            if diff.num <= 0 { continue; }
+            
+            if let Some(indices) = sq_map.get(&diff.key()) {
+                let fi = fractions[i];
+                for &j in indices {
+                    if j >= i {
+                        local.push(fi.add(fractions[j]).add(fk).key());
+                    }
+                }
+            }
+        }
+        sums2.lock().unwrap().extend(local);
+    });
+    sums.extend(sums2.into_inner().unwrap());
+
+    // Case 3: 1/x + 1/y = 1/z
     for i in 0..fractions.len() {
+        let fi = fractions[i];
         for j in i..fractions.len() {
-            let denom = fractions[i].add(fractions[j]);
+            let fj = fractions[j];
+            let denom = fi.add(fj);
             if denom.num == 0 { continue; }
-            let z = fractions[i].mul(fractions[j]).div(denom);
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
+            let z = fi.mul(fj).div(denom);
+            if valid(z) {
+                sums.push(fi.add(fj).add(z).key());
+            }
         }
     }
 
     // Case 4: 1/x^2 + 1/y^2 = 1/z^2
     for i in 0..fractions.len() {
+        let fi = fractions[i];
+        let sqi = sq[i];
         for j in i..fractions.len() {
-            let denom = sq[i].add(sq[j]);
+            let denom = sqi.add(sq[j]);
             if denom.num == 0 { continue; }
-            let z_sq = sq[i].mul(sq[j]).div(denom);
+            let z_sq = sqi.mul(sq[j]).div(denom);
             let z = frac_sqrt(z_sq);
-            if z.den == 0 { continue; }
-            if !valid(z) { continue; }
-            let s = fractions[i].add(fractions[j]).add(z);
-            sums.insert(s.key());
+            if z.den > 0 && valid(z) {
+                sums.push(fi.add(fractions[j]).add(z).key());
+            }
         }
     }
+
+    sums.sort_unstable();
+    sums.dedup();
 
     let mut total = Frac::new(0, 1);
     for &(n, d) in &sums {

@@ -74,8 +74,7 @@ fn fib_pair_m(n: u64, tab: &[(u64, u64); TAB_N]) -> (u64, u64) {
     while rest != 0 {
         let k = 63 - rest.leading_zeros();
         let (fy, fy1) = unsafe { *tab.get_unchecked(k as usize) };
-        let fxm1 = (fx1 + M - fx) % M;
-        // 2 M^2 < 2^64
+        let fxm1 = if fx1 >= fx { fx1 - fx } else { fx1 + M - fx };
         let fxy = (fx * fy1 + fxm1 * fy) % M;
         let fxy1 = (fx1 * fy1 + fx * fy) % M;
         fx = fxy;
@@ -168,12 +167,16 @@ fn find_order(a: u64, m: u64, phi_m: u64) -> u64 {
 #[inline(always)]
 fn term(k: u64, tab: &[(u64, u64); TAB_N]) -> u64 {
     let (fk, fk1) = fib_pair_m(k, tab);
-    let lk = (2 * fk1 % M + M - fk) % M;
-    let p = fk * INV2 % M;
-    let q = lk * INV2 % M;
-    let p2 = p * p % M;
-    let q2 = q * q % M;
-    (p2 * p2 % M * p % M + q2 * q2 % M * q % M) % M
+    let lk = ((fk1 << 1) + M - fk) % M;
+    let p = (fk * INV2) % M;
+    let q = (lk * INV2) % M;
+    let p2 = (p * p) % M;
+    let q2 = (q * q) % M;
+    let p4 = (p2 * p2) % M;
+    let q4 = (q2 * q2) % M;
+    let p5 = (p4 * p) % M;
+    let q5 = (q4 * q) % M;
+    (p5 + q5) % M
 }
 
 fn main() {
@@ -193,15 +196,15 @@ fn main() {
             let (fa, fb) = fib_pair(i0 - 1, l);
             let mut p5a = mod_pow(5, fa, pi_m);
             let mut p5b = mod_pow(5, fb, pi_m);
-            let mut s = 0u64;
+            let mut s = 0u128;
             for _ in i0..i1 {
-                let k = 3 * p5b % pi_m;
-                s += term(k, &tab);
-                let nxt = p5a * p5b % pi_m;
+                let k = (3 * p5b) % pi_m;
+                s += term(k, &tab) as u128;
+                let nxt = (p5a * p5b) % pi_m;
                 p5a = p5b;
                 p5b = nxt;
             }
-            s
+            (s % M as u128) as u64
         })
         .sum();
 

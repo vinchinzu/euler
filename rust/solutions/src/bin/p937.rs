@@ -255,28 +255,22 @@ fn main() {
 
         let mut f: u64 = 1;
         let mut d: u64 = 0;
-        let mut s0: u64 = 0;
-        let mut s1: u64 = 0;
+        let mut s0: u128 = 0;
+        let mut s1: u128 = 0;
 
         for k in start..=end {
             f = (f * (k as u64)) % MOD;
             d ^= unsafe { *diff.get_unchecked(k) } as u64;
             if d == 0 {
-                s0 += f;
-                if s0 >= MOD * 8 {
-                    s0 %= MOD;
-                }
+                s0 += f as u128;
             } else {
-                s1 += f;
-                if s1 >= MOD * 8 {
-                    s1 %= MOD;
-                }
+                s1 += f as u128;
             }
         }
 
         ChunkResult {
-            s0: s0 % MOD,
-            s1: s1 % MOD,
+            s0: (s0 % MOD as u128) as u64,
+            s1: (s1 % MOD as u128) as u64,
             f_end: f,
             d_end: d,
         }

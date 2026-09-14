@@ -8,7 +8,11 @@ const TWO_N: i32 = 2_000_000;
 // n_val <= HEAVY is split into geometric md chunks (n_val=1 is ~14% of work).
 const HEAVY: i32 = 256;
 
+#[inline(always)]
 fn gcd(mut a: i32, mut b: i32) -> i32 {
+    if b == 0 { return a; }
+    if a == 0 { return b; }
+    if a == b { return a; }
     while b != 0 {
         let t = b;
         b = a % b;
@@ -69,11 +73,14 @@ fn x_phase1(q: i64, x_max: i64) -> i64 {
     x
 }
 
+#[inline]
 fn process_md_range(n_val: i32, md_lo: i32, md_hi: i32, num: i64) -> i64 {
     let mut ans = 0i64;
     for md in md_lo..=md_hi {
-        if n_val > 1 && gcd(n_val, md) != 1 {
-            continue;
+        if n_val > 1 {
+            if (n_val & 1 == 0 && md & 1 == 0) || gcd(n_val, md) != 1 {
+                continue;
+            }
         }
         let m = n_val + md;
         let den = n_val as i64 * md as i64;

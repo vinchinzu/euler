@@ -1,9 +1,12 @@
 // Project Euler 671 - Coloured Tiles II
 // Matrix exponentiation for colored tiles on a loop. 84 states.
+// Optimized with i-j-k loop order, deferred i128 reduction, and rayon parallelism.
 
-const M_VAL: i64 = 1_000_004_321;
+use rayon::prelude::*;
+
+const M_VAL: u64 = 1_000_004_321;
 const T_VAL: usize = 3;
-const K_VAL: i64 = 10;
+const K_VAL: u64 = 10;
 const NUM_STATES: usize = 3 + T_VAL * 3 * T_VAL * 3; // 84
 const NS: usize = NUM_STATES;
 
@@ -13,25 +16,27 @@ fn horiz_idx(top: usize, tc: usize, bot: usize, bc: usize) -> usize {
 }
 fn min_c(c: usize) -> usize { if c < 2 { c } else { 2 } }
 
-fn mat_mult(a: &[i64], b: &[i64], r: &mut [i64]) {
-    r.fill(0);
-    for i in 0..NS {
-        for k in 0..NS {
-            let aik = a[i * NS + k];
-            if aik == 0 { continue; }
-            let aik128 = aik as i128;
-            for j in 0..NS {
-                r[i * NS + j] = (r[i * NS + j] as i128 + aik128 * b[k * NS + j] as i128 % M_VAL as i128) as i64;
+fn mat_mult(a: &[u64], b: &[u64], r: &mut [u64]) {
+    const M: i128 = M_VAL as i128;
+    
+    r.par_chunks_mut(NS).enumerate().for_each(|(i, row_out)| {
+        let row_a = i * NS;
+        for j in 0..NS {
+            let mut sum = 0i128;
+            for k in 0..NS {
+                sum += unsafe { *a.get_unchecked(row_a + k) } as i128
+                     * unsafe { *b.get_unchecked(k * NS + j) } as i128;
             }
+            row_out[j] = (sum % M) as u64;
         }
-    }
+    });
 }
 
-fn mat_pow(mat: &[i64], mut exp: i64) -> Vec<i64> {
-    let mut result = vec![0i64; NS * NS];
+fn mat_pow(mat: &[u64], mut exp: u64) -> Vec<u64> {
+    let mut result = vec![0u64; NS * NS];
     for i in 0..NS { result[i * NS + i] = 1; }
     let mut base = mat.to_vec();
-    let mut temp = vec![0i64; NS * NS];
+    let mut temp = vec![0u64; NS * NS];
     while exp > 0 {
         if exp & 1 == 1 {
             mat_mult(&result, &base, &mut temp);
@@ -44,22 +49,21 @@ fn mat_pow(mat: &[i64], mut exp: i64) -> Vec<i64> {
     result
 }
 
-fn mod_inv_val(a: i64, m: i64) -> i64 {
+fn mod_inv_val(a: u64, m: u64) -> u64 {
     let (mut t, mut new_t) = (0i64, 1i64);
-    let (mut r, mut new_r) = (m, a % m);
-    if new_r < 0 { new_r += m; }
+    let (mut r, mut new_r) = (m as i64, (a % m) as i64);
     while new_r != 0 {
         let q = r / new_r;
         let tmp = new_t; new_t = t - q * new_t; t = tmp;
         let tmp = new_r; new_r = r - q * new_r; r = tmp;
     }
-    if t < 0 { t += m; }
-    t
+    if t < 0 { t += m as i64; }
+    t as u64
 }
 
 fn main() {
-    let n: i64 = 10_004_003_002_001;
-    let mut a = vec![0i64; NS * NS];
+    let n: u64 = 10_004_003_002_001;
+    let mut a = vec![0u64; NS * NS];
 
     // Build transition matrix (simplified - matching C logic)
     for c1 in 0..3usize {
@@ -126,7 +130,7 @@ fn main() {
     }
 
     let ae = mat_pow(&a, n);
-    let mut ans = 0i64;
+    let mut ans = 0u64;
     let vi0 = vert_idx(0);
     ans = (ans + K_VAL * ae[vi0 * NS + vi0]) % M_VAL;
     for i in 0..T_VAL {
@@ -135,6 +139,6 @@ fn main() {
             ans = (ans + K_VAL * (K_VAL - 1) % M_VAL * ae[h * NS + h]) % M_VAL;
         }
     }
-    ans = (ans as i128 * mod_inv_val(n % M_VAL, M_VAL) as i128 % M_VAL as i128) as i64;
+    ans = (ans * mod_inv_val(n % M_VAL, M_VAL)) % M_VAL;
     println!("{}", ans);
 }

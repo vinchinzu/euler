@@ -8175,5 +8175,923 @@
     "accepted": true,
     "decision": "ACCEPT",
     "reason": "speedup=265.097x"
+  },
+  {
+    "problem": 859,
+    "baseline_median_ms": 85.7,
+    "candidate_median_ms": 6.3,
+    "speedup": 13.594,
+    "correct": true,
+    "baseline_times": [
+      86.7,
+      85.7,
+      85.6
+    ],
+    "candidate_times": [
+      6.3,
+      6.4,
+      6.2
+    ]
+  },
+  {
+    "problem": 535,
+    "baseline_median_ms": 85.7,
+    "candidate_median_ms": 70.7,
+    "speedup": 1.211,
+    "correct": true,
+    "baseline_times": [
+      84.2,
+      86.8,
+      85.7
+    ],
+    "candidate_times": [
+      78.1,
+      68.0,
+      70.7
+    ]
+  },
+  {
+    "problem": 406,
+    "baseline_median_ms": 73.8,
+    "candidate_median_ms": 18.4,
+    "speedup": 4.002,
+    "correct": true,
+    "baseline_times": [
+      73.8,
+      72.9,
+      73.9
+    ],
+    "candidate_times": [
+      17.2,
+      18.8,
+      18.4
+    ]
+  },
+  {
+    "problem": 671,
+    "baseline_median_ms": 77.5,
+    "candidate_median_ms": 5.0,
+    "speedup": 15.507,
+    "correct": true,
+    "baseline_times": [
+      77.3,
+      78.3,
+      77.5
+    ],
+    "candidate_times": [
+      5.5,
+      5.0,
+      4.9
+    ]
+  },
+  {
+    "problem": 841,
+    "baseline_median_ms": 82.9,
+    "candidate_median_ms": 11.4,
+    "speedup": 7.246,
+    "correct": true,
+    "baseline_times": [
+      82.8,
+      92.8,
+      82.9
+    ],
+    "candidate_times": [
+      11.4,
+      11.5,
+      11.4
+    ]
+  },
+  {
+    "problem": 304,
+    "baseline_median_ms": 79.0,
+    "candidate_median_ms": 37.7,
+    "speedup": 2.093,
+    "correct": true,
+    "baseline_times": [
+      79.0,
+      78.2,
+      79.4
+    ],
+    "candidate_times": [
+      37.8,
+      37.7,
+      37.1
+    ]
+  },
+  {
+    "problem": 333,
+    "baseline_median_ms": 147.7,
+    "candidate_median_ms": 62.9,
+    "speedup": 2.35,
+    "correct": true,
+    "baseline_times": [
+      146.9,
+      149.7,
+      147.7
+    ],
+    "candidate_times": [
+      64.3,
+      57.5,
+      62.9
+    ]
+  },
+  {
+    "problem": 180,
+    "baseline_median_ms": 82.5,
+    "candidate_median_ms": 54.1,
+    "speedup": 1.523,
+    "correct": true,
+    "baseline_times": [
+      81.7,
+      82.5,
+      82.8
+    ],
+    "candidate_times": [
+      53.7,
+      54.1,
+      55.1
+    ]
+  },
+  {
+    "problem": 787,
+    "baseline_median_ms": 72.8,
+    "candidate_median_ms": 64.9,
+    "speedup": 1.122,
+    "correct": true,
+    "baseline_times": [
+      73.9,
+      72.8,
+      71.9
+    ],
+    "candidate_times": [
+      64.9,
+      64.6,
+      66.5
+    ]
+  },
+  {
+    "problem": 648,
+    "baseline_median_ms": 373.6,
+    "candidate_median_ms": 115.2,
+    "speedup": 3.242,
+    "correct": true,
+    "baseline_times": [
+      372.6,
+      374.5,
+      373.6
+    ],
+    "candidate_times": [
+      100.6,
+      118.2,
+      115.2
+    ]
+  },
+  {
+    "problem": 618,
+    "baseline_median_ms": 143.7,
+    "candidate_median_ms": 80.8,
+    "speedup": 1.778,
+    "correct": true,
+    "baseline_times": [
+      145.1,
+      143.7,
+      142.9
+    ],
+    "candidate_times": [
+      82.1,
+      80.5,
+      80.8
+    ]
+  },
+  {
+    "problem": 944,
+    "baseline_median_ms": 172.5,
+    "candidate_median_ms": 80.8,
+    "speedup": 2.136,
+    "correct": true,
+    "baseline_times": [
+      175.7,
+      172.5,
+      172.2
+    ],
+    "candidate_times": [
+      79.6,
+      81.1,
+      80.8
+    ]
+  },
+  {
+    "problem": 756,
+    "baseline_median_ms": 167.2,
+    "candidate_median_ms": 115.6,
+    "speedup": 1.446,
+    "correct": true,
+    "baseline_times": [
+      166.6,
+      167.2,
+      169.5
+    ],
+    "candidate_times": [
+      115.0,
+      116.4,
+      115.6
+    ]
+  },
+  {
+    "problem": 884,
+    "baseline_median_ms": 125.7,
+    "candidate_median_ms": 83.6,
+    "speedup": 1.503,
+    "correct": true,
+    "baseline_times": [
+      126.1,
+      125.7,
+      125.6
+    ],
+    "candidate_times": [
+      86.0,
+      79.7,
+      83.6
+    ]
+  },
+  {
+    "problem": 839,
+    "baseline_median_ms": 167.6,
+    "candidate_median_ms": 119.7,
+    "speedup": 1.4,
+    "correct": true,
+    "baseline_times": [
+      167.8,
+      165.2,
+      167.6
+    ],
+    "candidate_times": [
+      118.2,
+      140.5,
+      119.7
+    ]
+  },
+  {
+    "problem": 280,
+    "baseline_median_ms": 122.5,
+    "candidate_median_ms": 30.2,
+    "speedup": 4.058,
+    "correct": true,
+    "baseline_times": [
+      122.5,
+      121.9,
+      123.4
+    ],
+    "candidate_times": [
+      29.9,
+      30.2,
+      30.4
+    ]
+  },
+  {
+    "problem": 721,
+    "baseline_median_ms": 113.2,
+    "candidate_median_ms": 80.6,
+    "speedup": 1.404,
+    "correct": true,
+    "baseline_times": [
+      112.1,
+      113.2,
+      113.5
+    ],
+    "candidate_times": [
+      81.0,
+      80.4,
+      80.6
+    ]
+  },
+  {
+    "problem": 700,
+    "baseline_median_ms": 185.5,
+    "candidate_median_ms": 70.7,
+    "speedup": 2.623,
+    "correct": true,
+    "baseline_times": [
+      185.1,
+      185.5,
+      189.4
+    ],
+    "candidate_times": [
+      70.7,
+      69.9,
+      71.6
+    ]
+  },
+  {
+    "problem": 788,
+    "baseline_median_ms": 71.2,
+    "candidate_median_ms": 19.8,
+    "speedup": 3.595,
+    "correct": true,
+    "baseline_times": [
+      71.1,
+      72.0,
+      71.2
+    ],
+    "candidate_times": [
+      20.2,
+      19.8,
+      19.6
+    ]
+  },
+  {
+    "problem": 816,
+    "baseline_median_ms": 69.9,
+    "candidate_median_ms": 51.4,
+    "speedup": 1.36,
+    "correct": true,
+    "baseline_times": [
+      69.9,
+      69.2,
+      70.3
+    ],
+    "candidate_times": [
+      51.4,
+      51.0,
+      51.7
+    ]
+  },
+  {
+    "problem": 688,
+    "baseline_median_ms": 70.6,
+    "candidate_median_ms": 65.1,
+    "speedup": 1.085,
+    "correct": true,
+    "baseline_times": [
+      69.9,
+      70.6,
+      71.0
+    ],
+    "candidate_times": [
+      65.1,
+      64.6,
+      65.2
+    ]
+  },
+  {
+    "problem": 844,
+    "baseline_median_ms": 26.7,
+    "candidate_median_ms": 16.4,
+    "speedup": 1.627,
+    "correct": true,
+    "baseline_times": [
+      26.7,
+      26.8,
+      26.5
+    ],
+    "candidate_times": [
+      16.4,
+      15.8,
+      16.4
+    ]
+  },
+  {
+    "problem": 808,
+    "baseline_median_ms": 56.5,
+    "candidate_median_ms": 52.9,
+    "speedup": 1.066,
+    "correct": true,
+    "baseline_times": [
+      56.1,
+      56.5,
+      59.0
+    ],
+    "candidate_times": [
+      52.5,
+      53.2,
+      52.9
+    ]
+  },
+  {
+    "problem": 860,
+    "baseline_median_ms": 47.9,
+    "candidate_median_ms": 13.7,
+    "speedup": 3.486,
+    "correct": true,
+    "baseline_times": [
+      47.9,
+      47.5,
+      48.6
+    ],
+    "candidate_times": [
+      14.0,
+      13.6,
+      13.7
+    ]
+  },
+  {
+    "problem": 848,
+    "baseline_median_ms": 0.8,
+    "candidate_median_ms": 0.7,
+    "speedup": 1.106,
+    "correct": true,
+    "baseline_times": [
+      0.8,
+      0.8,
+      0.6
+    ],
+    "candidate_times": [
+      0.8,
+      0.6,
+      0.7
+    ]
+  },
+  {
+    "problem": 866,
+    "baseline_median_ms": 0.8,
+    "candidate_median_ms": 0.6,
+    "speedup": 1.227,
+    "correct": true,
+    "baseline_times": [
+      0.8,
+      0.8,
+      0.7
+    ],
+    "candidate_times": [
+      0.6,
+      0.6,
+      0.8
+    ]
+  },
+  {
+    "problem": 858,
+    "baseline_median_ms": 36.4,
+    "candidate_median_ms": 23.9,
+    "speedup": 1.526,
+    "correct": true,
+    "baseline_times": [
+      35.5,
+      36.6,
+      36.4
+    ],
+    "candidate_times": [
+      23.9,
+      23.9,
+      23.7
+    ]
+  },
+  {
+    "problem": 822,
+    "baseline_median_ms": 47.0,
+    "candidate_median_ms": 27.6,
+    "speedup": 1.706,
+    "correct": true,
+    "baseline_times": [
+      47.0,
+      46.7,
+      47.0
+    ],
+    "candidate_times": [
+      27.6,
+      27.6,
+      26.9
+    ]
+  },
+  {
+    "problem": 865,
+    "baseline_median_ms": 35.5,
+    "candidate_median_ms": 29.9,
+    "speedup": 1.187,
+    "correct": true,
+    "baseline_times": [
+      35.6,
+      35.2,
+      35.5
+    ],
+    "candidate_times": [
+      30.3,
+      29.9,
+      28.8
+    ]
+  },
+  {
+    "problem": 874,
+    "baseline_median_ms": 8.6,
+    "candidate_median_ms": 6.9,
+    "speedup": 1.248,
+    "correct": true,
+    "baseline_times": [
+      8.5,
+      8.6,
+      9.0
+    ],
+    "candidate_times": [
+      7.5,
+      6.9,
+      6.8
+    ]
+  },
+  {
+    "problem": 887,
+    "baseline_median_ms": 0.8,
+    "candidate_median_ms": 0.7,
+    "speedup": 1.201,
+    "correct": true,
+    "baseline_times": [
+      0.8,
+      0.8,
+      0.8
+    ],
+    "candidate_times": [
+      0.7,
+      0.8,
+      0.7
+    ]
+  },
+  {
+    "problem": 757,
+    "baseline_median_ms": 472.4,
+    "candidate_median_ms": 433.3,
+    "speedup": 1.09,
+    "correct": true,
+    "baseline_times": [
+      472.4,
+      477.4,
+      470.3
+    ],
+    "candidate_times": [
+      442.1,
+      432.6,
+      433.3
+    ]
+  },
+  {
+    "problem": 895,
+    "baseline_median_ms": 117.5,
+    "candidate_median_ms": 89.5,
+    "speedup": 1.314,
+    "correct": true,
+    "baseline_times": [
+      118.6,
+      116.6,
+      117.5
+    ],
+    "candidate_times": [
+      91.1,
+      89.5,
+      89.1
+    ]
+  },
+  {
+    "problem": 847,
+    "baseline_median_ms": 397.2,
+    "candidate_median_ms": 361.1,
+    "speedup": 1.1,
+    "correct": true,
+    "baseline_times": [
+      399.1,
+      397.2,
+      390.6
+    ],
+    "candidate_times": [
+      362.4,
+      361.1,
+      358.9
+    ]
+  },
+  {
+    "problem": 893,
+    "baseline_median_ms": 89.8,
+    "candidate_median_ms": 69.8,
+    "speedup": 1.287,
+    "correct": true,
+    "baseline_times": [
+      90.0,
+      89.8,
+      87.2
+    ],
+    "candidate_times": [
+      70.4,
+      69.7,
+      69.8
+    ]
+  },
+  {
+    "problem": 879,
+    "baseline_median_ms": 25.6,
+    "candidate_median_ms": 20.7,
+    "speedup": 1.233,
+    "correct": true,
+    "baseline_times": [
+      26.5,
+      25.6,
+      24.6
+    ],
+    "candidate_times": [
+      21.4,
+      20.7,
+      20.6
+    ]
+  },
+  {
+    "problem": 885,
+    "baseline_median_ms": 147.6,
+    "candidate_median_ms": 93.5,
+    "speedup": 1.58,
+    "correct": true,
+    "baseline_times": [
+      141.9,
+      147.6,
+      150.4
+    ],
+    "candidate_times": [
+      93.5,
+      93.6,
+      91.7
+    ]
+  },
+  {
+    "problem": 896,
+    "baseline_median_ms": 21.3,
+    "candidate_median_ms": 15.5,
+    "speedup": 1.37,
+    "correct": true,
+    "baseline_times": [
+      21.3,
+      21.5,
+      21.3
+    ],
+    "candidate_times": [
+      14.8,
+      15.5,
+      16.7
+    ]
+  },
+  {
+    "problem": 903,
+    "baseline_median_ms": 39.0,
+    "candidate_median_ms": 35.0,
+    "speedup": 1.113,
+    "correct": true,
+    "baseline_times": [
+      37.6,
+      40.3,
+      39.0
+    ],
+    "candidate_times": [
+      35.0,
+      34.9,
+      35.6
+    ]
+  },
+  {
+    "problem": 907,
+    "baseline_median_ms": 96.7,
+    "candidate_median_ms": 0.8,
+    "speedup": 125.811,
+    "correct": true,
+    "baseline_times": [
+      97.5,
+      96.7,
+      96.4
+    ],
+    "candidate_times": [
+      0.8,
+      0.8,
+      0.7
+    ]
+  },
+  {
+    "problem": 856,
+    "baseline_median_ms": 1.3,
+    "candidate_median_ms": 1.0,
+    "speedup": 1.29,
+    "correct": true,
+    "baseline_times": [
+      1.3,
+      1.3,
+      1.1
+    ],
+    "candidate_times": [
+      1.0,
+      1.0,
+      0.8
+    ]
+  },
+  {
+    "problem": 913,
+    "baseline_median_ms": 29.0,
+    "candidate_median_ms": 22.3,
+    "speedup": 1.302,
+    "correct": true,
+    "baseline_times": [
+      29.1,
+      28.9,
+      29.0
+    ],
+    "candidate_times": [
+      22.3,
+      22.3,
+      22.8
+    ]
+  },
+  {
+    "problem": 921,
+    "baseline_median_ms": 10.3,
+    "candidate_median_ms": 8.9,
+    "speedup": 1.161,
+    "correct": true,
+    "baseline_times": [
+      11.2,
+      10.3,
+      10.1
+    ],
+    "candidate_times": [
+      9.1,
+      8.9,
+      8.4
+    ]
+  },
+  {
+    "problem": 923,
+    "baseline_median_ms": 103.2,
+    "candidate_median_ms": 33.6,
+    "speedup": 3.069,
+    "correct": true,
+    "baseline_times": [
+      103.8,
+      103.2,
+      102.5
+    ],
+    "candidate_times": [
+      33.5,
+      33.6,
+      34.6
+    ]
+  },
+  {
+    "problem": 915,
+    "baseline_median_ms": 15.5,
+    "candidate_median_ms": 12.8,
+    "speedup": 1.211,
+    "correct": true,
+    "baseline_times": [
+      15.7,
+      14.2,
+      15.5
+    ],
+    "candidate_times": [
+      12.4,
+      12.8,
+      13.7
+    ]
+  },
+  {
+    "problem": 937,
+    "baseline_median_ms": 119.6,
+    "candidate_median_ms": 100.7,
+    "speedup": 1.187,
+    "correct": true,
+    "baseline_times": [
+      126.7,
+      119.6,
+      113.9
+    ],
+    "candidate_times": [
+      101.7,
+      100.7,
+      100.5
+    ]
+  },
+  {
+    "problem": 922,
+    "baseline_median_ms": 22.8,
+    "candidate_median_ms": 9.1,
+    "speedup": 2.489,
+    "correct": true,
+    "baseline_times": [
+      22.6,
+      22.8,
+      23.7
+    ],
+    "candidate_times": [
+      11.7,
+      8.5,
+      9.1
+    ]
+  },
+  {
+    "problem": 930,
+    "baseline_median_ms": 248.2,
+    "candidate_median_ms": 60.1,
+    "speedup": 4.13,
+    "correct": true,
+    "baseline_times": [
+      248.2,
+      267.5,
+      238.8
+    ],
+    "candidate_times": [
+      60.1,
+      61.5,
+      58.9
+    ]
+  },
+  {
+    "problem": 932,
+    "baseline_median_ms": 11.1,
+    "candidate_median_ms": 8.7,
+    "speedup": 1.269,
+    "correct": true,
+    "baseline_times": [
+      11.8,
+      10.8,
+      11.1
+    ],
+    "candidate_times": [
+      9.3,
+      8.7,
+      8.4
+    ]
+  },
+  {
+    "problem": 940,
+    "baseline_median_ms": 3.1,
+    "candidate_median_ms": 0.8,
+    "speedup": 3.754,
+    "correct": true,
+    "baseline_times": [
+      3.5,
+      3.1,
+      3.1
+    ],
+    "candidate_times": [
+      0.8,
+      1.0,
+      0.8
+    ]
+  },
+  {
+    "problem": 883,
+    "baseline_median_ms": 333.4,
+    "candidate_median_ms": 300.4,
+    "speedup": 1.11,
+    "correct": true,
+    "baseline_times": [
+      333.4,
+      333.3,
+      333.5
+    ],
+    "candidate_times": [
+      302.9,
+      298.5,
+      300.4
+    ]
+  },
+  {
+    "problem": 936,
+    "baseline_median_ms": 6.8,
+    "candidate_median_ms": 6.3,
+    "speedup": 1.078,
+    "correct": true,
+    "baseline_times": [
+      6.8,
+      6.3,
+      10.4
+    ],
+    "candidate_times": [
+      6.3,
+      5.7,
+      8.3
+    ]
+  },
+  {
+    "problem": 863,
+    "baseline_median_ms": 25.0,
+    "candidate_median_ms": 22.5,
+    "speedup": 1.109,
+    "correct": true,
+    "baseline_times": [
+      25.0,
+      26.9,
+      24.0
+    ],
+    "candidate_times": [
+      24.2,
+      22.1,
+      22.5
+    ]
+  },
+  {
+    "problem": 950,
+    "baseline_median_ms": 4.0,
+    "candidate_median_ms": 2.9,
+    "speedup": 1.365,
+    "correct": true,
+    "baseline_times": [
+      3.7,
+      4.0,
+      4.1
+    ],
+    "candidate_times": [
+      3.0,
+      2.9,
+      2.9
+    ]
   }
 ]

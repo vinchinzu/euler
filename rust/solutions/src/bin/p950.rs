@@ -9,28 +9,25 @@
 const MOD: u64 = 1_000_000_000;
 
 /// Integer square root of a u128 value using Newton's method.
+#[inline]
 fn isqrt_u128(n: u128) -> u128 {
     if n <= 1 {
         return n;
     }
+    if n <= u64::MAX as u128 {
+        return (n as f64).sqrt() as u128;
+    }
     let bits = 128 - n.leading_zeros();
     let mut x = 1u128 << ((bits + 1) / 2);
-    loop {
-        let x1 = (x + n / x) / 2;
-        if x1 >= x {
-            break;
-        }
-        x = x1;
-    }
-    // Correct off-by-one.
-    while x * x > n {
-        x -= 1;
-    }
-    x
+    x = (x + n / x) / 2;
+    x = (x + n / x) / 2;
+    x = (x + n / x) / 2;
+    if x * x > n { x - 1 } else { x }
 }
 
 /// Return floor(d / sqrt(big_d)) for integers d >= 0, big_d >= 1.
 /// Uses isqrt(d^2 / big_d) as initial guess, then corrects.
+#[inline]
 fn floor_div_sqrt(d: u64, big_d: u64) -> u64 {
     if d == 0 {
         return 0;
@@ -38,11 +35,13 @@ fn floor_div_sqrt(d: u64, big_d: u64) -> u64 {
     let dd = d as u128 * d as u128;
     let big_d128 = big_d as u128;
     let mut t = isqrt_u128(dd / big_d128);
-    // Correct potential off-by-one errors.
-    while (t + 1) * (t + 1) * big_d128 <= dd {
+    let t_sq = t * t;
+    if (t + 1) * (t + 1) * big_d128 <= dd {
         t += 1;
-    }
-    while t * t * big_d128 > dd {
+        if (t + 1) * (t + 1) * big_d128 <= dd {
+            t += 1;
+        }
+    } else if t_sq * big_d128 > dd {
         t -= 1;
     }
     t as u64
@@ -50,6 +49,7 @@ fn floor_div_sqrt(d: u64, big_d: u64) -> u64 {
 
 /// Return ceil(d / sqrt(big_d)) for d >= 0, non-square big_d.
 /// Since sqrt(big_d) is irrational, d/sqrt(big_d) is never integer for d > 0.
+#[inline]
 fn ceil_div_sqrt(d: u64, big_d: u64) -> u64 {
     if d == 0 {
         return 0;
@@ -62,6 +62,7 @@ fn ceil_div_sqrt(d: u64, big_d: u64) -> u64 {
 ///   If n is even: (n/2) * (n+1) mod MOD
 ///   If n is odd:  n * ((n+1)/2) mod MOD
 /// Each factor mod MOD fits in u64, and their product fits in u64 too (< 10^18).
+#[inline]
 fn tri_mod(n: u64) -> u64 {
     if n % 2 == 0 {
         ((n / 2) % MOD) * ((n + 1) % MOD) % MOD
@@ -201,10 +202,9 @@ fn t_func(n: u64, c: u64, big_d: u64) -> u64 {
 
 /// Compute (cnt * c_l + cnt*(cnt+1)/2) mod MOD.
 /// cnt can be up to ~10^16, c_l up to ~10^6.
+#[inline]
 fn add_cascade_mod(cnt: u64, c_l: u64) -> u64 {
-    // cnt * c_l mod MOD: use u128
     let part1 = ((cnt as u128) * (c_l as u128)) % MOD as u128;
-    // cnt*(cnt+1)/2 mod MOD
     let part2 = tri_mod(cnt) as u128;
     ((part1 + part2) % MOD as u128) as u64
 }

@@ -3,20 +3,22 @@
 const K: usize = 10000;
 const M: i64 = 1234567891;
 
+#[inline]
 fn pow_mod(mut base: i64, mut exp: i64, modulus: i64) -> i64 {
     let mut result: i64 = 1;
     base = base.rem_euclid(modulus);
     while exp > 0 {
         if exp & 1 == 1 {
-            result = (result as i128 * base as i128 % modulus as i128) as i64;
+            result = result * base % modulus;
         }
-        base = (base as i128 * base as i128 % modulus as i128) as i64;
+        base = base * base % modulus;
         exp >>= 1;
     }
     result
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
+#[repr(C)]
 struct Number {
     log_val: f64,
     mod_val: i64,
@@ -35,37 +37,51 @@ fn main() {
         })
         .collect();
 
-    nums.sort_by(|a, b| a.log_val.partial_cmp(&b.log_val).unwrap()
-        .then(a.original.cmp(&b.original)));
+    nums.sort_unstable_by(|a, b| {
+        a.log_val
+            .partial_cmp(&b.log_val)
+            .unwrap()
+            .then(a.original.cmp(&b.original))
+    });
 
     let mut t = n;
-    while t % sz as i64 != 0 || nums[0].log_val * 2.0 < nums[sz - 1].log_val {
-        let first = nums[0].clone();
-        let new_log = first.log_val * 2.0;
-        let new_mod = pow_mod(first.mod_val, 2, M);
+    while t % sz as i64 != 0 || unsafe { nums.get_unchecked(0).log_val * 2.0 < nums.get_unchecked(sz - 1).log_val } {
+        let first_log;
+        let first_mod;
+        let first_orig;
+        unsafe {
+            let first = nums.get_unchecked(0);
+            first_log = first.log_val;
+            first_mod = first.mod_val;
+            first_orig = first.original;
+        }
 
-        // Binary search for insertion point
+        let new_log = first_log * 2.0;
+        let new_mod = pow_mod(first_mod, 2, M);
+
         let mut lo = 0usize;
         let mut hi = sz - 1;
         while lo < hi {
             let mid = (lo + hi) / 2;
-            if nums[mid + 1].log_val < new_log
-                || (nums[mid + 1].log_val == new_log && nums[mid + 1].original < first.original)
-            {
-                lo = mid + 1;
-            } else {
-                hi = mid;
+            let mid_next = mid + 1;
+            unsafe {
+                let next = nums.get_unchecked(mid_next);
+                if next.log_val < new_log
+                    || (next.log_val == new_log && next.original < first_orig)
+                {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
             }
         }
 
-        // Shift [1..lo] left
-        for i in 0..lo {
-            nums[i] = nums[i + 1].clone();
-        }
+        nums.copy_within(1..=lo, 0);
+
         nums[lo] = Number {
             log_val: new_log,
             mod_val: new_mod,
-            original: first.original,
+            original: first_orig,
         };
 
         t -= 1;
@@ -73,8 +89,10 @@ fn main() {
 
     let exp = pow_mod(2, t / sz as i64, M - 1);
     let mut ans: i64 = 0;
-    for num in &nums {
-        ans = (ans + pow_mod(num.mod_val, exp, M)) % M;
+    for i in 0..sz {
+        unsafe {
+            ans = (ans + pow_mod(nums.get_unchecked(i).mod_val, exp, M)) % M;
+        }
     }
 
     println!("{}", ans);

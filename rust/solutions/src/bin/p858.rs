@@ -9,31 +9,57 @@ const BM_WORDS: usize = 6;
 struct Bitmask { w: [u64; BM_WORDS] }
 
 impl Bitmask {
+    #[inline(always)]
     fn zero() -> Self { Bitmask { w: [0; BM_WORDS] } }
+    
     fn full(nbits: usize) -> Self {
         let mut b = Self::zero();
         for i in 0..nbits { b.w[i / 64] |= 1u64 << (i % 64); }
         b
     }
+    
+    #[inline(always)]
     fn set(&mut self, i: usize) { self.w[i / 64] |= 1u64 << (i % 64); }
+    
+    #[inline(always)]
     fn test(&self, i: usize) -> bool { (self.w[i / 64] >> (i % 64)) & 1 == 1 }
+    
+    #[inline(always)]
     fn and(a: &Bitmask, b: &Bitmask) -> Bitmask {
         let mut r = Bitmask::zero();
         for i in 0..BM_WORDS { r.w[i] = a.w[i] & b.w[i]; }
         r
     }
+    
+    #[inline(always)]
     fn popcount(&self) -> i32 {
         let mut c = 0;
         for i in 0..BM_WORDS { c += self.w[i].count_ones() as i32; }
         c
     }
+    
+    #[inline(always)]
     fn popcount_first(&self, lim: usize) -> i32 {
+        let full_words = lim / 64;
         let mut c = 0;
-        for i in 0..lim { if self.test(i) { c += 1; } }
+        
+        // Count full words using hardware popcount
+        for i in 0..full_words {
+            c += self.w[i].count_ones() as i32;
+        }
+        
+        // Handle remaining bits in the partial word
+        let remaining = lim % 64;
+        if remaining > 0 {
+            let mask = (1u64 << remaining) - 1;
+            c += (self.w[full_words] & mask).count_ones() as i32;
+        }
+        
         c
     }
 }
 
+#[inline(always)]
 fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
     let mut r = 1i64;
     base = base.rem_euclid(m);
@@ -45,6 +71,7 @@ fn mod_pow(mut base: i64, mut exp: i64, m: i64) -> i64 {
     r
 }
 
+#[inline(always)]
 fn modinv(a: i64) -> i64 { mod_pow(a, MOD - 2, MOD) }
 
 fn main() {
@@ -68,6 +95,7 @@ fn main() {
 
     // Generate smooth numbers
     let mut smooths: Vec<i32> = Vec::new();
+    
     fn gen_smooth(idx: usize, current: i64, small_primes: &[usize], n: usize, smooths: &mut Vec<i32>) {
         if idx == small_primes.len() {
             if current <= n as i64 { smooths.push(current as i32); }
@@ -80,8 +108,9 @@ fn main() {
             pe *= p;
         }
     }
+    
     gen_smooth(0, 1, &small_primes, N, &mut smooths);
-    smooths.sort();
+    smooths.sort_unstable();
     let num_smooths = smooths.len();
 
     // W_vals
@@ -97,8 +126,8 @@ fn main() {
     for &p in &all_primes { c_val = c_val * w_vals[p] % MOD; }
 
     // Small prime options and masks
-    let mut sp_masks: Vec<Vec<Bitmask>> = Vec::new();
-    let mut sp_options: Vec<Vec<(usize, i64)>> = Vec::new(); // (k, weight)
+    let mut sp_masks: Vec<Vec<Bitmask>> = Vec::with_capacity(nsmall);
+    let mut sp_options: Vec<Vec<(usize, i64)>> = Vec::with_capacity(nsmall); // (k, weight)
 
     for si in 0..nsmall {
         let p = small_primes[si];
@@ -108,7 +137,6 @@ fn main() {
         max_e -= 1;
 
         let mut masks = Vec::new();
-        // k=0: all bits set
         masks.push(Bitmask::full(num_smooths));
 
         for k in 1..=max_e {
@@ -116,13 +144,16 @@ fn main() {
             for i in 0..num_smooths {
                 let mut y = smooths[i];
                 let mut v = 0;
-                while y > 0 && y % p as i32 == 0 { v += 1; y /= p as i32; }
+                while y > 0 && y % p as i32 == 0 { 
+                    v += 1; 
+                    y /= p as i32; 
+                }
                 if v < k { m.set(i); }
             }
             masks.push(m);
         }
 
-        let mut opts: Vec<(usize, i64)> = Vec::new();
+        let mut opts: Vec<(usize, i64)> = Vec::with_capacity(max_e + 1);
         opts.push((0, 1));
         for k in 1..=max_e {
             let phi = (mod_pow(p as i64, k as i64, MOD) - mod_pow(p as i64, k as i64 - 1, MOD) + MOD) % MOD;
@@ -182,9 +213,12 @@ fn main() {
         grp_lookups.push(GroupLookup { limit: limit_idx, table });
     }
 
-    // Powers of 2
+    // Powers of 2 - compute iteratively instead of via mod_pow
     let mut pow2_all = vec![0i64; num_smooths + 1];
-    for i in 0..=num_smooths { pow2_all[i] = mod_pow(2, i as i64, MOD); }
+    pow2_all[0] = 1;
+    for i in 1..=num_smooths { 
+        pow2_all[i] = pow2_all[i - 1] * 2 % MOD; 
+    }
 
     // Recurse
     let mut total_sum = 0i64;
@@ -199,15 +233,26 @@ fn main() {
             let mut term = current_weight;
             let m_count = current_mask.popcount();
             term = term * pow2_all[m_count as usize] % MOD;
-            for g in grp_lookups {
+            
+            // SAFETY: Loop bounds guarantee g_idx < grp_lookups.len()
+            // and cnt < g.table.len() by construction
+            for g_idx in 0..grp_lookups.len() {
+                let g = unsafe { grp_lookups.get_unchecked(g_idx) };
                 let cnt = current_mask.popcount_first(g.limit);
-                term = term * g.table[cnt as usize] % MOD;
+                term = term * unsafe { g.table.get_unchecked(cnt as usize) } % MOD;
             }
             *total_sum = (*total_sum + term) % MOD;
             return;
         }
-        for &(k, w) in &sp_options[idx] {
-            let new_mask = Bitmask::and(current_mask, &sp_masks[idx][k]);
+        
+        // SAFETY: idx < nsmall guaranteed by recursion invariant
+        let opts = unsafe { sp_options.get_unchecked(idx) };
+        let masks = unsafe { sp_masks.get_unchecked(idx) };
+        
+        for opt_idx in 0..opts.len() {
+            let &(k, w) = unsafe { opts.get_unchecked(opt_idx) };
+            let mask_ref = unsafe { masks.get_unchecked(k) };
+            let new_mask = Bitmask::and(current_mask, mask_ref);
             let new_weight = current_weight * w % MOD;
             recurse(idx + 1, &new_mask, new_weight, sp_masks, sp_options,
                     grp_lookups, pow2_all, nsmall, total_sum);

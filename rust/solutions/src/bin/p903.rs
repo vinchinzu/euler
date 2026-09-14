@@ -31,18 +31,22 @@ fn compute_large(n: usize) -> u64 {
     let mut inv = vec![0u64; n + 1];
     inv[1] = 1;
     for i in 2..=n {
-        let rem = MOD % (i as u64);
-        let quot = MOD / (i as u64);
-        let temp = quot * inv[rem as usize] % MOD;
-        inv[i] = if temp == 0 { 0 } else { MOD - temp };
+        let i64 = i as u64;
+        let rem = (MOD % i64) as usize;
+        let quot = MOD / i64;
+        // SAFETY: rem < i <= n, so rem < n+1, within bounds of inv
+        let temp = quot * unsafe { *inv.get_unchecked(rem) } % MOD;
+        // SAFETY: i <= n, so i < n+1, within bounds of inv
+        unsafe { *inv.get_unchecked_mut(i) = MOD - temp; }
     }
 
     // 2. Harmonic numbers H[k] = Σ inv[1..k]
     let mut h = vec![0u64; n + 1];
     let mut sum = 0u64;
     for i in 1..=n {
-        sum = (sum + inv[i]) % MOD;
-        h[i] = sum;
+        // SAFETY: i <= n, so i < n+1, within bounds of both inv and h
+        sum = (sum + unsafe { *inv.get_unchecked(i) }) % MOD;
+        unsafe { *h.get_unchecked_mut(i) = sum; }
     }
 
     // 3. Möbius μ[1..n]
@@ -51,18 +55,20 @@ fn compute_large(n: usize) -> u64 {
     // 4. Convolution for F[s]
     let mut f = vec![0u64; n + 1];
     for d in 1..=n {
-        if mu[d] == 0 {
+        // SAFETY: d <= n, so d < n+1, within bounds
+        let mu_d = unsafe { *mu.get_unchecked(d) };
+        if mu_d == 0 {
             continue;
         }
-        let c = if mu[d] == 1 {
-            inv[d]
-        } else {
-            (MOD - inv[d]) % MOD
-        };
+        let inv_d = unsafe { *inv.get_unchecked(d) };
+        let c = if mu_d == 1 { inv_d } else { MOD - inv_d };
         let mut m = 1usize;
         let mut s2 = d;
         while s2 <= n {
-            f[s2] = (f[s2] + c * h[m - 1] % MOD) % MOD;
+            // SAFETY: s2 <= n, m-1 < n (m starts at 1, s2 <= n implies m <= n/d + 1)
+            let prod = c * unsafe { *h.get_unchecked(m - 1) } % MOD;
+            let fptr = unsafe { f.get_unchecked_mut(s2) };
+            *fptr = (*fptr + prod) % MOD;
             m += 1;
             s2 += d;
         }
@@ -71,36 +77,42 @@ fn compute_large(n: usize) -> u64 {
     // 5. S = Σ_{s=2}^n H[⌊n/s⌋] * (2 F[s]) / s
     let mut s_val = 0u64;
     for s in 2..=n {
-        let hf = h[n / s];
-        let two_f = 2 * f[s] % MOD;
-        let term = hf * two_f % MOD * inv[s] % MOD;
+        // SAFETY: s <= n, n/s < n, so all indices < n+1, within bounds
+        let hf = unsafe { *h.get_unchecked(n / s) };
+        let fs = unsafe { *f.get_unchecked(s) };
+        let invs = unsafe { *inv.get_unchecked(s) };
+        let term = (hf * (2 * fs % MOD) % MOD) * invs % MOD;
         s_val = (s_val + term) % MOD;
     }
 
     // 6. Probabilities alpha, beta, p, q, a, b, eta
     let n_mod = n as u64 % MOD;
-    let num_alpha = (n_mod + MOD - h[n] + s_val) % MOD;
-    let alpha = num_alpha * inv[n] % MOD * inv[n - 1] % MOD;
+    // SAFETY: n >= 8 in compute_large, so n < n+1, within bounds
+    let hn = unsafe { *h.get_unchecked(n) };
+    let num_alpha = (n_mod + MOD - hn + s_val) % MOD;
+    let inv_n = unsafe { *inv.get_unchecked(n) };
+    let inv_nm1 = unsafe { *inv.get_unchecked(n - 1) };
+    let alpha = num_alpha * inv_n % MOD * inv_nm1 % MOD;
 
     let denom_beta = 2 * n_mod % MOD * ((n - 1) as u64 % MOD) % MOD;
-    let beta = h[n / 2] * mod_pow(denom_beta, MOD - 2) % MOD;
+    let beta = unsafe { *h.get_unchecked(n / 2) } * mod_pow(denom_beta, MOD - 2) % MOD;
 
-    let p = h[n] * inv[n] % MOD;
-    let q = ((MOD + 1 - p) % MOD) * inv[n - 1] % MOD;
+    let p = hn * inv_n % MOD;
+    let q = ((MOD + 1 - p) % MOD) * inv_nm1 % MOD;
 
-    let inv_nm2 = inv[n - 2];
+    let inv_nm2 = unsafe { *inv.get_unchecked(n - 2) };
     let a = (p + MOD - alpha) % MOD * inv_nm2 % MOD;
     let b = (q + MOD - beta) % MOD * inv_nm2 % MOD;
 
-    let inv_nm3 = inv[n - 3];
+    let inv_nm3 = unsafe { *inv.get_unchecked(n - 3) };
     let eta = ((q + MOD - a) % MOD + MOD - b) % MOD * inv_nm3 % MOD;
 
     // 7. C0 and slope for the linear part of the rank expectation
     let bconst = ((n - 2) as u64 * (n - 3) as u64 / 2) % MOD;
-    let mut c0 = beta;
-    c0 = (c0 + (n - 3) as u64 % MOD * b % MOD) % MOD;
-    c0 = (c0 + (n - 1) as u64 % MOD * a % MOD) % MOD;
-    c0 = (c0 + eta * bconst % MOD) % MOD;
+    let c0 = (beta + 
+              (n - 3) as u64 % MOD * b % MOD +
+              (n - 1) as u64 % MOD * a % MOD +
+              eta * bconst % MOD) % MOD;
 
     let slope = (b + MOD - a) % MOD;
 
@@ -108,12 +120,13 @@ fn compute_large(n: usize) -> u64 {
     let mut fact = 1u64;
     let mut s1 = 0u64;
     let mut s2 = 0u64;
-    let inv2 = mod_pow(2, MOD - 2);
+    let inv2 = (MOD + 1) / 2;
     for m in 1..n {
-        fact = fact * (m as u64) % MOD;
-        s1 = (s1 + fact * (m as u64) % MOD) % MOD;
-        let tmp = m as u64 * (m + 1) as u64 % MOD * inv2 % MOD;
-        s2 = (s2 + fact * tmp % MOD) % MOD;
+        let m64 = m as u64;
+        fact = fact * m64 % MOD;
+        s1 = (s1 + fact * m64) % MOD;
+        let tmp = m64 * (m64 + 1) % MOD * inv2 % MOD;
+        s2 = (s2 + fact * tmp) % MOD;
     }
 
     // 9. Final Q(n) = (n!)^2 * E[rank]
@@ -128,20 +141,23 @@ fn mobius_sieve(n: usize) -> Vec<i8> {
     let mut primes = Vec::new();
     mu[1] = 1;
     for i in 2..=n {
-        if is_prime[i] {
+        // SAFETY: i <= n, so i < n+1, within bounds
+        if unsafe { *is_prime.get_unchecked(i) } {
             primes.push(i);
-            mu[i] = -1;
+            unsafe { *mu.get_unchecked_mut(i) = -1; }
         }
         for &p in &primes {
-            if i * p > n {
+            let ip = i * p;
+            if ip > n {
                 break;
             }
-            is_prime[i * p] = false;
+            // SAFETY: ip <= n, so ip < n+1, within bounds
+            unsafe { *is_prime.get_unchecked_mut(ip) = false; }
             if i % p == 0 {
-                mu[i * p] = 0;
+                unsafe { *mu.get_unchecked_mut(ip) = 0; }
                 break;
             }
-            mu[i * p] = -mu[i];
+            unsafe { *mu.get_unchecked_mut(ip) = -*mu.get_unchecked(i); }
         }
     }
     mu
@@ -152,9 +168,9 @@ fn mod_pow(mut base: u64, mut exp: u64) -> u64 {
     base %= MOD;
     while exp > 0 {
         if exp & 1 == 1 {
-            res = (res as u128 * base as u128 % MOD as u128) as u64;
+            res = res * base % MOD;
         }
-        base = (base as u128 * base as u128 % MOD as u128) as u64;
+        base = base * base % MOD;
         exp >>= 1;
     }
     res

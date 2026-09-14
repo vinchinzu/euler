@@ -5,8 +5,9 @@
 //
 // We compute the 36th divisible range of length 36 and print the smallest number a.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
+#[inline(always)]
 fn gcd(a: i64, b: i64) -> i64 {
     let (mut a, mut b) = (a.abs(), b.abs());
     while b != 0 {
@@ -17,9 +18,7 @@ fn gcd(a: i64, b: i64) -> i64 {
     a
 }
 
-/// CRT merge: a ≡ r1 (mod m1) and a ≡ r2 (mod m2).
-/// Returns Some((r, lcm(m1,m2))) or None if inconsistent.
-/// Uses i128 internally to avoid overflow since m1*m2 can be up to ~48+48 = 96 bits.
+#[inline]
 fn crt_merge(r1: i64, m1: i64, r2: i64, m2: i64) -> Option<(i64, i64)> {
     let g = gcd(m1, m2);
     if (r2 - r1) % g != 0 {
@@ -30,20 +29,18 @@ fn crt_merge(r1: i64, m1: i64, r2: i64, m2: i64) -> Option<(i64, i64)> {
     let m2g = m2 / g;
     let diff = (r2 - r1) / g;
 
-    // Extended gcd to find inverse of m1g mod m2g
     let (_, inv, _) = extended_gcd(m1g, m2g);
     let inv = ((inv % m2g) + m2g) % m2g;
 
-    // t = (diff * inv) % m2g, but use i128 to avoid overflow
     let t = ((diff as i128 * inv as i128) % m2g as i128) as i64;
     let t = ((t % m2g) + m2g) % m2g;
 
-    // r = (r1 + m1 * t) % lcm
     let r = ((r1 as i128 + m1 as i128 * t as i128) % lcm as i128) as i64;
     let r = ((r % lcm) + lcm) % lcm;
     Some((r, lcm))
 }
 
+#[inline]
 fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
     let (mut x0, mut y0, mut x1, mut y1) = (1i64, 0i64, 0i64, 1i64);
     let (mut a, mut b) = (a, b);
@@ -70,22 +67,19 @@ fn lcm_upto(n: i64) -> i64 {
     m
 }
 
-/// Return offsets j in [0..L-1] such that j ≡ target (mod step) and bit j is set in unused_mask.
-fn candidates_offsets(l: usize, unused_mask: u64, target: usize, step: usize) -> Vec<usize> {
-    let mut res = Vec::new();
+#[inline]
+fn candidates_offsets(l: usize, unused_mask: u64, target: usize, step: usize, buf: &mut Vec<usize>) {
+    buf.clear();
     let mut j = target;
     while j < l {
         if (unused_mask >> j) & 1 != 0 {
-            res.push(j);
+            buf.push(j);
         }
         j += step;
     }
-    res
 }
 
-/// Pick the remaining index i (1..=L) with fewest feasible offsets (MRV heuristic).
-/// Tie-break towards larger i.
-/// Returns None if any remaining index has 0 candidates (dead end).
+#[inline]
 fn pick_index_mrv(
     l: usize,
     r: i64,
@@ -96,23 +90,23 @@ fn pick_index_mrv(
     let mut best_i: usize = 0;
     let mut best_cands: Vec<usize> = Vec::new();
     let mut best_count: usize = usize::MAX;
+    let mut cand_buf = Vec::with_capacity(l);
 
-    // Iterate indices descending for good tie-breaking
     for i in (1..=l).rev() {
         if (remaining_mask >> (i - 1)) & 1 == 0 {
             continue;
         }
         let g = gcd(m, i as i64) as usize;
         let target = if r == 0 { 0 } else { (g - (r as usize % g)) % g };
-        let cands = candidates_offsets(l, unused_mask, target, g);
-        let c = cands.len();
+        candidates_offsets(l, unused_mask, target, g, &mut cand_buf);
+        let c = cand_buf.len();
         if c == 0 {
             return None;
         }
         if c < best_count || (c == best_count && i > best_i) {
             best_count = c;
             best_i = i;
-            best_cands = cands;
+            std::mem::swap(&mut best_cands, &mut cand_buf);
         }
     }
 
@@ -127,8 +121,8 @@ fn enumerate_valid_residues(l: usize) -> (Vec<i64>, i64) {
     let all_offsets_mask: u64 = (1u64 << l) - 1;
     let all_indices_mask: u64 = (1u64 << l) - 1;
 
-    let mut residues: HashSet<i64> = HashSet::new();
-    let mut visited: HashSet<(i64, i64, u64, u64)> = HashSet::new();
+    let mut residues: Vec<i64> = Vec::new();
+    let mut visited: HashMap<(i64, i64, u64, u64), ()> = HashMap::new();
 
     fn dfs(
         l: usize,
@@ -136,18 +130,18 @@ fn enumerate_valid_residues(l: usize) -> (Vec<i64>, i64) {
         m: i64,
         unused_mask: u64,
         remaining_mask: u64,
-        residues: &mut HashSet<i64>,
-        visited: &mut HashSet<(i64, i64, u64, u64)>,
+        residues: &mut Vec<i64>,
+        visited: &mut HashMap<(i64, i64, u64, u64), ()>,
     ) {
         let r = ((r % m) + m) % m;
         let key = (r, m, unused_mask, remaining_mask);
-        if visited.contains(&key) {
+        if visited.contains_key(&key) {
             return;
         }
-        visited.insert(key);
+        visited.insert(key, ());
 
         if remaining_mask == 0 {
-            residues.insert(r);
+            residues.push(r);
             return;
         }
 
@@ -177,8 +171,9 @@ fn enumerate_valid_residues(l: usize) -> (Vec<i64>, i64) {
         &mut visited,
     );
 
-    let res: Vec<i64> = residues.into_iter().collect();
-    (res, big_m)
+    residues.sort_unstable();
+    residues.dedup();
+    (residues, big_m)
 }
 
 fn nth_divisible_range_start(l: usize, n: usize) -> i64 {
